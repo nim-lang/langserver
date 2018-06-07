@@ -1,0 +1,12 @@
+[submodule "tests/projects/jester"]
+	path = tests/projects/jester
+	url = https://github.com/dom96/jester
+[submodule "tests/projects/nimforums"]
+	path = tests/projects/nimforums
+	url = https://github.com/nim-lang/nimforum
+[submodule "tests/projects/Arraymancer"]
+	path = tests/projects/Arraymancer
+	url = https://github.com/mratsim/Arraymancer
+[submodule "tests/projects/karax"]
+	path = tests/projects/karax
+	url = https://github.com/pragmagic/karax
