@@ -8,8 +8,8 @@ text editor and multiple long-running `nimsuggest` processes (one instance
 of `nimsuggest` per project).
 
 When a source file is opened, NLS first uses `nim info` to obtain information
-about the owning project of the file (see #project-discoverability).
-
+about the owning project of the file (see [Project Discoverability](#project-discoverability)).
+ni
 > `nim info` is currently an undocumented feature of the compiler under the
   name `nim dump`.
 
@@ -37,6 +37,12 @@ One of the main responsibilities of NLS is replicating the file editing operatio
 sent by the editor. If there are dirty files, the in-memory contents are written
 to a temporary location in the file system before being passed to `nimsuggest`
 using the `dirtyFile` switch.
+
+## Logging
+
+The user should be able to trouble-shoot a misbehavior of `nls` by inspecting a
+global log file (or perhaps a database). Some filtering capabilities may be required
+in order to isolate the requests coming from a particular editor or a particular file.
 
 --------------
 
