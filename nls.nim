@@ -1,13 +1,32 @@
 import
-  json, os, streams, asyncdispatch, locks, asynctools/asyncpipe,
-  langserver/[base_protocol, commands]
+  json, asyncdispatch, asynctools/asyncpipe,
+  json_rpc/streamconnection,
+  faststreams/async_backend,
+  streams,
+  faststreams/inputs,
+  faststreams/outputs,
+  faststreams/textio,
+  faststreams/asynctools_adapters,
+  asynctools/asyncpipe
 
+proc echo(params: JsonNode): Future[RpcResult] {.async,
+    raises: [CatchableError, Exception].} =
+  echo "XXXXX"
+  return some(StringOfJson($params))
 
-import
-  json_rpc/streamconnection
+# let a = stdin.getFileHandle()
+# echo a
 
-let input = asyncWrap(stdout.getFileHandle(), stdin.getFileHandle());
+# let input = fileInput(system.stdin)
+# let output = fileOutput(system.stdout)
 
-let connection = StreamConnection.new(input, input);
+# let aas = Async(fileInput(stdin));
+# let connection = StreamConnection.new(fsStdIn, fsStdOut);
+# connection.register("echo", echo)
 
-waitFor connection.start();
+# # waitFor connection.start();
+# # var x = "XXXX"
+# # discard waitFor pipe.write(x[0].addr, x.len)
+let a = asyncPipeInput(pipe)
+echo waitFor a.readLine()
+# discard waitFor pipe.readLine()
