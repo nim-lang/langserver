@@ -1,13 +1,9 @@
 import
-  json, asyncdispatch, asynctools/asyncpipe,
-  json_rpc/streamconnection,
+  json, asyncdispatch, json_rpc/streamconnection,
   faststreams/async_backend,
-  streams,
   faststreams/inputs,
   faststreams/outputs,
-  faststreams/textio,
-  faststreams/asynctools_adapters,
-  asynctools/asyncpipe
+  faststreams/asynctools_adapters
 
 proc echo(params: JsonNode): Future[RpcResult] {.async,
     raises: [CatchableError, Exception].} =
@@ -21,12 +17,9 @@ proc echo(params: JsonNode): Future[RpcResult] {.async,
 # let output = fileOutput(system.stdout)
 
 # let aas = Async(fileInput(stdin));
-# let connection = StreamConnection.new(fsStdIn, fsStdOut);
-# connection.register("echo", echo)
+let inputStream = Async(fileInput(stdin).s)
+let outputStream = Async(fileOutput(stdout).s)
 
-# # waitFor connection.start();
-# # var x = "XXXX"
-# # discard waitFor pipe.write(x[0].addr, x.len)
-let a = asyncPipeInput(pipe)
-echo waitFor a.readLine()
-# discard waitFor pipe.readLine()
+let connection = StreamConnection.new(inputStream, outputStream);
+connection.register("echo", echo)
+waitFor connection.start();
