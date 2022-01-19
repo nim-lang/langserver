@@ -13,9 +13,16 @@ proc echo(params: JsonNode): Future[RpcResult] {.async,
   echo "|||||"
   return some(StringOfJson($params))
 
-var pipe = createPipe(register = false)
+var
+  pipe = createPipe(register = false)
+  userInputPipeIn = pipe.getReadHandle
+  userInputPipeOut = pipe.getWriteHandle
+
+var
+  userInputPipe = createPipe(register = false)
 
 proc serverThreadStart() {.thread.} =
+  let p  = asyncWrap(userInputPipeIn, userInputPipeOut)
   var output = asyncPipeOutput(pipe);
   let inputStream = newFileStream(stdin)
   var ch = inputStream.readChar();
