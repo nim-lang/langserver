@@ -1,5 +1,6 @@
 import
   json, asyncdispatch, json_rpc/streamconnection, os,
+  streams,
   faststreams/async_backend,
   faststreams/inputs,
   faststreams/textio,
@@ -34,8 +35,8 @@ proc echo(params: JsonNode): Future[RpcResult] {.async,
 
 # let outputStream = Async(fileOutput(stdout).s)
 
-let inputStream = fileInput("/home/yyoncho/aa.txt")
-echo readLine(inputStream)
+# let inputStream = fileInput("/home/yyoncho/aa.txt")
+# echo readLine(inputStream)
 
 # let pipe
 
@@ -58,9 +59,44 @@ echo readLine(inputStream)
 
 # echo "XXX", readLine(inputStream)
 
-# let connection = StreamConnection.new(inputStream, outputStream);
 # connection.register("echo", echo)
 # waitFor connection.start();
 # sleep(1000)
 
 # echo "2"
+
+let pipe = createPipe(register = false)
+let s = newFileStream(stdin)
+let output = asyncPipeOutput(pipe);
+
+proc serverThreadStart() {.thread.} =
+  var ch = s.readChar();
+  while ch != '\0':
+    output.write(ch)
+    ch = s.readChar();
+
+var stdioThread: Thread[void]
+createThread(stdioThread, serverThreadStart)
+
+
+
+
+let connection = StreamConnection.new(inputStream, outputStream);
+
+echo "Exit"
+joinThread(stdioThread)
+# while true:
+#   try:
+#     let frame = s.readFrame
+#     withLock L:
+#       inc framesToProcess
+#       userInputPipe.writePipeFrame(frame)
+#   except IOError:
+#     while framesToProcess > 0:
+#       wait C, L
+#     break
+
+# let c = fileInput(stdin)
+# echo c;
+# while c != nil:
+#   echo ">", c;
