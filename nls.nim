@@ -42,7 +42,7 @@ createThread(stdioThread, serverThreadStart, pipe)
 # sleep(100)
 
 let connection = StreamConnection.new(asyncPipeInput(pipe),
-                                      Async(fileOutput(stdout)));
+                                      Async(fileOutput(stdout, allowAsyncOps = true)));
 connection.register("echo", echo)
 waitFor connection.start()
 # echo "Exit"
