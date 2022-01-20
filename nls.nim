@@ -19,10 +19,12 @@ proc serverThreadStart(pipe: AsyncPipe) {.thread.} =
 
   ch[0] = inputStream.readChar();
   while ch[0] != '\0':
-    echo "|", ch, "|"
-    discard write(pipe, ch[0].addr, 1)
+    # echo "|", ch, "|"
+    var a = ch;
+    discard write(pipe, a[0].addr, 1)
     ch[0] = inputStream.readChar();
   # waitFor flushAsync(output)
+
 
 proc echo(params: JsonNode): Future[RpcResult] {.async,
     raises: [CatchableError, Exception].} =
@@ -37,7 +39,7 @@ proc echo(params: JsonNode): Future[RpcResult] {.async,
 var stdioThread: Thread[AsyncPipe]
 createThread(stdioThread, serverThreadStart, pipe)
 
-sleep(100)
+# sleep(100)
 
 let connection = StreamConnection.new(asyncPipeInput(pipe),
                                       Async(fileOutput(stdout)));
