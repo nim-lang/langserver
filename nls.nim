@@ -37,7 +37,7 @@ proc echo(params: JsonNode): Future[RpcResult] {.async,
 var stdioThread: Thread[AsyncPipe]
 createThread(stdioThread, serverThreadStart, pipe)
 
-# sleep(100)
+sleep(100)
 
 let connection = StreamConnection.new(asyncPipeInput(pipe),
                                       Async(fileOutput(stdout)));
