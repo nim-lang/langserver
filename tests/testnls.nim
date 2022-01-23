@@ -31,5 +31,7 @@ suite "Client/server over JSONRPC":
     let initializeResult = waitFor clientConnection.call("initialize", %initParams)
     assert initializeResult != nil;
 
+    waitFor clientConnection.notify("initialized", newJObject())
+
   pipeClient.close()
   pipeServer.close()

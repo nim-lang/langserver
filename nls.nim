@@ -52,10 +52,11 @@ proc uriToPath(uri: string): string =
 
 type
   LanguageServer* = ref object
-   clientCapabilities: ClientCapabilities
+   clientCapabilities*: ClientCapabilities
 
 proc initialize(ls: LanguageServer, params: InitializeParams):
     Future[InitializeResult] {.async} =
+  ls.clientCapabilities = params.capabilities;
   return InitializeResult(
     capabilities: ServerCapabilities(
       textDocumentSync: %TextDocumentSyncOptions(
@@ -74,9 +75,15 @@ proc initialize(ls: LanguageServer, params: InitializeParams):
       documentSymbolProvider: some(true),
       renameProvider: some(true)))
 
+proc initialized(_: JsonNode):
+    Future[void] {.async} =
+  # no-op
+  discard
+
 proc registerLanguageServerHandlers*(connection: StreamConnection) =
   let ls = LanguageServer()
   connection.register("initialize", partial(initialize, ls))
+  connection.registerNotification("initialized", initialized)
 
 when isMainModule:
   var
