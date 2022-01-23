@@ -1,10 +1,7 @@
 # ignore all executable files
-*
-!*.*
-!*/
-*.exe
 
 nimcache/
 
 *.log
-
+/nls
+tests/all
