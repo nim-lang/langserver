@@ -8,7 +8,7 @@ license       = "MIT"
 bin           = @["nls"]
 skipDirs      = @["tests"]
 
-requires "nim >= 0.17.0", "asynctools >= 0.1.0", "json_rpc", "jsonschema"
+requires "nim >= 0.17.0", "asynctools >= 0.1.0", "json_rpc", "jsonschema", "with"
 
 --path:"."
 

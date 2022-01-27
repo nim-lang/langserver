@@ -1,97 +1,37 @@
 import
-  json_rpc/streamconnection,
-  streams,
-  sugar,
-  os,
-  uri,
   faststreams/async_backend,
   faststreams/textio,
   faststreams/inputs,
   faststreams/outputs,
   faststreams/asynctools_adapters,
-  protocol/enums,
-  protocol/types
+  strutils,
+  os,
+  asyncdispatch,
+  asynctools/asyncproc,
+  faststreams/asynctools_adapters,
+  faststreams/textio
 
-type
-  UriParseError* = object of Defect
-    uri: string
+proc send(output: AsyncOutputStream): Future[void] {.async} =
+  write(OutputStream(output), "sug /home/yyoncho/Sources/nim/langserver/tests/projects/hw/hw.nim:1:0\n")
+  flush(output)
 
-proc copyStdioToPipe(pipe: AsyncPipe) {.thread.} =
-  var
-    inputStream = newFileStream(stdin)
-    ch = "^"
 
-  ch[0] = inputStream.readChar();
-  while ch[0] != '\0':
-    discard waitFor write(pipe, ch[0].addr, 1)
-    ch[0] = inputStream.readChar();
+proc processOutput(input: AsyncInputStream): Future[void] {.async} =
+  while input.readable:
+    let line = await input.readLine();
+    echo ">>>>>>> ", line
+  echo "Done........."
 
-proc partial[A, B, C] (fn: proc(a: A, b: B): C {.gcsafe.}, a: A): proc (b: B) : C {.gcsafe, raises: [Defect, CatchableError, Exception].} =
-  return
-    proc(b: B): C {.gcsafe, raises: [Defect, CatchableError, Exception].} =
-      return fn(a, b)
+let process = startProcess(command = "nimsuggest --stdin --find /home/yyoncho/Sources/nim/langserver/tests/projects/hw/hw.nim",
+                           workingDir = getCurrentDir(),
+                           options = {poUsePath, poEvalCommand})
 
-proc uriToPath(uri: string): string =
-  ## Convert an RFC 8089 file URI to a native, platform-specific, absolute path.
-  #let startIdx = when defined(windows): 8 else: 7
-  #normalizedPath(uri[startIdx..^1])
-  let parsed = uri.parseUri
-  if parsed.scheme != "file":
-    var e = newException(UriParseError, "Invalid scheme: " & parsed.scheme & ", only \"file\" is supported")
-    e.uri = uri
-    raise e
-  if parsed.hostname != "":
-    var e = newException(UriParseError, "Invalid hostname: " & parsed.hostname & ", only empty hostname is supported")
-    e.uri = uri
-    raise e
-  return normalizedPath(
-    when defined(windows):
-      parsed.path[1..^1]
-    else:
-      parsed.path).decodeUrl
+let input = asyncPipeInput(process.outputHandle)
+let output = asyncPipeOutput(process.inputHandle, allowWaitFor = true)
 
-type
-  LanguageServer* = ref object
-   clientCapabilities*: ClientCapabilities
 
-proc initialize(ls: LanguageServer, params: InitializeParams):
-    Future[InitializeResult] {.async} =
-  ls.clientCapabilities = params.capabilities;
-  return InitializeResult(
-    capabilities: ServerCapabilities(
-      textDocumentSync: %TextDocumentSyncOptions(
-        openClose: some(true),
-        change: some(TextDocumentSyncKind.Full.int),
-        willSave: some(false),
-        willSaveWaitUntil: some(false),
-        save: some(SaveOptions(includeText: some(true)))),
-      hoverProvider: some(true),
-      completionProvider: CompletionOptions(
-        resolveProvider: some(false),
-        triggerCharacters: @["."]),
-      signatureHelpProvider: SignatureHelpOptions(triggerCharacters: @["(", ","]),
-      definitionProvider: some(true),
-      referencesProvider: some(true),
-      documentSymbolProvider: some(true),
-      renameProvider: some(true)))
-
-proc initialized(_: JsonNode):
-    Future[void] {.async} =
-  # no-op
-  discard
-
-proc registerLanguageServerHandlers*(connection: StreamConnection) =
-  let ls = LanguageServer()
-  connection.register("initialize", partial(initialize, ls))
-  connection.registerNotification("initialized", initialized)
-
-when isMainModule:
-  var
-    pipe = createPipe(register = true)
-    stdioThread: Thread[AsyncPipe]
-
-  createThread(stdioThread, copyStdioToPipe, pipe)
-
-  let connection = StreamConnection.new(asyncPipeInput(pipe),
-                                        Async(fileOutput(stdout, allowAsyncOps = true)));
-  waitFor connection.start()
+# waitFor send(output)
+echo "Before"
+waitFor processOutput(input)
+echo "After"
+waitFor processOutput(input)
