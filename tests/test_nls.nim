@@ -22,14 +22,14 @@ suite "Client/server initialization sequence":
   let clientConnection = StreamConnection.new(pipeServer, pipeClient);
   discard clientConnection.start();
 
-  test "Sending notification.":
+  test "Sending initialize.":
     let initParams = InitializeParams(
         processId: %getCurrentProcessId(),
         rootUri: "file:///tmp/",
         capabilities: ClientCapabilities())
 
     let initializeResult = waitFor clientConnection.call("initialize", %initParams)
-    assert initializeResult != nil;
+    doAssert initializeResult != nil;
 
     waitFor clientConnection.notify("initialized", newJObject())
 
@@ -49,16 +49,50 @@ suite "LSP features":
 
   let initParams = InitializeParams(
       processId: %getCurrentProcessId(),
-      rootUri: "file:///tmp/",
+      rootUri: "file:///home/yyoncho/Sources/nim/langserver/tests/projects/hw/",
       capabilities: ClientCapabilities())
 
-  let initializeResult = waitFor clientConnection.call("initialize", %initParams)
-  assert initializeResult != nil;
-
+  discard waitFor clientConnection.call("initialize", %initParams)
   waitFor clientConnection.notify("initialized", newJObject())
 
-  test "Sending notification.":
-    discard
+  let didOpenParams = DidOpenTextDocumentParams <% {
+    "textDocument": {
+      "uri": "file:///home/yyoncho/Sources/nim/langserver/tests/projects/hw/hw.nim",
+      "languageId": "nim",
+      "version": 0,
+      "text": readFile("tests/projects/hw/hw.nim")
+     }
+   }
+
+  discard clientConnection.notify("textDocument/didOpen", %didOpenParams)
+
+  test "Sending hover.":
+    let hoverParams = HoverParams <% {
+      "position": {
+         "line": 1,
+         "character": 0
+      },
+      "textDocument": {
+         "uri": "file:///home/yyoncho/Sources/nim/langserver/tests/projects/hw/hw.nim"
+       }
+    }
+    let hover = to(waitFor clientConnection.call("textDocument/hover",
+                                                 %hoverParams),
+                   Hover)
+    doAssert hover.contents.getStr == "proc (){.noSideEffect, gcsafe, locks: 0.}"
+
+  test "Sending hover(no content)":
+    let hoverParams = HoverParams <% {
+      "position": {
+         "line": 2,
+         "character": 0
+      },
+      "textDocument": {
+         "uri": "file:///home/yyoncho/Sources/nim/langserver/tests/projects/hw/hw.nim"
+       }
+    }
+    let hover = waitFor clientConnection.call("textDocument/hover", %hoverParams)
+    doAssert hover.kind == JNull
 
   pipeClient.close()
   pipeServer.close()

@@ -455,6 +455,8 @@ type
     contents*: JsonNode # string or MarkedStringOption or [string] or [MarkedStringOption] or MarkupContent
     range*: Option[Range]
 
+  HoverParams* = ref object of TextDocumentPositionParams
+
   SignatureHelp* = ref object of RootObj
     signatures*: seq[SignatureInformation]
     activeSignature*: Option[int]

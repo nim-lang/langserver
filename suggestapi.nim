@@ -1,5 +1,14 @@
-import osproc, strutils, with, strformat, net, os, streams
+import osproc,
+  strutils,
+  with,
+  strformat,
+  os,
+  asyncnet,
+  streams,
+  faststreams/async_backend,
+  asyncdispatch
 
+# coppied from Nim repo
 type
   PrefixMatch* {.pure.} = enum
     None,   ## no prefix detected
@@ -30,15 +39,15 @@ type
     tokenLen*: int
     version*: int
 
-type
-  SuggestApi = ref object
+  SuggestApi* = ref object
     process: Process
-    socket: Socket
+    port: int
+    # socket: AsyncSocket
 
 proc parseSuggest*(line: string): Suggest =
   let tokens = line.split('\t');
+
   return Suggest(
-    # qualifiedPath: ,
     filePath: tokens[4],
     line: parseInt(tokens[5]),
     column: parseInt(tokens[6]),
@@ -46,27 +55,42 @@ proc parseSuggest*(line: string): Suggest =
     forth: tokens[3],
     section: parseEnum[IdeCmd]("ide" & capitalizeAscii(tokens[0])))
 
-proc createSuggestApi*(command: string): SuggestApi =
+proc createSuggestApi*(file: string): SuggestApi =
   result = SuggestApi()
   with result:
-    process = startProcess(command = command,
+    process = startProcess(command = "nimsuggest --find {file} --autobind".fmt,
                            workingDir = getCurrentDir(),
                            options = {poUsePath, poEvalCommand})
-    let port = parseInt(readLine(process.outputStream))
-    socket = newSocket()
-    socket.connect("127.0.0.1", Port(port))
+    port = parseInt(readLine(process.outputStream))
 
-proc call*(self: SuggestApi, command: string, file: string, dirtyFile: string, line: int, column: int): seq[Suggest] =
-  self.socket.send("{command} {file}:{line}:{column}\n".fmt)
+proc call*(self: SuggestApi, command: string, file: string, dirtyFile: string, line: int, column: int): Future[seq[Suggest]] {.async.} =
+  let socket = newAsyncSocket()
+  waitFor socket.connect("127.0.0.1", Port(self.port))
 
+  discard socket.send("{command} {file};{dirtyFile}:{line}:{column}".fmt & "\c\L", {})
   result = @[]
-
-  var line: string;
-  self.socket.readLine(line);
+  var line: string = await socket.recvLine();
   while line != "\r\n" and line != "":
     result.add parseSuggest(line);
-    self.socket.readLine(line);
+    line = await socket.recvLine();
   if (line == ""):
     raise newException(Exception, "Socket closed.")
 
-# proc createSuggestApi() : SuggestApi =
+template createFullCommand(command: untyped) {.dirty.} =
+  proc command*(self: SuggestApi, file: string, dirtyfile = "",
+                line: int, col: int): Future[seq[Suggest]] =
+    return self.call(astToStr(command), file, dirtyfile, line, col)
+
+template createFileOnlyCommand(command: untyped) {.dirty.} =
+  proc command*(self: SuggestApi, file: string, dirtyfile = ""): Future[seq[Suggest]] =
+    return self.call(astToStr(command), file, dirtyfile, 0, 0)
+
+createFullCommand(sug)
+createFullCommand(con)
+createFullCommand(def)
+createFullCommand(use)
+createFullCommand(dus)
+createFileOnlyCommand(chk)
+createFileOnlyCommand(highlight)
+createFileOnlyCommand(outline)
+createFileOnlyCommand(known)

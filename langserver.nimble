@@ -18,6 +18,7 @@ proc configForTests() =
   --run
   --threads:on
   --silent
+  --define:"debugLogging=on"
   --define:"async_backend=asyncdispatch"
 
 task test, "run tests":
