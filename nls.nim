@@ -1,5 +1,5 @@
 import
-  algorithm,
+  # algorithm,
   macros,
   strformat,
   faststreams/async_backend,
@@ -135,6 +135,7 @@ type
 
 proc initialize(ls: LanguageServer, params: InitializeParams):
     Future[InitializeResult] {.async} =
+  debugEcho "Initialize, starting..."
   ls.clientCapabilities = params.capabilities;
   return InitializeResult(
     capabilities: ServerCapabilities(
@@ -144,16 +145,17 @@ proc initialize(ls: LanguageServer, params: InitializeParams):
         willSave: some(false),
         willSaveWaitUntil: some(false),
         save: some(SaveOptions(includeText: some(true)))),
-      hoverProvider: some(true),
-      completionProvider: CompletionOptions(
-        resolveProvider: some(false),
-        triggerCharacters: @["."]),
-      signatureHelpProvider: SignatureHelpOptions(
-        triggerCharacters: @["(", ","]),
-      definitionProvider: some(true),
-      referencesProvider: some(true),
-      documentSymbolProvider: some(true),
-      renameProvider: some(true)))
+      hoverProvider: some(true)# ,
+      # completionProvider: CompletionOptions(
+      #   resolveProvider: some(false),
+      #   triggerCharacters: @["."]),
+      # signatureHelpProvider: SignatureHelpOptions(
+      #   triggerCharacters: @["(", ","]),
+      # definitionProvider: some(true),
+      # referencesProvider: some(true),
+      # documentSymbolProvider: some(true),
+      # renameProvider: some(true)
+      ))
 
 proc initialized(_: JsonNode):
     Future[void] {.async} =

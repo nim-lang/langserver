@@ -85,10 +85,7 @@ suite "LSP features":
     let expected = Hover <% {
       "contents": [{
           "language": "nim",
-          "value": ": proc (){.noSideEffect, gcsafe, locks: 0.}"
-        }, {
-          "language": "markdown",
-          "value": "\"\""
+          "value": "hw.a: proc (){.noSideEffect, gcsafe, locks: 0.}"
         }
       ],
       "range": nil
@@ -108,7 +105,6 @@ suite "LSP features":
     }
     let hover = waitFor clientConnection.call("textDocument/hover", %hoverParams)
     doAssert hover.kind == JNull
-  test
 
   pipeClient.close()
   pipeServer.close()

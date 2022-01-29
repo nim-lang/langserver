@@ -12,9 +12,10 @@ suite "SuggestApi tests":
     # TODO handle multiline docs
     doAssert parseSuggest(inputLine)[] == Suggest(
       filePath: "hw/hw.nim",
+      qualifiedPath: @["hw.a"],
       line: 1,
       column: 5,
-      doc: "\"\"",
+      doc: "",
       forth: "proc (){.noSideEffect, gcsafe, locks: 0.}",
       section: ideDef)[]
 

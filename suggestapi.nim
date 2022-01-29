@@ -48,10 +48,11 @@ proc parseSuggest*(line: string): Suggest =
   let tokens = line.split('\t');
 
   return Suggest(
+    qualifiedPath: @[tokens[2]],
     filePath: tokens[4],
     line: parseInt(tokens[5]),
     column: parseInt(tokens[6]),
-    doc: tokens[7],
+    doc: tokens[7].unescape(),
     forth: tokens[3],
     section: parseEnum[IdeCmd]("ide" & capitalizeAscii(tokens[0])))
 

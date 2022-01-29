@@ -6,6 +6,8 @@ import options
 import sequtils
 
 type
+  OptionalSeq[T] = Option[seq[T]]
+
   CancelParams* = ref object of RootObj
     id*: int or float or string
 
@@ -27,7 +29,7 @@ type
     code*: JsonNode # int or string
     source*: Option[string]
     message*: string
-    relatedInformation*: Option[seq[DiagnosticRelatedInformation]]
+    relatedInformation*: OptionalSeq[DiagnosticRelatedInformation]
 
   DiagnosticRelatedInformation* = ref object of RootObj
     location*: Location
@@ -44,11 +46,11 @@ type
 
   TextDocumentEdit* = ref object of RootObj
     textDocument*: VersionedTextDocumentIdentifier
-    edits*: seq[TextEdit]
+    edits*: OptionalSeq[TextEdit]
 
   WorkspaceEdit* = ref object of RootObj
     changes*: JsonNode
-    documentChanges*: seq[TextDocumentEdit]
+    documentChanges*: OptionalSeq[TextDocumentEdit]
 
   TextDocumentIdentifier* = ref object of RootObj
     uri*: string
@@ -83,7 +85,7 @@ type
     initializationOptions*: JsonNode
     capabilities*: ClientCapabilities
     trace*: Option[string]
-    workspaceFolders*: seq[WorkspaceFolder]
+    workspaceFolders*: OptionalSeq[WorkspaceFolder]
 
   WorkspaceEditCapability* = ref object of RootObj
     documentChanges*: Option[bool]
@@ -95,7 +97,7 @@ type
     dynamicRegistration*: Option[bool]
 
   SymbolKindCapability* = ref object of RootObj
-    valueSet*: Option[int]
+    valueSet*: OptionalSeq[int]
 
   SymbolCapability* = ref object of RootObj
     dynamicRegistration*: Option[bool]
@@ -123,11 +125,11 @@ type
   CompletionItemCapability* = ref object of RootObj
     snippetSupport*: Option[bool]
     commitCharactersSupport*: Option[bool]
-    documentFormat*: seq[string]
+    documentFormat*: OptionalSeq[string]
     deprecatedSupport*: Option[bool]
 
   CompletionItemKindCapability* = ref object of RootObj
-    valueSet*: seq[int]
+    valueSet*: OptionalSeq[int]
 
   CompletionCapability* = ref object of RootObj
     dynamicRegistration*: Option[bool]
@@ -137,10 +139,10 @@ type
 
   HoverCapability* = ref object of RootObj
     dynamicRegistration*: Option[bool]
-    contentFormat*: seq[string]
+    contentFormat*: OptionalSeq[string]
 
   SignatureInformationCapability* = ref object of RootObj
-    documentationFormat*: seq[string]
+    documentationFormat*: OptionalSeq[string]
 
   SignatureHelpCapability* = ref object of RootObj
     dynamicRegistration*: Option[bool]
@@ -216,7 +218,7 @@ type
   ClientCapabilities* = ref object of RootObj
     workspace*: Option[WorkspaceClientCapabilities]
     textDocument*: Option[TextDocumentClientCapabilities]
-    experimental*: JsonNode
+    # experimental*: JsonNode
 
   WorkspaceFolder* = ref object of RootObj
     uri*: string
@@ -230,23 +232,23 @@ type
 
   CompletionOptions* = ref object of RootObj
     resolveProvider*: Option[bool]
-    triggerCharacters*: seq[string]
+    triggerCharacters*: OptionalSeq[string]
 
   SignatureHelpOptions* = ref object of RootObj
-    triggerCharacters*: seq[string]
+    triggerCharacters*: OptionalSeq[string]
 
   CodeLensOptions* = ref object of RootObj
     resolveProvider*: Option[bool]
 
   DocumentOnTypeFormattingOptions* = ref object of RootObj
     firstTriggerCharacter*: string
-    moreTriggerCharacter*: seq[string]
+    moreTriggerCharacter*: OptionalSeq[string]
 
   DocumentLinkOptions* = ref object of RootObj
     resolveProvider*: Option[bool]
 
   ExecuteCommandOptions* = ref object of RootObj
-   commands*: seq[string]
+   commands*: OptionalSeq[string]
 
   SaveOptions* = ref object of RootObj
     includeText*: Option[bool]
@@ -271,7 +273,7 @@ type
     workspaceFolders*: Option[WorkspaceFolderCapability]
 
   TextDocumentRegistrationOptions* = ref object of RootObj
-    documentSelector*: seq[DocumentFilter]
+    documentSelector*: OptionalSeq[DocumentFilter]
 
   TextDocumentAndStaticRegistrationOptions* = ref object of TextDocumentRegistrationOptions
     id*: Option[string]
@@ -313,7 +315,7 @@ type
   ShowMessageRequestParams* = ref object of RootObj
     `type`*: int
     message*: string
-    actions*: seq[MessageActionItem]
+    actions*: OptionalSeq[MessageActionItem]
 
   LogMessageParams* = ref object of RootObj
     `type`*: int
@@ -325,18 +327,18 @@ type
     registrationOptions*: JsonNode
 
   RegistrationParams* = ref object of RootObj
-    registrations*: seq[Registration]
+    registrations*: OptionalSeq[Registration]
 
   Unregistration* = ref object of RootObj
     id*: string
     `method`*: string
 
   UnregistrationParams* = ref object of RootObj
-    unregistrations*: seq[Unregistration]
+    unregistrations*: OptionalSeq[Unregistration]
 
   WorkspaceFoldersChangeEvent* = ref object of RootObj
-    added*: seq[WorkspaceFolder]
-    removed*: seq[WorkspaceFolder]
+    added*: OptionalSeq[WorkspaceFolder]
+    removed*: OptionalSeq[WorkspaceFolder]
 
   DidChangeWorkspaceFoldersParams* = ref object of RootObj
     event*: WorkspaceFoldersChangeEvent
@@ -345,7 +347,7 @@ type
     settings*: JsonNode
 
   ConfigurationParams* = ref object of RootObj
-    `items`*: seq[ConfigurationItem]
+    `items`*: OptionalSeq[ConfigurationItem]
 
   ConfigurationItem* = ref object of RootObj
     scopeUri*: Option[string]
@@ -356,10 +358,10 @@ type
     `type`*: int
 
   DidChangeWatchedFilesParams* = ref object of RootObj
-    changes*: seq[FileEvent]
+    changes*: OptionalSeq[FileEvent]
 
   DidChangeWatchedFilesRegistrationOptions* = ref object of RootObj
-    watchers*: seq[FileSystemWatcher]
+    watchers*: OptionalSeq[FileSystemWatcher]
 
   FileSystemWatcher* = ref object of RootObj
     globPattern*: string
@@ -373,7 +375,7 @@ type
     arguments*: JsonNode
 
   ExecuteCommandRegistrationOptions* = ref object of RootObj
-    commands*: seq[string]
+    commands*: OptionalSeq[string]
 
   ApplyWorkspaceEditParams* = ref object of RootObj
     label*: Option[string]
@@ -387,7 +389,7 @@ type
 
   DidChangeTextDocumentParams* = ref object of RootObj
     textDocument*: VersionedTextDocumentIdentifier
-    contentChanges*: seq[TextDocumentContentChangeEvent]
+    contentChanges*: OptionalSeq[TextDocumentContentChangeEvent]
 
   TextDocumentContentChangeEvent* = ref object of RootObj
     range*: Option[Range]
@@ -413,7 +415,7 @@ type
 
   PublishDiagnosticsParams* = ref object of RootObj
     uri*: string
-    diagnostics*: seq[Diagnostic]
+    diagnostics*: OptionalSeq[Diagnostic]
 
   CompletionParams* = ref object of TextDocumentPositionParams
     context*: Option[CompletionContext]
@@ -424,7 +426,7 @@ type
 
   CompletionList* = ref object of RootObj
     isIncomplete*: bool
-    `items`*: seq[CompletionItem]
+    `items`*: OptionalSeq[CompletionItem]
 
   CompletionItem* = ref object of RootObj
     label*: string
@@ -439,12 +441,12 @@ type
     insertTextFormat*: Option[int]
     textEdit*: Option[TextEdit]
     additionalTextEdits*: Option[TextEdit]
-    commitCharacters*: seq[string]
+    commitCharacters*: OptionalSeq[string]
     command*: Option[Command]
     data*: JsonNode
 
   CompletionRegistrationOptions* = ref object of TextDocumentRegistrationOptions
-    triggerCharacters*: seq[string]
+    triggerCharacters*: OptionalSeq[string]
     resolveProvider*: Option[bool]
 
   MarkedStringOption* = ref object of RootObj
@@ -458,21 +460,21 @@ type
   HoverParams* = ref object of TextDocumentPositionParams
 
   SignatureHelp* = ref object of RootObj
-    signatures*: seq[SignatureInformation]
+    signatures*: OptionalSeq[SignatureInformation]
     activeSignature*: Option[int]
     activeParameter*: Option[int]
 
   SignatureInformation* = ref object of RootObj
     label*: string
     documentation*: Option[string or MarkupContent]
-    parameters*: seq[ParameterInformation]
+    parameters*: OptionalSeq[ParameterInformation]
 
   ParameterInformation* = ref object of RootObj
     label*: string
     documentation*: Option[string or MarkupContent]
 
   SignatureHelpRegistrationOptions* = ref object of TextDocumentRegistrationOptions
-    triggerCharacters*: seq[string]
+    triggerCharacters*: OptionalSeq[string]
 
   ReferenceParams* = ref object of TextDocumentPositionParams
     context*: ReferenceContext
@@ -500,7 +502,7 @@ type
     context*: CodeActionContext
 
   CodeActionContext* = ref object of RootObj
-    diagnostics*: seq[Diagnostic]
+    diagnostics*: OptionalSeq[Diagnostic]
 
   CodeLensParams* = ref object of RootObj
     textDocument*: TextDocumentIdentifier
@@ -545,7 +547,7 @@ type
   ColorPresentation* = ref object of RootObj
     label*: string
     textEdit*: Option[TextEdit]
-    additionalTextEdits*: seq[TextEdit]
+    additionalTextEdits*: OptionalSeq[TextEdit]
 
   DocumentFormattingParams* = ref object of RootObj
     textDocument*: TextDocumentIdentifier
@@ -564,7 +566,7 @@ type
 
   DocumentOnTypeFormattingRegistrationOptions* = ref object of TextDocumentRegistrationOptions
     firstTriggerCharacter*: string
-    moreTriggerCharacter*: seq[string]
+    moreTriggerCharacter*: OptionalSeq[string]
 
   RenameParams* = ref object of RootObj
     textDocument*: TextDocumentIdentifier
