@@ -31,6 +31,10 @@ type
   UriParseError* = object of Defect
     uri: string
 
+macro `<%`*(t: untyped, input: untyped): untyped =
+  result = newCall(bindSym("to", brOpen),
+                   newCall(bindSym("%*", brOpen), input), t)
+
 proc copyStdioToPipe(pipe: AsyncPipe) {.thread.} =
   var
     inputStream = newFileStream(stdin)
@@ -87,11 +91,11 @@ proc getProjectFile(fileUri: string): string =
           certainty = Nimble
     path = dir
 
-proc pathToUri(path: string): string =
+proc pathToUri*(path: string): string =
   # This is a modified copy of encodeUrl in the uri module. This doesn't encode
   # the / character, meaning a full file path can be passed in without breaking
   # it.
-  result = newStringOfCap(path.len + path.len shr 2) # assume 12% non-alnum-chars
+  result = "file://" & newStringOfCap(path.len + path.len shr 2) # assume 12% non-alnum-chars
   for c in path:
     case c
     # https://tools.ietf.org/html/rfc3986#section-2.3
@@ -106,11 +110,13 @@ proc uriToPath(uri: string): string =
   #normalizedPath(uri[startIdx..^1])
   let parsed = uri.parseUri
   if parsed.scheme != "file":
-    var e = newException(UriParseError, "Invalid scheme: " & parsed.scheme & ", only \"file\" is supported")
+    var e = newException(UriParseError,
+      "Invalid scheme: {parsed.scheme}, only \"file\" is supported".fmt)
     e.uri = uri
     raise e
   if parsed.hostname != "":
-    var e = newException(UriParseError, "Invalid hostname: " & parsed.hostname & ", only empty hostname is supported")
+    var e = newException(UriParseError,
+      "Invalid hostname: {parsed.hostname}, only empty hostname is supported".fmt)
     e.uri = uri
     raise e
   return normalizedPath(
@@ -153,38 +159,52 @@ proc initialized(_: JsonNode):
     Future[void] {.async} =
   debugEcho "Client initialized."
 
+proc uriToStash(uri: string): string =
+  storage / (hash(uri).toHex & ".nim")
+
 proc didOpen(ls: LanguageServer, params: DidOpenTextDocumentParams):
     Future[void] {.async, gcsafe.} =
-   let
-     fileuri = params.textDocument.uri
-     fileStash = storage / (hash(fileuri).toHex & ".nim" )
-     file = open(fileStash, fmWrite)
-     projectFile = getProjectFile(uriToPath(fileuri))
+   with params.textDocument:
+     let
+       fileStash = uriToStash(uri)
+       file = open(fileStash, fmWrite)
+       projectFile = getProjectFile(uriToPath(uri))
 
-   debugEcho "New document opened for URI: ", fileuri, " saving to " & fileStash
-   ls.openFiles[fileuri] = (
-     projectFile: projectFile,
-     fingerTable: @[])
+     debugEcho "New document opened for URI: ", uri, " saving to " & fileStash
+     ls.openFiles[uri] = (
+       projectFile: projectFile,
+       fingerTable: @[])
 
-   if not ls.projectFiles.hasKey(projectFile):
-     ls.projectFiles[projectFile] = (nimsuggest: createSuggestApi(projectFile),
-                                     openFiles: initOrderedSet[string]())
-   ls.projectFiles[projectFile].openFiles.incl(fileuri)
+     if not ls.projectFiles.hasKey(projectFile):
+       ls.projectFiles[projectFile] = (nimsuggest: createSuggestApi(projectFile),
+                                       openFiles: initOrderedSet[string]())
+     ls.projectFiles[projectFile].openFiles.incl(uri)
 
-   for line in params.textDocument.text.splitLines:
-     ls.openFiles[fileuri].fingerTable.add line.createUTFMapping()
-     file.writeLine line
-   file.close()
-
-macro `<%`*(t: untyped, input: untyped): untyped =
-  result = newCall(bindSym("to", brOpen),
-                   newCall(bindSym("%*", brOpen), input), t)
+     for line in text.splitLines:
+       ls.openFiles[uri].fingerTable.add line.createUTFMapping()
+       file.writeLine line
+     file.close()
 
 template getNimsuggest(ls: LanguageServer, fileuri: string): SuggestApi =
   ls.projectFiles[ls.openFiles[fileuri].projectFile].nimsuggest
 
-proc uriToStash(uri: string): string =
-  storage / (hash(uri).toHex & ".nim" )
+proc toMarkedStrings(suggest: Suggest): seq[MarkedStringOption] =
+  var label = suggest.qualifiedPath.join(".")
+  if suggest.forth != "":
+    label &= ": " & suggest.forth
+
+  result = @[
+    MarkedStringOption <% {
+       "language": "nim",
+       "value": label
+    }
+  ]
+
+  if suggest.doc != "":
+    result.add MarkedStringOption <% {
+       "language": "markdown",
+       "value": suggest.doc
+    }
 
 proc hover(ls: LanguageServer, params: HoverParams):
     Future[Option[Hover]] {.async} =
@@ -195,11 +215,11 @@ proc hover(ls: LanguageServer, params: HoverParams):
         uriToStash(uri),
         line + 1,
         ls.openFiles[uri].fingerTable[line].utf16to8(character))
-    debugEcho "Found {suggestions.len} matches".fmt
+    debugEcho fmt "Found {suggestions.len} matches for {%params}"
     if suggestions.len == 0:
       return none[Hover]();
     else:
-      return some(Hover(contents: %suggestions[0].forth))
+      return some(Hover(contents: %toMarkedStrings(suggestions[0])))
 
 proc registerLanguageServerHandlers*(connection: StreamConnection) =
   let ls = LanguageServer(

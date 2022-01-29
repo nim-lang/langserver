@@ -10,6 +10,8 @@ import
   ../nls,
   ../protocol/types
 
+proc fixtureUri(path: string): string =
+  result = pathToUri(getCurrentDir() / "tests" / path)
 
 suite "Client/server initialization sequence":
   let pipeServer = createPipe();
@@ -36,6 +38,7 @@ suite "Client/server initialization sequence":
   pipeClient.close()
   pipeServer.close()
 
+
 suite "LSP features":
   let pipeServer = createPipe();
   let pipeClient = createPipe();
@@ -49,7 +52,7 @@ suite "LSP features":
 
   let initParams = InitializeParams(
       processId: %getCurrentProcessId(),
-      rootUri: "file:///home/yyoncho/Sources/nim/langserver/tests/projects/hw/",
+      rootUri: fixtureUri("projects/hw/"),
       capabilities: ClientCapabilities())
 
   discard waitFor clientConnection.call("initialize", %initParams)
@@ -57,7 +60,7 @@ suite "LSP features":
 
   let didOpenParams = DidOpenTextDocumentParams <% {
     "textDocument": {
-      "uri": "file:///home/yyoncho/Sources/nim/langserver/tests/projects/hw/hw.nim",
+      "uri": fixtureUri("projects/hw/hw.nim"),
       "languageId": "nim",
       "version": 0,
       "text": readFile("tests/projects/hw/hw.nim")
@@ -73,13 +76,25 @@ suite "LSP features":
          "character": 0
       },
       "textDocument": {
-         "uri": "file:///home/yyoncho/Sources/nim/langserver/tests/projects/hw/hw.nim"
+         "uri": fixtureUri("projects/hw/hw.nim")
        }
     }
     let hover = to(waitFor clientConnection.call("textDocument/hover",
                                                  %hoverParams),
                    Hover)
-    doAssert hover.contents.getStr == "proc (){.noSideEffect, gcsafe, locks: 0.}"
+    let expected = Hover <% {
+      "contents": [{
+          "language": "nim",
+          "value": ": proc (){.noSideEffect, gcsafe, locks: 0.}"
+        }, {
+          "language": "markdown",
+          "value": "\"\""
+        }
+      ],
+      "range": nil
+    }
+
+    doAssert %hover == %expected
 
   test "Sending hover(no content)":
     let hoverParams = HoverParams <% {
@@ -88,11 +103,12 @@ suite "LSP features":
          "character": 0
       },
       "textDocument": {
-         "uri": "file:///home/yyoncho/Sources/nim/langserver/tests/projects/hw/hw.nim"
+         "uri": fixtureUri("projects/hw/hw.nim")
        }
     }
     let hover = waitFor clientConnection.call("textDocument/hover", %hoverParams)
     doAssert hover.kind == JNull
+  test
 
   pipeClient.close()
   pipeServer.close()
