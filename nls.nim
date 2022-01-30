@@ -7,6 +7,7 @@ import
   faststreams/outputs,
   json_rpc/streamconnection,
   os,
+  sugar,
   sequtils,
   hashes,
   osproc,
@@ -21,10 +22,10 @@ import
   sets,
   ./utils
 
-const storage = getTempDir() / "nimlsp"
+const storage = getTempDir() / "nls"
+discard existsOrCreateDir(storage)
 
 const explicitSourcePath {.strdefine.} = getCurrentCompilerExe().parentDir.parentDir
-const nimpath = explicitSourcePath
 
 type
   UriParseError* = object of Defect
@@ -150,9 +151,8 @@ proc initialize(ls: LanguageServer, params: InitializeParams):
       #,
       # signatureHelpProvider: SignatureHelpOptions(
       #   triggerCharacters: @["(", ","]),
-      definitionProvider: some(true)
-      #,
-      # referencesProvider: some(true),
+      definitionProvider: some(true),
+      referencesProvider: some(true)#,
       # documentSymbolProvider: some(true),
       # renameProvider: some(true)
       ))
@@ -252,6 +252,20 @@ proc definition(ls: LanguageServer, params: TextDocumentPositionParams):
       .map(toLocation);
     debugEcho fmt "found {result.len} matches for {%params}"
 
+proc references(ls: LanguageServer, params: ReferenceParams):
+    Future[seq[Location]] {.async} =
+  with (params.position, params.textDocument, params.context):
+    result = ls
+      .getNimsuggest(uri)
+      .use(uriToPath(uri),
+           uriToStash(uri),
+           line + 1,
+           ls.openFiles[uri].fingerTable[line].utf16to8(character))
+      .await()
+      .filter(suggest => suggest.section != ideDef or includeDeclaration)
+      .map(toLocation);
+    debugEcho fmt "found {result.len} matches for {%params}"
+
 proc registerLanguageServerHandlers*(connection: StreamConnection) =
   let ls = LanguageServer(
     projectFiles: initTable[string, tuple[nimsuggest: SuggestApi,
@@ -263,6 +277,7 @@ proc registerLanguageServerHandlers*(connection: StreamConnection) =
   connection.registerNotification("textDocument/didOpen", partial(didOpen, ls))
   connection.register("textDocument/hover", partial(hover, ls))
   connection.register("textDocument/definition", partial(definition, ls))
+  connection.register("textDocument/references", partial(references, ls))
 
 when isMainModule:
   var

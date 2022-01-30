@@ -137,5 +137,78 @@ suite "LSP features":
     }]
     doAssert %locations == %expected
 
+  test "References.":
+    let referenceParams =  ReferenceParams <% {
+      "context": {
+        "includeDeclaration": true
+      },
+      "position": {
+         "line": 1,
+         "character": 0
+      },
+      "textDocument": {
+         "uri": helloWorldUri
+       }
+    }
+    let locations = to(waitFor clientConnection.call("textDocument/references",
+                                                     %referenceParams),
+                    seq[Location])
+    let expected = seq[Location] <% [{
+      "uri": helloWorldUri,
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 5
+        },
+        "end": {
+          "line": 0,
+          "character": 9
+        }
+      }
+      }, {
+      "uri": helloWorldUri,
+      "range": {
+        "start": {
+          "line": 1,
+          "character": 0
+        },
+        "end": {
+          "line": 1,
+          "character": 4
+        }
+      }
+    }]
+
+  test "References(exclude def)":
+    let referenceParams =  ReferenceParams <% {
+      "context": {
+        "includeDeclaration": false
+      },
+      "position": {
+         "line": 1,
+         "character": 0
+      },
+      "textDocument": {
+         "uri": helloWorldUri
+       }
+    }
+    let locations = to(waitFor clientConnection.call("textDocument/references",
+                                                     %referenceParams),
+                    seq[Location])
+    let expected = seq[Location] <% [{
+      "uri": helloWorldUri,
+      "range": {
+        "start": {
+          "line": 1,
+          "character": 0
+        },
+        "end": {
+          "line": 1,
+          "character": 4
+        }
+      }
+    }]
+    doAssert %locations == %expected
+
   pipeClient.close()
   pipeServer.close()
