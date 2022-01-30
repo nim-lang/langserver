@@ -1,14 +1,13 @@
 import
-  # algorithm,
   macros,
   strformat,
   faststreams/async_backend,
   faststreams/asynctools_adapters,
   faststreams/inputs,
   faststreams/outputs,
-  faststreams/textio,
   json_rpc/streamconnection,
   os,
+  sequtils,
   hashes,
   osproc,
   suggestapi,
@@ -145,13 +144,14 @@ proc initialize(ls: LanguageServer, params: InitializeParams):
         willSave: some(false),
         willSaveWaitUntil: some(false),
         save: some(SaveOptions(includeText: some(true)))),
-      hoverProvider: some(true)# ,
+      hoverProvider: some(true),
       # completionProvider: CompletionOptions(
-      #   resolveProvider: some(false),
-      #   triggerCharacters: @["."]),
+      #   resolveProvider: some(false))
+      #,
       # signatureHelpProvider: SignatureHelpOptions(
       #   triggerCharacters: @["(", ","]),
-      # definitionProvider: some(true),
+      definitionProvider: some(true)
+      #,
       # referencesProvider: some(true),
       # documentSymbolProvider: some(true),
       # renameProvider: some(true)
@@ -223,6 +223,35 @@ proc hover(ls: LanguageServer, params: HoverParams):
     else:
       return some(Hover(contents: %toMarkedStrings(suggestions[0])))
 
+proc toLocation(suggest: Suggest): Location =
+  with suggest:
+    return Location <% {
+      "uri": pathToUri(filepath),
+      "range": {
+         "start": {
+            "line": line - 1,
+            "character": column
+         },
+         "end": {
+            "line": line - 1,
+            "character": column + qualifiedPath[^1].len
+         }
+      }
+    }
+
+proc definition(ls: LanguageServer, params: TextDocumentPositionParams):
+    Future[seq[Location]] {.async} =
+  with (params.position, params.textDocument):
+    result = ls
+      .getNimsuggest(uri)
+      .def(uriToPath(uri),
+           uriToStash(uri),
+           line + 1,
+           ls.openFiles[uri].fingerTable[line].utf16to8(character))
+      .await()
+      .map(toLocation);
+    debugEcho fmt "found {result.len} matches for {%params}"
+
 proc registerLanguageServerHandlers*(connection: StreamConnection) =
   let ls = LanguageServer(
     projectFiles: initTable[string, tuple[nimsuggest: SuggestApi,
@@ -233,6 +262,7 @@ proc registerLanguageServerHandlers*(connection: StreamConnection) =
   connection.registerNotification("initialized", initialized)
   connection.registerNotification("textDocument/didOpen", partial(didOpen, ls))
   connection.register("textDocument/hover", partial(hover, ls))
+  connection.register("textDocument/definition", partial(definition, ls))
 
 when isMainModule:
   var

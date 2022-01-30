@@ -42,7 +42,6 @@ type
   SuggestApi* = ref object
     process: Process
     port: int
-    # socket: AsyncSocket
 
 proc parseSuggest*(line: string): Suggest =
   let tokens = line.split('\t');

@@ -69,6 +69,8 @@ suite "LSP features":
 
   discard clientConnection.notify("textDocument/didOpen", %didOpenParams)
 
+  let helloWorldUri = fixtureUri("projects/hw/hw.nim")
+
   test "Sending hover.":
     let hoverParams = HoverParams <% {
       "position": {
@@ -100,11 +102,40 @@ suite "LSP features":
          "character": 0
       },
       "textDocument": {
-         "uri": fixtureUri("projects/hw/hw.nim")
+         "uri": helloWorldUri
        }
     }
     let hover = waitFor clientConnection.call("textDocument/hover", %hoverParams)
     doAssert hover.kind == JNull
+
+  test "Definitions.":
+    let positionParams = TextDocumentPositionParams <% {
+      "position": {
+         "line": 1,
+         "character": 0
+      },
+      "textDocument": {
+         "uri": helloWorldUri
+       }
+    }
+    let locations = to(waitFor clientConnection.call("textDocument/definition",
+                                                     %positionParams),
+                   seq[Location])
+
+    let expected = seq[Location] <% [{
+      "uri": helloWorldUri,
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 5
+        },
+        "end": {
+          "line": 0,
+          "character": 9
+        }
+      }
+    }]
+    doAssert %locations == %expected
 
   pipeClient.close()
   pipeServer.close()
