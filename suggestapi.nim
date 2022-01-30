@@ -47,7 +47,7 @@ proc parseSuggest*(line: string): Suggest =
   let tokens = line.split('\t');
 
   return Suggest(
-    qualifiedPath: @[tokens[2]],
+    qualifiedPath: tokens[2].split("."),
     filePath: tokens[4],
     line: parseInt(tokens[5]),
     column: parseInt(tokens[6]),
@@ -94,3 +94,6 @@ createFileOnlyCommand(chk)
 createFileOnlyCommand(highlight)
 createFileOnlyCommand(outline)
 createFileOnlyCommand(known)
+
+proc `mod`*(suggestApi: SuggestApi, file: string, dirtyfile = ""): Future[seq[Suggest]] =
+  return suggestApi.call("ideMod", file, dirtyfile, 0, 0)

@@ -31,7 +31,7 @@ type
   UriParseError* = object of Defect
     uri: string
 
-macro `<%`*(t: untyped, input: untyped): untyped =
+macro `%*`*(t: untyped, input: untyped): untyped =
   result = newCall(bindSym("to", brOpen),
                    newCall(bindSym("%*", brOpen), input), t)
 
@@ -133,6 +133,9 @@ type
                                    fingerTable: seq[seq[tuple[u16pos, offset: int]]]]]
     clientCapabilities*: ClientCapabilities
 
+proc getCharacter(ls: LanguageServer, uri: string, line: int, character: int): int =
+  return ls.openFiles[uri].fingerTable[line].utf16to8(character)
+
 proc initialize(ls: LanguageServer, params: InitializeParams):
     Future[InitializeResult] {.async} =
   debugEcho "Initialize, starting..."
@@ -190,20 +193,37 @@ proc didOpen(ls: LanguageServer, params: DidOpenTextDocumentParams):
 template getNimsuggest(ls: LanguageServer, fileuri: string): SuggestApi =
   ls.projectFiles[ls.openFiles[fileuri].projectFile].nimsuggest
 
+proc didChange(ls: LanguageServer, params: DidChangeTextDocumentParams):
+    Future[void] {.async, gcsafe.} =
+   with params:
+     let
+       uri = textDocument.uri
+       path = uriToPath(uri)
+       fileStash = uriToStash(uri)
+       file = open(fileStash, fmWrite)
+
+     ls.openFiles[uri].fingerTable = @[]
+     for line in contentChanges[0].text.splitLines:
+       ls.openFiles[uri].fingerTable.add line.createUTFMapping()
+       file.writeLine line
+     file.close()
+
+     discard ls.getNimsuggest(uri).mod(path, dirtyfile = filestash)
+
 proc toMarkedStrings(suggest: Suggest): seq[MarkedStringOption] =
   var label = suggest.qualifiedPath.join(".")
   if suggest.forth != "":
     label &= ": " & suggest.forth
 
   result = @[
-    MarkedStringOption <% {
+    MarkedStringOption %* {
        "language": "nim",
        "value": label
     }
   ]
 
   if suggest.doc != "":
-    result.add MarkedStringOption <% {
+    result.add MarkedStringOption %* {
        "language": "markdown",
        "value": suggest.doc
     }
@@ -216,7 +236,7 @@ proc hover(ls: LanguageServer, params: HoverParams):
         uriToPath(uri),
         uriToStash(uri),
         line + 1,
-        ls.openFiles[uri].fingerTable[line].utf16to8(character))
+        ls.getCharacter(uri, line, character))
     debugEcho fmt "Found {suggestions.len} matches for {%params}"
     if suggestions.len == 0:
       return none[Hover]();
@@ -225,7 +245,7 @@ proc hover(ls: LanguageServer, params: HoverParams):
 
 proc toLocation(suggest: Suggest): Location =
   with suggest:
-    return Location <% {
+    return Location %* {
       "uri": pathToUri(filepath),
       "range": {
          "start": {
@@ -247,7 +267,7 @@ proc definition(ls: LanguageServer, params: TextDocumentPositionParams):
       .def(uriToPath(uri),
            uriToStash(uri),
            line + 1,
-           ls.openFiles[uri].fingerTable[line].utf16to8(character))
+           ls.getCharacter(uri, line, character))
       .await()
       .map(toLocation);
     debugEcho fmt "found {result.len} matches for {%params}"
@@ -260,7 +280,7 @@ proc references(ls: LanguageServer, params: ReferenceParams):
       .use(uriToPath(uri),
            uriToStash(uri),
            line + 1,
-           ls.openFiles[uri].fingerTable[line].utf16to8(character))
+           ls.getCharacter(uri, line, character))
       .await()
       .filter(suggest => suggest.section != ideDef or includeDeclaration)
       .map(toLocation);
@@ -275,6 +295,7 @@ proc registerLanguageServerHandlers*(connection: StreamConnection) =
   connection.register("initialize", partial(initialize, ls))
   connection.registerNotification("initialized", initialized)
   connection.registerNotification("textDocument/didOpen", partial(didOpen, ls))
+  connection.registerNotification("textDocument/didChange", partial(didChange, ls))
   connection.register("textDocument/hover", partial(hover, ls))
   connection.register("textDocument/definition", partial(definition, ls))
   connection.register("textDocument/references", partial(references, ls))

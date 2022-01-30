@@ -58,7 +58,7 @@ suite "LSP features":
   discard waitFor clientConnection.call("initialize", %initParams)
   waitFor clientConnection.notify("initialized", newJObject())
 
-  let didOpenParams = DidOpenTextDocumentParams <% {
+  let didOpenParams = DidOpenTextDocumentParams %* {
     "textDocument": {
       "uri": fixtureUri("projects/hw/hw.nim"),
       "languageId": "nim",
@@ -72,7 +72,7 @@ suite "LSP features":
   let helloWorldUri = fixtureUri("projects/hw/hw.nim")
 
   test "Sending hover.":
-    let hoverParams = HoverParams <% {
+    let hoverParams = HoverParams %* {
       "position": {
          "line": 1,
          "character": 0
@@ -84,7 +84,7 @@ suite "LSP features":
     let hover = to(waitFor clientConnection.call("textDocument/hover",
                                                  %hoverParams),
                    Hover)
-    let expected = Hover <% {
+    let expected = Hover %* {
       "contents": [{
           "language": "nim",
           "value": "hw.a: proc (){.noSideEffect, gcsafe, locks: 0.}"
@@ -96,7 +96,7 @@ suite "LSP features":
     doAssert %hover == %expected
 
   test "Sending hover(no content)":
-    let hoverParams = HoverParams <% {
+    let hoverParams = HoverParams %* {
       "position": {
          "line": 2,
          "character": 0
@@ -109,7 +109,7 @@ suite "LSP features":
     doAssert hover.kind == JNull
 
   test "Definitions.":
-    let positionParams = TextDocumentPositionParams <% {
+    let positionParams = TextDocumentPositionParams %* {
       "position": {
          "line": 1,
          "character": 0
@@ -122,7 +122,7 @@ suite "LSP features":
                                                      %positionParams),
                    seq[Location])
 
-    let expected = seq[Location] <% [{
+    let expected = seq[Location] %* [{
       "uri": helloWorldUri,
       "range": {
         "start": {
@@ -131,14 +131,14 @@ suite "LSP features":
         },
         "end": {
           "line": 0,
-          "character": 9
+          "character": 6
         }
       }
     }]
     doAssert %locations == %expected
 
   test "References.":
-    let referenceParams =  ReferenceParams <% {
+    let referenceParams = ReferenceParams %* {
       "context": {
         "includeDeclaration": true
       },
@@ -153,7 +153,7 @@ suite "LSP features":
     let locations = to(waitFor clientConnection.call("textDocument/references",
                                                      %referenceParams),
                     seq[Location])
-    let expected = seq[Location] <% [{
+    let expected = seq[Location] %* [{
       "uri": helloWorldUri,
       "range": {
         "start": {
@@ -162,7 +162,7 @@ suite "LSP features":
         },
         "end": {
           "line": 0,
-          "character": 9
+          "character": 6
         }
       }
       }, {
@@ -174,13 +174,13 @@ suite "LSP features":
         },
         "end": {
           "line": 1,
-          "character": 4
+          "character": 1
         }
       }
     }]
 
   test "References(exclude def)":
-    let referenceParams =  ReferenceParams <% {
+    let referenceParams =  ReferenceParams %* {
       "context": {
         "includeDeclaration": false
       },
@@ -195,7 +195,7 @@ suite "LSP features":
     let locations = to(waitFor clientConnection.call("textDocument/references",
                                                      %referenceParams),
                     seq[Location])
-    let expected = seq[Location] <% [{
+    let expected = seq[Location] %* [{
       "uri": helloWorldUri,
       "range": {
         "start": {
@@ -204,11 +204,48 @@ suite "LSP features":
         },
         "end": {
           "line": 1,
-          "character": 4
+          "character": 1
         }
       }
     }]
     doAssert %locations == %expected
+
+  test "didChange then sending hover.":
+    let didChangeParams = DidChangeTextDocumentParams %* {
+      "textDocument": {
+        "uri": helloWorldUri,
+        "version": 1
+      },
+      "contentChanges": [{
+          "text": "\nproc a() = discard\na()\n"
+        }
+      ]
+    }
+
+    discard clientConnection.notify("textDocument/didChange", %didChangeParams)
+    let hoverParams = HoverParams %* {
+      "position": {
+         "line": 2,
+         "character": 0
+      },
+      "textDocument": {
+         "uri": fixtureUri("projects/hw/hw.nim")
+       }
+    }
+    let hover = to(waitFor clientConnection.call("textDocument/hover",
+                                                 %hoverParams),
+                   Hover)
+    let expected = Hover %* {
+      "contents": [{
+          "language": "nim",
+          "value": "hw.a: proc (){.noSideEffect, gcsafe, locks: 0.}"
+        }
+      ],
+      "range": nil
+    }
+
+    doAssert %hover == %expected
+
 
   pipeClient.close()
   pipeServer.close()

@@ -12,7 +12,7 @@ suite "SuggestApi tests":
     # TODO handle multiline docs
     doAssert parseSuggest(inputLine)[] == Suggest(
       filePath: "hw/hw.nim",
-      qualifiedPath: @["hw.a"],
+      qualifiedPath: @["hw", "a"],
       line: 1,
       column: 5,
       doc: "",

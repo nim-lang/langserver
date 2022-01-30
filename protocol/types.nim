@@ -385,7 +385,7 @@ type
 
   DidChangeTextDocumentParams* = ref object of RootObj
     textDocument*: VersionedTextDocumentIdentifier
-    contentChanges*: OptionalSeq[TextDocumentContentChangeEvent]
+    contentChanges*: seq[TextDocumentContentChangeEvent]
 
   TextDocumentContentChangeEvent* = ref object of RootObj
     range*: Option[Range]
