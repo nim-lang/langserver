@@ -1,6 +1,8 @@
 import
   std/json,
   os,
+  sequtils,
+  sugar,
   unittest,
   jsonschema,
   json_rpc/jsonmarshal,
@@ -246,6 +248,42 @@ suite "LSP features":
 
     doAssert %hover == %expected
 
+  test "Completion":
+    let completionParams = CompletionParams %* {
+      "position": {
+         "line": 3,
+         "character": 2
+      },
+      "textDocument": {
+         "uri": fixtureUri("projects/hw/hw.nim")
+       }
+    }
+    let actualEchoCompletionItem =
+      to(waitFor clientConnection.call("textDocument/completion",
+                                       %completionParams),
+         seq[CompletionItem])
+      .filter(item => item.label == "echo")[0]
+
+    let expected = CompletionItem %* {
+      "label": "echo",
+      "kind": 10,
+      "detail": "proc (x: varargs[typed]){.gcsafe, locks: 0.}",
+      "documentation": """Writes and flushes the parameters to the standard output.
+
+Special built-in that takes a variable number of arguments. Each argument
+is converted to a string via `$`, so it works for user-defined
+types that have an overloaded `$` operator.
+It is roughly equivalent to `writeLine(stdout, x); flushFile(stdout)`, but
+available for the JavaScript target too.
+
+Unlike other IO operations this is guaranteed to be thread-safe as
+`echo` is very often used for debugging convenience. If you want to use
+`echo` inside a `proc without side effects
+<manual.html#pragmas-nosideeffect-pragma>`_ you can use `debugEcho
+<#debugEcho,varargs[typed,]>`_ instead."""
+    }
+
+    doAssert %actualEchoCompletionItem == %expected
 
   pipeClient.close()
   pipeServer.close()

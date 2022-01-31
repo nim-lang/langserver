@@ -3,6 +3,7 @@ import options
 
 type
   OptionalSeq[T] = Option[seq[T]]
+  OptionalNode = Option[JsonNode]
 
   CancelParams* = ref object of RootObj
     id*: int or float or string
@@ -428,7 +429,7 @@ type
     label*: string
     kind*: Option[int]
     detail*: Option[string]
-    documentation*: Option[string or MarkupContent]
+    documentation*: JsonNode #Option[string or MarkupContent]
     deprecated*: Option[bool]
     preselect*: Option[bool]
     sortText*: Option[string]
@@ -439,7 +440,7 @@ type
     additionalTextEdits*: Option[TextEdit]
     commitCharacters*: OptionalSeq[string]
     command*: Option[Command]
-    data*: JsonNode
+    data*: OptionalNode
 
   CompletionRegistrationOptions* = ref object of TextDocumentRegistrationOptions
     triggerCharacters*: OptionalSeq[string]

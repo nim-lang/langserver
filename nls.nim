@@ -25,8 +25,6 @@ import
 const storage = getTempDir() / "nls"
 discard existsOrCreateDir(storage)
 
-const explicitSourcePath {.strdefine.} = getCurrentCompilerExe().parentDir.parentDir
-
 type
   UriParseError* = object of Defect
     uri: string
@@ -38,14 +36,15 @@ macro `%*`*(t: untyped, input: untyped): untyped =
 proc copyStdioToPipe(pipe: AsyncPipe) {.thread.} =
   var
     inputStream = newFileStream(stdin)
-    ch = "^"
+    ch = "X"
 
   ch[0] = inputStream.readChar();
   while ch[0] != '\0':
     discard waitFor write(pipe, ch[0].addr, 1)
     ch[0] = inputStream.readChar();
 
-proc partial[A, B, C] (fn: proc(a: A, b: B): C {.gcsafe.}, a: A): proc (b: B) : C {.gcsafe, raises: [Defect, CatchableError, Exception].} =
+proc partial[A, B, C] (fn: proc(a: A, b: B): C {.gcsafe.}, a: A):
+    proc (b: B) : C {.gcsafe, raises: [Defect, CatchableError, Exception].} =
   return
     proc(b: B): C {.gcsafe, raises: [Defect, CatchableError, Exception].} =
       return fn(a, b)
@@ -149,9 +148,8 @@ proc initialize(ls: LanguageServer, params: InitializeParams):
         willSaveWaitUntil: some(false),
         save: some(SaveOptions(includeText: some(true)))),
       hoverProvider: some(true),
-      # completionProvider: CompletionOptions(
-      #   resolveProvider: some(false))
-      #,
+      completionProvider: CompletionOptions(
+        resolveProvider: some(false)),
       # signatureHelpProvider: SignatureHelpOptions(
       #   triggerCharacters: @["(", ","]),
       definitionProvider: some(true),
@@ -190,8 +188,8 @@ proc didOpen(ls: LanguageServer, params: DidOpenTextDocumentParams):
        file.writeLine line
      file.close()
 
-template getNimsuggest(ls: LanguageServer, fileuri: string): SuggestApi =
-  ls.projectFiles[ls.openFiles[fileuri].projectFile].nimsuggest
+template getNimsuggest(ls: LanguageServer, uri: string): SuggestApi =
+  ls.projectFiles[ls.openFiles[uri].projectFile].nimsuggest
 
 proc didChange(ls: LanguageServer, params: DidChangeTextDocumentParams):
     Future[void] {.async, gcsafe.} =
@@ -286,6 +284,28 @@ proc references(ls: LanguageServer, params: ReferenceParams):
       .map(toLocation);
     debugEcho fmt "found {result.len} matches for {%params}"
 
+proc toCompletionItem(suggest: Suggest): CompletionItem =
+  with suggest:
+    return CompletionItem %* {
+      "label": qualifiedPath[^1].strip(chars = {'`'}),
+      "kind": nimSymToLSPKind(suggest).int,
+      "documentation": doc,
+      "detail": nimSymDetails(suggest)
+    }
+
+proc completion(ls: LanguageServer, params: CompletionParams):
+    Future[seq[CompletionItem]] {.async} =
+  with (params.position, params.textDocument):
+    result = ls
+      .getNimsuggest(uri)
+      .sug(uriToPath(uri),
+           uriToStash(uri),
+           line + 1,
+           ls.getCharacter(uri, line, character))
+      .await()
+      .map(toCompletionItem);
+    debugEcho fmt "found {result.len} matches for {%params}"
+
 proc registerLanguageServerHandlers*(connection: StreamConnection) =
   let ls = LanguageServer(
     projectFiles: initTable[string, tuple[nimsuggest: SuggestApi,
@@ -299,6 +319,7 @@ proc registerLanguageServerHandlers*(connection: StreamConnection) =
   connection.register("textDocument/hover", partial(hover, ls))
   connection.register("textDocument/definition", partial(definition, ls))
   connection.register("textDocument/references", partial(references, ls))
+  connection.register("textDocument/completion", partial(completion, ls))
 
 when isMainModule:
   var
