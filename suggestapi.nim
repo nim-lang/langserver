@@ -1,50 +1,18 @@
 import osproc,
   strutils,
   with,
-  macros,
+  times,
   strformat,
   os,
   asyncnet,
   streams,
   protocol/enums,
+  utils,
   faststreams/async_backend,
   asyncdispatch
 
 # coppied from Nim repo
 type
-  TSymKind* = enum        # the different symbols (start with the prefix sk);
-                          # order is important for the documentation generator!
-    skUnknown,            # unknown symbol: used for parsing assembler blocks
-                          # and first phase symbol lookup in generics
-    skConditional,        # symbol for the preprocessor (may become obsolete)
-    skDynLib,             # symbol represents a dynamic library; this is used
-                          # internally; it does not exist in Nim code
-    skParam,              # a parameter
-    skGenericParam,       # a generic parameter; eq in ``proc x[eq=`==`]()``
-    skTemp,               # a temporary variable (introduced by compiler)
-    skModule,             # module identifier
-    skType,               # a type
-    skVar,                # a variable
-    skLet,                # a 'let' symbol
-    skConst,              # a constant
-    skResult,             # special 'result' variable
-    skProc,               # a proc
-    skFunc,               # a func
-    skMethod,             # a method
-    skIterator,           # an iterator
-    skConverter,          # a type converter
-    skMacro,              # a macro
-    skTemplate,           # a template; currently also misused for user-defined
-                          # pragmas
-    skField,              # a field in a record or object
-    skEnumField,          # an identifier in an enum
-    skForVar,             # a for loop variable
-    skLabel,              # a label (for block statement)
-    skStub,               # symbol is a stub and not yet loaded from the ROD
-                          # file (it is loaded on demand, which may
-                          # mean: never)
-    skPackage,            # symbol is a package (used for canonicalization)
-    skAlias               # an alias (needs to be resolved immediately)
   PrefixMatch* {.pure.} = enum
     None,   ## no prefix detected
     Abbrev  ## prefix is an abbreviation of the symbol
@@ -69,7 +37,7 @@ type
     isGlobal*: bool # is a global variable
     contextFits*: bool # type/non-type context matches
     prefix*: PrefixMatch
-    symkind*: byte
+    symkind*: string
     scope*, localUsages*, globalUsages*: int # more usages is better
     tokenLen*: int
     version*: int
@@ -78,10 +46,8 @@ type
     process: Process
     port: int
 
-# let a:TSymKind;
-
 func nimSymToLSPKind*(suggest: Suggest): CompletionItemKind =
-  case $suggest.symKind.TSymKind:
+  case suggest.symKind:
   of "skConst": CompletionItemKind.Value
   of "skEnumField": CompletionItemKind.Enum
   of "skForVar": CompletionItemKind.Variable
@@ -99,8 +65,8 @@ func nimSymToLSPKind*(suggest: Suggest): CompletionItemKind =
   of "skFunc": CompletionItemKind.Function
   else: CompletionItemKind.Property
 
-func nimSymToLSPKind*(suggest: byte): SymbolKind =
-  case $TSymKind(suggest):
+func nimSymToLSPKind*(suggest: string): SymbolKind =
+  case suggest:
   of "skConst": SymbolKind.Constant
   of "skEnumField": SymbolKind.EnumMember
   of "skIterator": SymbolKind.Function
@@ -116,7 +82,7 @@ func nimSymToLSPKind*(suggest: byte): SymbolKind =
   else: SymbolKind.Function
 
 func nimSymDetails*(suggest: Suggest): string =
-  case $suggest.symKind.TSymKind:
+  case suggest.symKind:
   of "skConst": "const " & suggest.qualifiedPath.join(".") & ": " & suggest.forth
   of "skEnumField": "enum " & suggest.forth
   of "skForVar": "for var of " & suggest.forth
@@ -143,28 +109,47 @@ proc parseSuggest*(line: string): Suggest =
     column: parseInt(tokens[6]),
     doc: tokens[7].unescape(),
     forth: tokens[3],
+    symKind: tokens[1],
     section: parseEnum[IdeCmd]("ide" & capitalizeAscii(tokens[0])))
 
 proc createSuggestApi*(file: string): SuggestApi =
+  debug fmt "Starting nimsuggest for {file}"
+
   result = SuggestApi()
   with result:
-    process = startProcess(command = "nimsuggest --find {file} --autobind".fmt,
+    process = startProcess(command = "nimsuggest {file} --autobind".fmt,
                            workingDir = getCurrentDir(),
                            options = {poUsePath, poEvalCommand})
-    port = parseInt(readLine(process.outputStream))
+    let line = readLine(process.outputStream)
+    debug fmt "Line = {line}"
+    port = parseInt(line)
+    debug fmt "Started nimsuggest for {file} at port {port}"
 
-proc call*(self: SuggestApi, command: string, file: string, dirtyFile: string, line: int, column: int): Future[seq[Suggest]] {.async.} =
+proc call*(self: SuggestApi, command: string, file: string, dirtyFile: string,
+    line: int, column: int): Future[seq[Suggest]] {.async.} =
+  when defined(debugLogging):
+    let time = cpuTime()
+
   let socket = newAsyncSocket()
+
   waitFor socket.connect("127.0.0.1", Port(self.port))
 
-  discard socket.send("{command} {file};{dirtyFile}:{line}:{column}".fmt & "\c\L", {})
+  let commandString = fmt "{command} {file};{dirtyFile}:{line}:{column}"
+  debug fmt "Sending command to nimsuggest:\n\t{commandString}"
+  discard socket.send(commandString  & "\c\L")
+
   result = @[]
   var line: string = await socket.recvLine();
   while line != "\r\n" and line != "":
     result.add parseSuggest(line);
     line = await socket.recvLine();
+
   if (line == ""):
     raise newException(Exception, "Socket closed.")
+
+  when defined(debugLogging):
+    debug fmt "Received {result.len} result(s) for {command} in {cpuTime() - time}"
+
 
 template createFullCommand(command: untyped) {.dirty.} =
   proc command*(self: SuggestApi, file: string, dirtyfile = "",
@@ -184,6 +169,7 @@ createFileOnlyCommand(chk)
 createFileOnlyCommand(highlight)
 createFileOnlyCommand(outline)
 createFileOnlyCommand(known)
+
 
 proc `mod`*(suggestApi: SuggestApi, file: string, dirtyfile = ""): Future[seq[Suggest]] =
   return suggestApi.call("ideMod", file, dirtyfile, 0, 0)

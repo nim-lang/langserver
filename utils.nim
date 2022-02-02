@@ -2,8 +2,13 @@ import unicode
 
 type FingerTable = seq[tuple[u16pos, offset: int]]
 
-template debugEcho(args: varargs[string, `$`]) =
+template debug*(args: varargs[string, `$`]) =
   when defined(debugLogging):
+    stderr.write(join args)
+    stderr.write("\n")
+
+template trace*(args: varargs[string, `$`]) =
+  when defined(tracing):
     stderr.write(join args)
     stderr.write("\n")
 

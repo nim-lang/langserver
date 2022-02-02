@@ -6,7 +6,7 @@ type
   OptionalNode = Option[JsonNode]
 
   CancelParams* = ref object of RootObj
-    id*: int or float or string
+    id*: JsonNode
 
   Position* = ref object of RootObj
     line*: int
@@ -429,7 +429,7 @@ type
     label*: string
     kind*: Option[int]
     detail*: Option[string]
-    documentation*: JsonNode #Option[string or MarkupContent]
+    documentation*: OptionalNode #Option[string or MarkupContent]
     deprecated*: Option[bool]
     preselect*: Option[bool]
     sortText*: Option[string]
@@ -569,3 +569,12 @@ type
     textDocument*: TextDocumentIdentifier
     position*: Position
     newName*: string
+
+  SignatureHelpContext* = ref object of RootObj
+    triggerKind*: int
+    triggerCharacter*: Option[string]
+    isRetrigger*: bool
+    activeSignatureHelp*: SignatureHelp
+
+  SignatureHelpParams* = ref object of TextDocumentPositionParams
+    context*: SignatureHelpContext

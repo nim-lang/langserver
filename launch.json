@@ -1,0 +1,18 @@
+{
+    "version": "0.2.0",
+    "configurations": [{
+        "name": "Attach to nimlsp",
+        "type": "cppdbg",
+        "request": "launch",
+        // "processId": "${command:pickProcess}",
+        "cwd": "${workspaceFolder}",
+        "program": "${workspaceFolder}/nls",
+        "gdbPath": ""
+        "MIMode": "gdb",
+        "setupCommands": [{
+            "description": "Enable pretty-printing for gdb",
+            "text": "-enable-pretty-printing",
+            "ignoreFailures": true
+        }]
+    }]
+}

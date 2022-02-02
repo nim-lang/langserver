@@ -101,3 +101,7 @@ type
     Text = 1,
     Read = 2,
     Write = 3
+  SignatureHelpTriggerKind* {.pure.} = enum
+    Invoked = 1,
+    TriggerCharacter = 2,
+    ContentChange = 3

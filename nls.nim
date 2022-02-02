@@ -1,25 +1,7 @@
-import
-  macros,
-  strformat,
-  faststreams/async_backend,
-  faststreams/asynctools_adapters,
-  faststreams/inputs,
-  faststreams/outputs,
-  json_rpc/streamconnection,
-  os,
-  sugar,
-  sequtils,
-  hashes,
-  osproc,
-  suggestapi,
-  protocol/enums,
-  protocol/types,
-  streams,
-  uri,
-  with,
-  tables,
-  strutils,
-  sets,
+import macros, strformat, faststreams/async_backend, itertools,
+  faststreams/asynctools_adapters, faststreams/inputs, faststreams/outputs,
+  streams, json_rpc/streamconnection, os, sugar, sequtils, hashes, osproc,
+  suggestapi, protocol/enums, protocol/types, uri, with, tables, strutils, sets,
   ./utils
 
 const storage = getTempDir() / "nls"
@@ -29,19 +11,9 @@ type
   UriParseError* = object of Defect
     uri: string
 
-macro `%*`*(t: untyped, input: untyped): untyped =
+macro `%*`*(t: untyped, inputStream: untyped): untyped =
   result = newCall(bindSym("to", brOpen),
-                   newCall(bindSym("%*", brOpen), input), t)
-
-proc copyStdioToPipe(pipe: AsyncPipe) {.thread.} =
-  var
-    inputStream = newFileStream(stdin)
-    ch = "X"
-
-  ch[0] = inputStream.readChar();
-  while ch[0] != '\0':
-    discard waitFor write(pipe, ch[0].addr, 1)
-    ch[0] = inputStream.readChar();
+                   newCall(bindSym("%*", brOpen), inputStream), t)
 
 proc partial[A, B, C] (fn: proc(a: A, b: B): C {.gcsafe.}, a: A):
     proc (b: B) : C {.gcsafe, raises: [Defect, CatchableError, Exception].} =
@@ -86,9 +58,11 @@ proc getProjectFile(fileUri: string): string =
         let projectFile = sourceDir / (name & ".nim")
         if sourceDir.len != 0 and name.len != 0 and
             file.isRelativeTo(sourceDir) and fileExists(projectFile):
+          debug fmt "Found nimble project {projectFile} "
           result = projectFile
           certainty = Nimble
     path = dir
+  debug fmt "Mapped {fileUri} to the following project file {result}"
 
 proc pathToUri*(path: string): string =
   # This is a modified copy of encodeUrl in the uri module. This doesn't encode
@@ -126,6 +100,7 @@ proc uriToPath(uri: string): string =
 
 type
   LanguageServer* = ref object
+    connection: StreamConnection
     projectFiles: Table[string, tuple[nimsuggest: SuggestApi,
                                       openFiles: OrderedSet[string]]]
     openFiles: Table[string, tuple[projectFile: string,
@@ -137,7 +112,7 @@ proc getCharacter(ls: LanguageServer, uri: string, line: int, character: int): i
 
 proc initialize(ls: LanguageServer, params: InitializeParams):
     Future[InitializeResult] {.async} =
-  debugEcho "Initialize, starting..."
+  debug "Initialize received..."
   ls.clientCapabilities = params.capabilities;
   return InitializeResult(
     capabilities: ServerCapabilities(
@@ -149,21 +124,65 @@ proc initialize(ls: LanguageServer, params: InitializeParams):
         save: some(SaveOptions(includeText: some(true)))),
       hoverProvider: some(true),
       completionProvider: CompletionOptions(
-        resolveProvider: some(false)),
-      # signatureHelpProvider: SignatureHelpOptions(
-      #   triggerCharacters: @["(", ","]),
+        triggerCharacters: some(@["(", ","])),
       definitionProvider: some(true),
-      referencesProvider: some(true)#,
-      # documentSymbolProvider: some(true),
+      referencesProvider: some(true)
+      #,
+      # documentSymbolProvider: some(true)
       # renameProvider: some(true)
       ))
 
 proc initialized(_: JsonNode):
     Future[void] {.async} =
-  debugEcho "Client initialized."
+  debug "Client initialized."
+
+proc cancelRequest(params: CancelParams):
+    Future[void] {.async} =
+  debug fmt "Cancellig {params.id}..."
 
 proc uriToStash(uri: string): string =
   storage / (hash(uri).toHex & ".nim")
+
+template getNimsuggest(ls: LanguageServer, uri: string): SuggestApi =
+  ls.projectFiles[ls.openFiles[uri].projectFile].nimsuggest
+
+proc toDiagnostic(suggest: Suggest): Diagnostic =
+  with suggest:
+    return Diagnostic %* {
+      "uri": pathToUri(filepath),
+      "range": {
+         "start": {
+            "line": line - 1,
+            "character": column
+         },
+         "end": {
+            "line": line - 1,
+            "character": column + qualifiedPath[^1].len
+         }
+      },
+      "severity": case forth:
+                    of "Error": DiagnosticSeverity.Error.int
+                    of "Hint": DiagnosticSeverity.Hint.int
+                    of "Warning": DiagnosticSeverity.Warning.int
+                    else: DiagnosticSeverity.Error.int,
+      "message": doc,
+      "code": "nimsuggest chk"
+    }
+
+proc checkAllFiles(ls: LanguageServer, uri: string): Future[void] {.async} =
+  let diagnostics = ls.getNimsuggest(uri)
+    .chk(uriToPath(uri), uriToStash(uri))
+    .await()
+    .filter(sug => sug.filepath != "???")
+
+  debug fmt "Found diagnostics for the following files: {diagnostics.map(s => s.filepath).deduplicate()}"
+  for (path, diags) in groupBy(diagnostics, s => s.filepath):
+    debug fmt "Sending {diags.len} diagnostics for {path}"
+    let params = PublishDiagnosticsParams %* {
+      "uri": pathToUri(path),
+      "diagnostics": diags.map(toDiagnostic)
+    }
+    discard ls.connection.notify("textDocument/publishDiagnostics", %params)
 
 proc didOpen(ls: LanguageServer, params: DidOpenTextDocumentParams):
     Future[void] {.async, gcsafe.} =
@@ -173,7 +192,8 @@ proc didOpen(ls: LanguageServer, params: DidOpenTextDocumentParams):
        file = open(fileStash, fmWrite)
        projectFile = getProjectFile(uriToPath(uri))
 
-     debugEcho "New document opened for URI: ", uri, " saving to " & fileStash
+     debug "New document opened for URI: ", uri, " saving to " & fileStash
+
      ls.openFiles[uri] = (
        projectFile: projectFile,
        fingerTable: @[])
@@ -183,13 +203,13 @@ proc didOpen(ls: LanguageServer, params: DidOpenTextDocumentParams):
                                        openFiles: initOrderedSet[string]())
      ls.projectFiles[projectFile].openFiles.incl(uri)
 
+
      for line in text.splitLines:
        ls.openFiles[uri].fingerTable.add line.createUTFMapping()
        file.writeLine line
      file.close()
 
-template getNimsuggest(ls: LanguageServer, uri: string): SuggestApi =
-  ls.projectFiles[ls.openFiles[uri].projectFile].nimsuggest
+     discard ls.checkAllFiles(uri)
 
 proc didChange(ls: LanguageServer, params: DidChangeTextDocumentParams):
     Future[void] {.async, gcsafe.} =
@@ -235,7 +255,6 @@ proc hover(ls: LanguageServer, params: HoverParams):
         uriToStash(uri),
         line + 1,
         ls.getCharacter(uri, line, character))
-    debugEcho fmt "Found {suggestions.len} matches for {%params}"
     if suggestions.len == 0:
       return none[Hover]();
     else:
@@ -260,7 +279,7 @@ proc toLocation(suggest: Suggest): Location =
 proc definition(ls: LanguageServer, params: TextDocumentPositionParams):
     Future[seq[Location]] {.async} =
   with (params.position, params.textDocument):
-    result = ls
+    return ls
       .getNimsuggest(uri)
       .def(uriToPath(uri),
            uriToStash(uri),
@@ -268,12 +287,11 @@ proc definition(ls: LanguageServer, params: TextDocumentPositionParams):
            ls.getCharacter(uri, line, character))
       .await()
       .map(toLocation);
-    debugEcho fmt "found {result.len} matches for {%params}"
 
 proc references(ls: LanguageServer, params: ReferenceParams):
     Future[seq[Location]] {.async} =
   with (params.position, params.textDocument, params.context):
-    result = ls
+    return ls
       .getNimsuggest(uri)
       .use(uriToPath(uri),
            uriToStash(uri),
@@ -282,7 +300,6 @@ proc references(ls: LanguageServer, params: ReferenceParams):
       .await()
       .filter(suggest => suggest.section != ideDef or includeDeclaration)
       .map(toLocation);
-    debugEcho fmt "found {result.len} matches for {%params}"
 
 proc toCompletionItem(suggest: Suggest): CompletionItem =
   with suggest:
@@ -296,7 +313,7 @@ proc toCompletionItem(suggest: Suggest): CompletionItem =
 proc completion(ls: LanguageServer, params: CompletionParams):
     Future[seq[CompletionItem]] {.async} =
   with (params.position, params.textDocument):
-    result = ls
+    return ls
       .getNimsuggest(uri)
       .sug(uriToPath(uri),
            uriToStash(uri),
@@ -304,31 +321,79 @@ proc completion(ls: LanguageServer, params: CompletionParams):
            ls.getCharacter(uri, line, character))
       .await()
       .map(toCompletionItem);
-    debugEcho fmt "found {result.len} matches for {%params}"
+
+proc toSymbolInformation(suggest: Suggest): SymbolInformation =
+  with suggest:
+    return SymbolInformation %* {
+      "location": toLocation(suggest)
+      # "kind": nimSymToLSPKind(suggest).int,
+      # "name": sym.name[]
+    }
+
+proc documentSymbols(ls: LanguageServer, params: DocumentSymbolParams):
+    Future[seq[SymbolInformation]] {.async} =
+  discard
+  # with (params.position, params.textDocument):
+  #   return ls
+  #     .getNimsuggest(uri)
+  #     .symbols(uriToPath(uri),
+  #          uriToStash(uri),
+  #          line + 1,
+  #          ls.getCharacter(uri, line, character))
+  #     .await()
+  #     .filter(sym => sym.qualifiedPath.len != 2)
+  #     .map(toSymbolInformation);
 
 proc registerLanguageServerHandlers*(connection: StreamConnection) =
   let ls = LanguageServer(
+    connection: connection,
     projectFiles: initTable[string, tuple[nimsuggest: SuggestApi,
                                           openFiles: OrderedSet[string]]](),
     openFiles: initTable[string, tuple[projectFile: string,
                                        fingerTable: seq[seq[tuple[u16pos, offset: int]]]]]())
   connection.register("initialize", partial(initialize, ls))
-  connection.registerNotification("initialized", initialized)
-  connection.registerNotification("textDocument/didOpen", partial(didOpen, ls))
-  connection.registerNotification("textDocument/didChange", partial(didChange, ls))
   connection.register("textDocument/hover", partial(hover, ls))
   connection.register("textDocument/definition", partial(definition, ls))
   connection.register("textDocument/references", partial(references, ls))
   connection.register("textDocument/completion", partial(completion, ls))
+  connection.register("textDocument/documentSymbols", partial(documentSymbols, ls))
+
+  connection.registerNotification("initialized", initialized)
+  connection.registerNotification("$/cancelRequest", cancelRequest)
+  connection.registerNotification("textDocument/didOpen", partial(didOpen, ls))
+  connection.registerNotification("textDocument/didChange", partial(didChange, ls))
+
+when defined(windows):
+  import winlean
+
+  proc writeToPipe(p: AsyncPipe, data: pointer, nbytes: int) =
+    if WriteFile(p.getWriteHandle, data, int32(nbytes), nil, nil) == 0:
+      raiseOsError(osLastError())
+
+else:
+  import posix
+
+  proc writeToPipe(p: AsyncPipe, data: pointer, nbytes: int) =
+    if posix.write(p.getWriteHandle, data, cint(nbytes)) < 0:
+      raiseOsError(osLastError())
+
+proc copyStdioToPipe(pipe: AsyncPipe) {.thread.} =
+  var
+    inputStream = newFileStream(stdin)
+    ch = "^"
+
+  ch[0] = inputStream.readChar();
+  while ch[0] != '\0':
+    writeToPipe(pipe, ch[0].addr, 1)
+    ch[0] = inputStream.readChar();
 
 when isMainModule:
   var
-    pipe = createPipe(register = true)
+    pipe = createPipe2(register = true)
     stdioThread: Thread[AsyncPipe]
 
   createThread(stdioThread, copyStdioToPipe, pipe)
 
-  let connection = StreamConnection.new(asyncPipeInput(pipe),
-                                        Async(fileOutput(stdout, allowAsyncOps = true)));
+  let connection = StreamConnection.new(Async(fileOutput(stdout, allowAsyncOps = true)));
   registerLanguageServerHandlers(connection)
-  waitFor connection.start()
+  waitFor connection.start(asyncPipeInput(pipe))

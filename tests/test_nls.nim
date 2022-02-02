@@ -19,12 +19,12 @@ suite "Client/server initialization sequence":
   let pipeServer = createPipe();
   let pipeClient = createPipe();
 
-  let serverConnection = StreamConnection.new(pipeClient, pipeServer);
+  let serverConnection = StreamConnection.new(pipeServer);
   registerLanguageServerHandlers(serverConnection);
-  discard serverConnection.start();
+  discard serverConnection.start(asyncPipeInput(pipeClient));
 
-  let clientConnection = StreamConnection.new(pipeServer, pipeClient);
-  discard clientConnection.start();
+  let clientConnection = StreamConnection.new(pipeClient);
+  discard clientConnection.start(asyncPipeInput(pipeServer));
 
   test "Sending initialize.":
     let initParams = InitializeParams(
@@ -40,17 +40,16 @@ suite "Client/server initialization sequence":
   pipeClient.close()
   pipeServer.close()
 
-
 suite "LSP features":
   let pipeServer = createPipe();
   let pipeClient = createPipe();
 
-  let serverConnection = StreamConnection.new(pipeClient, pipeServer);
+  let serverConnection = StreamConnection.new(pipeServer);
   registerLanguageServerHandlers(serverConnection);
-  discard serverConnection.start();
+  discard serverConnection.start(asyncPipeInput(pipeClient));
 
-  let clientConnection = StreamConnection.new(pipeServer, pipeClient);
-  discard clientConnection.start();
+  let clientConnection = StreamConnection.new(pipeClient);
+  discard clientConnection.start(asyncPipeInput(pipeServer));
 
   let initParams = InitializeParams(
       processId: %getCurrentProcessId(),
@@ -266,7 +265,7 @@ suite "LSP features":
 
     let expected = CompletionItem %* {
       "label": "echo",
-      "kind": 10,
+      "kind": 3,
       "detail": "proc (x: varargs[typed]){.gcsafe, locks: 0.}",
       "documentation": """Writes and flushes the parameters to the standard output.
 

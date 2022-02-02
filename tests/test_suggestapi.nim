@@ -5,14 +5,15 @@ const inputLine = "def	skProc	hw.a	proc (){.noSideEffect, gcsafe, locks: 0.}	hw/
 
 suite "SuggestApi tests":
   let
-    nimSuggest = createSuggestApi("projects/hw/hw.nim")
     helloWorldFile = getCurrentDir() / "tests/projects/hw/hw.nim"
+    nimSuggest = createSuggestApi(helloWorldFile)
 
   test "Parsing Suggest":
     # TODO handle multiline docs
     doAssert parseSuggest(inputLine)[] == Suggest(
       filePath: "hw/hw.nim",
       qualifiedPath: @["hw", "a"],
+      symKind: "skProc",
       line: 1,
       column: 5,
       doc: "",
