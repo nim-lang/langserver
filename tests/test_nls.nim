@@ -20,7 +20,7 @@ suite "Client/server initialization sequence":
   let pipeClient = createPipe();
 
   let serverConnection = StreamConnection.new(pipeServer);
-  registerLanguageServerHandlers(serverConnection);
+  registerHandlers(serverConnection);
   discard serverConnection.start(asyncPipeInput(pipeClient));
 
   let clientConnection = StreamConnection.new(pipeClient);
@@ -45,7 +45,7 @@ suite "LSP features":
   let pipeClient = createPipe();
 
   let serverConnection = StreamConnection.new(pipeServer);
-  registerLanguageServerHandlers(serverConnection);
+  registerHandlers(serverConnection);
   discard serverConnection.start(asyncPipeInput(pipeClient));
 
   let clientConnection = StreamConnection.new(pipeClient);

@@ -148,6 +148,8 @@ template getNimsuggest(ls: LanguageServer, uri: string): SuggestApi =
 
 proc toDiagnostic(suggest: Suggest): Diagnostic =
   with suggest:
+    let endColumn = column + doc.rfind('\'') - doc.find('\'') - 1
+
     return Diagnostic %* {
       "uri": pathToUri(filepath),
       "range": {
@@ -157,7 +159,7 @@ proc toDiagnostic(suggest: Suggest): Diagnostic =
          },
          "end": {
             "line": line - 1,
-            "character": column + qualifiedPath[^1].len
+            "character": column + max(qualifiedPath[^1].len, endColumn)
          }
       },
       "severity": case forth:
@@ -344,7 +346,7 @@ proc documentSymbols(ls: LanguageServer, params: DocumentSymbolParams):
   #     .filter(sym => sym.qualifiedPath.len != 2)
   #     .map(toSymbolInformation);
 
-proc registerLanguageServerHandlers*(connection: StreamConnection) =
+proc registerHandlers*(connection: StreamConnection) =
   let ls = LanguageServer(
     connection: connection,
     projectFiles: initTable[string, tuple[nimsuggest: SuggestApi,
@@ -389,11 +391,11 @@ proc copyStdioToPipe(pipe: AsyncPipe) {.thread.} =
 
 when isMainModule:
   var
-    pipe = createPipe2(register = true)
+    pipe = createPipe(register = true)
     stdioThread: Thread[AsyncPipe]
 
   createThread(stdioThread, copyStdioToPipe, pipe)
 
   let connection = StreamConnection.new(Async(fileOutput(stdout, allowAsyncOps = true)));
-  registerLanguageServerHandlers(connection)
+  registerHandlers(connection)
   waitFor connection.start(asyncPipeInput(pipe))
