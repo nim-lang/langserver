@@ -8,7 +8,8 @@ license       = "MIT"
 bin           = @["nls"]
 skipDirs      = @["tests"]
 
-requires "nim >= 0.17.0", "asynctools >= 0.1.0", "json_rpc", "jsonschema", "with", "itertools"
+requires "nim >= 0.17.0", "asynctools >= 0.1.0", "json_rpc", "jsonschema",
+  "with", "itertools", "chronicles"
 
 --path:"."
 
@@ -19,7 +20,9 @@ proc configForTests() =
   --threads:on
   --silent
   --define:"debugLogging=on"
+  --define:"chronicles_disable_thread_id"
   --define:"async_backend=asyncdispatch"
+  --define:"chronicles_timestamps=RfcTime"
 
 task test, "run tests":
   configForTests()

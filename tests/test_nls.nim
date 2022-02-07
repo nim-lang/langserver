@@ -1,6 +1,7 @@
 import
   std/json,
   os,
+  strformat,
   sequtils,
   sugar,
   unittest,
@@ -10,6 +11,7 @@ import
   faststreams/asynctools_adapters,
   json_rpc/streamconnection,
   ../nls,
+  ../utils,
   ../protocol/types
 
 proc fixtureUri(path: string): string =
@@ -40,6 +42,71 @@ suite "Client/server initialization sequence":
   pipeClient.close()
   pipeServer.close()
 
+
+proc clientResult[T, Q](input: tuple[fut: Future[T], res: Q], arg: T): Future[Q] {.async, gcsafe.} =
+  input.fut.complete(arg)
+  return input.res
+
+let helloWorldUri = fixtureUri("projects/hw/hw.nim")
+
+suite "Suggest API selection":
+  let pipeServer = createPipe();
+  let pipeClient = createPipe();
+
+  let serverConnection = StreamConnection.new(pipeServer);
+  registerHandlers(serverConnection);
+  discard serverConnection.start(asyncPipeInput(pipeClient));
+
+  let clientConnection = StreamConnection.new(pipeClient);
+  discard clientConnection.start(asyncPipeInput(pipeServer));
+
+  let suggestInit = Future[ProgressParams]()
+  clientConnection.register("window/workDoneProgress/create",
+                            partial(clientResult[ProgressParams, JsonNode],
+                                    (fut: suggestInit, res: newJNull())))
+
+  let workspaceConfiguration = %* [{
+      "nimsuggest": [{
+        "root": "hw.nim",
+        "regexps": ["hw.*.nim"]
+      }, {
+        "root": "anotherRoot.nim",
+        "regexps": ["anotherRoot.nim"]
+      }]
+  }]
+  let configInit = Future[ConfigurationParams]()
+  clientConnection.register("workspace/configuration",
+                            partial(clientResult[ConfigurationParams, JsonNode],
+                                    (fut: configInit, res: workspaceConfiguration)))
+  let initParams = InitializeParams %* {
+      "processId": %getCurrentProcessId(),
+      "rootUri": fixtureUri("projects/hw/"),
+      "capabilities": {
+          "window": {
+            "workDoneProgress": true
+          },
+          "workspace": {"configuration": true}
+      }
+  }
+
+  discard waitFor clientConnection.call("initialize", %initParams)
+  waitFor clientConnection.notify("initialized", newJObject())
+
+  test "Suggest api":
+    let didOpenParams = DidOpenTextDocumentParams %* {
+      "textDocument": {
+        "uri": fixtureUri("projects/hw/hw.nim"),
+        "languageId": "nim",
+        "version": 0,
+        "text": readFile("tests/projects/hw/hw.nim")
+       }
+    }
+
+    discard clientConnection.notify("textDocument/didOpen", %didOpenParams)
+    doAssert %suggestInit.waitFor ==
+      %ProgressParams(token: fmt "Initializing nimsuggest for {uriToPath(helloWorldUri)}")
+
+
 suite "LSP features":
   let pipeServer = createPipe();
   let pipeClient = createPipe();
@@ -51,10 +118,16 @@ suite "LSP features":
   let clientConnection = StreamConnection.new(pipeClient);
   discard clientConnection.start(asyncPipeInput(pipeServer));
 
-  let initParams = InitializeParams(
-      processId: %getCurrentProcessId(),
-      rootUri: fixtureUri("projects/hw/"),
-      capabilities: ClientCapabilities())
+
+  let initParams = InitializeParams %* {
+      "processId": %getCurrentProcessId(),
+      "rootUri": fixtureUri("projects/hw/"),
+      "capabilities": {
+          "window": {
+            "workDoneProgress": true
+          }
+      }
+  }
 
   discard waitFor clientConnection.call("initialize", %initParams)
   waitFor clientConnection.notify("initialized", newJObject())
@@ -69,8 +142,6 @@ suite "LSP features":
    }
 
   discard clientConnection.notify("textDocument/didOpen", %didOpenParams)
-
-  let helloWorldUri = fixtureUri("projects/hw/hw.nim")
 
   test "Sending hover.":
     let hoverParams = HoverParams %* {

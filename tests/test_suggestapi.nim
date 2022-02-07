@@ -6,7 +6,7 @@ const inputLine = "def	skProc	hw.a	proc (){.noSideEffect, gcsafe, locks: 0.}	hw/
 suite "SuggestApi tests":
   let
     helloWorldFile = getCurrentDir() / "tests/projects/hw/hw.nim"
-    nimSuggest = createSuggestApi(helloWorldFile)
+    nimSuggest = createSuggestApi(helloWorldFile).waitFor
 
   test "Parsing Suggest":
     # TODO handle multiline docs

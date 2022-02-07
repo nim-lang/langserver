@@ -1,15 +1,20 @@
 import osproc,
   strutils,
   with,
-  times,
   strformat,
   os,
   asyncnet,
   streams,
   protocol/enums,
+  faststreams/asynctools_adapters,
   utils,
   faststreams/async_backend,
-  asyncdispatch
+  faststreams/inputs,
+  faststreams/textio,
+  asyncdispatch,
+  asynctools/asyncpipe,
+  ./pipes,
+  chronicles
 
 # coppied from Nim repo
 type
@@ -112,44 +117,55 @@ proc parseSuggest*(line: string): Suggest =
     symKind: tokens[1],
     section: parseEnum[IdeCmd]("ide" & capitalizeAscii(tokens[0])))
 
-proc createSuggestApi*(file: string): SuggestApi =
-  debug fmt "Starting nimsuggest for {file}"
+proc readPort(param: tuple[pipe: AsyncPipe, process: Process]) {.thread.} =
+  var line = param.process.outputStream.readLine & "\n"
+  writeToPipe(param.pipe, line[0].addr, line.len)
+
+proc createSuggestApi*(root: string): Future[SuggestApi] {.async.} =
+  debug "Starting nimsuggest", root = root
+
+  var
+    pipe = createPipe(register = true, nonBlockingWrite = false)
+    thread: Thread[tuple[pipe: AsyncPipe, process: Process]]
 
   result = SuggestApi()
   with result:
-    process = startProcess(command = "nimsuggest {file} --autobind".fmt,
+    process = startProcess(command = "nimsuggest {root} --autobind".fmt,
                            workingDir = getCurrentDir(),
                            options = {poUsePath, poEvalCommand})
-    let line = readLine(process.outputStream)
-    debug fmt "Line = {line}"
-    port = parseInt(line)
-    debug fmt "Started nimsuggest for {file} at port {port}"
+    # all this is needed to avoid the need
+    createThread(thread, readPort, (pipe: pipe, process: process))
+    let input = pipe.asyncPipeInput;
+    if input.readable:
+      port = input.readLine.await.parseInt
+      debug "Started nimsuggest", port = port, root = root
 
 proc call*(self: SuggestApi, command: string, file: string, dirtyFile: string,
     line: int, column: int): Future[seq[Suggest]] {.async.} =
-  when defined(debugLogging):
-    let time = cpuTime()
+  logScope:
+    command = command
+    line = line
+    column = column
+    file = file
 
   let socket = newAsyncSocket()
 
   waitFor socket.connect("127.0.0.1", Port(self.port))
 
   let commandString = fmt "{command} {file};{dirtyFile}:{line}:{column}"
-  debug fmt "Sending command to nimsuggest:\n\t{commandString}"
-  discard socket.send(commandString  & "\c\L")
+  debug "Calling nimsuggest"
+  discard socket.send(commandString & "\c\L")
 
   result = @[]
-  var line: string = await socket.recvLine();
-  while line != "\r\n" and line != "":
-    result.add parseSuggest(line);
-    line = await socket.recvLine();
+  var lineStr: string = await socket.recvLine();
+  while lineStr != "\r\n" and lineStr != "":
+    result.add parseSuggest(lineStr);
+    lineStr = await socket.recvLine();
 
-  if (line == ""):
+  if (lineStr == ""):
     raise newException(Exception, "Socket closed.")
 
-  when defined(debugLogging):
-    debug fmt "Received {result.len} result(s) for {command} in {cpuTime() - time}"
-
+  debug "Received result(s)", length = result.len
 
 template createFullCommand(command: untyped) {.dirty.} =
   proc command*(self: SuggestApi, file: string, dirtyfile = "",
@@ -169,7 +185,6 @@ createFileOnlyCommand(chk)
 createFileOnlyCommand(highlight)
 createFileOnlyCommand(outline)
 createFileOnlyCommand(known)
-
 
 proc `mod`*(suggestApi: SuggestApi, file: string, dirtyfile = ""): Future[seq[Suggest]] =
   return suggestApi.call("ideMod", file, dirtyfile, 0, 0)

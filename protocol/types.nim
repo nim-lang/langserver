@@ -79,10 +79,20 @@ type
     processId*: JsonNode # int or float
     rootPath*: Option[string]
     rootUri*: string
-    initializationOptions*: JsonNode
+    initializationOptions*: OptionalNode
     capabilities*: ClientCapabilities
     trace*: Option[string]
     workspaceFolders*: OptionalSeq[WorkspaceFolder]
+
+  ProgressParams* = ref object of RootObj
+    token*: string # can be also int but the server will send strings
+
+  ConfigurationItem* = ref object of RootObj
+    scopeUri*: Option[string]
+    section*: Option[string]
+
+  ConfigurationParams* = ref object of RootObj
+    items*: seq[ConfigurationItem]
 
   WorkspaceEditCapability* = ref object of RootObj
     documentChanges*: Option[bool]
@@ -212,9 +222,13 @@ type
     rename*: Option[RenameCapability]
     publishDiagnostics*: Option[PublishDiagnosticsCapability]
 
+  WindowCapabilities* = ref object of RootObj
+    workDoneProgress*: Option[bool]
+
   ClientCapabilities* = ref object of RootObj
     workspace*: Option[WorkspaceClientCapabilities]
     textDocument*: Option[TextDocumentClientCapabilities]
+    window*: Option[WindowCapabilities]
     # experimental*: JsonNode
 
   WorkspaceFolder* = ref object of RootObj
@@ -342,13 +356,6 @@ type
 
   DidChangeConfigurationParams* = ref object of RootObj
     settings*: JsonNode
-
-  ConfigurationParams* = ref object of RootObj
-    `items`*: OptionalSeq[ConfigurationItem]
-
-  ConfigurationItem* = ref object of RootObj
-    scopeUri*: Option[string]
-    section*: Option[string]
 
   FileEvent* = ref object of RootObj
     uri*: string

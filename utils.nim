@@ -1,16 +1,12 @@
-import unicode
+import unicode, uri, strformat, os, strutils
 
-type FingerTable = seq[tuple[u16pos, offset: int]]
 
-template debug*(args: varargs[string, `$`]) =
-  when defined(debugLogging):
-    stderr.write(join args)
-    stderr.write("\n")
+type
+  FingerTable = seq[tuple[u16pos, offset: int]]
 
-template trace*(args: varargs[string, `$`]) =
-  when defined(tracing):
-    stderr.write(join args)
-    stderr.write("\n")
+  UriParseError* = object of Defect
+    uri: string
+
 
 proc createUTFMapping*(line: string): FingerTable =
   var pos = 0
@@ -80,3 +76,37 @@ when isMainModule:
       pos += 2
     else:
       pos += 1
+
+proc uriToPath*(uri: string): string =
+  ## Convert an RFC 8089 file URI to a native, platform-specific, absolute path.
+  #let startIdx = when defined(windows): 8 else: 7
+  #normalizedPath(uri[startIdx..^1])
+  let parsed = uri.parseUri
+  if parsed.scheme != "file":
+    var e = newException(UriParseError,
+      "Invalid scheme: {parsed.scheme}, only \"file\" is supported".fmt)
+    e.uri = uri
+    raise e
+  if parsed.hostname != "":
+    var e = newException(UriParseError,
+      "Invalid hostname: {parsed.hostname}, only empty hostname is supported".fmt)
+    e.uri = uri
+    raise e
+  return normalizedPath(
+    when defined(windows):
+      parsed.path[1..^1]
+    else:
+      parsed.path).decodeUrl
+
+proc pathToUri*(path: string): string =
+  # This is a modified copy of encodeUrl in the uri module. This doesn't encode
+  # the / character, meaning a full file path can be passed in without breaking
+  # it.
+  result = "file://" & newStringOfCap(path.len + path.len shr 2) # assume 12% non-alnum-chars
+  for c in path:
+    case c
+    # https://tools.ietf.org/html/rfc3986#section-2.3
+    of 'a'..'z', 'A'..'Z', '0'..'9', '-', '.', '_', '~', '/': add(result, c)
+    else:
+      add(result, '%')
+      add(result, toHex(ord(c), 2))
