@@ -3,7 +3,7 @@ mode = ScriptMode.Verbose
 packageName   = "langserver"
 version       = "0.0.1"
 author        = "The core Nim team"
-description   = "Nim language server for modern IDEs"
+description   = "Nim language server for IDEs"
 license       = "MIT"
 bin           = @["nls"]
 skipDirs      = @["tests"]
@@ -23,6 +23,7 @@ proc configForTests() =
   --define:"chronicles_disable_thread_id"
   --define:"async_backend=asyncdispatch"
   --define:"chronicles_timestamps=RfcTime"
+  --define:"debugLogging"
 
 task test, "run tests":
   configForTests()

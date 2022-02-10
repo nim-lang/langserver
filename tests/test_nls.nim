@@ -1,18 +1,17 @@
 import
-  std/json,
-  os,
-  strformat,
-  sequtils,
-  sugar,
-  unittest,
-  jsonschema,
-  json_rpc/jsonmarshal,
+  ../nls,
+  ../protocol/types,
+  ../utils,
   faststreams/async_backend,
   faststreams/asynctools_adapters,
+  json_rpc/jsonmarshal,
   json_rpc/streamconnection,
-  ../nls,
-  ../utils,
-  ../protocol/types
+  os,
+  sequtils,
+  std/json,
+  strformat,
+  sugar,
+  unittest
 
 proc fixtureUri(path: string): string =
   result = pathToUri(getCurrentDir() / "tests" / path)
@@ -42,12 +41,24 @@ suite "Client/server initialization sequence":
   pipeClient.close()
   pipeServer.close()
 
-
-proc clientResult[T, Q](input: tuple[fut: Future[T], res: Q], arg: T): Future[Q] {.async, gcsafe.} =
-  input.fut.complete(arg)
+proc testHandler[T, Q](input: tuple[fut: FutureStream[T], res: Q], arg: T): Future[Q] {.async, gcsafe.} =
+  discard input.fut.write(arg)
   return input.res
 
+proc testHandler[T](fut: FutureStream[T], arg: T): Future[void] {.async, gcsafe.} =
+  discard fut.write(arg)
+
 let helloWorldUri = fixtureUri("projects/hw/hw.nim")
+
+proc createDidOpenParams(file: string): DidOpenTextDocumentParams =
+  return DidOpenTextDocumentParams %* {
+    "textDocument": {
+      "uri": fixtureUri(file),
+      "languageId": "nim",
+      "version": 0,
+      "text": readFile("tests" / file)
+     }
+  }
 
 suite "Suggest API selection":
   let pipeServer = createPipe();
@@ -60,24 +71,33 @@ suite "Suggest API selection":
   let clientConnection = StreamConnection.new(pipeClient);
   discard clientConnection.start(asyncPipeInput(pipeServer));
 
-  let suggestInit = Future[ProgressParams]()
+  let suggestInit = FutureStream[ProgressParams]()
   clientConnection.register("window/workDoneProgress/create",
-                            partial(clientResult[ProgressParams, JsonNode],
+                            partial(testHandler[ProgressParams, JsonNode],
                                     (fut: suggestInit, res: newJNull())))
-
   let workspaceConfiguration = %* [{
       "nimsuggest": [{
         "root": "hw.nim",
-        "regexps": ["hw.*.nim"]
+        "regexps": ["hw\\.nim"]
       }, {
-        "root": "anotherRoot.nim",
-        "regexps": ["anotherRoot.nim"]
+        "root": "root.nim",
+        "regexps": ["root\\.nim", "useRoot\\.nim"]
       }]
   }]
-  let configInit = Future[ConfigurationParams]()
-  clientConnection.register("workspace/configuration",
-                            partial(clientResult[ConfigurationParams, JsonNode],
-                                    (fut: configInit, res: workspaceConfiguration)))
+
+  let configInit = FutureStream[ConfigurationParams]()
+  clientConnection.register(
+    "workspace/configuration",
+    partial(testHandler[ConfigurationParams, JsonNode],
+            (fut: configInit, res: workspaceConfiguration)))
+
+  let progress = FutureStream[ProgressParams]()
+
+  clientConnection.registerNotification(
+    "$/progress",
+    partial(testHandler[ProgressParams], progress)
+  )
+
   let initParams = InitializeParams %* {
       "processId": %getCurrentProcessId(),
       "rootUri": fixtureUri("projects/hw/"),
@@ -93,19 +113,26 @@ suite "Suggest API selection":
   waitFor clientConnection.notify("initialized", newJObject())
 
   test "Suggest api":
-    let didOpenParams = DidOpenTextDocumentParams %* {
-      "textDocument": {
-        "uri": fixtureUri("projects/hw/hw.nim"),
-        "languageId": "nim",
-        "version": 0,
-        "text": readFile("tests/projects/hw/hw.nim")
-       }
-    }
+    discard clientConnection.notify("textDocument/didOpen",
+                                    %createDidOpenParams("projects/hw/hw.nim"))
+    let (_, params) = suggestInit.read.waitFor
+    doAssert %params ==
+      %ProgressParams(
+        token: fmt "Creating nimsuggest for {uriToPath(helloWorldUri)}")
+    doAssert "begin" == progress.read.waitFor[1].value.get()["kind"].getStr
+    doAssert "end" == progress.read.waitFor[1].value.get()["kind"].getStr
 
-    discard clientConnection.notify("textDocument/didOpen", %didOpenParams)
-    doAssert %suggestInit.waitFor ==
-      %ProgressParams(token: fmt "Initializing nimsuggest for {uriToPath(helloWorldUri)}")
+    discard clientConnection.notify("textDocument/didOpen",
+                                    %createDidOpenParams("projects/hw/useRoot.nim"))
+    let
+      rootNimFileUri = "projects/hw/root.nim".fixtureUri.uriToPath
+      rootParams2 = suggestInit.read.waitFor[1]
 
+    doAssert %rootParams2 ==
+      %ProgressParams(token: fmt "Creating nimsuggest for {rootNimFileUri}")
+
+    doAssert "begin" == progress.read.waitFor[1].value.get()["kind"].getStr
+    doAssert "end" == progress.read.waitFor[1].value.get()["kind"].getStr
 
 suite "LSP features":
   let pipeServer = createPipe();
@@ -124,7 +151,7 @@ suite "LSP features":
       "rootUri": fixtureUri("projects/hw/"),
       "capabilities": {
           "window": {
-            "workDoneProgress": true
+            "workDoneProgress": false
           }
       }
   }
@@ -132,14 +159,7 @@ suite "LSP features":
   discard waitFor clientConnection.call("initialize", %initParams)
   waitFor clientConnection.notify("initialized", newJObject())
 
-  let didOpenParams = DidOpenTextDocumentParams %* {
-    "textDocument": {
-      "uri": fixtureUri("projects/hw/hw.nim"),
-      "languageId": "nim",
-      "version": 0,
-      "text": readFile("tests/projects/hw/hw.nim")
-     }
-   }
+  let didOpenParams = createDidOpenParams("projects/hw/hw.nim")
 
   discard clientConnection.notify("textDocument/didOpen", %didOpenParams)
 
@@ -192,7 +212,7 @@ suite "LSP features":
     }
     let locations = to(waitFor clientConnection.call("textDocument/definition",
                                                      %positionParams),
-                   seq[Location])
+                       seq[Location])
 
     let expected = seq[Location] %* [{
       "uri": helloWorldUri,
@@ -250,6 +270,7 @@ suite "LSP features":
         }
       }
     }]
+    doAssert %locations == %expected
 
   test "References(exclude def)":
     let referenceParams =  ReferenceParams %* {

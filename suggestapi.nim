@@ -7,7 +7,6 @@ import osproc,
   streams,
   protocol/enums,
   faststreams/asynctools_adapters,
-  utils,
   faststreams/async_backend,
   faststreams/inputs,
   faststreams/textio,
@@ -31,11 +30,10 @@ type
   Suggest* = ref object of RootObj
     section*: IdeCmd
     qualifiedPath*: seq[string]
-    name*: ptr string         # not used beyond sorting purposes; name is also
-                              # part of 'qualifiedPath'
+                          # part of 'qualifiedPath'
     filePath*: string
-    line*: int                   # Starts at 1
-    column*: int                 # Starts at 0
+    line*: int                # Starts at 1
+    column*: int              # Starts at 0
     doc*: string           # Not escaped (yet)
     forth*: string               # type
     quality*: range[0..100]   # matching quality
@@ -116,6 +114,9 @@ proc parseSuggest*(line: string): Suggest =
     forth: tokens[3],
     symKind: tokens[1],
     section: parseEnum[IdeCmd]("ide" & capitalizeAscii(tokens[0])))
+
+proc name*(sug: Suggest): string =
+  return sug.qualifiedPath[^1]
 
 proc readPort(param: tuple[pipe: AsyncPipe, process: Process]) {.thread.} =
   var line = param.process.outputStream.readLine & "\n"

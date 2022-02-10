@@ -84,8 +84,26 @@ type
     trace*: Option[string]
     workspaceFolders*: OptionalSeq[WorkspaceFolder]
 
+  WorkDoneProgressBegin* = ref object of RootObj
+    kind*: string
+    title*: string
+    cancellable*: Option[bool]
+    message*: Option[string]
+    percentage*: Option[int]
+
+  WorkDoneProgressReport* = ref object of RootObj
+    kind*: string
+    cancellable*: Option[bool]
+    message*: Option[string]
+    percentage*: Option[int]
+
+  WorkDoneProgressEnd* = ref object of RootObj
+    kind*: string
+    message*: Option[string]
+
   ProgressParams* = ref object of RootObj
     token*: string # can be also int but the server will send strings
+    value*: OptionalNode
 
   ConfigurationItem* = ref object of RootObj
     scopeUri*: Option[string]

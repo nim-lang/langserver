@@ -12,7 +12,7 @@ type
     root: string
     regexps: seq[string]
 
-  NlsConfigiguration = ref object of RootObj
+  NlsConfig = ref object of RootObj
     nimsuggest: seq[NlsNimsuggestConfig]
 
   LanguageServer* = ref object
@@ -77,28 +77,32 @@ proc getProjectFileAutoGuess(fileUri: string): string =
           certainty = Nimble
     path = dir
 
-proc getWorkspaceConfiguration(ls: LanguageServer): Future[NlsConfigiguration] {.async} =
+proc getWorkspaceConfiguration(ls: LanguageServer): Future[NlsConfig] {.async} =
   try:
-    result = to(%ls.workspaceConfiguration.await, NlsConfigiguration)
-  except CatchableError as e:
-    debug "Failed to parse the configuration." #, error = e
-    result = NlsConfigiguration()
+    let nlsConfig: seq[NlsConfig] =
+      (%ls.workspaceConfiguration.await).to(seq[NlsConfig])
+    result = if nlsConfig.len > 0: nlsConfig[0] else: NlsConfig()
+  except CatchableError:
+    debug "Failed to parse the configuration."
+    result = NlsConfig()
 
 proc getProjectFile(fileUri: string, ls: LanguageServer): Future[string] {.async} =
+  logScope:
+    uri = fileUri
   let
     rootPath = AbsoluteDir(ls.initializeParams.rootUri.uriToPath)
     pathRelativeToRoot = cstring(AbsoluteFile(fileUri).relativeTo(rootPath))
     cfgs = ls.getWorkspaceConfiguration.await.nimsuggest
 
-  debug "Found the following settings for cfg", cfgs = %cfgs
   for cfg in cfgs:
     for regex in cfg.regexps:
       if find(pathRelativeToRoot, re(regex), 0, pathRelativeToRoot.len) != -1:
-        debug "Matched the following config", cfg = %cfg
-        return string(rootPath) / cfg.root
+        result = string(rootPath) / cfg.root
+        debug "getProjectFile", project = result
+        return result
 
   result = getProjectFileAutoGuess(fileUri)
-  debug "getProjectFile", uri = fileUri, project = result
+  debug "getProjectFile", project = result
 
 proc getCharacter(ls: LanguageServer, uri: string, line: int, character: int): int =
   return ls.openFiles[uri].fingerTable[line].utf16to8(character)
@@ -116,13 +120,13 @@ proc initialize(ls: LanguageServer, params: InitializeParams):
         willSaveWaitUntil: some(false),
         save: some(SaveOptions(includeText: some(true)))),
       hoverProvider: some(true),
+      workspace: WorkspaceCapability(workspaceFolders: some(WorkspaceFolderCapability())),
       completionProvider: CompletionOptions(
-        triggerCharacters: some(@["(", ","]),
+        triggerCharacters: some(@["."]),
         resolveProvider: some(false)),
       definitionProvider: some(true),
-      referencesProvider: some(true)
-      #,
-      # documentSymbolProvider: some(true)
+      referencesProvider: some(true),
+      documentSymbolProvider: some(true)
       # renameProvider: some(true)
       ))
 
@@ -173,6 +177,7 @@ proc toDiagnostic(suggest: Suggest): Diagnostic =
                     of "Warning": DiagnosticSeverity.Warning.int
                     else: DiagnosticSeverity.Error.int,
       "message": doc,
+      "source": "nim",
       "code": "nimsuggest chk"
     }
 
@@ -191,6 +196,9 @@ proc checkAllFiles(ls: LanguageServer, uri: string): Future[void] {.async} =
     }
     discard ls.connection.notify("textDocument/publishDiagnostics", %params)
 
+proc progressSupported(ls: LanguageServer): bool =
+  result = ls.initializeParams.capabilities.window.get(WindowCapabilities()).workDoneProgress.get(false)
+
 proc didOpen(ls: LanguageServer, params: DidOpenTextDocumentParams):
     Future[void] {.async, gcsafe.} =
 
@@ -207,11 +215,39 @@ proc didOpen(ls: LanguageServer, params: DidOpenTextDocumentParams):
        fingerTable: @[])
 
      if not ls.projectFiles.hasKey(projectFile):
-       discard ls.connection.call(
-         "window/workDoneProgress/create",
-         %ProgressParams(token: fmt "Initializing nimsuggest for {projectFile}"))
-       ls.projectFiles[projectFile] = (nimsuggest: createSuggestApi(projectFile),
+       let
+         token = fmt "Creating nimsuggest for {projectFile}"
+
+       if ls.progressSupported:
+         discard ls.connection.call("window/workDoneProgress/create",
+                                    %ProgressParams(token: token))
+
+       let nimsuggest = createSuggestApi(projectFile)
+       ls.projectFiles[projectFile] = (nimsuggest: nimsuggest,
                                        openFiles: initOrderedSet[string]())
+       let fileName = extractFileName(AbsoluteFile projectFile);
+
+       if ls.progressSupported:
+         discard ls.connection.notify(
+           "$/progress",
+           %* {
+                "token": token,
+                "value": {
+                  "kind": "begin",
+                  "title": fmt "Creating nimsuggest for {fileName}"
+                }
+           })
+         proc cb () =
+           discard ls.connection.notify(
+             "$/progress",
+             %* {
+                  "token": token,
+                  "value": {
+                    "kind": "end",
+                  }
+             })
+         nimsuggest.addCallback(cb)
+
      ls.projectFiles[projectFile].openFiles.incl(uri)
 
 
@@ -336,44 +372,42 @@ proc completion(ls: LanguageServer, params: CompletionParams):
 proc toSymbolInformation(suggest: Suggest): SymbolInformation =
   with suggest:
     return SymbolInformation %* {
-      "location": toLocation(suggest)
-      # "kind": nimSymToLSPKind(suggest).int,
-      # "name": sym.name[]
+      "location": toLocation(suggest),
+      "kind": nimSymToLSPKind(suggest).int,
+      "name": suggest.name
     }
 
 proc documentSymbols(ls: LanguageServer, params: DocumentSymbolParams):
     Future[seq[SymbolInformation]] {.async} =
-  discard
-  # with (params.position, params.textDocument):
-  #   return ls
-  #     .getNimsuggest(uri)
-  #     .symbols(uriToPath(uri),
-  #          uriToStash(uri),
-  #          line + 1,
-  #          ls.getCharacter(uri, line, character))
-  #     .await()
-  #     .filter(sym => sym.qualifiedPath.len != 2)
-  #     .map(toSymbolInformation);
+  with (params.textDocument):
+    return ls
+      .getNimsuggest(uri)
+      .outline(uriToPath(uri), uriToStash(uri))
+      .await()
+      .filter(sym => sym.qualifiedPath.len != 2)
+      .map(toSymbolInformation);
 
 proc registerHandlers*(connection: StreamConnection) =
   let ls = LanguageServer(
     connection: connection,
     workspaceConfiguration: Future[JsonNode](),
-    projectFiles: initTable[string, tuple[nimsuggest: Future[SuggestApi],
-                                          openFiles: OrderedSet[string]]](),
-    openFiles: initTable[string, tuple[projectFile: string,
-                                       fingerTable: seq[seq[tuple[u16pos, offset: int]]]]]())
+    projectFiles: initTable[string,
+                            tuple[nimsuggest: Future[SuggestApi],
+                                  openFiles: OrderedSet[string]]](),
+    openFiles: initTable[string,
+                         tuple[projectFile: string,
+                               fingerTable: seq[seq[tuple[u16pos, offset: int]]]]]())
   connection.register("initialize", partial(initialize, ls))
-  connection.register("textDocument/hover", partial(hover, ls))
-  connection.register("textDocument/definition", partial(definition, ls))
-  connection.register("textDocument/references", partial(references, ls))
   connection.register("textDocument/completion", partial(completion, ls))
-  connection.register("textDocument/documentSymbols", partial(documentSymbols, ls))
+  connection.register("textDocument/definition", partial(definition, ls))
+  connection.register("textDocument/documentSymbol", partial(documentSymbols, ls))
+  connection.register("textDocument/hover", partial(hover, ls))
+  connection.register("textDocument/references", partial(references, ls))
 
-  connection.registerNotification("initialized", partial(initialized, ls))
   connection.registerNotification("$/cancelRequest", cancelRequest)
-  connection.registerNotification("textDocument/didOpen", partial(didOpen, ls))
+  connection.registerNotification("initialized", partial(initialized, ls))
   connection.registerNotification("textDocument/didChange", partial(didChange, ls))
+  connection.registerNotification("textDocument/didOpen", partial(didOpen, ls))
 
 when isMainModule:
   var
