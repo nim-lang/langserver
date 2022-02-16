@@ -6,6 +6,7 @@ import
   faststreams/asynctools_adapters,
   json_rpc/jsonmarshal,
   json_rpc/streamconnection,
+  chronicles,
   os,
   sequtils,
   std/json,
@@ -36,16 +37,18 @@ suite "Client/server initialization sequence":
     let initializeResult = waitFor clientConnection.call("initialize", %initParams)
     doAssert initializeResult != nil;
 
-    waitFor clientConnection.notify("initialized", newJObject())
+    clientConnection.notify("initialized", newJObject())
 
   pipeClient.close()
   pipeServer.close()
 
 proc testHandler[T, Q](input: tuple[fut: FutureStream[T], res: Q], arg: T): Future[Q] {.async, gcsafe.} =
+  debug "Received call: ", arg = %arg
   discard input.fut.write(arg)
   return input.res
 
 proc testHandler[T](fut: FutureStream[T], arg: T): Future[void] {.async, gcsafe.} =
+  debug "Received notification: ", arg = %arg
   discard fut.write(arg)
 
 let helloWorldUri = fixtureUri("projects/hw/hw.nim")
@@ -77,6 +80,9 @@ suite "Suggest API selection":
                                     (fut: suggestInit, res: newJNull())))
   let workspaceConfiguration = %* [{
       "nimsuggest": [{
+        "root": "missingRoot.nim",
+        "regexps": ["willCrash\\.nim"]
+      }, {
         "root": "hw.nim",
         "regexps": ["hw\\.nim"]
       }, {
@@ -91,12 +97,20 @@ suite "Suggest API selection":
     partial(testHandler[ConfigurationParams, JsonNode],
             (fut: configInit, res: workspaceConfiguration)))
 
-  let progress = FutureStream[ProgressParams]()
+  let diagnosticsParams = FutureStream[PublishDiagnosticsParams]()
+  clientConnection.registerNotification(
+    "textDocument/publishDiagnostics",
+    partial(testHandler[PublishDiagnosticsParams], diagnosticsParams))
 
+  let progress = FutureStream[ProgressParams]()
   clientConnection.registerNotification(
     "$/progress",
-    partial(testHandler[ProgressParams], progress)
-  )
+    partial(testHandler[ProgressParams], progress))
+
+  let showMessage = FutureStream[ShowMessageParams]()
+  clientConnection.registerNotification(
+    "window/showMessage",
+    partial(testHandler[ShowMessageParams], showMessage))
 
   let initParams = InitializeParams %* {
       "processId": %getCurrentProcessId(),
@@ -110,11 +124,11 @@ suite "Suggest API selection":
   }
 
   discard waitFor clientConnection.call("initialize", %initParams)
-  waitFor clientConnection.notify("initialized", newJObject())
+  clientConnection.notify("initialized", newJObject())
 
   test "Suggest api":
-    discard clientConnection.notify("textDocument/didOpen",
-                                    %createDidOpenParams("projects/hw/hw.nim"))
+    clientConnection.notify("textDocument/didOpen",
+                            %createDidOpenParams("projects/hw/hw.nim"))
     let (_, params) = suggestInit.read.waitFor
     doAssert %params ==
       %ProgressParams(
@@ -122,8 +136,8 @@ suite "Suggest API selection":
     doAssert "begin" == progress.read.waitFor[1].value.get()["kind"].getStr
     doAssert "end" == progress.read.waitFor[1].value.get()["kind"].getStr
 
-    discard clientConnection.notify("textDocument/didOpen",
-                                    %createDidOpenParams("projects/hw/useRoot.nim"))
+    clientConnection.notify("textDocument/didOpen",
+                            %createDidOpenParams("projects/hw/useRoot.nim"))
     let
       rootNimFileUri = "projects/hw/root.nim".fixtureUri.uriToPath
       rootParams2 = suggestInit.read.waitFor[1]
@@ -133,6 +147,29 @@ suite "Suggest API selection":
 
     doAssert "begin" == progress.read.waitFor[1].value.get()["kind"].getStr
     doAssert "end" == progress.read.waitFor[1].value.get()["kind"].getStr
+
+  test "Crashing nimsuggest":
+    clientConnection.notify("textDocument/didOpen",
+                            %createDidOpenParams("projects/hw/willCrash.nim"))
+    let params = suggestInit.read.waitFor[1]
+    doAssert %params ==
+      %ProgressParams(
+        token: fmt "Creating nimsuggest for {\"projects/hw/missingRoot.nim\".fixtureUri.uriToPath}")
+
+    let hoverParams = HoverParams %* {
+      "position": {
+         "line": 1,
+         "character": 0
+      },
+      "textDocument": {
+         "uri": "projects/hw/willCrash.nim".fixtureUri
+       }
+    }
+
+    let hover = to(waitFor clientConnection.call("textDocument/hover",
+                                                 %hoverParams),
+                   Hover)
+    doAssert hover == nil
 
 suite "LSP features":
   let pipeServer = createPipe();
@@ -157,11 +194,11 @@ suite "LSP features":
   }
 
   discard waitFor clientConnection.call("initialize", %initParams)
-  waitFor clientConnection.notify("initialized", newJObject())
+  clientConnection.notify("initialized", newJObject())
 
   let didOpenParams = createDidOpenParams("projects/hw/hw.nim")
 
-  discard clientConnection.notify("textDocument/didOpen", %didOpenParams)
+  clientConnection.notify("textDocument/didOpen", %didOpenParams)
 
   test "Sending hover.":
     let hoverParams = HoverParams %* {
@@ -315,7 +352,7 @@ suite "LSP features":
       ]
     }
 
-    discard clientConnection.notify("textDocument/didChange", %didChangeParams)
+    clientConnection.notify("textDocument/didChange", %didChangeParams)
     let hoverParams = HoverParams %* {
       "position": {
          "line": 2,

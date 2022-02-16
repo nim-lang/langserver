@@ -3,10 +3,10 @@ import
 
 const inputLine = "def	skProc	hw.a	proc (){.noSideEffect, gcsafe, locks: 0.}	hw/hw.nim	1	5	\"\"	100"
 
-suite "SuggestApi tests":
+suite "Nimsuggest tests":
   let
     helloWorldFile = getCurrentDir() / "tests/projects/hw/hw.nim"
-    nimSuggest = createSuggestApi(helloWorldFile).waitFor
+    nimSuggest = createNimsuggest(helloWorldFile).waitFor
 
   test "Parsing Suggest":
     # TODO handle multiline docs
@@ -20,22 +20,22 @@ suite "SuggestApi tests":
       forth: "proc (){.noSideEffect, gcsafe, locks: 0.}",
       section: ideDef)[]
 
-  test "test SuggestApi.call":
+  test "test Nimsuggest.call":
     let res = waitFor nimSuggest.call("def", helloWorldFile, helloWorldFile, 2, 0)
     doAssert res.len == 1
     doAssert res[0].forth == "proc (){.noSideEffect, gcsafe, locks: 0.}"
 
-  test "test SuggestApi.def":
+  test "test Nimsuggest.def":
     let res = waitFor nimSuggest.def(helloWorldFile, helloWorldFile, 2, 0)
     doAssert res.len == 1
     doAssert res[0].forth == "proc (){.noSideEffect, gcsafe, locks: 0.}"
 
-  test "test SuggestApi.sug":
+  test "test Nimsuggest.sug":
     let res = waitFor nimSuggest.sug(helloWorldFile, helloWorldFile, 2, 0)
     doAssert res.len > 1
     doAssert res[0].forth == "proc ()"
 
-  # test "test SuggestApi.def":
+  # test "test Nimsuggest.def":
   #   let res = waitFor nimSuggest.def(helloWorldFile, helloWorldFile, 4, 0)
   #   doAssert res.len == 1
   #   doAssert res[0].doc == "proc (){.noSideEffect, gcsafe, locks: 0.}"

@@ -1,6 +1,5 @@
 import osproc,
   strutils,
-  with,
   strformat,
   os,
   asyncnet,
@@ -45,9 +44,11 @@ type
     tokenLen*: int
     version*: int
 
-  SuggestApi* = ref object
+  Nimsuggest* = ref object
     process: Process
     port: int
+    failed*: bool
+    errorMessage*: string
 
 func nimSymToLSPKind*(suggest: Suggest): CompletionItemKind =
   case suggest.symKind:
@@ -68,7 +69,7 @@ func nimSymToLSPKind*(suggest: Suggest): CompletionItemKind =
   of "skFunc": CompletionItemKind.Function
   else: CompletionItemKind.Property
 
-func nimSymToLSPKind*(suggest: string): SymbolKind =
+func nimSymToLSPSymbolKind*(suggest: string): SymbolKind =
   case suggest:
   of "skConst": SymbolKind.Constant
   of "skEnumField": SymbolKind.EnumMember
@@ -102,6 +103,8 @@ func nimSymDetails*(suggest: Suggest): string =
   of "skVar": "var of " & suggest.forth
   else: suggest.forth
 
+const failedToken = "::Failed::"
+
 proc parseSuggest*(line: string): Suggest =
   let tokens = line.split('\t');
 
@@ -119,44 +122,72 @@ proc name*(sug: Suggest): string =
   return sug.qualifiedPath[^1]
 
 proc readPort(param: tuple[pipe: AsyncPipe, process: Process]) {.thread.} =
-  var line = param.process.outputStream.readLine & "\n"
-  writeToPipe(param.pipe, line[0].addr, line.len)
+  try:
+    var line = param.process.outputStream.readLine & "\n"
+    writeToPipe(param.pipe, line[0].addr, line.len)
+  except IOError as er:
+    error "Failed to read nimsuggest port"
+    var msg = failedToken & "\n"
+    writeToPipe(param.pipe, msg[0].addr, msg.len)
 
-proc createSuggestApi*(root: string): Future[SuggestApi] {.async.} =
+proc logStderr(param: tuple[root: string, process: Process]) {.thread.} =
+  try:
+    var line = param.process.errorStream.readLine
+    while line != "\0":
+      stderr.writeLine fmt "nimsuggest({param.root})>>{line}"
+      line = param.process.errorStream.readLine
+  except IOError:
+    discard
+
+proc createNimsuggest*(root: string): Future[Nimsuggest] {.async.} =
   debug "Starting nimsuggest", root = root
-
   var
     pipe = createPipe(register = true, nonBlockingWrite = false)
     thread: Thread[tuple[pipe: AsyncPipe, process: Process]]
+    stderrThread: Thread[tuple[root: string, process: Process]]
+    input = pipe.asyncPipeInput;
 
-  result = SuggestApi()
-  with result:
-    process = startProcess(command = "nimsuggest {root} --autobind".fmt,
-                           workingDir = getCurrentDir(),
-                           options = {poUsePath, poEvalCommand})
-    # all this is needed to avoid the need
-    createThread(thread, readPort, (pipe: pipe, process: process))
-    let input = pipe.asyncPipeInput;
-    if input.readable:
-      port = input.readLine.await.parseInt
-      debug "Started nimsuggest", port = port, root = root
+  result = Nimsuggest()
+  result.process = startProcess(command = "nimsuggest {root} --autobind".fmt,
+                                workingDir = getCurrentDir(),
+                                options = {poUsePath, poEvalCommand})
 
-proc call*(self: SuggestApi, command: string, file: string, dirtyFile: string,
+  # all this is needed to avoid the need to block on the main thread.
+  createThread(thread, readPort, (pipe: pipe, process: result.process))
+
+  # copy stderr of log
+  createThread(stderrThread, logStderr, (root: root, process: result.process))
+
+  if input.readable:
+    let line = input.readLine.await
+    if line == failedToken:
+      result.failed = true
+      result.errorMessage = "Nimsuggest process crashed."
+    else:
+      result.port = line.parseInt
+      debug "Started nimsuggest", port = result.port, root = root
+
+proc call*(self: Nimsuggest, command: string, file: string, dirtyFile: string,
     line: int, column: int): Future[seq[Suggest]] {.async.} =
+  if self.failed:
+    return @[]
+
   logScope:
     command = command
     line = line
     column = column
     file = file
 
+  debug "Calling nimsuggest"
   let socket = newAsyncSocket()
 
   waitFor socket.connect("127.0.0.1", Port(self.port))
+  debug "Connected to socket."
 
   let commandString = fmt "{command} {file};{dirtyFile}:{line}:{column}"
-  debug "Calling nimsuggest"
-  discard socket.send(commandString & "\c\L")
+  await socket.send(commandString & "\c\L")
 
+  debug "sent"
   result = @[]
   var lineStr: string = await socket.recvLine();
   while lineStr != "\r\n" and lineStr != "":
@@ -164,17 +195,17 @@ proc call*(self: SuggestApi, command: string, file: string, dirtyFile: string,
     lineStr = await socket.recvLine();
 
   if (lineStr == ""):
-    raise newException(Exception, "Socket closed.")
+    raise newException(CatchableError, "Socket closed.")
 
   debug "Received result(s)", length = result.len
 
 template createFullCommand(command: untyped) {.dirty.} =
-  proc command*(self: SuggestApi, file: string, dirtyfile = "",
+  proc command*(self: Nimsuggest, file: string, dirtyfile = "",
                 line: int, col: int): Future[seq[Suggest]] =
     return self.call(astToStr(command), file, dirtyfile, line, col)
 
 template createFileOnlyCommand(command: untyped) {.dirty.} =
-  proc command*(self: SuggestApi, file: string, dirtyfile = ""): Future[seq[Suggest]] =
+  proc command*(self: Nimsuggest, file: string, dirtyfile = ""): Future[seq[Suggest]] =
     return self.call(astToStr(command), file, dirtyfile, 0, 0)
 
 createFullCommand(sug)
@@ -187,5 +218,5 @@ createFileOnlyCommand(highlight)
 createFileOnlyCommand(outline)
 createFileOnlyCommand(known)
 
-proc `mod`*(suggestApi: SuggestApi, file: string, dirtyfile = ""): Future[seq[Suggest]] =
-  return suggestApi.call("ideMod", file, dirtyfile, 0, 0)
+proc `mod`*(nimsuggest: Nimsuggest, file: string, dirtyfile = ""): Future[seq[Suggest]] =
+  return nimsuggest.call("ideMod", file, dirtyfile, 0, 0)

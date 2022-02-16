@@ -22,7 +22,7 @@ proc configForTests() =
   --define:"debugLogging=on"
   --define:"chronicles_disable_thread_id"
   --define:"async_backend=asyncdispatch"
-  --define:"chronicles_timestamps=RfcTime"
+  --define:"chronicles_timestamps=None"
   --define:"debugLogging"
 
 task test, "run tests":

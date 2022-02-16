@@ -17,13 +17,14 @@ type
 
   LanguageServer* = ref object
     connection: StreamConnection
-    projectFiles: Table[string, tuple[nimsuggest: Future[SuggestApi],
+    projectFiles: Table[string, tuple[nimsuggest: Future[Nimsuggest],
                                       openFiles: OrderedSet[string]]]
     openFiles: Table[string, tuple[projectFile: string,
                                    fingerTable: seq[seq[tuple[u16pos, offset: int]]]]]
     clientCapabilities*: ClientCapabilities
     initializeParams*: InitializeParams
     workspaceConfiguration: Future[JsonNode]
+    fileWithDiags: seq[string]
 
   Certainty = enum
     None,
@@ -147,13 +148,13 @@ proc initialized(ls: LanguageServer, _: JsonNode):
 
 proc cancelRequest(params: CancelParams):
     Future[void] {.async} =
- debug "Cancellig", id = params.id
+ debug "Cancelling", id = params.id
 
 proc uriToStash(uri: string): string =
   storage / (hash(uri).toHex & ".nim")
 
-template getNimsuggest(ls: LanguageServer, uri: string): SuggestApi =
-  ls.projectFiles[ls.openFiles[uri].projectFile].nimsuggest.waitFor
+template getNimsuggest(ls: LanguageServer, uri: string): Nimsuggest =
+  ls.projectFiles[ls.openFiles[uri].projectFile].nimsuggest.await
 
 proc toDiagnostic(suggest: Suggest): Diagnostic =
   with suggest:
@@ -194,7 +195,7 @@ proc checkAllFiles(ls: LanguageServer, uri: string): Future[void] {.async} =
       "uri": pathToUri(path),
       "diagnostics": diags.map(toDiagnostic)
     }
-    discard ls.connection.notify("textDocument/publishDiagnostics", %params)
+    ls.connection.notify("textDocument/publishDiagnostics", %params)
 
 proc progressSupported(ls: LanguageServer): bool =
   result = ls.initializeParams.capabilities.window.get(WindowCapabilities()).workDoneProgress.get(false)
@@ -215,20 +216,21 @@ proc didOpen(ls: LanguageServer, params: DidOpenTextDocumentParams):
        fingerTable: @[])
 
      if not ls.projectFiles.hasKey(projectFile):
-       let
-         token = fmt "Creating nimsuggest for {projectFile}"
+       let token = fmt "Creating nimsuggest for {projectFile}"
 
        if ls.progressSupported:
          discard ls.connection.call("window/workDoneProgress/create",
                                     %ProgressParams(token: token))
 
-       let nimsuggest = createSuggestApi(projectFile)
-       ls.projectFiles[projectFile] = (nimsuggest: nimsuggest,
+       let
+         nimsuggestFut = createNimsuggest(projectFile)
+         fileName = projectFile.AbsoluteFile().extractFileName();
+
+       ls.projectFiles[projectFile] = (nimsuggest: nimsuggestFut,
                                        openFiles: initOrderedSet[string]())
-       let fileName = extractFileName(AbsoluteFile projectFile);
 
        if ls.progressSupported:
-         discard ls.connection.notify(
+         ls.connection.notify(
            "$/progress",
            %* {
                 "token": token,
@@ -237,8 +239,24 @@ proc didOpen(ls: LanguageServer, params: DidOpenTextDocumentParams):
                   "title": fmt "Creating nimsuggest for {fileName}"
                 }
            })
-         proc cb () =
-           discard ls.connection.notify(
+         proc cb (fut: Future[Nimsuggest]) =
+           if fut.read.failed:
+             ls.connection.notify(
+               "window/showMessage",
+               %* {
+                    "type": MessageType.Info.int,
+                    "message": fmt "Nimsuggest initialized for {projectFile}"
+               })
+             discard ls.checkAllFiles(uri)
+           else:
+             ls.connection.notify(
+               "window/showMessage",
+               %* {
+                    "type": MessageType.Error.int,
+                    "message": fmt "Nimsuggest initialization for {projectFile} failed with: {fut.read.errorMessage}"
+               })
+
+           ls.connection.notify(
              "$/progress",
              %* {
                   "token": token,
@@ -246,7 +264,7 @@ proc didOpen(ls: LanguageServer, params: DidOpenTextDocumentParams):
                     "kind": "end",
                   }
              })
-         nimsuggest.addCallback(cb)
+         nimsuggestFut.addCallback(cb)
 
      ls.projectFiles[projectFile].openFiles.incl(uri)
 
@@ -256,7 +274,6 @@ proc didOpen(ls: LanguageServer, params: DidOpenTextDocumentParams):
        file.writeLine line
      file.close()
 
-     discard ls.checkAllFiles(uri)
 
 proc didChange(ls: LanguageServer, params: DidChangeTextDocumentParams):
     Future[void] {.async, gcsafe.} =
@@ -274,6 +291,10 @@ proc didChange(ls: LanguageServer, params: DidChangeTextDocumentParams):
      file.close()
 
      discard ls.getNimsuggest(uri).mod(path, dirtyfile = filestash)
+
+proc didSave(ls: LanguageServer, params: DidSaveTextDocumentParams):
+    Future[void] {.async, gcsafe.} =
+  discard ls.checkAllFiles(params.textDocument.uri)
 
 proc toMarkedStrings(suggest: Suggest): seq[MarkedStringOption] =
   var label = suggest.qualifiedPath.join(".")
@@ -373,9 +394,10 @@ proc toSymbolInformation(suggest: Suggest): SymbolInformation =
   with suggest:
     return SymbolInformation %* {
       "location": toLocation(suggest),
-      "kind": nimSymToLSPKind(suggest).int,
+      "kind": nimSymToLSPSymbolKind(suggest.symKind).int,
       "name": suggest.name
     }
+
 
 proc documentSymbols(ls: LanguageServer, params: DocumentSymbolParams):
     Future[seq[SymbolInformation]] {.async} =
@@ -384,7 +406,6 @@ proc documentSymbols(ls: LanguageServer, params: DocumentSymbolParams):
       .getNimsuggest(uri)
       .outline(uriToPath(uri), uriToStash(uri))
       .await()
-      .filter(sym => sym.qualifiedPath.len != 2)
       .map(toSymbolInformation);
 
 proc registerHandlers*(connection: StreamConnection) =
@@ -392,7 +413,7 @@ proc registerHandlers*(connection: StreamConnection) =
     connection: connection,
     workspaceConfiguration: Future[JsonNode](),
     projectFiles: initTable[string,
-                            tuple[nimsuggest: Future[SuggestApi],
+                            tuple[nimsuggest: Future[Nimsuggest],
                                   openFiles: OrderedSet[string]]](),
     openFiles: initTable[string,
                          tuple[projectFile: string,
@@ -408,6 +429,7 @@ proc registerHandlers*(connection: StreamConnection) =
   connection.registerNotification("initialized", partial(initialized, ls))
   connection.registerNotification("textDocument/didChange", partial(didChange, ls))
   connection.registerNotification("textDocument/didOpen", partial(didOpen, ls))
+  connection.registerNotification("textDocument/didSave", partial(didSave, ls))
 
 when isMainModule:
   var
