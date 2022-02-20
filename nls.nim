@@ -114,12 +114,12 @@ proc initialize(ls: LanguageServer, params: InitializeParams):
   ls.initializeParams = params
   return InitializeResult(
     capabilities: ServerCapabilities(
-      textDocumentSync: %TextDocumentSyncOptions(
+      textDocumentSync: some(%TextDocumentSyncOptions(
         openClose: some(true),
         change: some(TextDocumentSyncKind.Full.int),
         willSave: some(false),
         willSaveWaitUntil: some(false),
-        save: some(SaveOptions(includeText: some(true)))),
+        save: some(SaveOptions(includeText: some(true))))),
       hoverProvider: some(true),
       workspace: WorkspaceCapability(workspaceFolders: some(WorkspaceFolderCapability())),
       completionProvider: CompletionOptions(
@@ -244,17 +244,17 @@ proc didOpen(ls: LanguageServer, params: DidOpenTextDocumentParams):
              ls.connection.notify(
                "window/showMessage",
                %* {
-                    "type": MessageType.Info.int,
-                    "message": fmt "Nimsuggest initialized for {projectFile}"
+                    "type": MessageType.Error.int,
+                    "message": fmt "Nimsuggest initialization for {projectFile} failed with: {fut.read.errorMessage}"
                })
-             discard ls.checkAllFiles(uri)
            else:
              ls.connection.notify(
                "window/showMessage",
                %* {
-                    "type": MessageType.Error.int,
-                    "message": fmt "Nimsuggest initialization for {projectFile} failed with: {fut.read.errorMessage}"
+                    "type": MessageType.Info.int,
+                    "message": fmt "Nimsuggest initialized for {projectFile}"
                })
+             discard ls.checkAllFiles(uri)
 
            ls.connection.notify(
              "$/progress",
@@ -326,7 +326,7 @@ proc hover(ls: LanguageServer, params: HoverParams):
     if suggestions.len == 0:
       return none[Hover]();
     else:
-      return some(Hover(contents: %toMarkedStrings(suggestions[0])))
+      return some(Hover(contents: some(%toMarkedStrings(suggestions[0]))))
 
 proc toLocation(suggest: Suggest): Location =
   with suggest:

@@ -6,7 +6,7 @@ type
   OptionalNode = Option[JsonNode]
 
   CancelParams* = ref object of RootObj
-    id*: JsonNode
+    id*: OptionalNode
 
   Position* = ref object of RootObj
     line*: int
@@ -23,7 +23,7 @@ type
   Diagnostic* = ref object of RootObj
     `range`*: Range
     severity*: Option[int]
-    code*: JsonNode # int or string
+    code*: OptionalNode # int or string
     source*: Option[string]
     message*: string
     relatedInformation*: OptionalSeq[DiagnosticRelatedInformation]
@@ -35,7 +35,7 @@ type
   Command* = ref object of RootObj
     title*: string
     command*: string
-    arguments*: JsonNode
+    arguments*: OptionalNode
 
   TextEdit* = ref object of RootObj
     `range`*: Range
@@ -46,7 +46,7 @@ type
     edits*: OptionalSeq[TextEdit]
 
   WorkspaceEdit* = ref object of RootObj
-    changes*: JsonNode
+    changes*: OptionalNode
     documentChanges*: OptionalSeq[TextDocumentEdit]
 
   TextDocumentIdentifier* = ref object of RootObj
@@ -59,7 +59,7 @@ type
     text*: string
 
   VersionedTextDocumentIdentifier* = ref object of TextDocumentIdentifier
-    version*: JsonNode # int or float
+    version*: OptionalNode # int or float
     languageId*: Option[string]
 
   TextDocumentPositionParams* = ref object of RootObj
@@ -76,7 +76,7 @@ type
     value*: string
 
   InitializeParams* = ref object of RootObj
-    processId*: JsonNode # int or float
+    processId*: OptionalNode # int or float
     rootPath*: Option[string]
     rootUri*: string
     initializationOptions*: OptionalNode
@@ -247,7 +247,7 @@ type
     workspace*: Option[WorkspaceClientCapabilities]
     textDocument*: Option[TextDocumentClientCapabilities]
     window*: Option[WindowCapabilities]
-    # experimental*: JsonNode
+    # experimental*: OptionalNode
 
   WorkspaceFolder* = ref object of RootObj
     uri*: string
@@ -296,7 +296,7 @@ type
 
   WorkspaceFolderCapability* = ref object of RootObj
     supported*: Option[bool]
-    changeNotifications*: Option[JsonNode] # string or bool
+    changeNotifications*: Option[OptionalNode] # string or bool
 
   WorkspaceCapability* = ref object of RootObj
     workspaceFolders*: Option[WorkspaceFolderCapability]
@@ -308,13 +308,13 @@ type
     id*: Option[string]
 
   ServerCapabilities* = ref object of RootObj
-    textDocumentSync*: JsonNode # TextDocumentSyncOptions or int
+    textDocumentSync*: OptionalNode # TextDocumentSyncOptions or int
     hoverProvider*: Option[bool]
     completionProvider*: CompletionOptions
     signatureHelpProvider*: SignatureHelpOptions
     definitionProvider*: Option[bool]
-    typeDefinitionProvider*: JsonNode # bool or TextDocumentAndStaticRegistrationOptions
-    implementationProvider*: JsonNode # bool or TextDocumentAndStaticRegistrationOptions
+    typeDefinitionProvider*: OptionalNode # bool or TextDocumentAndStaticRegistrationOptions
+    implementationProvider*: OptionalNode # bool or TextDocumentAndStaticRegistrationOptions
     referencesProvider*: Option[bool]
     documentHighlightProvider*: Option[bool]
     documentSymbolProvider*: Option[bool]
@@ -326,10 +326,10 @@ type
     documentOnTypeFormattingProvider*: DocumentOnTypeFormattingOptions
     renameProvider*: Option[bool]
     documentLinkProvider*: DocumentLinkOptions
-    colorProvider*: JsonNode # bool or ColorProviderOptions or TextDocumentAndStaticRegistrationOptions
+    colorProvider*: OptionalNode # bool or ColorProviderOptions or TextDocumentAndStaticRegistrationOptions
     executeCommandProvider*: ExecuteCommandOptions
     workspace*: WorkspaceCapability
-    experimental*: JsonNode
+    experimental*: OptionalNode
 
   InitializedParams* = ref object of RootObj
     DUMMY*: Option[nil]
@@ -353,7 +353,7 @@ type
   Registration* = ref object of RootObj
     id*: string
     `method`*: string
-    registrationOptions*: JsonNode
+    registrationOptions*: OptionalNode
 
   RegistrationParams* = ref object of RootObj
     registrations*: OptionalSeq[Registration]
@@ -373,7 +373,7 @@ type
     event*: WorkspaceFoldersChangeEvent
 
   DidChangeConfigurationParams* = ref object of RootObj
-    settings*: JsonNode
+    settings*: OptionalNode
 
   FileEvent* = ref object of RootObj
     uri*: string
@@ -394,7 +394,7 @@ type
 
   ExecuteCommandParams* = ref object of RootObj
     command*: string
-    arguments*: JsonNode
+    arguments*: OptionalNode
 
   ExecuteCommandRegistrationOptions* = ref object of RootObj
     commands*: OptionalSeq[string]
@@ -476,7 +476,7 @@ type
     value*: string
 
   Hover* = ref object of RootObj
-    contents*: JsonNode # string or MarkedStringOption or [string] or [MarkedStringOption] or MarkupContent
+    contents*: OptionalNode # string or MarkedStringOption or [string] or [MarkedStringOption] or MarkupContent
     range*: Option[Range]
 
   HoverParams* = ref object of TextDocumentPositionParams
@@ -532,7 +532,7 @@ type
   CodeLens* = ref object of RootObj
     `range`*: Range
     command*: Option[Command]
-    data*: JsonNode
+    data*: OptionalNode
 
   CodeLensRegistrationOptions* = ref object of TextDocumentRegistrationOptions
     resolveProvider*: Option[bool]
@@ -543,7 +543,7 @@ type
   DocumentLink* = ref object of RootObj
     `range`*: Range
     target*: Option[string]
-    data*: JsonNode
+    data*: OptionalNode
 
   DocumentLinkRegistrationOptions* = ref object of TextDocumentRegistrationOptions
     resolveProvider*: Option[bool]
@@ -573,18 +573,18 @@ type
 
   DocumentFormattingParams* = ref object of RootObj
     textDocument*: TextDocumentIdentifier
-    options*: JsonNode
+    options*: OptionalNode
 
   DocumentRangeFormattingParams* = ref object of RootObj
     textDocument*: TextDocumentIdentifier
     `range`*: Range
-    options*: JsonNode
+    options*: OptionalNode
 
   DocumentOnTypeFormattingParams* = ref object of RootObj
     textDocument*: TextDocumentIdentifier
     position*: Position
     ch*: string
-    options*: JsonNode
+    options*: OptionalNode
 
   DocumentOnTypeFormattingRegistrationOptions* = ref object of TextDocumentRegistrationOptions
     firstTriggerCharacter*: string

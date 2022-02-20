@@ -182,12 +182,10 @@ proc call*(self: Nimsuggest, command: string, file: string, dirtyFile: string,
   let socket = newAsyncSocket()
 
   waitFor socket.connect("127.0.0.1", Port(self.port))
-  debug "Connected to socket."
 
   let commandString = fmt "{command} {file};{dirtyFile}:{line}:{column}"
   await socket.send(commandString & "\c\L")
 
-  debug "sent"
   result = @[]
   var lineStr: string = await socket.recvLine();
   while lineStr != "\r\n" and lineStr != "":
@@ -195,7 +193,9 @@ proc call*(self: Nimsuggest, command: string, file: string, dirtyFile: string,
     lineStr = await socket.recvLine();
 
   if (lineStr == ""):
-    raise newException(CatchableError, "Socket closed.")
+    self.failed = true
+    self.errorMessage = "Server crashed/socket closed."
+    raise newException(CatchableError, "Server crashed/socket closed.")
 
   debug "Received result(s)", length = result.len
 
