@@ -105,11 +105,31 @@ func nimSymDetails*(suggest: Suggest): string =
 
 const failedToken = "::Failed::"
 
+proc parseQualifiedPath*(input: string): seq[string] =
+  result = @[]
+  var
+    item = ""
+    escaping = false
+
+  for c in input:
+    if c == '`':
+      item = item & c
+      escaping = not escaping
+    elif escaping:
+      item = item & c
+    elif c == '.':
+      result.add item
+      item = ""
+    else:
+      item = item & c
+
+  if item != "":
+    result.add item
+
 proc parseSuggest*(line: string): Suggest =
   let tokens = line.split('\t');
-
   return Suggest(
-    qualifiedPath: tokens[2].split("."),
+    qualifiedPath: tokens[2].parseQualifiedPath,
     filePath: tokens[4],
     line: parseInt(tokens[5]),
     column: parseInt(tokens[6]),

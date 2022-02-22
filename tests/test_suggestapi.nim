@@ -8,8 +8,11 @@ suite "Nimsuggest tests":
     helloWorldFile = getCurrentDir() / "tests/projects/hw/hw.nim"
     nimSuggest = createNimsuggest(helloWorldFile).waitFor
 
+  test "Parsing qualified path":
+    doAssert parseQualifiedPath("a.b.c") == @["a", "b", "c"]
+    doAssert parseQualifiedPath("system.`..<`") == @["system", "`..<`"]
+
   test "Parsing Suggest":
-    # TODO handle multiline docs
     doAssert parseSuggest(inputLine)[] == Suggest(
       filePath: "hw/hw.nim",
       qualifiedPath: @["hw", "a"],

@@ -1,4 +1,2 @@
 import
-  test_nls
-  # ,
-  # test_suggestapi
+  test_nls , test_suggestapi
