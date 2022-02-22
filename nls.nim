@@ -296,6 +296,10 @@ proc didSave(ls: LanguageServer, params: DidSaveTextDocumentParams):
     Future[void] {.async, gcsafe.} =
   discard ls.checkAllFiles(params.textDocument.uri)
 
+proc didClose(ls: LanguageServer, params: DidCloseTextDocumentParams):
+    Future[void] {.async, gcsafe.} =
+  debug "Closed the following document:", uri = params.textDocument.uri
+
 proc toMarkedStrings(suggest: Suggest): seq[MarkedStringOption] =
   var label = suggest.qualifiedPath.join(".")
   if suggest.forth != "":
@@ -430,6 +434,7 @@ proc registerHandlers*(connection: StreamConnection) =
   connection.registerNotification("textDocument/didChange", partial(didChange, ls))
   connection.registerNotification("textDocument/didOpen", partial(didOpen, ls))
   connection.registerNotification("textDocument/didSave", partial(didSave, ls))
+  connection.registerNotification("textDocument/didClose", partial(didClose, ls))
 
 when isMainModule:
   var
