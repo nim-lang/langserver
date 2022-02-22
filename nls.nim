@@ -216,18 +216,17 @@ proc didOpen(ls: LanguageServer, params: DidOpenTextDocumentParams):
        fingerTable: @[])
 
      if not ls.projectFiles.hasKey(projectFile):
-       let token = fmt "Creating nimsuggest for {projectFile}"
+       let
+         nimsuggestFut = createNimsuggest(projectFile)
+         fileName = projectFile.AbsoluteFile().extractFileName()
+         token = fmt "Creating nimsuggest for {projectFile}"
+
+       ls.projectFiles[projectFile] = (nimsuggest: nimsuggestFut,
+                                       openFiles: initOrderedSet[string]())
 
        if ls.progressSupported:
          discard ls.connection.call("window/workDoneProgress/create",
                                     %ProgressParams(token: token))
-
-       let
-         nimsuggestFut = createNimsuggest(projectFile)
-         fileName = projectFile.AbsoluteFile().extractFileName();
-
-       ls.projectFiles[projectFile] = (nimsuggest: nimsuggestFut,
-                                       openFiles: initOrderedSet[string]())
 
        if ls.progressSupported:
          ls.connection.notify(
