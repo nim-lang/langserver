@@ -4,8 +4,11 @@ import macros, strformat, faststreams/async_backend, itertools,
   suggestapi, protocol/enums, protocol/types, with, tables, strutils, sets,
   ./utils, ./pipes, chronicles, std/re, uri, "$nim/compiler/pathutils"
 
-const storage = getTempDir() / "nls"
-discard existsOrCreateDir(storage)
+const
+  STORAGE = getTempDir() / "nls"
+  RESTART_COMMAND = "nimls.restart"
+
+discard existsOrCreateDir(STORAGE)
 
 type
   NlsNimsuggestConfig = ref object of RootObj
@@ -24,7 +27,7 @@ type
     clientCapabilities*: ClientCapabilities
     initializeParams*: InitializeParams
     workspaceConfiguration: Future[JsonNode]
-    fileWithDiags: seq[string]
+    filesWithDiags: seq[string]
 
   Certainty = enum
     None,
@@ -99,11 +102,11 @@ proc getProjectFile(fileUri: string, ls: LanguageServer): Future[string] {.async
     for regex in cfg.regexps:
       if find(pathRelativeToRoot, re(regex), 0, pathRelativeToRoot.len) != -1:
         result = string(rootPath) / cfg.root
-        debug "getProjectFile", project = result
+        trace "getProjectFile", project = result
         return result
 
   result = getProjectFileAutoGuess(fileUri)
-  debug "getProjectFile", project = result
+  trace "getProjectFile", project = result
 
 proc getCharacter(ls: LanguageServer, uri: string, line: int, character: int): int =
   return ls.openFiles[uri].fingerTable[line].utf16to8(character)
@@ -127,7 +130,9 @@ proc initialize(ls: LanguageServer, params: InitializeParams):
         resolveProvider: some(false)),
       definitionProvider: some(true),
       referencesProvider: some(true),
-      documentSymbolProvider: some(true)
+      executeCommandProvider: ExecuteCommandOptions(commands: some(@[RESTART_COMMAND])),
+      documentSymbolProvider: some(true),
+      codeActionProvider: some(true)
       # renameProvider: some(true)
       ))
 
@@ -151,17 +156,16 @@ proc cancelRequest(params: CancelParams):
  debug "Cancelling", id = params.id
 
 proc uriToStash(uri: string): string =
-  storage / (hash(uri).toHex & ".nim")
+  STORAGE / (hash(uri).toHex & ".nim")
 
 template getNimsuggest(ls: LanguageServer, uri: string): Nimsuggest =
   ls.projectFiles[ls.openFiles[uri].projectFile].nimsuggest.await
 
 proc toDiagnostic(suggest: Suggest): Diagnostic =
   with suggest:
-    let endColumn = column + doc.rfind('\'') - doc.find('\'') - 1
-
-    return Diagnostic %* {
-      "uri": pathToUri(filepath),
+    let endColumn = column + doc.rfind('\'') - doc.find('\'') - 2
+    let node = %* {
+      "uri": pathToUri(filepath) ,
       "range": {
          "start": {
             "line": line - 1,
@@ -169,7 +173,7 @@ proc toDiagnostic(suggest: Suggest): Diagnostic =
          },
          "end": {
             "line": line - 1,
-            "character": column + max(qualifiedPath[^1].len, endColumn)
+            "character": column + endColumn
          }
       },
       "severity": case forth:
@@ -181,14 +185,18 @@ proc toDiagnostic(suggest: Suggest): Diagnostic =
       "source": "nim",
       "code": "nimsuggest chk"
     }
+    return node.to(Diagnostic)
 
 proc checkAllFiles(ls: LanguageServer, uri: string): Future[void] {.async} =
-  let diagnostics = ls.getNimsuggest(uri)
-    .chk(uriToPath(uri), uriToStash(uri))
-    .await()
-    .filter(sug => sug.filepath != "???")
+  debug "Checking the following", uri = uri
+  let
+    diagnostics = ls.getNimsuggest(uri)
+      .chk(uriToPath(uri), uriToStash(uri))
+      .await()
+      .filter(sug => sug.filepath != "???")
+    filesWithDiags = diagnostics.map(s => s.filepath).deduplicate()
 
-  debug "Found diagnostics", files = diagnostics.map(s => s.filepath).deduplicate()
+  debug "Found diagnostics", file = filesWithDiags
   for (path, diags) in groupBy(diagnostics, s => s.filepath):
     debug "Sending diagnostics", count = diags.len, path = path
     let params = PublishDiagnosticsParams %* {
@@ -197,8 +205,72 @@ proc checkAllFiles(ls: LanguageServer, uri: string): Future[void] {.async} =
     }
     ls.connection.notify("textDocument/publishDiagnostics", %params)
 
+  # clean files with no diags
+  for path in ls.filesWithDiags.filterIt(it notin filesWithDiags):
+    debug "Sending zero diags", path = path
+    let params = PublishDiagnosticsParams %* {
+      "uri": pathToUri(path),
+      "diagnostics": @[]
+    }
+    ls.connection.notify("textDocument/publishDiagnostics", %params)
+  ls.filesWithDiags = filesWithDiags
+
 proc progressSupported(ls: LanguageServer): bool =
   result = ls.initializeParams.capabilities.window.get(WindowCapabilities()).workDoneProgress.get(false)
+
+proc createNimsuggest(ls: LanguageServer, projectFile: string, uri = ""): void =
+  let
+    nimsuggestFut = createNimsuggest(projectFile)
+    fileName = projectFile.AbsoluteFile().extractFileName()
+    token = fmt "Creating nimsuggest for {projectFile}"
+
+  if ls.projectFiles.hasKey(projectFile):
+    ls.projectFiles[projectFile].nimsuggest = nimsuggestFut
+  else:
+    ls.projectFiles[projectFile] = (nimsuggest: nimsuggestFut,
+                                    openFiles: initOrderedSet[string]())
+
+  if ls.progressSupported:
+   discard ls.connection.call("window/workDoneProgress/create",
+                              %ProgressParams(token: token))
+
+   if ls.progressSupported:
+     ls.connection.notify(
+       "$/progress",
+       %* {
+            "token": token,
+            "value": {
+              "kind": "begin",
+              "title": fmt "Creating nimsuggest for {fileName}"
+            }
+       })
+     proc cb (fut: Future[Nimsuggest]) =
+       if fut.read.failed:
+         ls.connection.notify(
+           "window/showMessage",
+           %* {
+                "type": MessageType.Error.int,
+                "message": fmt "Nimsuggest initialization for {projectFile} failed with: {fut.read.errorMessage}"
+           })
+       else:
+         ls.connection.notify(
+           "window/showMessage",
+           %* {
+                "type": MessageType.Info.int,
+                "message": fmt "Nimsuggest initialized for {projectFile}"
+           })
+         asyncCheck ls.checkAllFiles(uri)
+
+       ls.connection.notify(
+         "$/progress",
+         %* {
+              "token": token,
+              "value": {
+                "kind": "end",
+              }
+         })
+
+     nimsuggestFut.addCallback(cb)
 
 proc didOpen(ls: LanguageServer, params: DidOpenTextDocumentParams):
     Future[void] {.async, gcsafe.} =
@@ -216,57 +288,9 @@ proc didOpen(ls: LanguageServer, params: DidOpenTextDocumentParams):
        fingerTable: @[])
 
      if not ls.projectFiles.hasKey(projectFile):
-       let
-         nimsuggestFut = createNimsuggest(projectFile)
-         fileName = projectFile.AbsoluteFile().extractFileName()
-         token = fmt "Creating nimsuggest for {projectFile}"
-
-       ls.projectFiles[projectFile] = (nimsuggest: nimsuggestFut,
-                                       openFiles: initOrderedSet[string]())
-
-       if ls.progressSupported:
-         discard ls.connection.call("window/workDoneProgress/create",
-                                    %ProgressParams(token: token))
-
-       if ls.progressSupported:
-         ls.connection.notify(
-           "$/progress",
-           %* {
-                "token": token,
-                "value": {
-                  "kind": "begin",
-                  "title": fmt "Creating nimsuggest for {fileName}"
-                }
-           })
-         proc cb (fut: Future[Nimsuggest]) =
-           if fut.read.failed:
-             ls.connection.notify(
-               "window/showMessage",
-               %* {
-                    "type": MessageType.Error.int,
-                    "message": fmt "Nimsuggest initialization for {projectFile} failed with: {fut.read.errorMessage}"
-               })
-           else:
-             ls.connection.notify(
-               "window/showMessage",
-               %* {
-                    "type": MessageType.Info.int,
-                    "message": fmt "Nimsuggest initialized for {projectFile}"
-               })
-             discard ls.checkAllFiles(uri)
-
-           ls.connection.notify(
-             "$/progress",
-             %* {
-                  "token": token,
-                  "value": {
-                    "kind": "end",
-                  }
-             })
-         nimsuggestFut.addCallback(cb)
+       ls.createNimsuggest(projectFile, uri = uri)
 
      ls.projectFiles[projectFile].openFiles.incl(uri)
-
 
      for line in text.splitLines:
        ls.openFiles[uri].fingerTable.add line.createUTFMapping()
@@ -289,11 +313,11 @@ proc didChange(ls: LanguageServer, params: DidChangeTextDocumentParams):
        file.writeLine line
      file.close()
 
-     discard ls.getNimsuggest(uri).mod(path, dirtyfile = filestash)
+     asyncCheck ls.getNimsuggest(uri).mod(path, dirtyfile = filestash)
 
 proc didSave(ls: LanguageServer, params: DidSaveTextDocumentParams):
     Future[void] {.async, gcsafe.} =
-  discard ls.checkAllFiles(params.textDocument.uri)
+  asyncCheck ls.checkAllFiles(params.textDocument.uri)
 
 proc didClose(ls: LanguageServer, params: DidCloseTextDocumentParams):
     Future[void] {.async, gcsafe.} =
@@ -330,6 +354,18 @@ proc hover(ls: LanguageServer, params: HoverParams):
       return none[Hover]();
     else:
       return some(Hover(contents: some(%toMarkedStrings(suggestions[0]))))
+
+proc range*(startLine, startCharacter, endLine, endCharacter: int): Range =
+  return Range %* {
+     "start": {
+        "line": startLine,
+        "character": startCharacter
+     },
+     "end": {
+        "line": endLine,
+        "character": endCharacter
+     }
+  }
 
 proc toLocation(suggest: Suggest): Location =
   with suggest:
@@ -372,6 +408,24 @@ proc references(ls: LanguageServer, params: ReferenceParams):
       .filter(suggest => suggest.section != ideDef or includeDeclaration)
       .map(toLocation);
 
+proc codeAction(ls: LanguageServer, params: CodeActionParams):
+    Future[seq[Command]] {.async} =
+  return seq[Command] %* [{
+      "title": "Restart server.",
+      "command": RESTART_COMMAND,
+      "arguments": await getProjectFile(params.textDocument.uri, ls)
+    }
+  ]
+
+proc executeCommand(ls: LanguageServer, params: ExecuteCommandParams):
+    Future[JsonNode] {.async} =
+
+  with params:
+    let projectFile = arguments.get.getStr
+    debug "Restarting nimsuggest", projectFile = projectFile
+    ls.createNimsuggest(projectFile, projectFile.pathToUri)
+    result = newJNull()
+
 proc toCompletionItem(suggest: Suggest): CompletionItem =
   with suggest:
     return CompletionItem %* {
@@ -401,7 +455,6 @@ proc toSymbolInformation(suggest: Suggest): SymbolInformation =
       "name": suggest.name
     }
 
-
 proc documentSymbols(ls: LanguageServer, params: DocumentSymbolParams):
     Future[seq[SymbolInformation]] {.async} =
   with (params.textDocument):
@@ -427,6 +480,8 @@ proc registerHandlers*(connection: StreamConnection) =
   connection.register("textDocument/documentSymbol", partial(documentSymbols, ls))
   connection.register("textDocument/hover", partial(hover, ls))
   connection.register("textDocument/references", partial(references, ls))
+  connection.register("textDocument/codeAction", partial(codeAction, ls))
+  connection.register("workspace/executeCommand", partial(executeCommand, ls))
 
   connection.registerNotification("$/cancelRequest", cancelRequest)
   connection.registerNotification("initialized", partial(initialized, ls))

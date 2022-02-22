@@ -21,12 +21,12 @@ suite "Client/server initialization sequence":
   let pipeServer = createPipe();
   let pipeClient = createPipe();
 
-  let serverConnection = StreamConnection.new(pipeServer);
-  registerHandlers(serverConnection);
-  discard serverConnection.start(asyncPipeInput(pipeClient));
+  let server = StreamConnection.new(pipeServer);
+  registerHandlers(server);
+  discard server.start(asyncPipeInput(pipeClient));
 
-  let clientConnection = StreamConnection.new(pipeClient);
-  discard clientConnection.start(asyncPipeInput(pipeServer));
+  let client = StreamConnection.new(pipeClient);
+  discard client.start(asyncPipeInput(pipeServer));
 
   test "Sending initialize.":
     let initParams = InitializeParams(
@@ -34,10 +34,10 @@ suite "Client/server initialization sequence":
         rootUri: "file:///tmp/",
         capabilities: ClientCapabilities())
 
-    let initializeResult = waitFor clientConnection.call("initialize", %initParams)
+    let initializeResult = waitFor client.call("initialize", %initParams)
     doAssert initializeResult != nil;
 
-    clientConnection.notify("initialized", newJObject())
+    client.notify("initialized", newJObject())
 
   pipeClient.close()
   pipeServer.close()
@@ -79,15 +79,15 @@ suite "Suggest API selection":
   let pipeServer = createPipe();
   let pipeClient = createPipe();
 
-  let serverConnection = StreamConnection.new(pipeServer);
-  registerHandlers(serverConnection);
-  discard serverConnection.start(asyncPipeInput(pipeClient));
+  let server = StreamConnection.new(pipeServer);
+  registerHandlers(server);
+  discard server.start(asyncPipeInput(pipeClient));
 
-  let clientConnection = StreamConnection.new(pipeClient);
-  discard clientConnection.start(asyncPipeInput(pipeServer));
+  let client = StreamConnection.new(pipeClient);
+  discard client.start(asyncPipeInput(pipeServer));
 
   let suggestInit = FutureStream[ProgressParams]()
-  clientConnection.register("window/workDoneProgress/create",
+  client.register("window/workDoneProgress/create",
                             partial(testHandler[ProgressParams, JsonNode],
                                     (fut: suggestInit, res: newJNull())))
   let workspaceConfiguration = %* [{
@@ -104,23 +104,23 @@ suite "Suggest API selection":
   }]
 
   let configInit = FutureStream[ConfigurationParams]()
-  clientConnection.register(
+  client.register(
     "workspace/configuration",
     partial(testHandler[ConfigurationParams, JsonNode],
             (fut: configInit, res: workspaceConfiguration)))
 
-  let diagnosticsParams = FutureStream[PublishDiagnosticsParams]()
-  clientConnection.registerNotification(
+  let diagnostics = FutureStream[PublishDiagnosticsParams]()
+  client.registerNotification(
     "textDocument/publishDiagnostics",
-    partial(testHandler[PublishDiagnosticsParams], diagnosticsParams))
+    partial(testHandler[PublishDiagnosticsParams], diagnostics))
 
   let progress = FutureStream[ProgressParams]()
-  clientConnection.registerNotification(
+  client.registerNotification(
     "$/progress",
     partial(testHandler[ProgressParams], progress))
 
   let showMessage = FutureStream[ShowMessageParams]()
-  clientConnection.registerNotification(
+  client.registerNotification(
     "window/showMessage",
     partial(testHandler[ShowMessageParams], showMessage))
 
@@ -135,12 +135,11 @@ suite "Suggest API selection":
       }
   }
 
-  discard waitFor clientConnection.call("initialize", %initParams)
-  clientConnection.notify("initialized", newJObject())
+  discard waitFor client.call("initialize", %initParams)
+  client.notify("initialized", newJObject())
 
   test "Suggest api":
-    clientConnection.notify("textDocument/didOpen",
-                            %createDidOpenParams("projects/hw/hw.nim"))
+    client.notify("textDocument/didOpen", %createDidOpenParams("projects/hw/hw.nim"))
     let (_, params) = suggestInit.read.waitFor
     doAssert %params ==
       %ProgressParams(
@@ -148,8 +147,8 @@ suite "Suggest API selection":
     doAssert "begin" == progress.read.waitFor[1].value.get()["kind"].getStr
     doAssert "end" == progress.read.waitFor[1].value.get()["kind"].getStr
 
-    clientConnection.notify("textDocument/didOpen",
-                            %createDidOpenParams("projects/hw/useRoot.nim"))
+    client.notify("textDocument/didOpen",
+                  %createDidOpenParams("projects/hw/useRoot.nim"))
     let
       rootNimFileUri = "projects/hw/root.nim".fixtureUri.uriToPath
       rootParams2 = suggestInit.read.waitFor[1]
@@ -161,31 +160,98 @@ suite "Suggest API selection":
     doAssert "end" == progress.read.waitFor[1].value.get()["kind"].getStr
 
   test "Crashing nimsuggest":
-    clientConnection.notify("textDocument/didOpen",
-                            %createDidOpenParams("projects/hw/willCrash.nim"))
+    client.notify("textDocument/didOpen",
+                  %createDidOpenParams("projects/hw/willCrash.nim"))
     let params = suggestInit.read.waitFor[1]
     doAssert %params ==
       %ProgressParams(
         token: fmt "Creating nimsuggest for {\"projects/hw/missingRoot.nim\".fixtureUri.uriToPath}")
 
-    let hoverParams = positionParams("projects/hw/willCrash.nim".fixtureUri, 1, 0)
-
-    let hover = to(waitFor clientConnection.call("textDocument/hover",
-                                                 %hoverParams),
-                   Hover)
+    let
+      hoverParams = positionParams("projects/hw/willCrash.nim".fixtureUri, 1, 0)
+      hover = client.call("textDocument/hover", %hoverParams)
+                .waitFor
+                .to(Hover)
     doAssert hover == nil
+
+    let actual = client.call(
+        "textDocument/codeAction", %* {
+          "range": range(1, 1, 1, 1),
+          "textDocument": {
+            "uri": fixtureUri("projects/hw/willCrash.nim")
+          },
+          "context": {
+            "diagnostics": @[]
+          }
+        })
+      .waitFor
+      .to(seq[Command])
+
+    let expected = seq[Command] %* [{
+        "title": "Restart server.",
+        "command": "nimls.restart",
+        "arguments": uriToPath fixtureUri "projects/hw/missingRoot.nim"
+     }]
+
+    doAssert %actual == %expected
+
+    # diagnostics
+    let
+      actualDiags = %diagnostics.read.waitFor[1]
+      expectedDiags = %* {
+        "uri": helloWorldUri,
+        "diagnostics":[{
+          "range":{
+            "start":{
+              "line":4,
+              "character":6
+            },
+            "end":{
+              "line":4,
+              "character":45
+            }
+          },
+          "severity": 1,
+          "code":"nimsuggest chk",
+          "source":"nim",
+          "message": "type mismatch: got 'string' for '\"\"' but expected 'int'",
+          "relatedInformation":nil
+        }]
+      }
+    doAssert expectedDiags == actualDiags
+
+    # clear errors after did save
+    client.notify("textDocument/didChange", %* {
+      "textDocument": {
+        "uri": helloWorldUri,
+        "version": 1
+      },
+      "contentChanges": [{
+          "text": "echo \"Hello, world!\" "
+        }
+      ]
+    })
+    client.notify("textDocument/didSave", %* {
+      "textDocument": {
+        "uri": helloWorldUri,
+        "version": 1
+      }
+    })
+
+    let actualDiagsAfterSave = %diagnostics.read.waitFor[1]
+    echo "XXXX", actualDiagsAfterSave
+
 
 suite "LSP features":
   let pipeServer = createPipe();
   let pipeClient = createPipe();
 
-  let serverConnection = StreamConnection.new(pipeServer);
-  registerHandlers(serverConnection);
-  discard serverConnection.start(asyncPipeInput(pipeClient));
+  let server = StreamConnection.new(pipeServer);
+  registerHandlers(server);
+  discard server.start(asyncPipeInput(pipeClient));
 
-  let clientConnection = StreamConnection.new(pipeClient);
-  discard clientConnection.start(asyncPipeInput(pipeServer));
-
+  let client = StreamConnection.new(pipeClient);
+  discard client.start(asyncPipeInput(pipeServer));
 
   let initParams = InitializeParams %* {
       "processId": %getCurrentProcessId(),
@@ -197,19 +263,17 @@ suite "LSP features":
       }
   }
 
-  discard waitFor clientConnection.call("initialize", %initParams)
-  clientConnection.notify("initialized", newJObject())
+  discard waitFor client.call("initialize", %initParams)
+  client.notify("initialized", newJObject())
 
   let didOpenParams = createDidOpenParams("projects/hw/hw.nim")
 
-  clientConnection.notify("textDocument/didOpen", %didOpenParams)
+  client.notify("textDocument/didOpen", %didOpenParams)
 
   test "Sending hover.":
     let
-      hoverParams = positionParams( fixtureUri("projects/hw/hw.nim"), 1, 0)
-      hover = to(waitFor clientConnection.call("textDocument/hover",
-                                               %hoverParams),
-                 Hover)
+      hoverParams = positionParams(fixtureUri("projects/hw/hw.nim"), 1, 0)
+      hover = to(waitFor client.call("textDocument/hover", %hoverParams), Hover)
       expected = Hover %* {
         "contents": [{
             "language": "nim",
@@ -224,14 +288,13 @@ suite "LSP features":
   test "Sending hover(no content)":
     let
       hoverParams = positionParams( helloWorldUri, 2, 0)
-      hover = waitFor clientConnection.call("textDocument/hover", %hoverParams)
+      hover = waitFor client.call("textDocument/hover", %hoverParams)
     doAssert hover.kind == JNull
 
   test "Definitions.":
     let
       positionParams = positionParams(helloWorldUri, 1, 0)
-      locations = to(waitFor clientConnection.call("textDocument/definition",
-                                                   %positionParams),
+      locations = to(waitFor client.call("textDocument/definition", %positionParams),
                      seq[Location])
       expected = seq[Location] %* [{
         "uri": helloWorldUri,
@@ -261,9 +324,8 @@ suite "LSP features":
          "uri": helloWorldUri
        }
     }
-    let locations = to(waitFor clientConnection.call("textDocument/references",
-                                                     %referenceParams),
-                    seq[Location])
+    let locations = to(waitFor client.call("textDocument/references", %referenceParams),
+                       seq[Location])
     let expected = seq[Location] %* [{
       "uri": helloWorldUri,
       "range": {
@@ -304,9 +366,9 @@ suite "LSP features":
          "uri": helloWorldUri
        }
     }
-    let locations = to(waitFor clientConnection.call("textDocument/references",
-                                                     %referenceParams),
-                    seq[Location])
+    let locations = to(waitFor client.call("textDocument/references",
+                                            %referenceParams),
+                       seq[Location])
     let expected = seq[Location] %* [{
       "uri": helloWorldUri,
       "range": {
@@ -334,10 +396,10 @@ suite "LSP features":
       ]
     }
 
-    clientConnection.notify("textDocument/didChange", %didChangeParams)
+    client.notify("textDocument/didChange", %didChangeParams)
     let
       hoverParams = positionParams(fixtureUri("projects/hw/hw.nim"), 2, 0)
-      hover = to(waitFor clientConnection.call("textDocument/hover",
+      hover = to(waitFor client.call("textDocument/hover",
                                                %hoverParams),
                  Hover)
       expected = Hover %* {
@@ -362,8 +424,7 @@ suite "LSP features":
        }
     }
     let actualEchoCompletionItem =
-      to(waitFor clientConnection.call("textDocument/completion",
-                                       %completionParams),
+      to(waitFor client.call("textDocument/completion", %completionParams),
          seq[CompletionItem])
       .filter(item => item.label == "echo")[0]
 

@@ -28,8 +28,7 @@ type
 
   Suggest* = ref object of RootObj
     section*: IdeCmd
-    qualifiedPath*: seq[string]
-                          # part of 'qualifiedPath'
+    qualifiedPath*: seq[string] # part of 'qualifiedPath'
     filePath*: string
     line*: int                # Starts at 1
     column*: int              # Starts at 0
@@ -209,6 +208,7 @@ proc call*(self: Nimsuggest, command: string, file: string, dirtyFile: string,
   result = @[]
   var lineStr: string = await socket.recvLine();
   while lineStr != "\r\n" and lineStr != "":
+    trace "Received line", line = line
     result.add parseSuggest(lineStr);
     lineStr = await socket.recvLine();
 
