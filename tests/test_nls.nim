@@ -196,29 +196,26 @@ suite "Suggest API selection":
     doAssert %actual == %expected
 
     # diagnostics
-    let
-      actualDiags = %diagnostics.read.waitFor[1]
-      expectedDiags = %* {
-        "uri": helloWorldUri,
-        "diagnostics":[{
-          "range":{
-            "start":{
-              "line":4,
-              "character":6
-            },
-            "end":{
-              "line":4,
-              "character":45
-            }
+    doAssert %diagnostics.read.waitFor[1] ==  %* {
+      "uri": helloWorldUri,
+      "diagnostics":[{
+        "range":{
+          "start":{
+            "line":4,
+            "character":6
           },
-          "severity": 1,
-          "code":"nimsuggest chk",
-          "source":"nim",
-          "message": "type mismatch: got 'string' for '\"\"' but expected 'int'",
-          "relatedInformation":nil
-        }]
-      }
-    doAssert expectedDiags == actualDiags
+          "end":{
+            "line":4,
+            "character":45
+          }
+        },
+        "severity": 1,
+        "code":"nimsuggest chk",
+        "source":"nim",
+        "message": "type mismatch: got 'string' for '\"\"' but expected 'int'",
+        "relatedInformation":nil
+      }]
+    }
 
     # clear errors after did save
     client.notify("textDocument/didChange", %* {
@@ -238,8 +235,10 @@ suite "Suggest API selection":
       }
     })
 
-    let actualDiagsAfterSave = %diagnostics.read.waitFor[1]
-    echo "XXXX", actualDiagsAfterSave
+    doAssert %diagnostics.read.waitFor[1] == %* {
+      "uri": helloWorldUri,
+      "diagnostics":[]
+    }
 
 
 suite "LSP features":
