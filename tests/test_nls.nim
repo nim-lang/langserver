@@ -195,7 +195,6 @@ suite "Suggest API selection":
 
     doAssert %actual == %expected
 
-    # diagnostics
     doAssert %diagnostics.read.waitFor[1] ==  %* {
       "uri": helloWorldUri,
       "diagnostics":[{
@@ -240,7 +239,6 @@ suite "Suggest API selection":
       "diagnostics":[]
     }
 
-
 suite "LSP features":
   let pipeServer = createPipe();
   let pipeClient = createPipe();
@@ -281,7 +279,6 @@ suite "LSP features":
         ],
         "range": nil
       }
-
     doAssert %hover == %expected
 
   test "Sending hover(no content)":

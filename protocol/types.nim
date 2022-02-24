@@ -6,7 +6,7 @@ type
   OptionalNode = Option[JsonNode]
 
   CancelParams* = ref object of RootObj
-    id*: OptionalNode
+    id*: JsonNode
 
   Position* = ref object of RootObj
     line*: int

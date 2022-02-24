@@ -1,6 +1,7 @@
 import osproc,
   strutils,
   strformat,
+  deques,
   os,
   asyncnet,
   streams,
@@ -43,9 +44,14 @@ type
     tokenLen*: int
     version*: int
 
+  Request* = ref object
+    command: string
+    callback: Future[seq[Suggest]]
+
   Nimsuggest* = ref object
     process: Process
     port: int
+    requestQueue: Deque[Request]
     failed*: bool
     errorMessage*: string
 
@@ -158,6 +164,9 @@ proc logStderr(param: tuple[root: string, process: Process]) {.thread.} =
   except IOError:
     discard
 
+proc stop*(self: Nimsuggest) =
+  discard
+
 proc createNimsuggest*(root: string): Future[Nimsuggest] {.async.} =
   debug "Starting nimsuggest", root = root
   var
@@ -167,6 +176,7 @@ proc createNimsuggest*(root: string): Future[Nimsuggest] {.async.} =
     input = pipe.asyncPipeInput;
 
   result = Nimsuggest()
+  result.requestQueue = Deque[Request]()
   result.process = startProcess(command = "nimsuggest {root} --autobind".fmt,
                                 workingDir = getCurrentDir(),
                                 options = {poUsePath, poEvalCommand})
@@ -186,38 +196,45 @@ proc createNimsuggest*(root: string): Future[Nimsuggest] {.async.} =
       result.port = line.parseInt
       debug "Started nimsuggest", port = result.port, root = root
 
+proc processQueue(self: Nimsuggest): Future[void] {.async.}=
+  debug "processQueue", size = self.requestQueue.len
+  while self.requestQueue.len != 0:
+    let req = self.requestQueue.popFirst
+    logScope:
+      command = req.command
+    if req.callback.finished:
+      debug "Call already cancelled", command = req.command
+    elif self.failed:
+      req.callback.complete @[]
+    elif req.callback.error.isNil:
+      debug "Executing command", command = req.command
+      let socket = newAsyncSocket()
+      var res: seq[Suggest] = @[]
+
+      await socket.connect("127.0.0.1", Port(self.port))
+      await socket.send(req.command & "\c\L")
+
+      var lineStr: string = await socket.recvLine();
+      while lineStr != "\r\n" and lineStr != "":
+        trace "Received line", line = line
+        res.add parseSuggest(lineStr)
+        lineStr = await socket.recvLine();
+
+      if (lineStr == ""):
+        self.failed = true
+        self.errorMessage = "Server crashed/socket closed."
+        req.callback.fail newException(CatchableError, "Server crashed/socket closed.")
+      debug "Received result(s)", length = res.len
+      req.callback.complete res
+
 proc call*(self: Nimsuggest, command: string, file: string, dirtyFile: string,
-    line: int, column: int): Future[seq[Suggest]] {.async.} =
-  if self.failed:
-    return @[]
-
-  logScope:
-    command = command
-    line = line
-    column = column
-    file = file
-
-  debug "Calling nimsuggest"
-  let socket = newAsyncSocket()
-
-  waitFor socket.connect("127.0.0.1", Port(self.port))
+    line: int, column: int): Future[seq[Suggest]] =
+  result = Future[seq[Suggest]]()
 
   let commandString = fmt "{command} {file};{dirtyFile}:{line}:{column}"
-  await socket.send(commandString & "\c\L")
-
-  result = @[]
-  var lineStr: string = await socket.recvLine();
-  while lineStr != "\r\n" and lineStr != "":
-    trace "Received line", line = line
-    result.add parseSuggest(lineStr);
-    lineStr = await socket.recvLine();
-
-  if (lineStr == ""):
-    self.failed = true
-    self.errorMessage = "Server crashed/socket closed."
-    raise newException(CatchableError, "Server crashed/socket closed.")
-
-  debug "Received result(s)", length = result.len
+  self.requestQueue.addLast(Request(command: commandString, callback: result))
+  if self.requestQueue.len == 1:
+    asyncCheck processQueue(self)
 
 template createFullCommand(command: untyped) {.dirty.} =
   proc command*(self: Nimsuggest, file: string, dirtyfile = "",

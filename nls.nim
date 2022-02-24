@@ -19,13 +19,14 @@ type
     nimsuggest: seq[NlsNimsuggestConfig]
 
   LanguageServer* = ref object
+    clientCapabilities*: ClientCapabilities
+    initializeParams*: InitializeParams
     connection: StreamConnection
     projectFiles: Table[string, tuple[nimsuggest: Future[Nimsuggest],
                                       openFiles: OrderedSet[string]]]
     openFiles: Table[string, tuple[projectFile: string,
                                    fingerTable: seq[seq[tuple[u16pos, offset: int]]]]]
-    clientCapabilities*: ClientCapabilities
-    initializeParams*: InitializeParams
+    cancelFutures: Table[int, Future[void]]
     workspaceConfiguration: Future[JsonNode]
     filesWithDiags: seq[string]
 
@@ -44,6 +45,12 @@ proc partial*[A, B, C] (fn: proc(a: A, b: B): C {.gcsafe.}, a: A):
   return
     proc(b: B): C {.gcsafe, raises: [Defect, CatchableError, Exception].} =
       return fn(a, b)
+
+proc partial*[A, B, C] (fn: proc(a: A, b: B, id: int): C {.gcsafe.}, a: A):
+    proc (b: B, id: int) : C {.gcsafe, raises: [Defect, CatchableError, Exception].} =
+  return
+    proc(b: B, id: int): C {.gcsafe, raises: [Defect, CatchableError, Exception].} =
+      return fn(a, b, id)
 
 proc getProjectFileAutoGuess(fileUri: string): string =
   let file = fileUri.decodeUrl
@@ -124,39 +131,45 @@ proc initialize(ls: LanguageServer, params: InitializeParams):
         willSaveWaitUntil: some(false),
         save: some(SaveOptions(includeText: some(true))))),
       hoverProvider: some(true),
-      workspace: WorkspaceCapability(workspaceFolders: some(WorkspaceFolderCapability())),
+      workspace: WorkspaceCapability(
+        workspaceFolders: some(WorkspaceFolderCapability())),
       completionProvider: CompletionOptions(
         triggerCharacters: some(@["."]),
         resolveProvider: some(false)),
       definitionProvider: some(true),
       referencesProvider: some(true),
-      executeCommandProvider: ExecuteCommandOptions(commands: some(@[RESTART_COMMAND])),
+      executeCommandProvider: ExecuteCommandOptions(
+        commands: some(@[RESTART_COMMAND])),
       documentSymbolProvider: some(true),
-      codeActionProvider: some(true)
-      # renameProvider: some(true)
-      ))
+      codeActionProvider: some(true)))
 
 proc initialized(ls: LanguageServer, _: JsonNode):
     Future[void] {.async.} =
- debug "Client initialized."
- let workspaceCap = ls.initializeParams.capabilities.workspace
- if workspaceCap.isSome and workspaceCap.get.configuration.get(false):
-    debug "Requesting configuration from the client"
-    let configurationParams = ConfigurationParams %* {"items": [{"section": "nim"}]}
+  debug "Client initialized."
+  let workspaceCap = ls.initializeParams.capabilities.workspace
+  if workspaceCap.isSome and workspaceCap.get.configuration.get(false):
+     debug "Requesting configuration from the client"
+     let configurationParams = ConfigurationParams %* {"items": [{"section": "nim"}]}
 
-    ls.workspaceConfiguration =
-      ls.connection.call("workspace/configuration",
-                         %configurationParams)
- else:
-   debug "Client does not support workspace/configuration"
-   ls.workspaceConfiguration.complete(newJArray())
+     ls.workspaceConfiguration =
+       ls.connection.call("workspace/configuration",
+                          %configurationParams)
+  else:
+    debug "Client does not support workspace/configuration"
+    ls.workspaceConfiguration.complete(newJArray())
 
-proc cancelRequest(params: CancelParams):
+proc cancelRequest(ls: LanguageServer, params: CancelParams):
     Future[void] {.async} =
- debug "Cancelling", id = params.id
+  debug "Cancelling", params = %params
+  let
+    id = params.id.getInt
+    cancelFuture = ls.cancelFutures.getOrDefault id
+
+  if not cancelFuture.isNil:
+    cancelFuture.complete()
 
 proc uriToStash(uri: string): string =
-  STORAGE / (hash(uri).toHex & ".nim")
+ STORAGE / (hash(uri).toHex & ".nim")
 
 template getNimsuggest(ls: LanguageServer, uri: string): Nimsuggest =
   ls.projectFiles[ls.openFiles[uri].projectFile].nimsuggest.await
@@ -297,7 +310,6 @@ proc didOpen(ls: LanguageServer, params: DidOpenTextDocumentParams):
        file.writeLine line
      file.close()
 
-
 proc didChange(ls: LanguageServer, params: DidChangeTextDocumentParams):
     Future[void] {.async, gcsafe.} =
    with params:
@@ -383,7 +395,7 @@ proc toLocation(suggest: Suggest): Location =
       }
     }
 
-proc definition(ls: LanguageServer, params: TextDocumentPositionParams):
+proc definition(ls: LanguageServer, params: TextDocumentPositionParams, id: int):
     Future[seq[Location]] {.async} =
   with (params.position, params.textDocument):
     return ls
@@ -419,7 +431,6 @@ proc codeAction(ls: LanguageServer, params: CodeActionParams):
 
 proc executeCommand(ls: LanguageServer, params: ExecuteCommandParams):
     Future[JsonNode] {.async} =
-
   with params:
     let projectFile = arguments.get.getStr
     debug "Restarting nimsuggest", projectFile = projectFile
@@ -435,15 +446,32 @@ proc toCompletionItem(suggest: Suggest): CompletionItem =
       "detail": nimSymDetails(suggest)
     }
 
-proc completion(ls: LanguageServer, params: CompletionParams):
+proc orCancelled[T](fut: Future[T], ls: LanguageServer, id: int): Future[T] {.async.} =
+  ls.cancelFutures[id] = newFuture[void]()
+  await fut or ls.cancelFutures[id]
+  ls.cancelFutures.del id
+  if fut.finished:
+    if fut.error.isNil:
+      return fut.read
+    else:
+      raise fut.error
+  else:
+    let ex = newException(CatchableError, fmt "Cancelled {id}")
+    fut.fail(ex)
+    raise ex
+
+proc completion(ls: LanguageServer, params: CompletionParams, id: int):
     Future[seq[CompletionItem]] {.async} =
+
   with (params.position, params.textDocument):
+
     return ls
       .getNimsuggest(uri)
       .sug(uriToPath(uri),
            uriToStash(uri),
            line + 1,
            ls.getCharacter(uri, line, character))
+      .orCancelled(ls, id)
       .await()
       .map(toCompletionItem);
 
@@ -471,6 +499,7 @@ proc registerHandlers*(connection: StreamConnection) =
     projectFiles: initTable[string,
                             tuple[nimsuggest: Future[Nimsuggest],
                                   openFiles: OrderedSet[string]]](),
+    cancelFutures: initTable[int, Future[void]](),
     openFiles: initTable[string,
                          tuple[projectFile: string,
                                fingerTable: seq[seq[tuple[u16pos, offset: int]]]]]())
@@ -483,7 +512,7 @@ proc registerHandlers*(connection: StreamConnection) =
   connection.register("textDocument/codeAction", partial(codeAction, ls))
   connection.register("workspace/executeCommand", partial(executeCommand, ls))
 
-  connection.registerNotification("$/cancelRequest", cancelRequest)
+  connection.registerNotification("$/cancelRequest", partial(cancelRequest, ls))
   connection.registerNotification("initialized", partial(initialized, ls))
   connection.registerNotification("textDocument/didChange", partial(didChange, ls))
   connection.registerNotification("textDocument/didOpen", partial(didOpen, ls))
