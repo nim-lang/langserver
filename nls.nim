@@ -166,6 +166,7 @@ proc cancelRequest(ls: LanguageServer, params: CancelParams):
     cancelFuture = ls.cancelFutures.getOrDefault id
 
   if not cancelFuture.isNil:
+    debug "Canceled", id = id
     cancelFuture.complete()
 
 proc uriToStash(uri: string): string =
@@ -272,7 +273,7 @@ proc createNimsuggest(ls: LanguageServer, projectFile: string, uri = ""): void =
                 "type": MessageType.Info.int,
                 "message": fmt "Nimsuggest initialized for {projectFile}"
            })
-         asyncCheck ls.checkAllFiles(uri)
+         ls.checkAllFiles(uri).traceAsyncErrors
 
        ls.connection.notify(
          "$/progress",
@@ -325,11 +326,11 @@ proc didChange(ls: LanguageServer, params: DidChangeTextDocumentParams):
        file.writeLine line
      file.close()
 
-     asyncCheck ls.getNimsuggest(uri).mod(path, dirtyfile = filestash)
+     discard await ls.getNimsuggest(uri).mod(path, dirtyfile = filestash)
 
 proc didSave(ls: LanguageServer, params: DidSaveTextDocumentParams):
     Future[void] {.async, gcsafe.} =
-  asyncCheck ls.checkAllFiles(params.textDocument.uri)
+  traceAsyncErrors ls.checkAllFiles(params.textDocument.uri)
 
 proc didClose(ls: LanguageServer, params: DidCloseTextDocumentParams):
     Future[void] {.async, gcsafe.} =
@@ -456,6 +457,7 @@ proc orCancelled[T](fut: Future[T], ls: LanguageServer, id: int): Future[T] {.as
     else:
       raise fut.error
   else:
+    debug "Future cancelled.", id = id
     let ex = newException(CatchableError, fmt "Cancelled {id}")
     fut.fail(ex)
     raise ex
@@ -464,7 +466,6 @@ proc completion(ls: LanguageServer, params: CompletionParams, id: int):
     Future[seq[CompletionItem]] {.async} =
 
   with (params.position, params.textDocument):
-
     return ls
       .getNimsuggest(uri)
       .sug(uriToPath(uri),

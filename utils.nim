@@ -1,12 +1,10 @@
-import unicode, uri, strformat, os, strutils
-
+import unicode, uri, strformat, os, strutils, faststreams/async_backend, chronicles
 
 type
   FingerTable = seq[tuple[u16pos, offset: int]]
 
   UriParseError* = object of Defect
     uri: string
-
 
 proc createUTFMapping*(line: string): FingerTable =
   var pos = 0
@@ -110,3 +108,15 @@ proc pathToUri*(path: string): string =
     else:
       add(result, '%')
       add(result, toHex(ord(c), 2))
+
+proc catchOrQuit*(error: Exception) =
+  if error of CatchableError:
+    trace "Async operation ended with a recoverable error", err = error.msg
+  else:
+    fatal "Fatal exception reached", err = error.msg, stackTrace = getStackTrace()
+    quit 1
+
+proc traceAsyncErrors*(fut: Future) =
+  fut.addCallback do ():
+    if not fut.error.isNil:
+      catchOrQuit fut.error[]

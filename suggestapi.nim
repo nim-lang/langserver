@@ -13,6 +13,7 @@ import osproc,
   asyncdispatch,
   asynctools/asyncpipe,
   ./pipes,
+  ./utils,
   chronicles
 
 # coppied from Nim repo
@@ -52,6 +53,7 @@ type
     process: Process
     port: int
     requestQueue: Deque[Request]
+    processing: bool
     failed*: bool
     errorMessage*: string
 
@@ -203,10 +205,10 @@ proc processQueue(self: Nimsuggest): Future[void] {.async.}=
     logScope:
       command = req.command
     if req.callback.finished:
-      debug "Call already cancelled", command = req.command
+      debug "Call cancelled before executed", command = req.command
     elif self.failed:
       req.callback.complete @[]
-    elif req.callback.error.isNil:
+    else:
       debug "Executing command", command = req.command
       let socket = newAsyncSocket()
       var res: seq[Suggest] = @[]
@@ -214,7 +216,7 @@ proc processQueue(self: Nimsuggest): Future[void] {.async.}=
       await socket.connect("127.0.0.1", Port(self.port))
       await socket.send(req.command & "\c\L")
 
-      var lineStr: string = await socket.recvLine();
+      var lineStr: string = await socket.recvLine()
       while lineStr != "\r\n" and lineStr != "":
         trace "Received line", line = line
         res.add parseSuggest(lineStr)
@@ -223,9 +225,16 @@ proc processQueue(self: Nimsuggest): Future[void] {.async.}=
       if (lineStr == ""):
         self.failed = true
         self.errorMessage = "Server crashed/socket closed."
-        req.callback.fail newException(CatchableError, "Server crashed/socket closed.")
-      debug "Received result(s)", length = res.len
-      req.callback.complete res
+        debug "Server socket closed"
+        if not req.callback.finished:
+          debug "Call cancelled before sending error", command = req.command
+          req.callback.fail newException(CatchableError, "Server crashed/socket closed.")
+      if not req.callback.finished:
+        debug "Sending result(s)", length = res.len
+        req.callback.complete res
+      else:
+        debug "Call was cancelled before sending the result", command = req.command
+  self.processing = false
 
 proc call*(self: Nimsuggest, command: string, file: string, dirtyFile: string,
     line: int, column: int): Future[seq[Suggest]] =
@@ -233,8 +242,9 @@ proc call*(self: Nimsuggest, command: string, file: string, dirtyFile: string,
 
   let commandString = fmt "{command} {file};{dirtyFile}:{line}:{column}"
   self.requestQueue.addLast(Request(command: commandString, callback: result))
-  if self.requestQueue.len == 1:
-    asyncCheck processQueue(self)
+  if not self.processing:
+    self.processing = true
+    traceAsyncErrors processQueue(self)
 
 template createFullCommand(command: untyped) {.dirty.} =
   proc command*(self: Nimsuggest, file: string, dirtyfile = "",
