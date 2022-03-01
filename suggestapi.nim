@@ -45,15 +45,15 @@ type
     tokenLen*: int
     version*: int
 
-  Request* = ref object
+  SuggestCall* = ref object
     command: string
-    callback: Future[seq[Suggest]]
+    future: Future[seq[Suggest]]
 
   Nimsuggest* = ref object
     process*: Process
     port: int
     root: string
-    requestQueue: Deque[Request]
+    requestQueue: Deque[SuggestCall]
     processing: bool
     failed*: bool
     errorMessage*: string
@@ -183,7 +183,7 @@ proc createNimsuggest*(root: string): Future[Nimsuggest] {.async.} =
     input = pipe.asyncPipeInput;
 
   result = Nimsuggest()
-  result.requestQueue = Deque[Request]()
+  result.requestQueue = Deque[SuggestCall]()
   result.root = root
   result.process = startProcess(command = "nimsuggest {root} --autobind".fmt,
                                 workingDir = getCurrentDir(),
@@ -210,10 +210,10 @@ proc processQueue(self: Nimsuggest): Future[void] {.async.}=
     let req = self.requestQueue.popFirst
     logScope:
       command = req.command
-    if req.callback.finished:
+    if req.future.finished:
       debug "Call cancelled before executed", command = req.command
     elif self.failed:
-      req.callback.complete @[]
+      req.future.complete @[]
     else:
       debug "Executing command", command = req.command
       let socket = newAsyncSocket()
@@ -232,14 +232,16 @@ proc processQueue(self: Nimsuggest): Future[void] {.async.}=
         self.failed = true
         self.errorMessage = "Server crashed/socket closed."
         debug "Server socket closed"
-        if not req.callback.finished:
+        if not req.future.finished:
           debug "Call cancelled before sending error", command = req.command
-          req.callback.fail newException(CatchableError, "Server crashed/socket closed.")
-      if not req.callback.finished:
+          req.future.fail newException(CatchableError, "Server crashed/socket closed.")
+      if not req.future.finished:
         debug "Sending result(s)", length = res.len
-        req.callback.complete res
+        req.future.complete res
+        socket.close()
       else:
         debug "Call was cancelled before sending the result", command = req.command
+        socket.close()
   self.processing = false
 
 proc call*(self: Nimsuggest, command: string, file: string, dirtyFile: string,
@@ -247,7 +249,7 @@ proc call*(self: Nimsuggest, command: string, file: string, dirtyFile: string,
   result = Future[seq[Suggest]]()
 
   let commandString = fmt "{command} {file};{dirtyFile}:{line}:{column}"
-  self.requestQueue.addLast(Request(command: commandString, callback: result))
+  self.requestQueue.addLast(SuggestCall(command: commandString, future: result))
   if not self.processing:
     self.processing = true
     traceAsyncErrors processQueue(self)
