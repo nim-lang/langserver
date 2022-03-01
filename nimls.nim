@@ -258,7 +258,9 @@ proc createNimsuggest(ls: LanguageServer, projectFile: string, uri = ""): void =
               "title": fmt "Creating nimsuggest for {fileName}"
             }
        })
-     proc cb (fut: Future[Nimsuggest]) =
+
+
+     nimsuggestFut.addCallback do (fut: Future[Nimsuggest]):
        if fut.read.failed:
          ls.connection.notify(
            "window/showMessage",
@@ -284,11 +286,8 @@ proc createNimsuggest(ls: LanguageServer, projectFile: string, uri = ""): void =
               }
          })
 
-     nimsuggestFut.addCallback(cb)
-
 proc didOpen(ls: LanguageServer, params: DidOpenTextDocumentParams):
     Future[void] {.async, gcsafe.} =
-
    with params.textDocument:
      let
        fileStash = uriToStash(uri)
