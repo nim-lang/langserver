@@ -8,8 +8,12 @@ license       = "MIT"
 bin           = @["nimls"]
 skipDirs      = @["tests"]
 
-requires "nim >= 0.17.0", "asynctools >= 0.1.0", "json_rpc", "jsonschema",
-  "with", "itertools", "chronicles"
+requires "nim >= 0.17.0",
+         "https://github.com/yyoncho/asynctools#non-blocking",
+         "https://github.com/yyoncho/nim-json-rpc#notif-changes",
+         "with",
+         "itertools",
+         "chronicles"
 
 --path:"."
 
