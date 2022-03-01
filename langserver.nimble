@@ -5,7 +5,7 @@ version       = "0.0.1"
 author        = "The core Nim team"
 description   = "Nim language server for IDEs"
 license       = "MIT"
-bin           = @["nls"]
+bin           = @["nimls"]
 skipDirs      = @["tests"]
 
 requires "nim >= 0.17.0", "asynctools >= 0.1.0", "json_rpc", "jsonschema",

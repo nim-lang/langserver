@@ -3,5 +3,5 @@
 nimcache/
 
 *.log
-/nls
 tests/all
+/nimls
