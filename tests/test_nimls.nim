@@ -1,5 +1,5 @@
 import
-  ../nls,
+  ../nimls,
   ../protocol/types,
   ../utils,
   faststreams/async_backend,

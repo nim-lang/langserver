@@ -37,8 +37,3 @@ suite "Nimsuggest tests":
     let res = waitFor nimSuggest.sug(helloWorldFile, helloWorldFile, 2, 0)
     doAssert res.len > 1
     doAssert res[0].forth == "proc ()"
-
-  # test "test Nimsuggest.def":
-  #   let res = waitFor nimSuggest.def(helloWorldFile, helloWorldFile, 4, 0)
-  #   doAssert res.len == 1
-  #   doAssert res[0].doc == "proc (){.noSideEffect, gcsafe, locks: 0.}"

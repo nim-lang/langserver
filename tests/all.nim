@@ -1,3 +1,3 @@
 import
-  test_nls,
+  test_nimls,
   test_suggestapi

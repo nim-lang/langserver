@@ -17,6 +17,7 @@ type
 
   NlsConfig = ref object of RootObj
     nimsuggest: seq[NlsNimsuggestConfig]
+    checkOnSave: Option[bool]
 
   LanguageServer* = ref object
     clientCapabilities*: ClientCapabilities
@@ -239,7 +240,12 @@ proc createNimsuggest(ls: LanguageServer, projectFile: string, uri = ""): void =
     token = fmt "Creating nimsuggest for {projectFile}"
 
   if ls.projectFiles.hasKey(projectFile):
-    ls.projectFiles[projectFile].nimsuggest = nimsuggestFut
+    var nimsuggestData = ls.projectFiles[projectFile]
+
+    nimSuggestData.nimsuggest.addCallback() do (fut: Future[Nimsuggest]) -> void:
+      fut.read.stop()
+
+    nimsuggestData.nimsuggest = nimsuggestFut
   else:
     ls.projectFiles[projectFile] = (nimsuggest: nimsuggestFut,
                                     openFiles: initOrderedSet[string]())
@@ -258,7 +264,6 @@ proc createNimsuggest(ls: LanguageServer, projectFile: string, uri = ""): void =
               "title": fmt "Creating nimsuggest for {fileName}"
             }
        })
-
 
      nimsuggestFut.addCallback do (fut: Future[Nimsuggest]):
        if fut.read.failed:
@@ -329,7 +334,8 @@ proc didChange(ls: LanguageServer, params: DidChangeTextDocumentParams):
 
 proc didSave(ls: LanguageServer, params: DidSaveTextDocumentParams):
     Future[void] {.async, gcsafe.} =
-  traceAsyncErrors ls.checkAllFiles(params.textDocument.uri)
+  if not ls.getWorkspaceConfiguration().await().checkOnSave.get(true):
+    traceAsyncErrors ls.checkAllFiles(params.textDocument.uri)
 
 proc didClose(ls: LanguageServer, params: DidCloseTextDocumentParams):
     Future[void] {.async, gcsafe.} =

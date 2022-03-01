@@ -50,8 +50,9 @@ type
     callback: Future[seq[Suggest]]
 
   Nimsuggest* = ref object
-    process: Process
+    process*: Process
     port: int
+    root: string
     requestQueue: Deque[Request]
     processing: bool
     failed*: bool
@@ -167,7 +168,11 @@ proc logStderr(param: tuple[root: string, process: Process]) {.thread.} =
     discard
 
 proc stop*(self: Nimsuggest) =
-  discard
+  debug "Stopping nim suggest for ", root = self.root
+  try:
+    self.process.terminate()
+  except Exception:
+    discard
 
 proc createNimsuggest*(root: string): Future[Nimsuggest] {.async.} =
   debug "Starting nimsuggest", root = root
@@ -179,6 +184,7 @@ proc createNimsuggest*(root: string): Future[Nimsuggest] {.async.} =
 
   result = Nimsuggest()
   result.requestQueue = Deque[Request]()
+  result.root = root
   result.process = startProcess(command = "nimsuggest {root} --autobind".fmt,
                                 workingDir = getCurrentDir(),
                                 options = {poUsePath, poEvalCommand})
