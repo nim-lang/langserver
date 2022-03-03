@@ -2,7 +2,7 @@ import json
 import options
 
 type
-  OptionalSeq[T] = Option[seq[T]]
+  OptionalSeq*[T] = Option[seq[T]]
   OptionalNode = Option[JsonNode]
 
   CancelParams* = ref object of RootObj
@@ -399,7 +399,7 @@ type
 
   ExecuteCommandParams* = ref object of RootObj
     command*: string
-    arguments*: OptionalNode
+    arguments*: seq[JsonNode]
 
   ExecuteCommandRegistrationOptions* = ref object of RootObj
     commands*: OptionalSeq[string]

@@ -16,7 +16,7 @@ type
     regexps: seq[string]
 
   NlsConfig = ref object of RootObj
-    nimsuggest: seq[NlsNimsuggestConfig]
+    rootConfig: OptionalSeq[NlsNimsuggestConfig]
     checkOnSave: Option[bool]
 
   LanguageServer* = ref object
@@ -104,7 +104,7 @@ proc getProjectFile(fileUri: string, ls: LanguageServer): Future[string] {.async
   let
     rootPath = AbsoluteDir(ls.initializeParams.rootUri.uriToPath)
     pathRelativeToRoot = cstring(AbsoluteFile(fileUri).relativeTo(rootPath))
-    cfgs = ls.getWorkspaceConfiguration.await.nimsuggest
+    cfgs = ls.getWorkspaceConfiguration.await.rootConfig.get(@[])
 
   for cfg in cfgs:
     for regex in cfg.regexps:
@@ -155,6 +155,9 @@ proc initialized(ls: LanguageServer, _: JsonNode):
      ls.workspaceConfiguration =
        ls.connection.call("workspace/configuration",
                           %configurationParams)
+     ls.workspaceConfiguration.addCallback() do (futConfiguration: Future[Response]):
+       if futConfiguration.error.isNil:
+         debug "Received the following configuration", configuration = futConfiguration.read()
   else:
     debug "Client does not support workspace/configuration"
     ls.workspaceConfiguration.complete(newJArray())
@@ -429,19 +432,19 @@ proc references(ls: LanguageServer, params: ReferenceParams):
 proc codeAction(ls: LanguageServer, params: CodeActionParams):
     Future[seq[CodeAction]] {.async} =
   return seq[CodeAction] %* [{
-    "title": "Restart server nimsuggest",
+    "title": "Restart nimsuggest",
     "kind": "source",
     "command": {
-      "title": "Restart server nimsuggest",
+      "title": "Restart nimsuggest",
       "command": RESTART_COMMAND,
-      "arguments": await getProjectFile(params.textDocument.uri, ls)
+      "arguments": @[await getProjectFile(params.textDocument.uri, ls)]
     }
   }]
 
 proc executeCommand(ls: LanguageServer, params: ExecuteCommandParams):
     Future[JsonNode] {.async} =
   with params:
-    let projectFile = arguments.get.getStr
+    let projectFile = arguments[0].getStr
     debug "Restarting nimsuggest", projectFile = projectFile
     ls.createNimsuggest(projectFile, projectFile.pathToUri)
     result = newJNull()

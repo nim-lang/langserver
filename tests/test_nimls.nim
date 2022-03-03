@@ -91,7 +91,7 @@ suite "Suggest API selection":
                             partial(testHandler[ProgressParams, JsonNode],
                                     (fut: suggestInit, res: newJNull())))
   let workspaceConfiguration = %* [{
-      "nimsuggest": [{
+      "rootConfig": [{
         "root": "missingRoot.nim",
         "regexps": ["willCrash\\.nim"]
       }, {
@@ -189,11 +189,11 @@ suite "Suggest API selection":
 
     let expected = seq[CodeAction] %* [{
       "command": {
-        "title": "Restart server nimsuggest",
+        "title": "Restart nimsuggest",
         "command": "nimls.restart",
-        "arguments": uriToPath fixtureUri "projects/hw/missingRoot.nim"
+        "arguments": @[uriToPath fixtureUri "projects/hw/missingRoot.nim"]
       },
-      "title": "Restart server nimsuggest",
+      "title": "Restart nimsuggest",
       "kind": "source"
     }]
 

@@ -224,7 +224,7 @@ proc processQueue(self: Nimsuggest): Future[void] {.async.}=
 
       var lineStr: string = await socket.recvLine()
       while lineStr != "\r\n" and lineStr != "":
-        trace "Received line", line = line
+        trace "Received line", line = lineStr
         res.add parseSuggest(lineStr)
         lineStr = await socket.recvLine();
 
