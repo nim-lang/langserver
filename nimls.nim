@@ -466,7 +466,7 @@ proc orCancelled[T](fut: Future[T], ls: LanguageServer, id: int): Future[T] {.as
       raise fut.error
   else:
     debug "Future cancelled.", id = id
-    let ex = newException(CatchableError, fmt "Cancelled {id}")
+    let ex = newException(Cancelled, fmt "Cancelled {id}")
     fut.fail(ex)
     raise ex
 
