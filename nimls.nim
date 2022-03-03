@@ -427,13 +427,16 @@ proc references(ls: LanguageServer, params: ReferenceParams):
       .map(toLocation);
 
 proc codeAction(ls: LanguageServer, params: CodeActionParams):
-    Future[seq[Command]] {.async} =
-  return seq[Command] %* [{
-      "title": "Restart server.",
+    Future[seq[CodeAction]] {.async} =
+  return seq[CodeAction] %* [{
+    "title": "Restart server nimsuggest",
+    "kind": "source",
+    "command": {
+      "title": "Restart server nimsuggest",
       "command": RESTART_COMMAND,
       "arguments": await getProjectFile(params.textDocument.uri, ls)
     }
-  ]
+  }]
 
 proc executeCommand(ls: LanguageServer, params: ExecuteCommandParams):
     Future[JsonNode] {.async} =

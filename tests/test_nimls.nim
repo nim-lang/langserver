@@ -185,13 +185,17 @@ suite "Suggest API selection":
           }
         })
       .waitFor
-      .to(seq[Command])
+      .to(seq[CodeAction])
 
-    let expected = seq[Command] %* [{
-        "title": "Restart server.",
+    let expected = seq[CodeAction] %* [{
+      "command": {
+        "title": "Restart server nimsuggest",
         "command": "nimls.restart",
         "arguments": uriToPath fixtureUri "projects/hw/missingRoot.nim"
-     }]
+      },
+      "title": "Restart server nimsuggest",
+      "kind": "source"
+    }]
 
     doAssert %actual == %expected
 
@@ -209,8 +213,8 @@ suite "Suggest API selection":
           }
         },
         "severity": 1,
-        "code":"nimsuggest chk",
-        "source":"nim",
+        "code": "nimsuggest chk",
+        "source": "nim",
         "message": "type mismatch: got 'string' for '\"\"' but expected 'int'",
         "relatedInformation":nil
       }]

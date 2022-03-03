@@ -37,6 +37,11 @@ type
     command*: string
     arguments*: OptionalNode
 
+  CodeAction* = ref object of RootObj
+    command*: Command
+    title*: string
+    kind*: string
+
   TextEdit* = ref object of RootObj
     `range`*: Range
     newText*: string
