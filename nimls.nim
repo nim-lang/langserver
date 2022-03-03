@@ -239,7 +239,6 @@ proc progressSupported(ls: LanguageServer): bool =
 proc createNimsuggest(ls: LanguageServer, projectFile: string, uri = ""): void =
   let
     nimsuggestFut = createNimsuggest(projectFile)
-    fileName = projectFile.AbsoluteFile().extractFileName()
     token = fmt "Creating nimsuggest for {projectFile}"
 
   if ls.projectFiles.hasKey(projectFile):
@@ -264,7 +263,7 @@ proc createNimsuggest(ls: LanguageServer, projectFile: string, uri = ""): void =
             "token": token,
             "value": {
               "kind": "begin",
-              "title": fmt "Creating nimsuggest for {fileName}"
+              "title": fmt "Creating nimsuggest for {projectFile}"
             }
        })
 
