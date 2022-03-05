@@ -164,7 +164,6 @@ proc initialized(ls: LanguageServer, _: JsonNode):
 
 proc cancelRequest(ls: LanguageServer, params: CancelParams):
     Future[void] {.async} =
-  debug "Cancelling", params = %params
   let
     id = params.id.getInt
     cancelFuture = ls.cancelFutures.getOrDefault id
@@ -474,7 +473,6 @@ proc orCancelled[T](fut: Future[T], ls: LanguageServer, id: int): Future[T] {.as
 
 proc completion(ls: LanguageServer, params: CompletionParams, id: int):
     Future[seq[CompletionItem]] {.async} =
-
   with (params.position, params.textDocument):
     return ls
       .getNimsuggest(uri)
