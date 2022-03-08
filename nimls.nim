@@ -162,6 +162,21 @@ proc initialized(ls: LanguageServer, _: JsonNode):
     debug "Client does not support workspace/configuration"
     ls.workspaceConfiguration.complete(newJArray())
 
+proc orCancelled[T](fut: Future[T], ls: LanguageServer, id: int): Future[T] {.async.} =
+  ls.cancelFutures[id] = newFuture[void]()
+  await fut or ls.cancelFutures[id]
+  ls.cancelFutures.del id
+  if fut.finished:
+    if fut.error.isNil:
+      return fut.read
+    else:
+      raise fut.error
+  else:
+    debug "Future cancelled.", id = id
+    let ex = newException(Cancelled, fmt "Cancelled {id}")
+    fut.fail(ex)
+    raise ex
+
 proc cancelRequest(ls: LanguageServer, params: CancelParams):
     Future[void] {.async} =
   let
@@ -411,6 +426,7 @@ proc definition(ls: LanguageServer, params: TextDocumentPositionParams, id: int)
            uriToStash(uri),
            line + 1,
            ls.getCharacter(uri, line, character))
+      .orCancelled(ls, id)
       .await()
       .map(toLocation);
 
@@ -455,21 +471,6 @@ proc toCompletionItem(suggest: Suggest): CompletionItem =
       "documentation": doc,
       "detail": nimSymDetails(suggest)
     }
-
-proc orCancelled[T](fut: Future[T], ls: LanguageServer, id: int): Future[T] {.async.} =
-  ls.cancelFutures[id] = newFuture[void]()
-  await fut or ls.cancelFutures[id]
-  ls.cancelFutures.del id
-  if fut.finished:
-    if fut.error.isNil:
-      return fut.read
-    else:
-      raise fut.error
-  else:
-    debug "Future cancelled.", id = id
-    let ex = newException(Cancelled, fmt "Cancelled {id}")
-    fut.fail(ex)
-    raise ex
 
 proc completion(ls: LanguageServer, params: CompletionParams, id: int):
     Future[seq[CompletionItem]] {.async} =
