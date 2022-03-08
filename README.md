@@ -71,7 +71,7 @@ You can install `nimls` using the instuctions for your text editor below:
 
 ### VSCode
 
-Install the `vscode-nim` extension from [here](https://github.com/saem/vscode-nim) and make sure `nimls` is on the path.
+Install the `vscode-nim` extension from [here](https://github.com/saem/vscode-nim)
 
 ### Emacs
 

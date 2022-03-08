@@ -168,7 +168,7 @@ proc logStderr(param: tuple[root: string, process: Process]) {.thread.} =
     discard
 
 proc stop*(self: Nimsuggest) =
-  debug "Stopping nim suggest for ", root = self.root
+  debug "Stopping nimsuggest for ", root = self.root
   try:
     self.process.terminate()
   except Exception:
