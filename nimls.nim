@@ -375,15 +375,16 @@ proc toMarkedStrings(suggest: Suggest): seq[MarkedStringOption] =
        "value": suggest.doc
     }
 
-proc hover(ls: LanguageServer, params: HoverParams):
+proc hover(ls: LanguageServer, params: HoverParams, id: int):
     Future[Option[Hover]] {.async} =
   with (params.position, params.textDocument):
-    let
-      suggestions = await ls.getNimsuggest(uri).def(
-        uriToPath(uri),
-        uriToStash(uri),
-        line + 1,
-        ls.getCharacter(uri, line, character))
+    let suggestions = ls.getNimsuggest(uri)
+      .def(uriToPath(uri),
+           uriToStash(uri),
+           line + 1,
+           ls.getCharacter(uri, line, character))
+      .orCancelled(ls, id)
+      .await
     if suggestions.len == 0:
       return none[Hover]();
     else:
