@@ -274,7 +274,7 @@ suite "LSP features":
   test "Sending hover.":
     let
       hoverParams = positionParams(fixtureUri("projects/hw/hw.nim"), 1, 0)
-      hover = to(waitFor client.call("textDocument/hover", %hoverParams), Hover)
+      hover = client.call("textDocument/hover", %hoverParams).waitFor.to(Hover)
       expected = Hover %* {
         "contents": [{
             "language": "nim",

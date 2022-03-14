@@ -25,7 +25,7 @@ type
     connection: StreamConnection
     projectFiles: Table[string, tuple[nimsuggest: Future[Nimsuggest],
                                       openFiles: OrderedSet[string]]]
-    openFiles: Table[string, tuple[projectFile: string,
+    openFiles: Table[string, tuple[projectFile: Future[string],
                                    fingerTable: seq[seq[tuple[u16pos, offset: int]]]]]
     cancelFutures: Table[int, Future[void]]
     workspaceConfiguration: Future[JsonNode]
@@ -191,7 +191,7 @@ proc uriToStash(uri: string): string =
  STORAGE / (hash(uri).toHex & ".nim")
 
 template getNimsuggest(ls: LanguageServer, uri: string): Nimsuggest =
-  ls.projectFiles[ls.openFiles[uri].projectFile].nimsuggest.await
+  ls.projectFiles[ls.openFiles[uri].projectFile.await].nimsuggest.await
 
 proc toDiagnostic(suggest: Suggest): Diagnostic =
   with suggest:
@@ -309,27 +309,28 @@ proc createNimsuggest(ls: LanguageServer, projectFile: string, uri = ""): void =
 
 proc didOpen(ls: LanguageServer, params: DidOpenTextDocumentParams):
     Future[void] {.async, gcsafe.} =
-   with params.textDocument:
-     let
-       fileStash = uriToStash(uri)
-       file = open(fileStash, fmWrite)
-       projectFile = await getProjectFile(uriToPath(uri), ls)
+  with params.textDocument:
+    debug "New document opened for URI:", uri = uri
+    let
+      fileStash = uriToStash(uri)
+      file = open(fileStash, fmWrite)
+      projectFileFuture = getProjectFile(uriToPath(uri), ls)
 
-     debug "New document opened for URI:", uri = uri, fileStash = fileStash
+    ls.openFiles[uri] = (
+      projectFile: projectFileFuture,
+      fingerTable: @[])
 
-     ls.openFiles[uri] = (
-       projectFile: projectFile,
-       fingerTable: @[])
+    let projectFile = await projectFileFuture
+    debug "Document associated with the following root", uri = uri, projectFile = projectFile
+    if not ls.projectFiles.hasKey(projectFile):
+      ls.createNimsuggest(projectFile, uri = uri)
 
-     if not ls.projectFiles.hasKey(projectFile):
-       ls.createNimsuggest(projectFile, uri = uri)
+    ls.projectFiles[projectFile].openFiles.incl(uri)
 
-     ls.projectFiles[projectFile].openFiles.incl(uri)
-
-     for line in text.splitLines:
-       ls.openFiles[uri].fingerTable.add line.createUTFMapping()
-       file.writeLine line
-     file.close()
+    for line in text.splitLines:
+      ls.openFiles[uri].fingerTable.add line.createUTFMapping()
+      file.writeLine line
+    file.close()
 
 proc didChange(ls: LanguageServer, params: DidChangeTextDocumentParams):
     Future[void] {.async, gcsafe.} =
@@ -496,12 +497,12 @@ proc toSymbolInformation(suggest: Suggest): SymbolInformation =
 
 proc documentSymbols(ls: LanguageServer, params: DocumentSymbolParams):
     Future[seq[SymbolInformation]] {.async} =
-  with (params.textDocument):
-    return ls
-      .getNimsuggest(uri)
-      .outline(uriToPath(uri), uriToStash(uri))
-      .await()
-      .map(toSymbolInformation);
+  let uri = params.textDocument.uri
+  return ls
+    .getNimsuggest(uri)
+    .outline(uriToPath(uri), uriToStash(uri))
+    .await()
+    .map(toSymbolInformation);
 
 proc registerHandlers*(connection: StreamConnection) =
   let ls = LanguageServer(
@@ -512,7 +513,7 @@ proc registerHandlers*(connection: StreamConnection) =
                                   openFiles: OrderedSet[string]]](),
     cancelFutures: initTable[int, Future[void]](),
     openFiles: initTable[string,
-                         tuple[projectFile: string,
+                         tuple[projectFile: Future[string],
                                fingerTable: seq[seq[tuple[u16pos, offset: int]]]]]())
   connection.register("initialize", partial(initialize, ls))
   connection.register("textDocument/completion", partial(completion, ls))
