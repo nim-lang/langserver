@@ -347,7 +347,7 @@ proc didChange(ls: LanguageServer, params: DidChangeTextDocumentParams):
        file.writeLine line
      file.close()
 
-     discard await ls.getNimsuggest(uri).mod(path, dirtyfile = filestash)
+     ls.getNimsuggest(uri).mod(path, dirtyfile = filestash).traceAsyncErrors
 
 proc didSave(ls: LanguageServer, params: DidSaveTextDocumentParams):
     Future[void] {.async, gcsafe.} =
@@ -496,12 +496,13 @@ proc toSymbolInformation(suggest: Suggest): SymbolInformation =
       "name": suggest.name
     }
 
-proc documentSymbols(ls: LanguageServer, params: DocumentSymbolParams):
+proc documentSymbols(ls: LanguageServer, params: DocumentSymbolParams, id: int):
     Future[seq[SymbolInformation]] {.async} =
   let uri = params.textDocument.uri
   return ls
     .getNimsuggest(uri)
     .outline(uriToPath(uri), uriToStash(uri))
+    .orCancelled(ls, id)
     .await()
     .map(toSymbolInformation);
 
