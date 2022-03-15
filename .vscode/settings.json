@@ -1,0 +1,10 @@
+{
+    "nim.enableLsp": true,
+    "nim.rootConfig": [{
+            "root": "nimls.nim",
+            "regexps": [
+                ".*\\.nim"
+            ]
+        }
+    ]
+}
