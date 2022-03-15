@@ -220,7 +220,7 @@ proc toDiagnostic(suggest: Suggest): Diagnostic =
     return node.to(Diagnostic)
 
 proc checkAllFiles(ls: LanguageServer, uri: string): Future[void] {.async} =
-  debug "Checking the following", uri = uri
+  debug "Running diagnostics", uri = uri
   let
     diagnostics = ls.getNimsuggest(uri)
       .chk(uriToPath(uri), uriToStash(uri))
