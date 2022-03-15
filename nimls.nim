@@ -155,7 +155,7 @@ proc initialized(ls: LanguageServer, _: JsonNode):
      ls.workspaceConfiguration =
        ls.connection.call("workspace/configuration",
                           %configurationParams)
-     ls.workspaceConfiguration.addCallback() do (futConfiguration: Future[Response]):
+     ls.workspaceConfiguration.addCallback() do (futConfiguration: Future[JsonNode]):
        if futConfiguration.error.isNil:
          debug "Received the following configuration", configuration = futConfiguration.read()
   else:
