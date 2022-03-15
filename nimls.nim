@@ -351,7 +351,8 @@ proc didChange(ls: LanguageServer, params: DidChangeTextDocumentParams):
 
 proc didSave(ls: LanguageServer, params: DidSaveTextDocumentParams):
     Future[void] {.async, gcsafe.} =
-  if not ls.getWorkspaceConfiguration().await().checkOnSave.get(true):
+  if ls.getWorkspaceConfiguration().await().checkOnSave.get(true):
+    debug "Checking files", uri = params.textDocument.uri
     traceAsyncErrors ls.checkAllFiles(params.textDocument.uri)
 
 proc didClose(ls: LanguageServer, params: DidCloseTextDocumentParams):
