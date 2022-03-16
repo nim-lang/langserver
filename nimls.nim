@@ -155,7 +155,7 @@ proc initialized(ls: LanguageServer, _: JsonNode):
      ls.workspaceConfiguration =
        ls.connection.call("workspace/configuration",
                           %configurationParams)
-     ls.workspaceConfiguration.addCallback() do (futConfiguration: Future[Response]):
+     ls.workspaceConfiguration.addCallback() do (futConfiguration: Future[JsonNode]):
        if futConfiguration.error.isNil:
          debug "Received the following configuration", configuration = futConfiguration.read()
   else:
@@ -220,7 +220,7 @@ proc toDiagnostic(suggest: Suggest): Diagnostic =
     return node.to(Diagnostic)
 
 proc checkAllFiles(ls: LanguageServer, uri: string): Future[void] {.async} =
-  debug "Checking the following", uri = uri
+  debug "Running diagnostics", uri = uri
   let
     diagnostics = ls.getNimsuggest(uri)
       .chk(uriToPath(uri), uriToStash(uri))
@@ -347,11 +347,12 @@ proc didChange(ls: LanguageServer, params: DidChangeTextDocumentParams):
        file.writeLine line
      file.close()
 
-     discard await ls.getNimsuggest(uri).mod(path, dirtyfile = filestash)
+     ls.getNimsuggest(uri).mod(path, dirtyfile = filestash).traceAsyncErrors
 
 proc didSave(ls: LanguageServer, params: DidSaveTextDocumentParams):
     Future[void] {.async, gcsafe.} =
-  if not ls.getWorkspaceConfiguration().await().checkOnSave.get(true):
+  if ls.getWorkspaceConfiguration().await().checkOnSave.get(true):
+    debug "Checking files", uri = params.textDocument.uri
     traceAsyncErrors ls.checkAllFiles(params.textDocument.uri)
 
 proc didClose(ls: LanguageServer, params: DidCloseTextDocumentParams):
@@ -495,12 +496,13 @@ proc toSymbolInformation(suggest: Suggest): SymbolInformation =
       "name": suggest.name
     }
 
-proc documentSymbols(ls: LanguageServer, params: DocumentSymbolParams):
+proc documentSymbols(ls: LanguageServer, params: DocumentSymbolParams, id: int):
     Future[seq[SymbolInformation]] {.async} =
   let uri = params.textDocument.uri
   return ls
     .getNimsuggest(uri)
     .outline(uriToPath(uri), uriToStash(uri))
+    .orCancelled(ls, id)
     .await()
     .map(toSymbolInformation);
 
