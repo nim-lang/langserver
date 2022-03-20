@@ -91,15 +91,15 @@ suite "Suggest API selection":
                             partial(testHandler[ProgressParams, JsonNode],
                                     (fut: suggestInit, res: newJNull())))
   let workspaceConfiguration = %* [{
-      "rootConfig": [{
-        "root": "missingRoot.nim",
-        "regexps": ["willCrash\\.nim"]
+      "projectMapping": [{
+        "projectFile": "missingRoot.nim",
+        "fileRegex": "willCrash\\.nim"
       }, {
-        "root": "hw.nim",
-        "regexps": ["hw\\.nim"]
+        "projectFile": "hw.nim",
+        "fileRegex": "hw\\.nim"
       }, {
-        "root": "root.nim",
-        "regexps": ["root\\.nim", "useRoot\\.nim"]
+        "projectFile": "root.nim",
+        "fileRegex": "useRoot\\.nim"
       }]
   }]
 

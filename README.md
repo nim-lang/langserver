@@ -20,27 +20,22 @@ nimble build
 
 ## Configuration Options
 
-- `nim.rootConfig` - configure how `nimsuggest` should be started. Below, you
-  can see a sample configuration for VS Code. We don't want `nimlangserver` to
-  start `nimsuggest` for each file and this configuration specifies a number of
-  `root`/`regexps` pairs, such that when one of the regexp in the list matches
-  the current file then `nimlangserver` will reuse the `nimsuggest` instance
-  started for the given `root` module.
+- `nim.projectMapping` - configure how `nimsuggest` should be started. Here it is
+  sample configuration for `VScode`. We don't want `nimlangserver` to start `nimsuggest`
+  for each file and this configuration will allow configuring pair
+  `projectPath`/`fileRegex` so when one of the regexp in the list matches current file
+  then `nimls` will use `root` to start `nimsuggest`.
 
 ``` json
 {
-    "nim.rootConfig": [{
+    "nim.projectMapping": [{
         // open files under tests using one nimsuggest instance started with root = test/all.nim
-        "root": "tests/all.nim",
-        "regexps": [
-            "tests/.*\\.nim"
-        ]
+        "projectPath": "tests/all.nim",
+        "fileRegex": "tests/.*\\.nim"
     }, {
         // everything else - use main.nim as root.
-        "root": "main.nim",
-        "regexps": [
-            ".*\\.nim"
-        ]
+        "projectPath": "main.nim",
+        "fileRegex": ".*\\.nim"
     }]
 }
 ```

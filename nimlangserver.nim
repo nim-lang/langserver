@@ -12,11 +12,11 @@ discard existsOrCreateDir(STORAGE)
 
 type
   NlsNimsuggestConfig = ref object of RootObj
-    root: string
-    regexps: seq[string]
+    projectFile: string
+    fileRegex: string
 
   NlsConfig = ref object of RootObj
-    rootConfig: OptionalSeq[NlsNimsuggestConfig]
+    projectMapping: OptionalSeq[NlsNimsuggestConfig]
     checkOnSave: Option[bool]
 
   LanguageServer* = ref object
@@ -99,19 +99,16 @@ proc getWorkspaceConfiguration(ls: LanguageServer): Future[NlsConfig] {.async} =
     result = NlsConfig()
 
 proc getProjectFile(fileUri: string, ls: LanguageServer): Future[string] {.async} =
-  logScope:
-    uri = fileUri
   let
     rootPath = AbsoluteDir(ls.initializeParams.rootUri.uriToPath)
     pathRelativeToRoot = cstring(AbsoluteFile(fileUri).relativeTo(rootPath))
-    cfgs = ls.getWorkspaceConfiguration.await.rootConfig.get(@[])
+    mappings = ls.getWorkspaceConfiguration.await.projectMapping.get(@[])
 
-  for cfg in cfgs:
-    for regex in cfg.regexps:
-      if find(pathRelativeToRoot, re(regex), 0, pathRelativeToRoot.len) != -1:
-        result = string(rootPath) / cfg.root
-        trace "getProjectFile", project = result
-        return result
+  for mapping in mappings:
+    if find(pathRelativeToRoot, re(mapping.fileRegex), 0, pathRelativeToRoot.len) != -1:
+      result = string(rootPath) / mapping.projectFile
+      trace "getProjectFile", project = result, uri = fileUri
+      return result
 
   result = getProjectFileAutoGuess(fileUri)
   trace "getProjectFile", project = result
@@ -321,7 +318,7 @@ proc didOpen(ls: LanguageServer, params: DidOpenTextDocumentParams):
       fingerTable: @[])
 
     let projectFile = await projectFileFuture
-    debug "Document associated with the following root", uri = uri, projectFile = projectFile
+    debug "Document associated with the following projectFile", uri = uri, projectFile = projectFile
     if not ls.projectFiles.hasKey(projectFile):
       ls.createNimsuggest(projectFile, uri = uri)
 

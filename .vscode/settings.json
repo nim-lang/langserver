@@ -1,10 +1,8 @@
 {
-    "nim.enableLsp": true,
-    "nim.rootConfig": [{
-            "root": "nimlangserver.nim",
-            "regexps": [
-                ".*\\.nim"
-            ]
+    "nim.provider": "lsp",
+    "nim.projectMapping": [{
+            "projectFile": "nimlangserver.nim",
+            "fileRegex": ".*\\.nim"
         }
     ]
 }
