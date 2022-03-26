@@ -1,6 +1,6 @@
 # Nim Language Server
 
-Nim Language Server, or `nimls`, is a language server for Nim.
+Nim Language Server, or `nimlangserver`, is a language server for Nim.
 
 ## Installation
 
@@ -9,7 +9,7 @@ Nim Language Server, or `nimls`, is a language server for Nim.
 You can install the latest release into `$HOME/.nimble/bin` using e.g.:
 
 ```sh
-nimble install https://github.com/nim-lang/langserver
+nimble install nimlangserver
 ```
 
 ### From Source
@@ -18,13 +18,14 @@ nimble install https://github.com/nim-lang/langserver
 nimble build
 ```
 
-### Configuration Options
+## Configuration Options
 
-- `nim.rootConfig` - configure how `nimsuggest` should be started. Here it is
-  sample configuration for `VScode`. We don't want `nimls` to start `nimsuggest`
-  for each file and this configuration will allow configuring pair
-  `root`/`regexps` so when one of the regexp in the list matches current file
-  then `nimls` will use `root` to start `nimsuggest`.
+- `nim.rootConfig` - configure how `nimsuggest` should be started. Below, you
+  can see a sample configuration for VS Code. We don't want `nimlangserver` to
+  start `nimsuggest` for each file and this configuration specifies a number of
+  `root`/`regexps` pairs, such that when one of the regexp in the list matches
+  the current file then `nimlangserver` will reuse the `nimsuggest` instance
+  started for the given `root` module.
 
 ``` json
 {
@@ -46,14 +47,15 @@ nimble build
 
 ## Features
 
-`nimls` the following LSP features are supported:
+`nimlangserver` supports the following LSP features:
+
 - Completions
 - Hover
 - Goto definition
 - Document symbols
 - Find references
 
-You can install `nimls` using the instuctions for your text editor below:
+You can install `nimlangserver` using the instuctions for your text editor below:
 
 ### VSCode
 
@@ -70,10 +72,14 @@ Install the `vscode-nim` extension from [here](https://github.com/saem/vscode-ni
 
 ## Related Projects
 
-- [nimlsp](https://github.com/PMunch/nimlsp) Similarly to `nimls` it uses
-  `nimsuggest` but in `nimls` case `nimsuggest` is started as external process
-  and as a result `nimsuggest` crashes don't result in `nimls` crash.
+- [nimlsp](https://github.com/PMunch/nimlsp)
 
+   Both `nimlangserver` and `nimlsp` are based on `nimsuggest`, but the main
+   difference is that `nimlsp` has a single specific version of `nimsuggest`
+   embedded in the server executable, while `nimlangserver` launches `nimsuggest`
+   as an external process. This allows `nimlangserver` to handle any `nimsuggest`
+   crashes more gracefully and enables it to work with multiple versions of Nim
+   concurrently.
 
 ## License
 

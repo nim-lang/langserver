@@ -1,14 +1,14 @@
 mode = ScriptMode.Verbose
 
-packageName   = "langserver"
-version       = "0.0.1"
+packageName   = "nimlangserver"
+version       = "0.1.0"
 author        = "The core Nim team"
 description   = "Nim language server for IDEs"
 license       = "MIT"
-bin           = @["nimls"]
+bin           = @["nimlangserver"]
 skipDirs      = @["tests"]
 
-requires "nim >= 0.17.0",
+requires "nim >= 1.0.0",
          "https://github.com/yyoncho/asynctools#non-blocking",
          "https://github.com/yyoncho/nim-json-rpc#notif-changes",
          "with",

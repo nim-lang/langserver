@@ -5,8 +5,8 @@ import macros, strformat, faststreams/async_backend, itertools,
   ./utils, ./pipes, chronicles, std/re, uri, "$nim/compiler/pathutils"
 
 const
-  STORAGE = getTempDir() / "nls"
-  RESTART_COMMAND = "nimls.restart"
+  STORAGE = getTempDir() / "nimlangserver"
+  RESTART_COMMAND = "nimlangserver.restart"
 
 discard existsOrCreateDir(STORAGE)
 

@@ -1,3 +1,3 @@
 import
-  test_nimls,
+  test_nimlangserver,
   test_suggestapi

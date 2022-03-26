@@ -4,4 +4,4 @@ nimcache/
 
 *.log
 tests/all
-/nimls
+/nimlangserver

@@ -1,5 +1,5 @@
 import
-  ../nimls,
+  ../nimlangserver,
   ../protocol/types,
   ../utils,
   faststreams/async_backend,
@@ -190,7 +190,7 @@ suite "Suggest API selection":
     let expected = seq[CodeAction] %* [{
       "command": {
         "title": "Restart nimsuggest",
-        "command": "nimls.restart",
+        "command": "nimlangserver.restart",
         "arguments": @[uriToPath fixtureUri "projects/hw/missingRoot.nim"]
       },
       "title": "Restart nimsuggest",
