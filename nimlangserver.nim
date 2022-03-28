@@ -16,8 +16,9 @@ type
     fileRegex: string
 
   NlsConfig = ref object of RootObj
-    projectMapping: OptionalSeq[NlsNimsuggestConfig]
-    checkOnSave: Option[bool]
+    projectMapping*: OptionalSeq[NlsNimsuggestConfig]
+    checkOnSave*: Option[bool]
+    nimsuggestPath*: Option[string]
 
   LanguageServer* = ref object
     clientCapabilities*: ClientCapabilities
@@ -249,7 +250,8 @@ proc progressSupported(ls: LanguageServer): bool =
 
 proc createNimsuggest(ls: LanguageServer, projectFile: string, uri = ""): void =
   let
-    nimsuggestFut = createNimsuggest(projectFile)
+    nimsuggestPath = ls.getWorkspaceConfiguration().waitFor().nimsuggestPath.get("nimsuggest")
+    nimsuggestFut = createNimsuggest(projectFile, nimsuggestPath)
     token = fmt "Creating nimsuggest for {projectFile}"
 
   if ls.projectFiles.hasKey(projectFile):

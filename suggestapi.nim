@@ -174,7 +174,7 @@ proc stop*(self: Nimsuggest) =
   except Exception:
     discard
 
-proc createNimsuggest*(root: string): Future[Nimsuggest] {.async.} =
+proc createNimsuggest*(root: string, nimsuggestPath = "nimsuggest"): Future[Nimsuggest] {.async.} =
   debug "Starting nimsuggest", root = root
   var
     pipe = createPipe(register = true, nonBlockingWrite = false)
@@ -185,7 +185,7 @@ proc createNimsuggest*(root: string): Future[Nimsuggest] {.async.} =
   result = Nimsuggest()
   result.requestQueue = Deque[SuggestCall]()
   result.root = root
-  result.process = startProcess(command = "nimsuggest {root} --autobind".fmt,
+  result.process = startProcess(command = "{nimsuggestPath} {root} --autobind".fmt,
                                 workingDir = getCurrentDir(),
                                 options = {poUsePath, poEvalCommand})
 
