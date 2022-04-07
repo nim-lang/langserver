@@ -19,6 +19,7 @@ type
     projectMapping*: OptionalSeq[NlsNimsuggestConfig]
     checkOnSave*: Option[bool]
     nimsuggestPath*: Option[string]
+    timeout*: Option[int]
 
   LanguageServer* = ref object
     clientCapabilities*: ClientCapabilities
@@ -114,6 +115,25 @@ proc getProjectFile(fileUri: string, ls: LanguageServer): Future[string] {.async
   result = getProjectFileAutoGuess(fileUri)
   trace "getProjectFile", project = result
 
+proc showMessage(ls: LanguageServer, message: string, typ: MessageType) =
+  ls.connection.notify(
+    "window/showMessage",
+    %* {
+         "type": typ.int,
+         "message": message
+    })
+
+# Fixes callback clobbering in core implementation
+proc `or`*[T, Y](fut1: Future[T], fut2: Future[Y]): Future[void] =
+  var retFuture = newFuture[void]("asyncdispatch.`or`")
+  proc cb[X](fut: Future[X]) =
+    if not retFuture.finished:
+      if fut.failed: retFuture.fail(fut.error)
+      else: retFuture.complete()
+  fut1.addCallback(cb[T])
+  fut2.addCallback(cb[Y])
+  return retFuture
+
 proc getCharacter(ls: LanguageServer, uri: string, line: int, character: int): int =
   return ls.openFiles[uri].fingerTable[line].utf16to8(character)
 
@@ -173,6 +193,7 @@ proc orCancelled[T](fut: Future[T], ls: LanguageServer, id: int): Future[T] {.as
     debug "Future cancelled.", id = id
     let ex = newException(Cancelled, fmt "Cancelled {id}")
     fut.fail(ex)
+    debug "Future cancelled, throwing...", id = id
     raise ex
 
 proc cancelRequest(ls: LanguageServer, params: CancelParams):
@@ -248,10 +269,17 @@ proc checkAllFiles(ls: LanguageServer, uri: string): Future[void] {.async} =
 proc progressSupported(ls: LanguageServer): bool =
   result = ls.initializeParams.capabilities.window.get(WindowCapabilities()).workDoneProgress.get(false)
 
-proc createNimsuggest(ls: LanguageServer, projectFile: string, uri = ""): void =
+proc createOrRestartNimsuggest(ls: LanguageServer, projectFile: string, uri = ""): void =
   let
-    nimsuggestPath = ls.getWorkspaceConfiguration().waitFor().nimsuggestPath.get("nimsuggest")
-    nimsuggestFut = createNimsuggest(projectFile, nimsuggestPath)
+    configuration = ls.getWorkspaceConfiguration().waitFor()
+    nimsuggestPath = configuration.nimsuggestPath.get("nimsuggest")
+    timeout = configuration.timeout.get(REQUEST_TIMEOUT)
+    nimsuggestFut = createNimsuggest(projectFile, nimsuggestPath, timeout) do (ns: Nimsuggest):
+      warn "Restarting the server due to requests being to slow", projectFile = projectFile
+      ls.showMessage(fmt "Restarting nimsuggest for file {projectFile} due to timeout.",
+                     MessageType.Warning)
+      ls.createOrRestartNimsuggest(projectFile, uri)
+
     token = fmt "Creating nimsuggest for {projectFile}"
 
   if ls.projectFiles.hasKey(projectFile):
@@ -282,19 +310,11 @@ proc createNimsuggest(ls: LanguageServer, projectFile: string, uri = ""): void =
 
      nimsuggestFut.addCallback do (fut: Future[Nimsuggest]):
        if fut.read.failed:
-         ls.connection.notify(
-           "window/showMessage",
-           %* {
-                "type": MessageType.Error.int,
-                "message": fmt "Nimsuggest initialization for {projectFile} failed with: {fut.read.errorMessage}"
-           })
+         ls.showMessage(fmt "Nimsuggest initialization for {projectFile} failed with: {fut.read.errorMessage}",
+                        MessageType.Error)
        else:
-         ls.connection.notify(
-           "window/showMessage",
-           %* {
-                "type": MessageType.Info.int,
-                "message": fmt "Nimsuggest initialized for {projectFile}"
-           })
+         ls.showMessage(fmt "Nimsuggest initialized for {projectFile}",
+                        MessageType.Info)
          ls.checkAllFiles(uri).traceAsyncErrors
 
        ls.connection.notify(
@@ -322,7 +342,7 @@ proc didOpen(ls: LanguageServer, params: DidOpenTextDocumentParams):
     let projectFile = await projectFileFuture
     debug "Document associated with the following projectFile", uri = uri, projectFile = projectFile
     if not ls.projectFiles.hasKey(projectFile):
-      ls.createNimsuggest(projectFile, uri = uri)
+      ls.createOrRestartNimsuggest(projectFile, uri = uri)
 
     ls.projectFiles[projectFile].openFiles.incl(uri)
 
@@ -459,11 +479,10 @@ proc codeAction(ls: LanguageServer, params: CodeActionParams):
 
 proc executeCommand(ls: LanguageServer, params: ExecuteCommandParams):
     Future[JsonNode] {.async} =
-  with params:
-    let projectFile = arguments[0].getStr
-    debug "Restarting nimsuggest", projectFile = projectFile
-    ls.createNimsuggest(projectFile, projectFile.pathToUri)
-    result = newJNull()
+  let projectFile = params.arguments[0].getStr
+  debug "Restarting nimsuggest", projectFile = projectFile
+  ls.createOrRestartNimsuggest(projectFile, projectFile.pathToUri)
+  result = newJNull()
 
 proc toCompletionItem(suggest: Suggest): CompletionItem =
   with suggest:

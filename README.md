@@ -25,6 +25,8 @@ nimble build
   for each file and this configuration will allow configuring pair
   `projectPath`/`fileRegex` so when one of the regexp in the list matches current file
   then `nimls` will use `root` to start `nimsuggest`.
+- `nim.timeout` - the request timeout in ms after which `nimlangserver` will restart the language server. If not specified the default is 2 minutes.
+- `nim.nimsuggestPath` - the path to the `nimsuggest`. The default is `"nimsuggest"`.
 
 ``` json
 {

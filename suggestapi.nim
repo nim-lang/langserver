@@ -16,6 +16,8 @@ import osproc,
   ./utils,
   chronicles
 
+const REQUEST_TIMEOUT* = 120000
+
 # coppied from Nim repo
 type
   PrefixMatch* {.pure.} = enum
@@ -46,8 +48,9 @@ type
     version*: int
 
   SuggestCall* = ref object
-    command: string
+    commandString: string
     future: Future[seq[Suggest]]
+    command: string
 
   Nimsuggest* = ref object
     process*: Process
@@ -56,6 +59,8 @@ type
     requestQueue: Deque[SuggestCall]
     processing: bool
     failed*: bool
+    timeout*: int
+    timeoutCallback*: proc(self: Nimsuggest): void {.gcsafe.}
     errorMessage*: string
 
 func nimSymToLSPKind*(suggest: Suggest): CompletionItemKind =
@@ -174,8 +179,26 @@ proc stop*(self: Nimsuggest) =
   except Exception:
     discard
 
-proc createNimsuggest*(root: string, nimsuggestPath = "nimsuggest"): Future[Nimsuggest] {.async.} =
-  debug "Starting nimsuggest", root = root
+proc withTimeout*[T](fut: Future[T], timeout: int, s: string): owned(Future[bool]) =
+  var retFuture = newFuture[bool]("asyncdispatch.`withTimeout`")
+  var timeoutFuture = sleepAsync(timeout)
+  fut.addCallback do ():
+    debug "Future is done", log = s, finished = retFuture.finished
+    if not retFuture.finished:
+      retFuture.complete(true)
+
+  timeoutFuture.addCallback do ():
+    debug "Timeout hit finished", log = s, finished = retFuture.finished
+    if not retFuture.finished:
+      retFuture.complete(false)
+
+  return retFuture
+
+proc createNimsuggest*(root: string,
+                       nimsuggestPath: string,
+                       timeout: int,
+                       timeoutCallback: proc (ns: Nimsuggest): void {.gcsafe.}): Future[Nimsuggest] {.async.} =
+  debug "Starting nimsuggest", root = root, timeout = timeout
   var
     pipe = createPipe(register = true, nonBlockingWrite = false)
     thread: Thread[tuple[pipe: AsyncPipe, process: Process]]
@@ -185,6 +208,8 @@ proc createNimsuggest*(root: string, nimsuggestPath = "nimsuggest"): Future[Nims
   result = Nimsuggest()
   result.requestQueue = Deque[SuggestCall]()
   result.root = root
+  result.timeout = timeout
+  result.timeoutCallback = timeoutCallback
   result.process = startProcess(command = "{nimsuggestPath} {root} --autobind".fmt,
                                 workingDir = getCurrentDir(),
                                 options = {poUsePath, poEvalCommand})
@@ -204,23 +229,35 @@ proc createNimsuggest*(root: string, nimsuggestPath = "nimsuggest"): Future[Nims
       result.port = line.parseInt
       debug "Started nimsuggest", port = result.port, root = root
 
+proc createNimsuggest*(root: string): Future[Nimsuggest] =
+  result = createNimsuggest(root, "nimsuggest", REQUEST_TIMEOUT) do (ns: Nimsuggest):
+    discard
+
 proc processQueue(self: Nimsuggest): Future[void] {.async.}=
   debug "processQueue", size = self.requestQueue.len
   while self.requestQueue.len != 0:
     let req = self.requestQueue.popFirst
     logScope:
-      command = req.command
+      command = req.commandString
     if req.future.finished:
       debug "Call cancelled before executed", command = req.command
     elif self.failed:
       req.future.complete @[]
     else:
-      debug "Executing command", command = req.command
+      debug "Executing command", command = req.commandString
       let socket = newAsyncSocket()
       var res: seq[Suggest] = @[]
 
+      if not self.timeoutCallback.isNil:
+        debug "timeoutCallback is set", timeout = self.timeout
+        withTimeout(req.future, self.timeout, fmt "running {req.commandString}").addCallback do (f: Future[bool]):
+          debug "timeout future finished", failed = f.failed, finished = f.finished
+          if not f.failed and not f.read():
+            debug "Calling restart"
+            self.timeoutCallback(self)
+
       await socket.connect("127.0.0.1", Port(self.port))
-      await socket.send(req.command & "\c\L")
+      await socket.send(req.commandString & "\c\L")
 
       var lineStr: string = await socket.recvLine()
       while lineStr != "\r\n" and lineStr != "":
@@ -249,7 +286,9 @@ proc call*(self: Nimsuggest, command: string, file: string, dirtyFile: string,
   result = Future[seq[Suggest]]()
 
   let commandString = fmt "{command} {file};{dirtyFile}:{line}:{column}"
-  self.requestQueue.addLast(SuggestCall(command: commandString, future: result))
+  self.requestQueue.addLast(
+    SuggestCall(commandString: commandString, future: result, command: command))
+
   if not self.processing:
     self.processing = true
     traceAsyncErrors processQueue(self)
