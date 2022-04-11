@@ -198,36 +198,44 @@ proc createNimsuggest*(root: string,
                        nimsuggestPath: string,
                        timeout: int,
                        timeoutCallback: proc (ns: Nimsuggest): void {.gcsafe.}): Future[Nimsuggest] {.async.} =
-  debug "Starting nimsuggest", root = root, timeout = timeout
   var
     pipe = createPipe(register = true, nonBlockingWrite = false)
     thread: Thread[tuple[pipe: AsyncPipe, process: Process]]
     stderrThread: Thread[tuple[root: string, process: Process]]
-    input = pipe.asyncPipeInput;
+    input = pipe.asyncPipeInput
+    fullPath = findExe(nimsuggestPath)
+
+  debug "Starting nimsuggest", root = root, timeout = timeout, path = nimsuggestPath, fullPath = fullPath
 
   result = Nimsuggest()
   result.requestQueue = Deque[SuggestCall]()
   result.root = root
   result.timeout = timeout
   result.timeoutCallback = timeoutCallback
-  result.process = startProcess(command = "{nimsuggestPath} {root} --autobind".fmt,
-                                workingDir = getCurrentDir(),
-                                options = {poUsePath, poEvalCommand})
 
-  # all this is needed to avoid the need to block on the main thread.
-  createThread(thread, readPort, (pipe: pipe, process: result.process))
+  if fullPath != "":
+    result.process = startProcess(command = "{nimsuggestPath} {root} --autobind".fmt,
+                                  workingDir = getCurrentDir(),
+                                  options = {poUsePath, poEvalCommand})
 
-  # copy stderr of log
-  createThread(stderrThread, logStderr, (root: root, process: result.process))
+    # all this is needed to avoid the need to block on the main thread.
+    createThread(thread, readPort, (pipe: pipe, process: result.process))
 
-  if input.readable:
-    let line = input.readLine.await
-    if line == failedToken:
-      result.failed = true
-      result.errorMessage = "Nimsuggest process crashed."
-    else:
-      result.port = line.parseInt
-      debug "Started nimsuggest", port = result.port, root = root
+    # copy stderr of log
+    createThread(stderrThread, logStderr, (root: root, process: result.process))
+
+    if input.readable:
+      let line = input.readLine.await
+      if line == failedToken:
+        result.failed = true
+        result.errorMessage = "Nimsuggest process crashed."
+      else:
+        result.port = line.parseInt
+        debug "Started nimsuggest", port = result.port, root = root
+  else:
+    error "Unable to start nimsuggest. Unable to find binary on the $PATH", nimsuggestPath = nimsuggestPath
+    result.failed = true
+    result.errorMessage = fmt "Unable to start nimsuggest. `{nimsuggestPath}` is not present on the PATH"
 
 proc createNimsuggest*(root: string): Future[Nimsuggest] =
   result = createNimsuggest(root, "nimsuggest", REQUEST_TIMEOUT) do (ns: Nimsuggest):
