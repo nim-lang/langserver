@@ -453,7 +453,7 @@ proc codeAction(ls: LanguageServer, params: CodeActionParams):
     "command": {
       "title": "Restart nimsuggest",
       "command": RESTART_COMMAND,
-      "arguments": @[await getProjectFile(params.textDocument.uri, ls)]
+      "arguments": @[await getProjectFile(params.textDocument.uri.uriToPath, ls)]
     }
   }]
 
