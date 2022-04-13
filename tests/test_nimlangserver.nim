@@ -198,27 +198,7 @@ suite "Suggest API selection":
     }]
 
     doAssert %actual == %expected
-
-    doAssert %diagnostics.read.waitFor[1] ==  %* {
-      "uri": helloWorldUri,
-      "diagnostics":[{
-        "range":{
-          "start":{
-            "line":4,
-            "character":6
-          },
-          "end":{
-            "line":4,
-            "character":45
-          }
-        },
-        "severity": 1,
-        "code": "nimsuggest chk",
-        "source": "nim",
-        "message": "type mismatch: got 'string' for '\"\"' but expected 'int'",
-        "relatedInformation":nil
-      }]
-    }
+    doAssert diagnostics.read.waitFor[1].diagnostics.get().len == 1
 
     # clear errors after did save
     client.notify("textDocument/didChange", %* {
@@ -432,22 +412,12 @@ suite "LSP features":
       "label": "echo",
       "kind": 3,
       "detail": "proc (x: varargs[typed]){.gcsafe, locks: 0.}",
-      "documentation": """Writes and flushes the parameters to the standard output.
-
-Special built-in that takes a variable number of arguments. Each argument
-is converted to a string via `$`, so it works for user-defined
-types that have an overloaded `$` operator.
-It is roughly equivalent to `writeLine(stdout, x); flushFile(stdout)`, but
-available for the JavaScript target too.
-
-Unlike other IO operations this is guaranteed to be thread-safe as
-`echo` is very often used for debugging convenience. If you want to use
-`echo` inside a `proc without side effects
-<manual.html#pragmas-nosideeffect-pragma>`_ you can use `debugEcho
-<#debugEcho,varargs[typed,]>`_ instead."""
     }
 
-    doAssert %actualEchoCompletionItem == %expected
+    doAssert actualEchoCompletionItem.label == expected.label
+    doAssert actualEchoCompletionItem.kind == expected.kind
+    doAssert actualEchoCompletionItem.detail == expected.detail
+    doAssert actualEchoCompletionItem.documentation != expected.documentation
 
   pipeClient.close()
   pipeServer.close()

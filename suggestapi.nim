@@ -223,7 +223,7 @@ proc createNimsuggest*(root: string,
     createThread(stderrThread, logStderr, (root: root, process: result.process))
 
     if input.readable:
-      let line = input.readLine.await
+      let line = await input.readLine
       if line == failedToken:
         result.failed = true
         result.errorMessage = "Nimsuggest process crashed."

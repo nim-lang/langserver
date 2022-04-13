@@ -94,7 +94,7 @@ proc getProjectFileAutoGuess(fileUri: string): string =
 proc getWorkspaceConfiguration(ls: LanguageServer): Future[NlsConfig] {.async} =
   try:
     let nlsConfig: seq[NlsConfig] =
-      (%ls.workspaceConfiguration.await).to(seq[NlsConfig])
+      (%await ls.workspaceConfiguration).to(seq[NlsConfig])
     result = if nlsConfig.len > 0: nlsConfig[0] else: NlsConfig()
   except CatchableError:
     debug "Failed to parse the configuration."
@@ -104,7 +104,7 @@ proc getProjectFile(fileUri: string, ls: LanguageServer): Future[string] {.async
   let
     rootPath = AbsoluteDir(ls.initializeParams.rootUri.uriToPath)
     pathRelativeToRoot = cstring(AbsoluteFile(fileUri).relativeTo(rootPath))
-    mappings = ls.getWorkspaceConfiguration.await.projectMapping.get(@[])
+    mappings = (await ls.getWorkspaceConfiguration).projectMapping.get(@[])
 
   for mapping in mappings:
     if find(pathRelativeToRoot, re(mapping.fileRegex), 0, pathRelativeToRoot.len) != -1:
@@ -209,8 +209,9 @@ proc cancelRequest(ls: LanguageServer, params: CancelParams):
 proc uriToStash(uri: string): string =
  STORAGE / (hash(uri).toHex & ".nim")
 
-template getNimsuggest(ls: LanguageServer, uri: string): Nimsuggest =
-  ls.projectFiles[ls.openFiles[uri].projectFile.await].nimsuggest.await
+proc getNimsuggest(ls: LanguageServer, uri: string): Future[Nimsuggest] {.async.} =
+  let projectFile = await ls.openFiles[uri].projectFile
+  return await ls.projectFiles[projectFile].nimsuggest
 
 proc toDiagnostic(suggest: Suggest): Diagnostic =
   with suggest:
@@ -238,12 +239,11 @@ proc toDiagnostic(suggest: Suggest): Diagnostic =
     }
     return node.to(Diagnostic)
 
-proc checkAllFiles(ls: LanguageServer, uri: string): Future[void] {.async} =
+proc checkAllFiles(ls: LanguageServer, uri: string): Future[void] {.async.} =
   debug "Running diagnostics", uri = uri
   let
-    diagnostics = ls.getNimsuggest(uri)
-      .chk(uriToPath(uri), uriToStash(uri))
-      .await()
+    nimsuggest = await ls.getNimsuggest(uri)
+    diagnostics = (await nimsuggest.chk(uriToPath(uri), uriToStash(uri)))
       .filter(sug => sug.filepath != "???")
     filesWithDiags = diagnostics.map(s => s.filepath).deduplicate()
 
@@ -366,11 +366,11 @@ proc didChange(ls: LanguageServer, params: DidChangeTextDocumentParams):
        file.writeLine line
      file.close()
 
-     ls.getNimsuggest(uri).mod(path, dirtyfile = filestash).traceAsyncErrors
+     (await ls.getNimsuggest(uri)).mod(path, dirtyfile = filestash).traceAsyncErrors
 
 proc didSave(ls: LanguageServer, params: DidSaveTextDocumentParams):
     Future[void] {.async, gcsafe.} =
-  if ls.getWorkspaceConfiguration().await().checkOnSave.get(true):
+  if (await ls.getWorkspaceConfiguration()).checkOnSave.get(true):
     debug "Checking files", uri = params.textDocument.uri
     traceAsyncErrors ls.checkAllFiles(params.textDocument.uri)
 
@@ -399,13 +399,14 @@ proc toMarkedStrings(suggest: Suggest): seq[MarkedStringOption] =
 proc hover(ls: LanguageServer, params: HoverParams, id: int):
     Future[Option[Hover]] {.async} =
   with (params.position, params.textDocument):
-    let suggestions = ls.getNimsuggest(uri)
-      .def(uriToPath(uri),
-           uriToStash(uri),
-           line + 1,
-           ls.getCharacter(uri, line, character))
-      .orCancelled(ls, id)
-      .await
+    let
+      nimsuggest = await ls.getNimsuggest(uri)
+      suggestions = await nimsuggest
+       .def(uriToPath(uri),
+            uriToStash(uri),
+            line + 1,
+            ls.getCharacter(uri, line, character))
+       .orCancelled(ls, id)
     if suggestions.len == 0:
       return none[Hover]();
     else:
@@ -442,26 +443,26 @@ proc toLocation(suggest: Suggest): Location =
 proc definition(ls: LanguageServer, params: TextDocumentPositionParams, id: int):
     Future[seq[Location]] {.async} =
   with (params.position, params.textDocument):
-    return ls
-      .getNimsuggest(uri)
-      .def(uriToPath(uri),
-           uriToStash(uri),
-           line + 1,
-           ls.getCharacter(uri, line, character))
-      .orCancelled(ls, id)
-      .await()
-      .map(toLocation);
+    let
+      nimsuggest = await ls.getNimsuggest(uri)
+      suggestLocations = await nimsuggest.def(uriToPath(uri),
+                                uriToStash(uri),
+                                line + 1,
+                                ls.getCharacter(uri, line, character))
+                             .orCancelled(ls, id)
+    result = suggestLocations.map(toLocation);
 
 proc references(ls: LanguageServer, params: ReferenceParams):
     Future[seq[Location]] {.async} =
   with (params.position, params.textDocument, params.context):
-    return ls
-      .getNimsuggest(uri)
+    let
+      nimsuggest = await ls.getNimsuggest(uri)
+      refs = await nimsuggest
       .use(uriToPath(uri),
            uriToStash(uri),
            line + 1,
            ls.getCharacter(uri, line, character))
-      .await()
+    result = refs
       .filter(suggest => suggest.section != ideDef or includeDeclaration)
       .map(toLocation);
 
@@ -496,15 +497,15 @@ proc toCompletionItem(suggest: Suggest): CompletionItem =
 proc completion(ls: LanguageServer, params: CompletionParams, id: int):
     Future[seq[CompletionItem]] {.async} =
   with (params.position, params.textDocument):
-    return ls
-      .getNimsuggest(uri)
-      .sug(uriToPath(uri),
-           uriToStash(uri),
-           line + 1,
-           ls.getCharacter(uri, line, character))
-      .orCancelled(ls, id)
-      .await()
-      .map(toCompletionItem);
+    let
+      nimsuggest = await ls.getNimsuggest(uri)
+      completions = await nimsuggest
+                            .sug(uriToPath(uri),
+                                 uriToStash(uri),
+                                 line + 1,
+                                 ls.getCharacter(uri, line, character))
+                            .orCancelled(ls, id)
+    return completions.map(toCompletionItem);
 
 proc toSymbolInformation(suggest: Suggest): SymbolInformation =
   with suggest:
@@ -516,13 +517,13 @@ proc toSymbolInformation(suggest: Suggest): SymbolInformation =
 
 proc documentSymbols(ls: LanguageServer, params: DocumentSymbolParams, id: int):
     Future[seq[SymbolInformation]] {.async} =
-  let uri = params.textDocument.uri
-  return ls
-    .getNimsuggest(uri)
-    .outline(uriToPath(uri), uriToStash(uri))
-    .orCancelled(ls, id)
-    .await()
-    .map(toSymbolInformation);
+  let
+    uri = params.textDocument.uri
+    nimsuggest = await ls.getNimsuggest(uri)
+    symbols = await nimsuggest
+                      .outline(uriToPath(uri), uriToStash(uri))
+                      .orCancelled(ls, id)
+  return symbols.map(toSymbolInformation);
 
 proc registerHandlers*(connection: StreamConnection) =
   let ls = LanguageServer(
