@@ -53,15 +53,15 @@ type
     command: string
 
   Nimsuggest* = ref object
-    process*: Process
+    failed*: bool
+    errorMessage*: string
+    process: Process
     port: int
     root: string
     requestQueue: Deque[SuggestCall]
     processing: bool
-    failed*: bool
-    timeout*: int
-    timeoutCallback*: proc(self: Nimsuggest): void {.gcsafe.}
-    errorMessage*: string
+    timeout: int
+    timeoutCallback: proc(self: Nimsuggest): void {.gcsafe.}
 
 func nimSymToLSPKind*(suggest: Suggest): CompletionItemKind =
   case suggest.symKind:
@@ -175,7 +175,7 @@ proc logStderr(param: tuple[root: string, process: Process]) {.thread.} =
 proc stop*(self: Nimsuggest) =
   debug "Stopping nimsuggest for ", root = self.root
   try:
-    self.process.terminate()
+    self.process.kill()
   except Exception:
     discard
 

@@ -103,17 +103,17 @@ proc getWorkspaceConfiguration(ls: LanguageServer): Future[NlsConfig] {.async} =
 proc getProjectFile(fileUri: string, ls: LanguageServer): Future[string] {.async} =
   let
     rootPath = AbsoluteDir(ls.initializeParams.rootUri.uriToPath)
-    pathRelativeToRoot = cstring(AbsoluteFile(fileUri).relativeTo(rootPath))
+    pathRelativeToRoot = string(AbsoluteFile(fileUri).relativeTo(rootPath))
     mappings = (await ls.getWorkspaceConfiguration).projectMapping.get(@[])
 
   for mapping in mappings:
-    if find(pathRelativeToRoot, re(mapping.fileRegex), 0, pathRelativeToRoot.len) != -1:
+    if find(cstring(pathRelativeToRoot), re(mapping.fileRegex), 0, pathRelativeToRoot.len) != -1:
       result = string(rootPath) / mapping.projectFile
-      trace "getProjectFile", project = result, uri = fileUri
+      debug "getProjectFile", project = result, uri = fileUri, matchedRegex = mapping.fileRegex
       return result
 
   result = getProjectFileAutoGuess(fileUri)
-  trace "getProjectFile", project = result
+  debug "getProjectFile", project = result
 
 proc showMessage(ls: LanguageServer, message: string, typ: MessageType) =
   ls.connection.notify(
@@ -310,7 +310,8 @@ proc createOrRestartNimsuggest(ls: LanguageServer, projectFile: string, uri = ""
 
      nimsuggestFut.addCallback do (fut: Future[Nimsuggest]):
        if fut.read.failed:
-         ls.showMessage(fmt "Nimsuggest initialization for {projectFile} failed with: {fut.read.errorMessage}",
+         let msg = fut.read.errorMessage
+         ls.showMessage(fmt "Nimsuggest initialization for {projectFile} failed with: {msg}",
                         MessageType.Error)
        else:
          ls.showMessage(fmt "Nimsuggest initialized for {projectFile}",
