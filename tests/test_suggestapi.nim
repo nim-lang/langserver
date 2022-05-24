@@ -38,6 +38,10 @@ suite "Nimsuggest tests":
     doAssert res.len > 1
     doAssert res[0].forth == "proc ()"
 
+  test "test Nimsuggest.known":
+    let res = waitFor nimSuggest.known(helloWorldFile)
+    doAssert res[0].forth == "true"
+
   # test "test Nimsuggest.chk cancel more than one":
   #   let
   #     res1 = nimSuggest.chk(helloWorldFile, helloWorldFile)

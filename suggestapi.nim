@@ -1,7 +1,9 @@
 import osproc,
   strutils,
   strformat,
+  times,
   deques,
+  sets,
   os,
   asyncnet,
   streams,
@@ -29,6 +31,7 @@ type
   IdeCmd* = enum
     ideNone, ideSug, ideCon, ideDef, ideUse, ideDus, ideChk, ideMod,
     ideHighlight, ideOutline, ideKnown, ideMsg, ideProject
+  NimsuggestCallback = proc(self: Nimsuggest): void {.gcsafe.}
 
   Suggest* = ref object of RootObj
     section*: IdeCmd
@@ -55,13 +58,26 @@ type
   Nimsuggest* = ref object
     failed*: bool
     errorMessage*: string
+    checkProjectInProgress*: bool
+    needsCheckProject*: bool
+    openFiles*: OrderedSet[string]
+    errorCallback: NimsuggestCallback
     process: Process
     port: int
     root: string
     requestQueue: Deque[SuggestCall]
     processing: bool
     timeout: int
-    timeoutCallback: proc(self: Nimsuggest): void {.gcsafe.}
+    timeoutCallback: NimsuggestCallback
+
+template benchmark(benchmarkName: string, code: untyped) =
+  block:
+    debug "Started...", benchmark = benchmarkName
+    let t0 = epochTime()
+    code
+    let elapsed = epochTime() - t0
+    let elapsedStr = elapsed.formatFloat(format = ffDecimal, precision = 3)
+    debug "CPU Time", benchmark = benchmarkName, time = elapsedStr
 
 func nimSymToLSPKind*(suggest: Suggest): CompletionItemKind =
   case suggest.symKind:
@@ -86,6 +102,7 @@ func nimSymToLSPSymbolKind*(suggest: string): SymbolKind =
   case suggest:
   of "skConst": SymbolKind.Constant
   of "skEnumField": SymbolKind.EnumMember
+  of "skField": SymbolKind.Field
   of "skIterator": SymbolKind.Function
   of "skConverter": SymbolKind.Function
   of "skLet": SymbolKind.Variable
@@ -141,6 +158,9 @@ proc parseQualifiedPath*(input: string): seq[string] =
 
 proc parseSuggest*(line: string): Suggest =
   let tokens = line.split('\t');
+  if tokens.len < 8:
+    error "Failed to parse: ", line = line
+    raise newException(ValueError, fmt "Failed to parse line {line}")
   return Suggest(
     qualifiedPath: tokens[2].parseQualifiedPath,
     filePath: tokens[4],
@@ -154,11 +174,17 @@ proc parseSuggest*(line: string): Suggest =
 proc name*(sug: Suggest): string =
   return sug.qualifiedPath[^1]
 
+proc markFailed(self: Nimsuggest, errMessage: string) =
+  self.failed = true
+  self.errorMessage = errMessage
+  if self.errorCallback != nil:
+    self.errorCallback(self)
+
 proc readPort(param: tuple[pipe: AsyncPipe, process: Process]) {.thread.} =
   try:
     var line = param.process.outputStream.readLine & "\n"
     writeToPipe(param.pipe, line[0].addr, line.len)
-  except IOError as er:
+  except IOError:
     error "Failed to read nimsuggest port"
     var msg = failedToken & "\n"
     writeToPipe(param.pipe, msg[0].addr, msg.len)
@@ -179,8 +205,8 @@ proc stop*(self: Nimsuggest) =
   except Exception:
     discard
 
-proc withTimeout*[T](fut: Future[T], timeout: int, s: string): owned(Future[bool]) =
-  var retFuture = newFuture[bool]("asyncdispatch.`withTimeout`")
+proc doWithTimeout*[T](fut: Future[T], timeout: int, s: string): owned(Future[bool]) =
+  var retFuture = newFuture[bool]("asyncdispatch.`doWithTimeout`")
   var timeoutFuture = sleepAsync(timeout)
   fut.addCallback do ():
     if not retFuture.finished:
@@ -195,7 +221,8 @@ proc withTimeout*[T](fut: Future[T], timeout: int, s: string): owned(Future[bool
 proc createNimsuggest*(root: string,
                        nimsuggestPath: string,
                        timeout: int,
-                       timeoutCallback: proc (ns: Nimsuggest): void {.gcsafe.}): Future[Nimsuggest] {.async.} =
+                       timeoutCallback: NimsuggestCallback,
+                       errorCallback: NimsuggestCallback): Future[Nimsuggest] {.async.} =
   var
     pipe = createPipe(register = true, nonBlockingWrite = false)
     thread: Thread[tuple[pipe: AsyncPipe, process: Process]]
@@ -210,9 +237,10 @@ proc createNimsuggest*(root: string,
   result.root = root
   result.timeout = timeout
   result.timeoutCallback = timeoutCallback
+  result.errorCallback = errorCallback
 
   if fullPath != "":
-    result.process = startProcess(command = "{nimsuggestPath} {root} --autobind".fmt,
+    result.process = startProcess(command = "{nimsuggestPath} {root} --v3 --autobind".fmt,
                                   workingDir = getCurrentDir(),
                                   options = {poUsePath, poEvalCommand})
 
@@ -225,19 +253,19 @@ proc createNimsuggest*(root: string,
     if input.readable:
       let line = await input.readLine
       if line == failedToken:
-        result.failed = true
-        result.errorMessage = "Nimsuggest process crashed."
+        result.markFailed "Nimsuggest process crashed."
       else:
         result.port = line.parseInt
         debug "Started nimsuggest", port = result.port, root = root
   else:
     error "Unable to start nimsuggest. Unable to find binary on the $PATH", nimsuggestPath = nimsuggestPath
-    result.failed = true
-    result.errorMessage = fmt "Unable to start nimsuggest. `{nimsuggestPath}` is not present on the PATH"
+    result.markFailed fmt "Unable to start nimsuggest. `{nimsuggestPath}` is not present on the PATH"
 
 proc createNimsuggest*(root: string): Future[Nimsuggest] =
-  result = createNimsuggest(root, "nimsuggest", REQUEST_TIMEOUT) do (ns: Nimsuggest):
-    discard
+  result = createNimsuggest(root, "nimsuggest", REQUEST_TIMEOUT,
+                            proc (ns: Nimsuggest) = discard,
+                            proc (ns: Nimsuggest) = discard)
+
 
 proc processQueue(self: Nimsuggest): Future[void] {.async.}=
   debug "processQueue", size = self.requestQueue.len
@@ -250,48 +278,54 @@ proc processQueue(self: Nimsuggest): Future[void] {.async.}=
     elif self.failed:
       req.future.complete @[]
     else:
-      debug "Executing command", command = req.commandString
-      let socket = newAsyncSocket()
-      var res: seq[Suggest] = @[]
+      benchmark req.commandString:
+        let socket = newAsyncSocket()
+        var res: seq[Suggest] = @[]
 
-      if not self.timeoutCallback.isNil:
-        debug "timeoutCallback is set", timeout = self.timeout
-        withTimeout(req.future, self.timeout, fmt "running {req.commandString}").addCallback do (f: Future[bool]):
-          debug "timeout future finished", failed = f.failed, finished = f.finished
-          if not f.failed and not f.read():
-            debug "Calling restart"
-            self.timeoutCallback(self)
+        if not self.timeoutCallback.isNil:
+          debug "timeoutCallback is set", timeout = self.timeout
+          doWithTimeout(req.future, self.timeout, fmt "running {req.commandString}").addCallback do (f: Future[bool]):
+            if not f.failed and not f.read():
+              debug "Calling restart"
+              self.timeoutCallback(self)
 
-      await socket.connect("127.0.0.1", Port(self.port))
-      await socket.send(req.commandString & "\c\L")
+        await socket.connect("127.0.0.1", Port(self.port))
+        await socket.send(req.commandString & "\c\L")
 
-      var lineStr: string = await socket.recvLine()
-      while lineStr != "\r\n" and lineStr != "":
-        trace "Received line", line = lineStr
-        res.add parseSuggest(lineStr)
-        lineStr = await socket.recvLine();
+        var lineStr: string = await socket.recvLine()
+        while lineStr != "\r\n" and lineStr != "":
+          trace "Received line", line = lineStr
+          if req.command != "known":
+            res.add parseSuggest(lineStr)
+          else:
+            let sug = Suggest()
+            sug.section = ideKnown
+            sug.forth = lineStr
+            res.add sug
+          lineStr = await socket.recvLine();
 
-      if (lineStr == ""):
-        self.failed = true
-        self.errorMessage = "Server crashed/socket closed."
-        debug "Server socket closed"
+        if (lineStr == ""):
+          self.markFailed "Server crashed/socket closed."
+          debug "Server socket closed"
+          if not req.future.finished:
+            debug "Call cancelled before sending error", command = req.command
+            req.future.fail newException(CatchableError, "Server crashed/socket closed.")
         if not req.future.finished:
-          debug "Call cancelled before sending error", command = req.command
-          req.future.fail newException(CatchableError, "Server crashed/socket closed.")
-      if not req.future.finished:
-        debug "Sending result(s)", length = res.len
-        req.future.complete res
-        socket.close()
-      else:
-        debug "Call was cancelled before sending the result", command = req.command
-        socket.close()
+          debug "Sending result(s)", length = res.len
+          req.future.complete res
+          socket.close()
+        else:
+          debug "Call was cancelled before sending the result", command = req.command
+          socket.close()
   self.processing = false
 
 proc call*(self: Nimsuggest, command: string, file: string, dirtyFile: string,
     line: int, column: int): Future[seq[Suggest]] =
   result = Future[seq[Suggest]]()
-
-  let commandString = fmt "{command} {file};{dirtyFile}:{line}:{column}"
+  let commandString = if dirtyFile != "":
+                        fmt "{command} {file};{dirtyFile}:{line}:{column}"
+                      else:
+                        fmt "{command} {file}:{line}:{column}"
   self.requestQueue.addLast(
     SuggestCall(commandString: commandString, future: result, command: command))
 
@@ -308,15 +342,24 @@ template createFileOnlyCommand(command: untyped) {.dirty.} =
   proc command*(self: Nimsuggest, file: string, dirtyfile = ""): Future[seq[Suggest]] =
     return self.call(astToStr(command), file, dirtyfile, 0, 0)
 
+template createGlobalCommand(command: untyped) {.dirty.} =
+  proc command*(self: Nimsuggest): Future[seq[Suggest]] =
+    return self.call(astToStr(command), "-", "", 0, 0)
+
+# create commands
 createFullCommand(sug)
 createFullCommand(con)
 createFullCommand(def)
 createFullCommand(use)
+createFullCommand(highlight)
 createFullCommand(dus)
 createFileOnlyCommand(chk)
-createFileOnlyCommand(highlight)
+createFileOnlyCommand(chkFile)
+createFileOnlyCommand(changed)
 createFileOnlyCommand(outline)
 createFileOnlyCommand(known)
+createFileOnlyCommand(globalSymbols)
+createGlobalCommand(recompile)
 
 proc `mod`*(nimsuggest: Nimsuggest, file: string, dirtyfile = ""): Future[seq[Suggest]] =
   return nimsuggest.call("ideMod", file, dirtyfile, 0, 0)

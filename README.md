@@ -6,6 +6,8 @@ Nim Language Server, or `nimlangserver`, is a language server for Nim.
 
 ### Installing binaries
 
+_NB:_ `nimlangserver` requires `nimsuggest` version that supports `--v3`(1.6+)
+
 You can install the latest release into `$HOME/.nimble/bin` using e.g.:
 
 ```sh
@@ -51,6 +53,7 @@ nimble build
 - Goto definition
 - Document symbols
 - Find references
+- Workspace symbols
 
 You can install `nimlangserver` using the instuctions for your text editor below:
 
