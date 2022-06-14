@@ -627,15 +627,17 @@ proc executeCommand(ls: LanguageServer, params: ExecuteCommandParams):
     ls.checkProject(projectFile.pathToUri).traceAsyncErrors
   of RECOMPILE_COMMAND:
     debug "Clean build", projectFile = projectFile
-    let token = fmt "Compiling {projectFile}"
-    ls.workDoneProgressCreate(token)
-    ls.progress(token, "begin", fmt "Compiling project {projectFile}")
-    ls.getNimsuggest(projectFile.pathToUri)
-      .await()
-      .recompile()
-      .addCallback() do ():
-        ls.progress(token, "end")
-        ls.checkProject(projectFile.pathToUri).traceAsyncErrors
+    let
+      token = fmt "Compiling {projectFile}"
+      ns = ls.projectFiles.getOrDefault(projectFile)
+    if ns != nil:
+      ls.workDoneProgressCreate(token)
+      ls.progress(token, "begin", fmt "Compiling project {projectFile}")
+      ns.await()
+        .recompile()
+        .addCallback() do ():
+          ls.progress(token, "end")
+          ls.checkProject(projectFile.pathToUri).traceAsyncErrors
 
   result = newJNull()
 
