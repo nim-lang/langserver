@@ -5,3 +5,5 @@ nimcache/
 *.log
 tests/all
 /nimlangserver
+nimble.develop
+nimble.paths
