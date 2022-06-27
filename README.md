@@ -24,13 +24,13 @@ nimble build
 
 ## Configuration Options
 
-- `nim.projectMapping` - configure how `nimsuggest` should be started. Here it is
-  sample configuration for `VScode`. We don't want `nimlangserver` to start `nimsuggest`
-  for each file and this configuration will allow configuring pair
-  `projectPath`/`fileRegex` so when one of the regexp in the list matches current file
-  then `nimls` will use `root` to start `nimsuggest`.
+- `nim.projectMapping` - configure how `nimsuggest` should be started. Here it is sample configuration for `VScode`. We don't want `nimlangserver` to start `nimsuggest` for each file and this configuration will allow configuring pair `projectPath`/`fileRegex` so when one of the regexp in the list matches current file
+  then `nimls` will use `root` to start `nimsuggest`. In case there are no matches `nimlangserver` will try to guess the most suitable project root.
 - `nim.timeout` - the request timeout in ms after which `nimlangserver` will restart the language server. If not specified the default is 2 minutes.
 - `nim.nimsuggestPath` - the path to the `nimsuggest`. The default is `"nimsuggest"`.
+- `nim.autoRestart` - auto restart once in case of `nimsuggest` crash. Note that
+  the server won't restart if there weren't any successful calls after the last
+  restart.
 
 ``` json
 {
@@ -80,8 +80,7 @@ Install the `vscode-nim` extension from [here](https://github.com/saem/vscode-ni
    difference is that `nimlsp` has a single specific version of `nimsuggest`
    embedded in the server executable, while `nimlangserver` launches `nimsuggest`
    as an external process. This allows `nimlangserver` to handle any `nimsuggest`
-   crashes more gracefully and enables it to work with multiple versions of Nim
-   concurrently.
+   crashes more gracefully.
 
 ## License
 

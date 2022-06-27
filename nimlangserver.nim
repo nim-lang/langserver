@@ -23,6 +23,7 @@ type
     checkOnSave*: Option[bool]
     nimsuggestPath*: Option[string]
     timeout*: Option[int]
+    autoRestart*: Option[bool]
 
   FileInfo = ref object of RootObj
     projectFile: Future[string]
@@ -348,7 +349,7 @@ proc checkProject(ls: LanguageServer, uri: string): Future[void] {.async.} =
 
   let token = fmt "Checking {uri}"
   ls.workDoneProgressCreate(token)
-  ls.progress(token, "begin", fmt "Building project {uri.uriToPath}")
+  ls.progress(token, "begin", fmt "Checking project {uri.uriToPath}")
   nimsuggest.checkProjectInProgress = true
   let
     diagnostics = nimsuggest.chk(uriToPath(uri), ls.uriToStash(uri))
@@ -392,8 +393,12 @@ proc createOrRestartNimsuggest(ls: LanguageServer, projectFile: string, uri = ""
       ls.createOrRestartNimsuggest(projectFile, uri)
     errorCallback = proc (ns: Nimsuggest) =
       warn "Server stopped.", projectFile = projectFile
-      ls.showMessage(fmt "Server failed with {ns.errorMessage} due to timeout.",
-                     MessageType.Error)
+      if configuration.autoRestart.get(true) and ns.successfullCall:
+        createOrRestartNimsuggest(ls, projectFile, uri)
+      else:
+        ls.showMessage(fmt "Server failed with {ns.errorMessage}.",
+                       MessageType.Error)
+
     nimsuggestFut = createNimsuggest(projectFile, nimsuggestPath,
                                      timeout, restartCallback, errorCallback)
     token = fmt "Creating nimsuggest for {projectFile}"

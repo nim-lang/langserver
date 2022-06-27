@@ -61,6 +61,7 @@ type
     checkProjectInProgress*: bool
     needsCheckProject*: bool
     openFiles*: OrderedSet[string]
+    successfullCall*: bool
     errorCallback: NimsuggestCallback
     process: Process
     port: int
@@ -276,6 +277,7 @@ proc processQueue(self: Nimsuggest): Future[void] {.async.}=
     if req.future.finished:
       debug "Call cancelled before executed", command = req.command
     elif self.failed:
+      debug "Nimsuggest is not working, returning empty result..."
       req.future.complete @[]
     else:
       benchmark req.commandString:
@@ -313,6 +315,7 @@ proc processQueue(self: Nimsuggest): Future[void] {.async.}=
         if not req.future.finished:
           debug "Sending result(s)", length = res.len
           req.future.complete res
+          self.successfullCall = true
           socket.close()
         else:
           debug "Call was cancelled before sending the result", command = req.command
