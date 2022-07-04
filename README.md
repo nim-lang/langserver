@@ -3,6 +3,9 @@
 Nim Language Server, or `nimlangserver`, is a language server for Nim.
 
 ## Installation
+### VSCode
+- [vscode-nim](https://github.com/saem/vscode-nim) has support for `nimlangserver`. Follow the instructions at:
+https://github.com/saem/vscode-nim#nim-lanugage-server-integration-experimental
 
 ### Installing binaries
 
