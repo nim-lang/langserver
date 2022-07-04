@@ -4,7 +4,7 @@ when defined(windows):
   import winlean
 
   proc writeToPipe*(p: AsyncPipe, data: pointer, nbytes: int) =
-    if WriteFile(p.getWriteHandle, data, int32(nbytes), nil, nil) == 0:
+    if writeFile(p.getWriteHandle, data, int32(nbytes), nil, nil) == 0:
       raiseOsError(osLastError())
 
 else:
