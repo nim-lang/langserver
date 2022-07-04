@@ -30,7 +30,7 @@ type
 
   IdeCmd* = enum
     ideNone, ideSug, ideCon, ideDef, ideUse, ideDus, ideChk, ideMod,
-    ideHighlight, ideOutline, ideKnown, ideMsg, ideProject
+    ideHighlight, ideOutline, ideKnown, ideMsg, ideProject, ideType
   NimsuggestCallback = proc(self: Nimsuggest): void {.gcsafe.}
 
   Suggest* = ref object of RootObj
@@ -355,7 +355,7 @@ createFullCommand(con)
 createFullCommand(def)
 createFullCommand(use)
 createFullCommand(highlight)
-createFullCommand(dus)
+createFullCommand(type)
 createFileOnlyCommand(chk)
 createFileOnlyCommand(chkFile)
 createFileOnlyCommand(changed)

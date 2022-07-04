@@ -169,6 +169,7 @@ proc initialize(ls: LanguageServer, params: InitializeParams):
         triggerCharacters: some(@["."]),
         resolveProvider: some(false)),
       definitionProvider: some(true),
+      typeDefinitionProvider: some(true),
       referencesProvider: some(true),
       documentHighlightProvider: some(true),
       workspaceSymbolProvider: some(true),
@@ -568,14 +569,28 @@ proc toLocation(suggest: Suggest): Location =
 proc definition(ls: LanguageServer, params: TextDocumentPositionParams, id: int):
     Future[seq[Location]] {.async} =
   with (params.position, params.textDocument):
-    let
-      nimsuggest = await ls.getNimsuggest(uri)
-      suggestLocations = await nimsuggest.def(uriToPath(uri),
-                                ls.uriToStash(uri),
-                                line + 1,
-                                ls.getCharacter(uri, line, character))
-                             .orCancelled(ls, id)
-    result = suggestLocations.map(toLocation);
+    result = ls.getNimsuggest(uri)
+      .await()
+      .def(uriToPath(uri),
+           ls.uriToStash(uri),
+           line + 1,
+           ls.getCharacter(uri, line, character))
+      .orCancelled(ls, id)
+      .await()
+      .map(toLocation)
+
+proc typeDefinition(ls: LanguageServer, params: TextDocumentPositionParams, id: int):
+    Future[seq[Location]] {.async} =
+  with (params.position, params.textDocument):
+    result = ls.getNimsuggest(uri)
+      .await()
+      .`type`(uriToPath(uri),
+              ls.uriToStash(uri),
+              line + 1,
+              ls.getCharacter(uri, line, character))
+      .orCancelled(ls, id)
+      .await()
+      .map(toLocation)
 
 proc references(ls: LanguageServer, params: ReferenceParams):
     Future[seq[Location]] {.async} =
@@ -726,6 +741,7 @@ proc registerHandlers*(connection: StreamConnection) =
   connection.register("initialize", partial(initialize, ls))
   connection.register("textDocument/completion", partial(completion, ls))
   connection.register("textDocument/definition", partial(definition, ls))
+  connection.register("textDocument/typeDefinition", partial(typeDefinition, ls))
   connection.register("textDocument/documentSymbol", partial(documentSymbols, ls))
   connection.register("textDocument/hover", partial(hover, ls))
   connection.register("textDocument/references", partial(references, ls))

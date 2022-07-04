@@ -318,7 +318,7 @@ type
     completionProvider*: CompletionOptions
     signatureHelpProvider*: SignatureHelpOptions
     definitionProvider*: Option[bool]
-    typeDefinitionProvider*: OptionalNode # bool or TextDocumentAndStaticRegistrationOptions
+    typeDefinitionProvider*: Option[bool]
     implementationProvider*: OptionalNode # bool or TextDocumentAndStaticRegistrationOptions
     referencesProvider*: Option[bool]
     documentHighlightProvider*: Option[bool]
