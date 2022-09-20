@@ -1,3 +1,2 @@
 import
-  test_nimlangserver,
-  test_suggestapi
+  tnimlangserver , tsuggestapi

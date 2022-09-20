@@ -24,6 +24,8 @@ type
     nimsuggestPath*: Option[string]
     timeout*: Option[int]
     autoRestart*: Option[bool]
+    autoCheckFile*: Option[bool]
+    autoCheckProject*: Option[bool]
 
   FileInfo = ref object of RootObj
     projectFile: Future[string]
@@ -338,6 +340,8 @@ proc cancelPendingFileChecks(ls: LanguageServer, nimsuggest: Nimsuggest) =
       fileData.needsChecking = false
 
 proc checkProject(ls: LanguageServer, uri: string): Future[void] {.async.} =
+  if not ls.getWorkspaceConfiguration.await().autoCheckProject.get(true):
+    return
   debug "Running diagnostics", uri = uri
   let nimsuggest = ls.getNimsuggest(uri).await
 
@@ -466,6 +470,9 @@ proc didOpen(ls: LanguageServer, params: DidOpenTextDocumentParams):
         discard ls.warnIfUnknown(fut.read, uri, projectFile)
 
 proc scheduleFileCheck(ls: LanguageServer, uri: string) =
+  if not ls.getWorkspaceConfiguration().waitFor().autoCheckFile.get(true):
+    return
+
   # schedule file check after the file is modified
   let fileData = ls.openFiles[uri]
   if fileData.cancelFileCheck != nil and not fileData.cancelFileCheck.finished:
