@@ -72,7 +72,7 @@ proc getProjectFileAutoGuess(fileUri: string): string =
   let (dir, _, _) = result.splitFile()
   var
     path = dir
-    certainty = None
+    certainty = Certainty.None
   while path.len > 0 and path != "/":
     let
       (dir, fname, ext) = path.splitFile()
