@@ -318,6 +318,7 @@ type
     completionProvider*: CompletionOptions
     signatureHelpProvider*: SignatureHelpOptions
     definitionProvider*: Option[bool]
+    declarationProvider*: Option[bool]
     typeDefinitionProvider*: Option[bool]
     implementationProvider*: OptionalNode # bool or TextDocumentAndStaticRegistrationOptions
     referencesProvider*: Option[bool]
@@ -608,3 +609,6 @@ type
 
   SignatureHelpParams* = ref object of TextDocumentPositionParams
     context*: SignatureHelpContext
+
+  ExpandResult* = ref object of RootObj
+    content*: string

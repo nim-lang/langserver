@@ -30,7 +30,7 @@ type
 
   IdeCmd* = enum
     ideNone, ideSug, ideCon, ideDef, ideUse, ideDus, ideChk, ideMod,
-    ideHighlight, ideOutline, ideKnown, ideMsg, ideProject, ideType
+    ideHighlight, ideOutline, ideKnown, ideMsg, ideProject, ideType, ideExpand
   NimsuggestCallback = proc(self: Nimsuggest): void {.gcsafe.}
 
   Suggest* = ref object of RootObj
@@ -353,6 +353,8 @@ template createGlobalCommand(command: untyped) {.dirty.} =
 createFullCommand(sug)
 createFullCommand(con)
 createFullCommand(def)
+createFullCommand(declaration)
+createFullCommand(expand)
 createFullCommand(use)
 createFullCommand(highlight)
 createFullCommand(type)

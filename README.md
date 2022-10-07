@@ -31,6 +31,8 @@ nimble build
   then `nimls` will use `root` to start `nimsuggest`. In case there are no matches `nimlangserver` will try to guess the most suitable project root.
 - `nim.timeout` - the request timeout in ms after which `nimlangserver` will restart the language server. If not specified the default is 2 minutes.
 - `nim.nimsuggestPath` - the path to the `nimsuggest`. The default is `"nimsuggest"`.
+- `nim.autoCheckFile` - check the file on the fly
+- `nim.autoCheckProject` - check the project after saving the file
 - `nim.autoRestart` - auto restart once in case of `nimsuggest` crash. Note that
   the server won't restart if there weren't any successful calls after the last
   restart.

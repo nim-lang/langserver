@@ -171,6 +171,7 @@ proc initialize(ls: LanguageServer, params: InitializeParams):
         triggerCharacters: some(@["."]),
         resolveProvider: some(false)),
       definitionProvider: some(true),
+      declarationProvider: some(true),
       typeDefinitionProvider: some(true),
       referencesProvider: some(true),
       documentHighlightProvider: some(true),
@@ -399,7 +400,7 @@ proc createOrRestartNimsuggest(ls: LanguageServer, projectFile: string, uri = ""
     errorCallback = proc (ns: Nimsuggest) =
       warn "Server stopped.", projectFile = projectFile
       if configuration.autoRestart.get(true) and ns.successfullCall:
-        createOrRestartNimsuggest(ls, projectFile, uri)
+        ls.createOrRestartNimsuggest(projectFile, uri)
       else:
         ls.showMessage(fmt "Server failed with {ns.errorMessage}.",
                        MessageType.Error)
@@ -586,6 +587,32 @@ proc definition(ls: LanguageServer, params: TextDocumentPositionParams, id: int)
       .await()
       .map(toLocation)
 
+proc declaration(ls: LanguageServer, params: TextDocumentPositionParams, id: int):
+    Future[seq[Location]] {.async} =
+  with (params.position, params.textDocument):
+    result = ls.getNimsuggest(uri)
+      .await()
+      .declaration(uriToPath(uri),
+           ls.uriToStash(uri),
+           line + 1,
+           ls.getCharacter(uri, line, character))
+      .orCancelled(ls, id)
+      .await()
+      .map(toLocation)
+
+proc expandAll(ls: LanguageServer, params: TextDocumentPositionParams):
+    Future[ExpandResult] {.async} =
+  with (params.position, params.textDocument):
+    let expand = ls.getNimsuggest(uri)
+      .await()
+      .expand(uriToPath(uri),
+           ls.uriToStash(uri),
+           line + 1,
+           ls.getCharacter(uri, line, character))
+      .await()
+    if expand.len != 0:
+      result = ExpandResult(content: expand[0].doc)
+
 proc typeDefinition(ls: LanguageServer, params: TextDocumentPositionParams, id: int):
     Future[seq[Location]] {.async} =
   with (params.position, params.textDocument):
@@ -748,6 +775,7 @@ proc registerHandlers*(connection: StreamConnection) =
   connection.register("initialize", partial(initialize, ls))
   connection.register("textDocument/completion", partial(completion, ls))
   connection.register("textDocument/definition", partial(definition, ls))
+  connection.register("textDocument/declaration", partial(declaration, ls))
   connection.register("textDocument/typeDefinition", partial(typeDefinition, ls))
   connection.register("textDocument/documentSymbol", partial(documentSymbols, ls))
   connection.register("textDocument/hover", partial(hover, ls))
@@ -756,6 +784,7 @@ proc registerHandlers*(connection: StreamConnection) =
   connection.register("workspace/executeCommand", partial(executeCommand, ls))
   connection.register("workspace/symbol", partial(workspaceSymbol, ls))
   connection.register("textDocument/documentHighlight", partial(documentHighlight, ls))
+  connection.register("extension/expandAll", partial(expandAll, ls))
 
   connection.registerNotification("$/cancelRequest", partial(cancelRequest, ls))
   connection.registerNotification("initialized", partial(initialized, ls))
