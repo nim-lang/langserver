@@ -71,6 +71,9 @@ type
     textDocument*: TextDocumentIdentifier
     position*: Position
 
+  ExpandTextDocumentPositionParams* = ref object of TextDocumentPositionParams
+    level*: Option[int]
+
   DocumentFilter* = ref object of RootObj
     language*: Option[string]
     scheme*: Option[string]
@@ -611,4 +614,5 @@ type
     context*: SignatureHelpContext
 
   ExpandResult* = ref object of RootObj
+    range*: Range
     content*: string

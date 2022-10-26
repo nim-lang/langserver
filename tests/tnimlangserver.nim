@@ -227,7 +227,7 @@ suite "LSP features":
       expected = Hover %* {
         "contents": [{
             "language": "nim",
-            "value": "hw.a: proc (){.noSideEffect, gcsafe, locks: 0.}"
+            "value": "hw.a: proc (){.noSideEffect, gcsafe.}"
           }
         ],
         "range": nil
@@ -354,7 +354,7 @@ suite "LSP features":
       expected = Hover %* {
         "contents": [{
             "language": "nim",
-            "value": "hw.a: proc (){.noSideEffect, gcsafe, locks: 0.}"
+            "value": "hw.a: proc (){.noSideEffect, gcsafe.}"
           }
         ],
         "range": nil
@@ -380,7 +380,7 @@ suite "LSP features":
     let expected = CompletionItem %* {
       "label": "echo",
       "kind": 3,
-      "detail": "proc (x: varargs[typed]){.gcsafe, locks: 0.}",
+      "detail": "proc (x: varargs[typed]){.gcsafe.}",
     }
 
     doAssert actualEchoCompletionItem.label == expected.label
@@ -391,8 +391,7 @@ suite "LSP features":
   pipeClient.close()
   pipeServer.close()
 
-proc ignore(params: JsonNode): Future[void] {.async.} =
-  return
+proc ignore(params: JsonNode): Future[void] {.async.} = return
 
 suite "Null configuration:":
   let pipeServer = createPipe();
@@ -426,8 +425,115 @@ suite "Null configuration:":
   discard waitFor client.call("initialize", %initParams)
   client.notify("initialized", newJObject())
 
-  test "Suggest api":
+  test "Null configuration":
     client.notify("textDocument/didOpen", %createDidOpenParams("projects/hw/hw.nim"))
     let hoverParams = positionParams("projects/hw/hw.nim".fixtureUri, 2, 0)
     let hover = client.call("textDocument/hover", %hoverParams).waitFor
     doAssert hover.kind == JNull
+
+suite "LSP expand":
+  let pipeServer = createPipe();
+  let pipeClient = createPipe();
+
+  let server = StreamConnection.new(pipeServer);
+  registerHandlers(server);
+  discard server.start(asyncPipeInput(pipeClient));
+
+  let client = StreamConnection.new(pipeClient);
+  discard client.start(asyncPipeInput(pipeServer));
+
+  let workspaceConfiguration = %* [{
+      "projectMapping": [{
+        "projectFile": "missingRoot.nim",
+        "fileRegex": "willCrash\\.nim"
+      }, {
+        "projectFile": "hw.nim",
+        "fileRegex": "hw\\.nim"
+      }, {
+        "projectFile": "root.nim",
+        "fileRegex": "useRoot\\.nim"
+      }],
+      "autoCheckFile": false,
+      "autoCheckProject": false
+  }]
+  let showMessage = FutureStream[ShowMessageParams]()
+  client.registerNotification(
+    "window/showMessage",
+    partial(testHandler[ShowMessageParams], showMessage))
+
+
+  let configInit = FutureStream[ConfigurationParams]()
+  client.register(
+    "workspace/configuration",
+    partial(testHandler[ConfigurationParams, JsonNode],
+            (fut: configInit, res: workspaceConfiguration)))
+
+  let initParams = InitializeParams %* {
+      "processId": %getCurrentProcessId(),
+      "rootUri": fixtureUri("projects/hw/"),
+      "capabilities": {
+          "window": {
+            "workDoneProgress": false
+          },
+        "workspace": {"configuration": true}
+      }
+  }
+
+  discard waitFor client.call("initialize", %initParams)
+  client.notify("initialized", newJObject())
+
+  let didOpenParams = createDidOpenParams("projects/hw/hw.nim")
+
+  client.notify("textDocument/didOpen", %didOpenParams)
+
+  test "Expand nested":
+    let expandParams2 = ExpandTextDocumentPositionParams %* {
+      "position": {
+         "line": 27,
+         "character": 2
+      },
+      "textDocument": {
+         "uri": helloWorldUri
+       },
+      "level": 1
+    }
+    let expandResult2 =
+      to(client.call("extension/macroExpand", %expandParams2).waitFor,
+         ExpandResult)
+    let expected2 = ExpandResult %* {
+      "range":{
+        "start":{"line":27,"character":0},
+        "end":{"line":28,"character":19}},
+      "content":"  block:\n    template field1(): untyped =\n      a.field1\n\n    template field2(): untyped =\n      a.field2\n\n    a.field1 = a.field2"
+    }
+
+    doAssert %expected2 == %expandResult2
+
+  test "Expand":
+    let expandParams = ExpandTextDocumentPositionParams %* {
+      "position": {
+         "line": 16,
+         "character": 0
+      },
+      "textDocument": {
+         "uri": helloWorldUri
+       },
+      "level": 1
+    }
+    var expandResult =
+      to(client.call("extension/macroExpand", %expandParams).waitFor,
+         ExpandResult)
+    var expected = ExpandResult %*
+       {
+         "range": {
+           "start":{
+             "line":16,
+             "character":0
+           },
+           "end":{
+             "line":17,
+             "character":9
+           }},
+         "content":"proc helloProc(): string =\n  result = \"Hello\"\n"
+       }
+    doAssert %expected == %expandResult

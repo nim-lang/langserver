@@ -64,6 +64,68 @@ nimble build
 
 You can install `nimlangserver` using the instuctions for your text editor below:
 
+### Extension methods
+In addition to the standard `LSP` methods, `nimlangserver` provides additional nim specific methods.
+
+### `extension/macroExpand`
+
+* Request:
+```nim
+type
+  ExpandTextDocumentPositionParams* = ref object of RootObj
+    textDocument*: TextDocumentIdentifier
+    position*: Position
+    level*: Option[int]
+```
+Where:
+- `position` is the position in the document.
+- `textDocument` is the document.
+- `level` is the how much levels to expand from the current position
+
+* Response:
+``` nim
+type
+  ExpandResult* = ref object of RootObj
+    range*: Range
+    content*: string
+```
+Where:
+- `content` is the expand result
+- `range` is the original range of the request.
+
+Here it is sample request/response:
+
+```
+[Trace - 11:10:09 AM] Sending request 'extension/macroExpand - (141)'.
+Params: {
+  "textDocument": {
+    "uri": "file:///.../tests/projects/hw/hw.nim"
+  },
+  "position": {
+    "line": 27,
+    "character": 2
+  },
+  "level": 1
+}
+
+
+[Trace - 11:10:10 AM] Received response 'extension/macroExpand - (141)' in 309ms.
+Result: {
+  "range": {
+    "start": {
+      "line": 27,
+      "character": 0
+    },
+    "end": {
+      "line": 28,
+      "character": 19
+    }
+  },
+  "content": "  block:\n    template field1(): untyped =\n      a.field1\n\n    template field2(): untyped =\n      a.field2\n\n    field1 = field2"
+}
+
+```
+
 ### VSCode
 
 Install the `vscode-nim` extension from [here](https://github.com/saem/vscode-nim)
