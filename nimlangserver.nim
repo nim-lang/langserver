@@ -107,8 +107,8 @@ proc getProjectFileAutoGuess(fileUri: string): string =
 proc getWorkspaceConfiguration(ls: LanguageServer): Future[NlsConfig] {.async} =
   try:
     let nlsConfig: seq[NlsConfig] =
-      (%await ls.workspaceConfiguration).to(seq[NlsConfig])
-    result = if nlsConfig.len > 0: nlsConfig[0] else: NlsConfig()
+      (%ls.workspaceConfiguration.await).to(seq[NlsConfig])
+    result = if nlsConfig.len > 0 and nlsConfig[0] != nil: nlsConfig[0] else: NlsConfig()
   except CatchableError:
     debug "Failed to parse the configuration."
     result = NlsConfig()

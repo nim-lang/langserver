@@ -390,3 +390,44 @@ suite "LSP features":
 
   pipeClient.close()
   pipeServer.close()
+
+proc ignore(params: JsonNode): Future[void] {.async.} =
+  return
+
+suite "Null configuration:":
+  let pipeServer = createPipe();
+  let pipeClient = createPipe();
+
+  let server = StreamConnection.new(pipeServer);
+  registerHandlers(server);
+  discard server.start(asyncPipeInput(pipeClient));
+
+  let client = StreamConnection.new(pipeClient);
+  discard client.start(asyncPipeInput(pipeServer));
+  let workspaceConfiguration = %* [nil]
+
+  let configInit = FutureStream[ConfigurationParams]()
+  client.register(
+    "workspace/configuration",
+    partial(testHandler[ConfigurationParams, JsonNode],
+            (fut: configInit, res: workspaceConfiguration)))
+
+  client.registerNotification("textDocument/publishDiagnostics", ignore)
+  client.registerNotification("window/showMessage", ignore)
+
+  let initParams = InitializeParams %* {
+      "processId": %getCurrentProcessId(),
+      "rootUri": fixtureUri("projects/hw/"),
+      "capabilities": {
+        "workspace": {"configuration": true}
+      }
+  }
+
+  discard waitFor client.call("initialize", %initParams)
+  client.notify("initialized", newJObject())
+
+  test "Suggest api":
+    client.notify("textDocument/didOpen", %createDidOpenParams("projects/hw/hw.nim"))
+    let hoverParams = positionParams("projects/hw/hw.nim".fixtureUri, 2, 0)
+    let hover = client.call("textDocument/hover", %hoverParams).waitFor
+    doAssert hover.kind == JNull
