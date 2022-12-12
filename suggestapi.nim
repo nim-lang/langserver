@@ -327,9 +327,9 @@ proc call*(self: Nimsuggest, command: string, file: string, dirtyFile: string,
     line: int, column: int): Future[seq[Suggest]] =
   result = Future[seq[Suggest]]()
   let commandString = if dirtyFile != "":
-                        fmt "{command} {file};{dirtyFile}:{line}:{column}"
+                        fmt "{command} \"{file}\";\"{dirtyFile}\":{line}:{column}"
                       else:
-                        fmt "{command} {file}:{line}:{column}"
+                        fmt "{command} \"{file}\":{line}:{column}"
   self.requestQueue.addLast(
     SuggestCall(commandString: commandString, future: result, command: command))
 
