@@ -241,9 +241,10 @@ proc createNimsuggest*(root: string,
   result.errorCallback = errorCallback
 
   if fullPath != "":
-    result.process = startProcess(command = "{nimsuggestPath} {root} --v3 --autobind".fmt,
+    result.process = startProcess(command = nimsuggestPath,
                                   workingDir = getCurrentDir(),
-                                  options = {poUsePath, poEvalCommand})
+                                  args = @[root, "--v3", "--autobind"],
+                                  options = {poUsePath})
 
     # all this is needed to avoid the need to block on the main thread.
     createThread(thread, readPort, (pipe: pipe, process: result.process))
