@@ -104,7 +104,7 @@ proc getProjectFileAutoGuess(fileUri: string): string =
           certainty = Nimble
     path = dir
 
-proc getWorkspaceConfiguration(ls: LanguageServer): Future[NlsConfig] {.async} =
+proc getWorkspaceConfiguration(ls: LanguageServer): Future[NlsConfig] {.async.} =
   try:
     let nlsConfig: seq[NlsConfig] =
       (%ls.workspaceConfiguration.await).to(seq[NlsConfig])
@@ -113,7 +113,7 @@ proc getWorkspaceConfiguration(ls: LanguageServer): Future[NlsConfig] {.async} =
     debug "Failed to parse the configuration."
     result = NlsConfig()
 
-proc getProjectFile(fileUri: string, ls: LanguageServer): Future[string] {.async} =
+proc getProjectFile(fileUri: string, ls: LanguageServer): Future[string] {.async.} =
   let
     rootPath = AbsoluteDir(ls.initializeParams.rootUri.uriToPath)
     pathRelativeToRoot = string(AbsoluteFile(fileUri).relativeTo(rootPath))
@@ -153,7 +153,7 @@ proc getCharacter(ls: LanguageServer, uri: string, line: int, character: int): i
   return ls.openFiles[uri].fingerTable[line].utf16to8(character)
 
 proc initialize(ls: LanguageServer, params: InitializeParams):
-    Future[InitializeResult] {.async} =
+    Future[InitializeResult] {.async.} =
   debug "Initialize received..."
   ls.initializeParams = params
   return InitializeResult(
@@ -216,7 +216,7 @@ proc orCancelled[T](fut: Future[T], ls: LanguageServer, id: int): Future[T] {.as
     raise ex
 
 proc cancelRequest(ls: LanguageServer, params: CancelParams):
-    Future[void] {.async} =
+    Future[void] {.async.} =
   let
     id = params.id.getInt
     cancelFuture = ls.cancelFutures.getOrDefault id
@@ -340,7 +340,7 @@ proc cancelPendingFileChecks(ls: LanguageServer, nimsuggest: Nimsuggest) =
         cancelFileCheck.complete()
       fileData.needsChecking = false
 
-proc checkProject(ls: LanguageServer, uri: string): Future[void] {.async.} =
+proc checkProject(ls: LanguageServer, uri: string): Future[void] {.async, gcsafe.} =
   if not ls.getWorkspaceConfiguration.await().autoCheckProject.get(true):
     return
   debug "Running diagnostics", uri = uri
@@ -366,8 +366,11 @@ proc checkProject(ls: LanguageServer, uri: string): Future[void] {.async.} =
   ls.progress(token, "end")
 
   debug "Found diagnostics", file = filesWithDiags
-  for (path, diags) in groupBy(diagnostics, s => s.filepath):
-    ls.sendDiagnostics(diags, path)
+  {.gcsafe.}:
+    # Annotating everything with {.gcsafe.} shows no problems we we can assume
+    # its safe.
+    for (path, diags) in groupBy(diagnostics, s => s.filePath):
+      ls.sendDiagnostics(diags, path)
 
   # clean files with no diags
   for path in ls.filesWithDiags:
@@ -383,11 +386,11 @@ proc checkProject(ls: LanguageServer, uri: string): Future[void] {.async.} =
 
   if nimsuggest.needsCheckProject:
     nimsuggest.needsCheckProject = false
-    callSoon() do ():
+    callSoon() do () {.gcsafe.}:
       debug "Running delayed check project...", uri = uri
       traceAsyncErrors ls.checkProject(uri)
 
-proc createOrRestartNimsuggest(ls: LanguageServer, projectFile: string, uri = ""): void =
+proc createOrRestartNimsuggest(ls: LanguageServer, projectFile: string, uri = ""): void {.gcsafe.} =
   let
     configuration = ls.getWorkspaceConfiguration().waitFor()
     nimsuggestPath = configuration.nimsuggestPath.get("nimsuggest")
@@ -397,7 +400,7 @@ proc createOrRestartNimsuggest(ls: LanguageServer, projectFile: string, uri = ""
       ls.showMessage(fmt "Restarting nimsuggest for file {projectFile} due to timeout.",
                      MessageType.Warning)
       ls.createOrRestartNimsuggest(projectFile, uri)
-    errorCallback = proc (ns: Nimsuggest) =
+    errorCallback = proc (ns: Nimsuggest) {.gcsafe.} =
       warn "Server stopped.", projectFile = projectFile
       if configuration.autoRestart.get(true) and ns.successfullCall:
         ls.createOrRestartNimsuggest(projectFile, uri)
@@ -470,7 +473,7 @@ proc didOpen(ls: LanguageServer, params: DidOpenTextDocumentParams):
       if not fut.failed:
         discard ls.warnIfUnknown(fut.read, uri, projectFile)
 
-proc scheduleFileCheck(ls: LanguageServer, uri: string) =
+proc scheduleFileCheck(ls: LanguageServer, uri: string) {.gcsafe.} =
   if not ls.getWorkspaceConfiguration().waitFor().autoCheckFile.get(true):
     return
 
@@ -489,7 +492,7 @@ proc scheduleFileCheck(ls: LanguageServer, uri: string) =
   sleepAsync(FILE_CHECK_DELAY).addCallback() do ():
     if not cancelFuture.finished:
       fileData.checkInProgress = true
-      ls.checkFile(uri).addCallback() do():
+      ls.checkFile(uri).addCallback() do() {.gcsafe.}:
         ls.openFiles[uri].checkInProgress = false
         if fileData.needsChecking:
           fileData.needsChecking = false
@@ -553,7 +556,7 @@ proc toMarkedStrings(suggest: Suggest): seq[MarkedStringOption] =
     }
 
 proc hover(ls: LanguageServer, params: HoverParams, id: int):
-    Future[Option[Hover]] {.async} =
+    Future[Option[Hover]] {.async.} =
   with (params.position, params.textDocument):
     let
       nimsuggest = await ls.getNimsuggest(uri)
@@ -575,7 +578,7 @@ proc toLocation(suggest: Suggest): Location =
   }
 
 proc definition(ls: LanguageServer, params: TextDocumentPositionParams, id: int):
-    Future[seq[Location]] {.async} =
+    Future[seq[Location]] {.async.} =
   with (params.position, params.textDocument):
     result = ls.getNimsuggest(uri)
       .await()
@@ -588,7 +591,7 @@ proc definition(ls: LanguageServer, params: TextDocumentPositionParams, id: int)
       .map(toLocation)
 
 proc declaration(ls: LanguageServer, params: TextDocumentPositionParams, id: int):
-    Future[seq[Location]] {.async} =
+    Future[seq[Location]] {.async.} =
   with (params.position, params.textDocument):
     result = ls.getNimsuggest(uri)
       .await()
@@ -601,7 +604,7 @@ proc declaration(ls: LanguageServer, params: TextDocumentPositionParams, id: int
       .map(toLocation)
 
 proc expandAll(ls: LanguageServer, params: TextDocumentPositionParams):
-    Future[ExpandResult] {.async} =
+    Future[ExpandResult] {.async.} =
   with (params.position, params.textDocument):
     let expand = ls.getNimsuggest(uri)
       .await()
@@ -614,7 +617,7 @@ proc expandAll(ls: LanguageServer, params: TextDocumentPositionParams):
       result = ExpandResult(content: expand[0].doc)
 
 proc typeDefinition(ls: LanguageServer, params: TextDocumentPositionParams, id: int):
-    Future[seq[Location]] {.async} =
+    Future[seq[Location]] {.async.} =
   with (params.position, params.textDocument):
     result = ls.getNimsuggest(uri)
       .await()
@@ -627,7 +630,7 @@ proc typeDefinition(ls: LanguageServer, params: TextDocumentPositionParams, id: 
       .map(toLocation)
 
 proc references(ls: LanguageServer, params: ReferenceParams):
-    Future[seq[Location]] {.async} =
+    Future[seq[Location]] {.async.} =
   with (params.position, params.textDocument, params.context):
     let
       nimsuggest = await ls.getNimsuggest(uri)
@@ -641,7 +644,7 @@ proc references(ls: LanguageServer, params: ReferenceParams):
       .map(toLocation);
 
 proc codeAction(ls: LanguageServer, params: CodeActionParams):
-    Future[seq[CodeAction]] {.async} =
+    Future[seq[CodeAction]] {.async.} =
   let projectUri = await getProjectFile(params.textDocument.uri.uriToPath, ls)
   return seq[CodeAction] %* [{
     "title": "Clean build",
@@ -670,7 +673,7 @@ proc codeAction(ls: LanguageServer, params: CodeActionParams):
   }]
 
 proc executeCommand(ls: LanguageServer, params: ExecuteCommandParams):
-    Future[JsonNode] {.async} =
+    Future[JsonNode] {.async.} =
   let projectFile = params.arguments[0].getStr
   case params.command:
   of RESTART_COMMAND:
@@ -705,7 +708,7 @@ proc toCompletionItem(suggest: Suggest): CompletionItem =
     }
 
 proc completion(ls: LanguageServer, params: CompletionParams, id: int):
-    Future[seq[CompletionItem]] {.async} =
+    Future[seq[CompletionItem]] {.async.} =
   with (params.position, params.textDocument):
     let
       nimsuggest = await ls.getNimsuggest(uri)
@@ -726,7 +729,7 @@ proc toSymbolInformation(suggest: Suggest): SymbolInformation =
     }
 
 proc documentSymbols(ls: LanguageServer, params: DocumentSymbolParams, id: int):
-    Future[seq[SymbolInformation]] {.async} =
+    Future[seq[SymbolInformation]] {.async.} =
   let uri = params.textDocument.uri
   result = ls.getNimsuggest(uri)
     .await()
@@ -736,7 +739,7 @@ proc documentSymbols(ls: LanguageServer, params: DocumentSymbolParams, id: int):
     .map(toSymbolInformation)
 
 proc workspaceSymbol(ls: LanguageServer, params: WorkspaceSymbolParams, id: int):
-    Future[seq[SymbolInformation]] {.async} =
+    Future[seq[SymbolInformation]] {.async.} =
   if ls.lastNimsuggest != nil:
     let
       nimsuggest = await ls.lastNimsuggest
@@ -751,7 +754,7 @@ proc toDocumentHighlight(suggest: Suggest): DocumentHighlight =
   }
 
 proc documentHighlight(ls: LanguageServer, params: TextDocumentPositionParams, id: int):
-    Future[seq[DocumentHighlight]] {.async} =
+    Future[seq[DocumentHighlight]] {.async.} =
 
   with (params.position, params.textDocument):
     let
