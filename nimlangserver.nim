@@ -179,6 +179,7 @@ proc initialize(ls: LanguageServer, params: InitializeParams):
       executeCommandProvider: ExecuteCommandOptions(
         commands: some(@[RESTART_COMMAND, RECOMPILE_COMMAND, CHECK_PROJECT_COMMAND])),
       documentSymbolProvider: some(true),
+      renameProvider: some(true),
       codeActionProvider: some(true)))
 
 proc initialized(ls: LanguageServer, _: JsonNode):
@@ -643,6 +644,21 @@ proc references(ls: LanguageServer, params: ReferenceParams):
       .filter(suggest => suggest.section != ideDef or includeDeclaration)
       .map(toLocation);
 
+proc rename(ls: LanguageServer, params: RenameParams, id: int): Future[WorkspaceEdit] {.async.} =
+  # We reuse the references command as to not duplicate it
+  let references = await ls.references(ReferenceParams(
+    context: ReferenceContext(includeDeclaration: true),
+    textDocument: params.textDocument,
+    position: params.position
+  ))
+  # Build up list of edits that the client needs to perform for each file
+  var edits = newJObject()
+  for reference in references:
+    if reference.uri notin edits:
+      edits[reference.uri] = newJArray()
+    edits[reference.uri] &= %TextEdit(range: reference.range, newText: params.newName)
+  result = WorkspaceEdit(changes: some edits)
+
 proc codeAction(ls: LanguageServer, params: CodeActionParams):
     Future[seq[CodeAction]] {.async.} =
   let projectUri = await getProjectFile(params.textDocument.uri.uriToPath, ls)
@@ -784,6 +800,7 @@ proc registerHandlers*(connection: StreamConnection) =
   connection.register("textDocument/hover", partial(hover, ls))
   connection.register("textDocument/references", partial(references, ls))
   connection.register("textDocument/codeAction", partial(codeAction, ls))
+  connection.register("textDocument/rename", partial(rename, ls))
   connection.register("workspace/executeCommand", partial(executeCommand, ls))
   connection.register("workspace/symbol", partial(workspaceSymbol, ls))
   connection.register("textDocument/documentHighlight", partial(documentHighlight, ls))

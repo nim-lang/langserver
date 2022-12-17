@@ -388,6 +388,18 @@ suite "LSP features":
     doAssert actualEchoCompletionItem.detail == expected.detail
     doAssert actualEchoCompletionItem.documentation != expected.documentation
 
+  test "Rename":
+    let uri = fixtureUri("projects/hw/hw.nim"))
+    let renameParams = RenameParams(
+      textDocument: TextDocument(uri: uri,
+      newName: "hello",
+      position: Position(line: 2, character: 6)
+    )
+    let changes = client.call("textDocument/rename", %renameParams)
+                        .waitFor().to(WorkSpaceEdit).changes[uri]
+    check changes.len == 3
+    check changes.mapIt(it["newText"].getStr()) == "hello".repeat(3)
+
   pipeClient.close()
   pipeServer.close()
 
