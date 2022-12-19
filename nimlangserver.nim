@@ -68,6 +68,11 @@ proc partial*[A, B, C] (fn: proc(a: A, b: B, id: int): C {.gcsafe.}, a: A):
     proc(b: B, id: int): C {.gcsafe, raises: [Defect, CatchableError, Exception].} =
       return fn(a, b, id)
 
+proc toPath(uri: string): string =
+  ## Remove the file:// protocol from a URI and returns the normal path
+  result = uri
+  result.removePrefix("file://")
+
 proc getProjectFileAutoGuess(fileUri: string): string =
   let file = fileUri.decodeUrl
   result = file
@@ -652,11 +657,14 @@ proc rename(ls: LanguageServer, params: RenameParams, id: int): Future[Workspace
     position: params.position
   ))
   # Build up list of edits that the client needs to perform for each file
+  let projectDir = ls.openFiles[params.textDocument.uri].projectFile.await().parentDir()
   var edits = newJObject()
   for reference in references:
-    if reference.uri notin edits:
-      edits[reference.uri] = newJArray()
-    edits[reference.uri] &= %TextEdit(range: reference.range, newText: params.newName)
+    # Only rename symbols inside the project (Stops modifying the stdlib, external packages)
+    if reference.uri.toPath().isRelativeTo(projectDir):
+      if reference.uri notin edits:
+        edits[reference.uri] = newJArray()
+      edits[reference.uri] &= %TextEdit(range: reference.range, newText: params.newName)
   result = WorkspaceEdit(changes: some edits)
 
 proc codeAction(ls: LanguageServer, params: CodeActionParams):
