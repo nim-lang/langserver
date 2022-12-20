@@ -12,7 +12,8 @@ import
   std/json,
   strformat,
   sugar,
-  unittest
+  unittest,
+  utils
 
 proc fixtureUri(path: string): string =
   result = pathToUri(getCurrentDir() / "tests" / path)
@@ -143,26 +144,26 @@ suite "Suggest API selection":
   test "Suggest api":
     client.notify("textDocument/didOpen", %createDidOpenParams("projects/hw/hw.nim"))
     let (_, params) = suggestInit.read.waitFor
-    doAssert %params ==
+    check %params ==
       %ProgressParams(
         token: fmt "Creating nimsuggest for {uriToPath(helloWorldUri)}")
-    doAssert "begin" == progress.read.waitFor[1].value.get()["kind"].getStr
-    doAssert "end" == progress.read.waitFor[1].value.get()["kind"].getStr
+    check "begin" == progress.read.waitFor[1].value.get()["kind"].getStr
+    check "end" == progress.read.waitFor[1].value.get()["kind"].getStr
     client.notify("textDocument/didOpen",
                   %createDidOpenParams("projects/hw/useRoot.nim"))
     let
       rootNimFileUri = "projects/hw/root.nim".fixtureUri.uriToPath
       rootParams2 = suggestInit.read.waitFor[1]
 
-    doAssert %rootParams2 ==
+    check %rootParams2 ==
       %ProgressParams(token: fmt "Creating nimsuggest for {rootNimFileUri}")
 
-    doAssert "begin" == progress.read.waitFor[1].value.get()["kind"].getStr
-    doAssert "end" == progress.read.waitFor[1].value.get()["kind"].getStr
+    check "begin" == progress.read.waitFor[1].value.get()["kind"].getStr
+    check "end" == progress.read.waitFor[1].value.get()["kind"].getStr
     let
       hoverParams = positionParams("projects/hw/hw.nim".fixtureUri, 2, 0)
       hover = client.call("textDocument/hover", %hoverParams).waitFor
-    doAssert hover.kind == JNull
+    check hover.kind == JNull
 
 
 suite "LSP features":
@@ -227,18 +228,18 @@ suite "LSP features":
       expected = Hover %* {
         "contents": [{
             "language": "nim",
-            "value": "hw.a: proc (){.noSideEffect, gcsafe, locks: 0.}"
+            "value": "hw.a: proc ()" & defaultPragmas
           }
         ],
         "range": nil
       }
-    doAssert %hover == %expected
+    check %hover == %expected
 
   test "Sending hover(no content)":
     let
       hoverParams = positionParams( helloWorldUri, 2, 0)
       hover = client.call("textDocument/hover", %hoverParams).waitFor
-    doAssert hover.kind == JNull
+    check hover.kind == JNull
 
   test "Definitions.":
     let
@@ -258,7 +259,7 @@ suite "LSP features":
           }
         }
       }]
-    doAssert %locations == %expected
+    check %locations == %expected
 
   test "References.":
     let referenceParams = ReferenceParams %* {
@@ -300,7 +301,7 @@ suite "LSP features":
         }
       }
     }]
-    doAssert %locations == %expected
+    check %locations == %expected
 
   test "References(exclude def)":
     let referenceParams =  ReferenceParams %* {
@@ -331,7 +332,7 @@ suite "LSP features":
         }
       }
     }]
-    doAssert %locations == %expected
+    check %locations == %expected
 
   test "didChange then sending hover.":
     let didChangeParams = DidChangeTextDocumentParams %* {
@@ -346,6 +347,8 @@ suite "LSP features":
     }
 
     client.notify("textDocument/didChange", %didChangeParams)
+    # Reset state at end of test
+    defer: client.notify("textDocument/didOpen", %createDidOpenParams("projects/hw/hw.nim"))
     let
       hoverParams = positionParams(fixtureUri("projects/hw/hw.nim"), 2, 0)
       hover = to(waitFor client.call("textDocument/hover",
@@ -354,13 +357,13 @@ suite "LSP features":
       expected = Hover %* {
         "contents": [{
             "language": "nim",
-            "value": "hw.a: proc (){.noSideEffect, gcsafe, locks: 0.}"
+            "value": "hw.a: proc ()" & defaultPragmas
           }
         ],
         "range": nil
       }
 
-    doAssert %hover == %expected
+    check %hover == %expected
 
   test "Completion":
     let completionParams = CompletionParams %* {
@@ -372,6 +375,7 @@ suite "LSP features":
          "uri": fixtureUri("projects/hw/hw.nim")
        }
     }
+
     let actualEchoCompletionItem =
       to(waitFor client.call("textDocument/completion", %completionParams),
          seq[CompletionItem])
@@ -380,38 +384,49 @@ suite "LSP features":
     let expected = CompletionItem %* {
       "label": "echo",
       "kind": 3,
-      "detail": "proc (x: varargs[typed]){.gcsafe, locks: 0.}",
+      "detail": "proc (x: varargs[typed]){.gcsafe.}",
     }
 
-    doAssert actualEchoCompletionItem.label == expected.label
-    doAssert actualEchoCompletionItem.kind == expected.kind
-    doAssert actualEchoCompletionItem.detail == expected.detail
-    doAssert actualEchoCompletionItem.documentation != expected.documentation
+    check actualEchoCompletionItem.label == expected.label
+    check actualEchoCompletionItem.kind == expected.kind
+    check actualEchoCompletionItem.detail == expected.detail
+    check actualEchoCompletionItem.documentation != expected.documentation
+
+  test "Prepare rename":
+    let renameParams = PrepareRenameParams(
+      textDocument: TextDocumentIdentifier(uri: helloWorldUri),
+      workDoneToken: "",
+      position: Position(line: 2, character: 6)
+    )
+    let resp = client.call("textDocument/prepareRename", %renameParams)
+                        .waitFor()
+    check resp["defaultBehaviour"].getBool == true
+
+
+  test "Prepare rename doesn't allow non-project symbols":
+    let renameParams = PrepareRenameParams(
+      textDocument: TextDocumentIdentifier(uri: helloWorldUri),
+      workDoneToken: "",
+      position: Position(line: 8, character: 10)
+    )
+    let resp = client.call("textDocument/prepareRename", %renameParams)
+                        .waitFor()
+    check resp.kind == JNull
 
   test "Rename":
-    let uri = fixtureUri("projects/hw/hw.nim")
     let renameParams = RenameParams(
-        textDocument: TextDocumentIdentifier(uri: uri),
+        textDocument: TextDocumentIdentifier(uri: helloWorldUri),
         newName: "hello",
-        position: Position(line: 3, character: 6)
-    )
-    let changes = client.call("textDocument/rename", %renameParams)
-                        .waitFor().to(WorkSpaceEdit).changes.get()[uri]
-    check changes.len == 3
-    check changes.mapIt(it["newText"].getStr()) == "hello".repeat(3)
-
-  test "Rename only affects project":
-    var uri = fixtureUri("projects/hw/hw.nim")
-    let renameParams = RenameParams(
-      textDocument: TextDocumentIdentifier(uri: uri),
-      newName: "hello",
-      position: Position(line: 8, character: 10)
+        position: Position(line: 2, character: 6)
     )
     let changes = client.call("textDocument/rename", %renameParams)
                         .waitFor().to(WorkSpaceEdit).changes.get()
-    for uri in changes.keys:
-      checkPoint uri
     check changes.len == 1
+    check changes[helloWorldUri].len == 3
+    check changes[helloWorldUri].mapIt(it["newText"].getStr()) == "hello".repeat(3)
+
+
+
   pipeClient.close()
   pipeServer.close()
 
@@ -454,4 +469,4 @@ suite "Null configuration:":
     client.notify("textDocument/didOpen", %createDidOpenParams("projects/hw/hw.nim"))
     let hoverParams = positionParams("projects/hw/hw.nim".fixtureUri, 2, 0)
     let hover = client.call("textDocument/hover", %hoverParams).waitFor
-    doAssert hover.kind == JNull
+    check hover.kind == JNull

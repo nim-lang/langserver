@@ -1,7 +1,9 @@
 import
-  ../suggestapi, unittest, os, faststreams/async_backend, std/asyncnet, asyncdispatch
+  ../suggestapi, unittest, os, faststreams/async_backend, std/asyncnet, asyncdispatch, utils, strformat
 
-const inputLine = "def	skProc	hw.a	proc (){.noSideEffect, gcsafe, locks: 0.}	hw/hw.nim	1	5	\"\"	100"
+const
+  expected = "proc ()" & defaultPragmas
+  inputLine = &"def	skProc	hw.a	proc (){defaultPragmas}	hw/hw.nim	1	5	\"\"	100"
 
 suite "Nimsuggest tests":
   let
@@ -13,25 +15,25 @@ suite "Nimsuggest tests":
     doAssert parseQualifiedPath("system.`..<`") == @["system", "`..<`"]
 
   test "Parsing Suggest":
-    doAssert parseSuggest(inputLine)[] == Suggest(
+    check parseSuggest(inputLine)[] == Suggest(
       filePath: "hw/hw.nim",
       qualifiedPath: @["hw", "a"],
       symKind: "skProc",
       line: 1,
       column: 5,
       doc: "",
-      forth: "proc (){.noSideEffect, gcsafe, locks: 0.}",
+      forth: expected,
       section: ideDef)[]
 
   test "test Nimsuggest.call":
     let res = waitFor nimSuggest.call("def", helloWorldFile, helloWorldFile, 2, 0)
     doAssert res.len == 1
-    doAssert res[0].forth == "proc (){.noSideEffect, gcsafe, locks: 0.}"
+    doAssert res[0].forth == expected
 
   test "test Nimsuggest.def":
     let res = waitFor nimSuggest.def(helloWorldFile, helloWorldFile, 2, 0)
     doAssert res.len == 1
-    doAssert res[0].forth == "proc (){.noSideEffect, gcsafe, locks: 0.}"
+    doAssert res[0].forth == expected
 
   test "test Nimsuggest.sug":
     let res = waitFor nimSuggest.sug(helloWorldFile, helloWorldFile, 2, 0)
