@@ -220,6 +220,7 @@ type
 
   RenameCapability* = ref object of RootObj
     dynamicRegistration*: Option[bool]
+    prepareSupport*: Option[bool]
 
   PublishDiagnosticsCapability* = ref object of RootObj
     dynamicRegistration*: Option[bool]
@@ -312,6 +313,11 @@ type
   TextDocumentAndStaticRegistrationOptions* = ref object of TextDocumentRegistrationOptions
     id*: Option[string]
 
+  RenameOptions* = object
+    # We support rename, but need to change json
+    # depending on if the client supports prepare or not
+    supportsPrepare*: bool
+
   ServerCapabilities* = ref object of RootObj
     textDocumentSync*: OptionalNode # TextDocumentSyncOptions or int
     hoverProvider*: Option[bool]
@@ -330,7 +336,7 @@ type
     documentFormattingProvider*: Option[bool]
     documentRangeFormattingProvider*: Option[bool]
     documentOnTypeFormattingProvider*: DocumentOnTypeFormattingOptions
-    renameProvider*: Option[bool]
+    renameProvider*: JsonNode # bool or RenameOptions
     documentLinkProvider*: DocumentLinkOptions
     colorProvider*: OptionalNode # bool or ColorProviderOptions or TextDocumentAndStaticRegistrationOptions
     executeCommandProvider*: ExecuteCommandOptions
@@ -600,6 +606,14 @@ type
     textDocument*: TextDocumentIdentifier
     position*: Position
     newName*: string
+
+  PrepareRenameParams* = ref object of RootObj
+    textDocument*: TextDocumentIdentifier
+    position*: Position
+    workDoneToken*: string
+
+  PrepareRenameResponse* = ref object of RootObj
+    defaultBehaviour*: bool
 
   SignatureHelpContext* = ref object of RootObj
     triggerKind*: int

@@ -1,6 +1,5 @@
 --hints: off
 --debuginfo
---run
 --threads:on
 --define:"debugLogging=on"
 --define:"chronicles_disable_thread_id"

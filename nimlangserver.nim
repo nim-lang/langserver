@@ -68,11 +68,6 @@ proc partial*[A, B, C] (fn: proc(a: A, b: B, id: int): C {.gcsafe.}, a: A):
     proc(b: B, id: int): C {.gcsafe, raises: [Defect, CatchableError, Exception].} =
       return fn(a, b, id)
 
-proc toPath(uri: string): string =
-  ## Remove the file:// protocol from a URI and returns the normal path
-  result = uri
-  result.removePrefix("file://")
-
 proc getProjectFileAutoGuess(fileUri: string): string =
   let file = fileUri.decodeUrl
   result = file
@@ -161,20 +156,23 @@ proc initialize(ls: LanguageServer, params: InitializeParams):
     Future[InitializeResult] {.async.} =
   debug "Initialize received..."
   ls.initializeParams = params
-  return InitializeResult(
+  result = InitializeResult(
     capabilities: ServerCapabilities(
       textDocumentSync: some(%TextDocumentSyncOptions(
         openClose: some(true),
         change: some(TextDocumentSyncKind.Full.int),
         willSave: some(false),
         willSaveWaitUntil: some(false),
-        save: some(SaveOptions(includeText: some(true))))),
+        save: some(SaveOptions(includeText: some(true))))
+      ),
       hoverProvider: some(true),
       workspace: WorkspaceCapability(
-        workspaceFolders: some(WorkspaceFolderCapability())),
+        workspaceFolders: some(WorkspaceFolderCapability())
+      ),
       completionProvider: CompletionOptions(
         triggerCharacters: some(@["."]),
-        resolveProvider: some(false)),
+        resolveProvider: some(false)
+      ),
       definitionProvider: some(true),
       declarationProvider: some(true),
       typeDefinitionProvider: some(true),
@@ -182,10 +180,20 @@ proc initialize(ls: LanguageServer, params: InitializeParams):
       documentHighlightProvider: some(true),
       workspaceSymbolProvider: some(true),
       executeCommandProvider: ExecuteCommandOptions(
-        commands: some(@[RESTART_COMMAND, RECOMPILE_COMMAND, CHECK_PROJECT_COMMAND])),
+        commands: some(@[RESTART_COMMAND, RECOMPILE_COMMAND, CHECK_PROJECT_COMMAND])
+      ),
       documentSymbolProvider: some(true),
-      renameProvider: some(true),
-      codeActionProvider: some(true)))
+      codeActionProvider: some(true))
+  )
+  if params.capabilities.workspace.isSome:
+    let docCaps = params.capabilities.textDocument.unsafeGet()
+    # Check if the client support prepareRename
+    if docCaps.rename.isSome and docCaps.rename.get().prepareSupport.get(false):
+      result.capabilities.renameProvider = %* {
+        "supportsPrepare": true
+      }
+    else:
+      result.capabilities.renameProvider = %true
 
 proc initialized(ls: LanguageServer, _: JsonNode):
     Future[void] {.async.} =
@@ -239,6 +247,10 @@ proc uriToStash(ls: LanguageServer, uri: string): string =
     result = uriToStash(uri)
   else:
     result = ""
+
+proc projectDir(ls: LanguageServer, uri: string): Future[string] {.async.} =
+  ## Returns the directory that a project resides in
+  ls.openFiles[uri].projectFile.await().parentDir()
 
 proc getNimsuggest(ls: LanguageServer, uri: string): Future[Nimsuggest] {.async.} =
   let projectFile = await ls.openFiles[uri].projectFile
@@ -649,6 +661,24 @@ proc references(ls: LanguageServer, params: ReferenceParams):
       .filter(suggest => suggest.section != ideDef or includeDeclaration)
       .map(toLocation);
 
+proc prepareRename(ls: LanguageServer, params: PrepareRenameParams,
+                   id: int): Future[PrepareRenameResponse] {.async.} =
+  with (params.position, params.textDocument):
+    let
+      nimsuggest = await ls.getNimsuggest(uri)
+      def = await nimsuggest.def(
+        uriToPath(uri),
+        ls.uriToStash(uri),
+        line + 1,
+        ls.getCharacter(uri, line, character)
+      )
+    if def.len == 0:
+      return nil
+    # Check if the symbol belongs to the project
+    let projectDir = ls.openFiles[params.textDocument.uri].projectFile.await().parentDir()
+    if def[0].filePath.isRelativeTo(projectDir):
+      return PrepareRenameResponse(defaultBehaviour: true)
+
 proc rename(ls: LanguageServer, params: RenameParams, id: int): Future[WorkspaceEdit] {.async.} =
   # We reuse the references command as to not duplicate it
   let references = await ls.references(ReferenceParams(
@@ -657,11 +687,12 @@ proc rename(ls: LanguageServer, params: RenameParams, id: int): Future[Workspace
     position: params.position
   ))
   # Build up list of edits that the client needs to perform for each file
-  let projectDir = ls.openFiles[params.textDocument.uri].projectFile.await().parentDir()
+  let projectDir = await ls.projectDir(params.textDocument.uri)
   var edits = newJObject()
   for reference in references:
-    # Only rename symbols inside the project (Stops modifying the stdlib, external packages)
-    if reference.uri.toPath().isRelativeTo(projectDir):
+    # Only rename symbols in the project.
+    # If client supports prepareRename then an error will already have been thrown
+    if reference.uri.uriToPath().isRelativeTo(projectDir):
       if reference.uri notin edits:
         edits[reference.uri] = newJArray()
       edits[reference.uri] &= %TextEdit(range: reference.range, newText: params.newName)
@@ -808,6 +839,7 @@ proc registerHandlers*(connection: StreamConnection) =
   connection.register("textDocument/hover", partial(hover, ls))
   connection.register("textDocument/references", partial(references, ls))
   connection.register("textDocument/codeAction", partial(codeAction, ls))
+  connection.register("textDocument/prepareRename", partial(prepareRename, ls))
   connection.register("textDocument/rename", partial(rename, ls))
   connection.register("workspace/executeCommand", partial(executeCommand, ls))
   connection.register("workspace/symbol", partial(workspaceSymbol, ls))
