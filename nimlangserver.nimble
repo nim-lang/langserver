@@ -19,4 +19,5 @@ requires "nim >= 1.0.0",
 
 task test, "run tests":
   --silent
+  --run
   setCommand "c", "tests/all.nim"

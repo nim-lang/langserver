@@ -248,10 +248,6 @@ proc uriToStash(ls: LanguageServer, uri: string): string =
   else:
     result = ""
 
-proc projectDir(ls: LanguageServer, uri: string): Future[string] {.async.} =
-  ## Returns the directory that a project resides in
-  ls.openFiles[uri].projectFile.await().parentDir()
-
 proc getNimsuggest(ls: LanguageServer, uri: string): Future[Nimsuggest] {.async.} =
   let projectFile = await ls.openFiles[uri].projectFile
   ls.lastNimsuggest = ls.projectFiles[projectFile]
@@ -675,7 +671,7 @@ proc prepareRename(ls: LanguageServer, params: PrepareRenameParams,
     if def.len == 0:
       return nil
     # Check if the symbol belongs to the project
-    let projectDir = ls.openFiles[params.textDocument.uri].projectFile.await().parentDir()
+    let projectDir = ls.initializeParams.rootUri.uriToPath
     if def[0].filePath.isRelativeTo(projectDir):
       return PrepareRenameResponse(defaultBehaviour: true)
 
@@ -687,7 +683,7 @@ proc rename(ls: LanguageServer, params: RenameParams, id: int): Future[Workspace
     position: params.position
   ))
   # Build up list of edits that the client needs to perform for each file
-  let projectDir = await ls.projectDir(params.textDocument.uri)
+  let projectDir = ls.initializeParams.rootUri.uriToPath
   var edits = newJObject()
   for reference in references:
     # Only rename symbols in the project.
