@@ -1,4 +1,4 @@
-import macros, strformat, faststreams/async_backend, itertools,
+import macros, strformat, faststreams/async_backend,
   faststreams/asynctools_adapters, faststreams/inputs, faststreams/outputs,
   json_rpc/streamconnection, os, sugar, sequtils, hashes, osproc,
   suggestapi, protocol/enums, protocol/types, with, tables, strutils, sets,
@@ -18,8 +18,13 @@ type
     projectFile: string
     fileRegex: string
 
+  NlsWorkingDirectoryMaping = ref object of RootObj
+    projectFile: string
+    directory: string
+
   NlsConfig = ref object of RootObj
     projectMapping*: OptionalSeq[NlsNimsuggestConfig]
+    workingDirectoryMapping*: OptionalSeq[NlsWorkingDirectoryMaping]
     checkOnSave*: Option[bool]
     nimsuggestPath*: Option[string]
     timeout*: Option[int]
@@ -372,6 +377,7 @@ proc checkProject(ls: LanguageServer, uri: string): Future[void] {.async, gcsafe
   ls.workDoneProgressCreate(token)
   ls.progress(token, "begin", fmt "Checking project {uri.uriToPath}")
   nimsuggest.checkProjectInProgress = true
+  proc getFilepath(s: Suggest): string = s.filepath
   let
     diagnostics = nimsuggest.chk(uriToPath(uri), ls.uriToStash(uri))
       .await()
@@ -381,11 +387,8 @@ proc checkProject(ls: LanguageServer, uri: string): Future[void] {.async, gcsafe
   ls.progress(token, "end")
 
   debug "Found diagnostics", file = filesWithDiags
-  {.gcsafe.}:
-    # Annotating everything with {.gcsafe.} shows no problems we we can assume
-    # its safe.
-    for (path, diags) in groupBy(diagnostics, s => s.filePath):
-      ls.sendDiagnostics(diags, path)
+  for (path, diags) in groupBy(diagnostics, getFilepath):
+    ls.sendDiagnostics(diags, path)
 
   # clean files with no diags
   for path in ls.filesWithDiags:
@@ -405,12 +408,27 @@ proc checkProject(ls: LanguageServer, uri: string): Future[void] {.async, gcsafe
       debug "Running delayed check project...", uri = uri
       traceAsyncErrors ls.checkProject(uri)
 
+proc getWorkingDir(ls: LanguageServer, path: string): Future[string] {.async.} =
+  let
+    rootPath = AbsoluteDir(ls.initializeParams.rootUri.uriToPath)
+    pathRelativeToRoot = string(AbsoluteFile(path).relativeTo(rootPath))
+    mapping = ls.getWorkspaceConfiguration.await().workingDirectoryMapping.get(@[])
+
+  result = getCurrentDir()
+
+  for m in mapping:
+    if m.projectFile == pathRelativeToRoot:
+      result = rootPath.string / m.directory
+      break;
+
+
 proc createOrRestartNimsuggest(ls: LanguageServer, projectFile: string, uri = ""): void {.gcsafe.} =
   let
     configuration = ls.getWorkspaceConfiguration().waitFor()
     nimsuggestPath = configuration.nimsuggestPath.get("nimsuggest")
+    workingDir = ls.getWorkingDir(projectFile).waitFor()
     timeout = configuration.timeout.get(REQUEST_TIMEOUT)
-    restartCallback = proc (ns: Nimsuggest) =
+    restartCallback = proc (ns: Nimsuggest) {.gcsafe.} =
       warn "Restarting the server due to requests being to slow", projectFile = projectFile
       ls.showMessage(fmt "Restarting nimsuggest for file {projectFile} due to timeout.",
                      MessageType.Warning)
@@ -424,7 +442,7 @@ proc createOrRestartNimsuggest(ls: LanguageServer, projectFile: string, uri = ""
                        MessageType.Error)
 
     nimsuggestFut = createNimsuggest(projectFile, nimsuggestPath,
-                                     timeout, restartCallback, errorCallback)
+                                     timeout, restartCallback, errorCallback, workingDir)
     token = fmt "Creating nimsuggest for {projectFile}"
 
   if ls.projectFiles.hasKey(projectFile):
@@ -628,8 +646,38 @@ proc expandAll(ls: LanguageServer, params: TextDocumentPositionParams):
            line + 1,
            ls.getCharacter(uri, line, character))
       .await()
+
+proc createRangeFromSuggest(suggest: Suggest): Range =
+  result = range(suggest.line - 1,
+                 0,
+                 suggest.endLine - 1,
+                 suggest.endCol)
+
+proc fixIdentation(s: string, indent: int): string =
+  result = s.split("\n")
+    .mapIt(if (it != ""):
+             repeat(" ", indent) & it
+           else:
+             it)
+    .join("\n")
+
+proc expand(ls: LanguageServer, params: ExpandTextDocumentPositionParams):
+    Future[ExpandResult] {.async} =
+  with (params, params.position, params.textDocument):
+    let
+      lvl = level.get(-1)
+      tag = if lvl == -1: "all" else: $lvl
+      expand = ls.getNimsuggest(uri)
+        .await()
+        .expand(uriToPath(uri),
+             ls.uriToStash(uri),
+             line + 1,
+             ls.getCharacter(uri, line, character),
+             fmt "  {tag}")
+        .await()
     if expand.len != 0:
-      result = ExpandResult(content: expand[0].doc)
+      result = ExpandResult(content: expand[0].doc.fixIdentation(character),
+                            range: createRangeFromSuggest(expand[0]))
 
 proc typeDefinition(ls: LanguageServer, params: TextDocumentPositionParams, id: int):
     Future[seq[Location]] {.async.} =
@@ -820,6 +868,14 @@ proc documentHighlight(ls: LanguageServer, params: TextDocumentPositionParams, i
                              .orCancelled(ls, id)
     result = suggestLocations.map(toDocumentHighlight);
 
+proc shutdownServers(ls: LanguageServer): void =
+  for ns in ls.projectFiles.values:
+    if ns.finished():
+      ns.read().stop()
+
+proc shutdown(ls: LanguageServer, params: JsonNode):
+    Future[seq[SymbolInformation]] {.async} =
+  ls.shutdownServers()
 
 proc registerHandlers*(connection: StreamConnection) =
   let ls = LanguageServer(
@@ -843,7 +899,8 @@ proc registerHandlers*(connection: StreamConnection) =
   connection.register("workspace/executeCommand", partial(executeCommand, ls))
   connection.register("workspace/symbol", partial(workspaceSymbol, ls))
   connection.register("textDocument/documentHighlight", partial(documentHighlight, ls))
-  connection.register("extension/expandAll", partial(expandAll, ls))
+  connection.register("extension/macroExpand", partial(expand, ls))
+  connection.register("shutdown", partial(shutdown, ls))
 
   connection.registerNotification("$/cancelRequest", partial(cancelRequest, ls))
   connection.registerNotification("initialized", partial(initialized, ls))

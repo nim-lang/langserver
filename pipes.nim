@@ -24,3 +24,4 @@ proc copyFileToPipe*(param: tuple[pipe: AsyncPipe, file: File]) {.thread.} =
   while ch[0] != '\0':
     writeToPipe(param.pipe, ch[0].addr, 1)
     ch[0] = inputStream.readChar();
+  closeWrite(param.pipe, false)

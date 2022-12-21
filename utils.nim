@@ -1,4 +1,4 @@
-import unicode, uri, strformat, os, strutils, faststreams/async_backend, chronicles
+import unicode, uri, strformat, os, strutils, faststreams/async_backend, chronicles, tables
 
 type
   FingerTable = seq[tuple[u16pos, offset: int]]
@@ -120,3 +120,11 @@ proc traceAsyncErrors*(fut: Future) =
   fut.addCallback do ():
     if not fut.error.isNil:
       catchOrQuit fut.error[]
+
+iterator groupBy*[T, U](s: openArray[T], f: proc(a: T): U {.gcsafe.}): tuple[k: U, v: seq[T]] =
+  var t = initTable[U, seq[T]]()
+  for x in s:
+    let fx = f(x)
+    t.mGetOrPut(fx, @[]).add(x)
+  for x in t.pairs:
+    yield x

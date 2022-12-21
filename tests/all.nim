@@ -1,2 +1,2 @@
 import
-  tnimlangserver , tsuggestapi
+  tnimlangserver, tsuggestapi

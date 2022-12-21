@@ -49,6 +49,8 @@ type
     scope*, localUsages*, globalUsages*: int # more usages is better
     tokenLen*: int
     version*: int
+    endLine*: int
+    endCol*: int
 
   SuggestCall* = ref object
     commandString: string
@@ -162,7 +164,7 @@ proc parseSuggest*(line: string): Suggest =
   if tokens.len < 8:
     error "Failed to parse: ", line = line
     raise newException(ValueError, fmt "Failed to parse line {line}")
-  return Suggest(
+  result = Suggest(
     qualifiedPath: tokens[2].parseQualifiedPath,
     filePath: tokens[4],
     line: parseInt(tokens[5]),
@@ -171,6 +173,9 @@ proc parseSuggest*(line: string): Suggest =
     forth: tokens[3],
     symKind: tokens[1],
     section: parseEnum[IdeCmd]("ide" & capitalizeAscii(tokens[0])))
+  if tokens.len == 11:
+    result.endLine = parseInt(tokens[9])
+    result.endCol = parseInt(tokens[10])
 
 proc name*(sug: Suggest): string =
   return sug.qualifiedPath[^1]
@@ -194,7 +199,7 @@ proc logStderr(param: tuple[root: string, process: Process]) {.thread.} =
   try:
     var line = param.process.errorStream.readLine
     while line != "\0":
-      stderr.writeLine fmt "nimsuggest({param.root})>>{line}"
+      stderr.writeLine fmt ">> {line}"
       line = param.process.errorStream.readLine
   except IOError:
     discard
@@ -202,7 +207,7 @@ proc logStderr(param: tuple[root: string, process: Process]) {.thread.} =
 proc stop*(self: Nimsuggest) =
   debug "Stopping nimsuggest for ", root = self.root
   try:
-    self.process.kill()
+    self.process.close()
   except Exception:
     discard
 
@@ -223,7 +228,8 @@ proc createNimsuggest*(root: string,
                        nimsuggestPath: string,
                        timeout: int,
                        timeoutCallback: NimsuggestCallback,
-                       errorCallback: NimsuggestCallback): Future[Nimsuggest] {.async.} =
+                       errorCallback: NimsuggestCallback,
+                       workingDir = getCurrentDir()): Future[Nimsuggest] {.async, gcsafe.} =
   var
     pipe = createPipe(register = true, nonBlockingWrite = false)
     thread: Thread[tuple[pipe: AsyncPipe, process: Process]]
@@ -231,7 +237,8 @@ proc createNimsuggest*(root: string,
     input = pipe.asyncPipeInput
     fullPath = findExe(nimsuggestPath)
 
-  debug "Starting nimsuggest", root = root, timeout = timeout, path = nimsuggestPath, fullPath = fullPath
+  info "Starting nimsuggest", root = root, timeout = timeout, path = nimsuggestPath,
+    fullPath = fullPath, workingDir = workingDir
 
   result = Nimsuggest()
   result.requestQueue = Deque[SuggestCall]()
@@ -242,7 +249,7 @@ proc createNimsuggest*(root: string,
 
   if fullPath != "":
     result.process = startProcess(command = nimsuggestPath,
-                                  workingDir = getCurrentDir(),
+                                  workingDir = workingDir,
                                   args = @[root, "--v3", "--autobind"],
                                   options = {poUsePath})
 
@@ -263,7 +270,7 @@ proc createNimsuggest*(root: string,
     error "Unable to start nimsuggest. Unable to find binary on the $PATH", nimsuggestPath = nimsuggestPath
     result.markFailed fmt "Unable to start nimsuggest. `{nimsuggestPath}` is not present on the PATH"
 
-proc createNimsuggest*(root: string): Future[Nimsuggest] =
+proc createNimsuggest*(root: string): Future[Nimsuggest] {.gcsafe.} =
   result = createNimsuggest(root, "nimsuggest", REQUEST_TIMEOUT,
                             proc (ns: Nimsuggest) = discard,
                             proc (ns: Nimsuggest) = discard)
@@ -295,19 +302,29 @@ proc processQueue(self: Nimsuggest): Future[void] {.async.}=
         await socket.connect("127.0.0.1", Port(self.port))
         await socket.send(req.commandString & "\c\L")
 
-        var lineStr: string = await socket.recvLine()
-        while lineStr != "\r\n" and lineStr != "":
-          trace "Received line", line = lineStr
-          if req.command != "known":
-            res.add parseSuggest(lineStr)
-          else:
-            let sug = Suggest()
-            sug.section = ideKnown
-            sug.forth = lineStr
-            res.add sug
-          lineStr = await socket.recvLine();
+        const bufferSize = 1024 * 1024 * 4
+        var buffer:seq[byte] = newSeq[byte](bufferSize);
 
-        if (lineStr == ""):
+        var content = "";
+        var received = await socket.recvInto(addr buffer[0], bufferSize)
+
+        while received != 0:
+          let chunk = newString(received)
+          copyMem(chunk[0].unsafeAddr, buffer[0].unsafeAddr, received)
+          content = content & chunk
+          received = await socket.recvInto(addr buffer, bufferSize)
+
+        for lineStr  in content.splitLines:
+          if lineStr != "":
+            if req.command != "known":
+              res.add parseSuggest(lineStr)
+            else:
+              let sug = Suggest()
+              sug.section = ideKnown
+              sug.forth = lineStr
+              res.add sug
+
+        if (content == ""):
           self.markFailed "Server crashed/socket closed."
           debug "Server socket closed"
           if not req.future.finished:
@@ -324,12 +341,12 @@ proc processQueue(self: Nimsuggest): Future[void] {.async.}=
   self.processing = false
 
 proc call*(self: Nimsuggest, command: string, file: string, dirtyFile: string,
-    line: int, column: int): Future[seq[Suggest]] =
+    line: int, column: int, tag = ""): Future[seq[Suggest]] =
   result = Future[seq[Suggest]]()
   let commandString = if dirtyFile != "":
-                        fmt "{command} \"{file}\";\"{dirtyFile}\":{line}:{column}"
+                        fmt "{command} \"{file}\";\"{dirtyFile}\":{line}:{column}{tag}"
                       else:
-                        fmt "{command} \"{file}\":{line}:{column}"
+                        fmt "{command} \"{file}\":{line}:{column}{tag}"
   self.requestQueue.addLast(
     SuggestCall(commandString: commandString, future: result, command: command))
 
@@ -339,8 +356,8 @@ proc call*(self: Nimsuggest, command: string, file: string, dirtyFile: string,
 
 template createFullCommand(command: untyped) {.dirty.} =
   proc command*(self: Nimsuggest, file: string, dirtyfile = "",
-                line: int, col: int): Future[seq[Suggest]] =
-    return self.call(astToStr(command), file, dirtyfile, line, col)
+                line: int, col: int, tag = ""): Future[seq[Suggest]] =
+    return self.call(astToStr(command), file, dirtyfile, line, col, tag)
 
 template createFileOnlyCommand(command: untyped) {.dirty.} =
   proc command*(self: Nimsuggest, file: string, dirtyfile = ""): Future[seq[Suggest]] =
@@ -355,8 +372,8 @@ createFullCommand(sug)
 createFullCommand(con)
 createFullCommand(def)
 createFullCommand(declaration)
-createFullCommand(expand)
 createFullCommand(use)
+createFullCommand(expand)
 createFullCommand(highlight)
 createFullCommand(type)
 createFileOnlyCommand(chk)
