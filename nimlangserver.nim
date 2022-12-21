@@ -118,7 +118,7 @@ proc getProjectFile(fileUri: string, ls: LanguageServer): Future[string] {.async
     rootPath = AbsoluteDir(ls.initializeParams.rootUri.uriToPath)
     pathRelativeToRoot = string(AbsoluteFile(fileUri).relativeTo(rootPath))
     mappings = ls.getWorkspaceConfiguration.await().projectMapping.get(@[])
-
+  
   for mapping in mappings:
     if find(cstring(pathRelativeToRoot), re(mapping.fileRegex), 0, pathRelativeToRoot.len) != -1:
       result = string(rootPath) / mapping.projectFile
@@ -183,17 +183,18 @@ proc initialize(ls: LanguageServer, params: InitializeParams):
         commands: some(@[RESTART_COMMAND, RECOMPILE_COMMAND, CHECK_PROJECT_COMMAND])
       ),
       documentSymbolProvider: some(true),
-      codeActionProvider: some(true))
+      codeActionProvider: some(true)
+    )
   )
-  if params.capabilities.workspace.isSome:
+  # Support rename by default, but check if we can also support prepare
+  result.capabilities.renameProvider = %true
+  if params.capabilities.textDocument.isSome:
     let docCaps = params.capabilities.textDocument.unsafeGet()
     # Check if the client support prepareRename
     if docCaps.rename.isSome and docCaps.rename.get().prepareSupport.get(false):
       result.capabilities.renameProvider = %* {
-        "supportsPrepare": true
+        "prepareProvider": true
       }
-    else:
-      result.capabilities.renameProvider = %true
 
 proc initialized(ls: LanguageServer, _: JsonNode):
     Future[void] {.async.} =
@@ -658,7 +659,7 @@ proc references(ls: LanguageServer, params: ReferenceParams):
       .map(toLocation);
 
 proc prepareRename(ls: LanguageServer, params: PrepareRenameParams,
-                   id: int): Future[PrepareRenameResponse] {.async.} =
+                   id: int): Future[JsonNode] {.async.} =
   with (params.position, params.textDocument):
     let
       nimsuggest = await ls.getNimsuggest(uri)
@@ -669,11 +670,13 @@ proc prepareRename(ls: LanguageServer, params: PrepareRenameParams,
         ls.getCharacter(uri, line, character)
       )
     if def.len == 0:
-      return nil
+      return newJNull()
     # Check if the symbol belongs to the project
     let projectDir = ls.initializeParams.rootUri.uriToPath
     if def[0].filePath.isRelativeTo(projectDir):
-      return PrepareRenameResponse(defaultBehaviour: true)
+      return %def[0].toLocation().range
+
+    return newJNull()
 
 proc rename(ls: LanguageServer, params: RenameParams, id: int): Future[WorkspaceEdit] {.async.} =
   # We reuse the references command as to not duplicate it

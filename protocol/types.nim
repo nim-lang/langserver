@@ -610,7 +610,6 @@ type
   PrepareRenameParams* = ref object of RootObj
     textDocument*: TextDocumentIdentifier
     position*: Position
-    workDoneToken*: string
 
   PrepareRenameResponse* = ref object of RootObj
     defaultBehaviour*: bool

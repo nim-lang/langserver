@@ -334,6 +334,40 @@ suite "LSP features":
     }]
     check %locations == %expected
 
+  test "Prepare rename":
+    let renameParams = PrepareRenameParams(
+      textDocument: TextDocumentIdentifier(uri: helloWorldUri),
+      position: Position(line: 2, character: 6)
+    )
+    let resp = client.call("textDocument/prepareRename", %renameParams)
+                        .waitFor()
+    check resp == %* {
+        "start":{"line":2,"character":4},
+        "end":{"line":2,"character":7}
+    }
+
+
+  test "Prepare rename doesn't allow non-project symbols":
+    let renameParams = PrepareRenameParams(
+      textDocument: TextDocumentIdentifier(uri: helloWorldUri),
+      position: Position(line: 8, character: 10)
+    )
+    let resp = client.call("textDocument/prepareRename", %renameParams)
+                        .waitFor()
+    check resp.kind == JNull
+
+  test "Rename":
+    let renameParams = RenameParams(
+        textDocument: TextDocumentIdentifier(uri: helloWorldUri),
+        newName: "hello",
+        position: Position(line: 2, character: 6)
+    )
+    let changes = client.call("textDocument/rename", %renameParams)
+                        .waitFor().to(WorkSpaceEdit).changes.get()
+    check changes.len == 1
+    check changes[helloWorldUri].len == 3
+    check changes[helloWorldUri].mapIt(it["newText"].getStr()) == "hello".repeat(3)
+
   test "didChange then sending hover.":
     let didChangeParams = DidChangeTextDocumentParams %* {
       "textDocument": {
@@ -347,8 +381,6 @@ suite "LSP features":
     }
 
     client.notify("textDocument/didChange", %didChangeParams)
-    # Reset state at end of test
-    defer: client.notify("textDocument/didOpen", %createDidOpenParams("projects/hw/hw.nim"))
     let
       hoverParams = positionParams(fixtureUri("projects/hw/hw.nim"), 2, 0)
       hover = to(waitFor client.call("textDocument/hover",
@@ -392,41 +424,6 @@ suite "LSP features":
     check actualEchoCompletionItem.detail == expected.detail
     check actualEchoCompletionItem.documentation != expected.documentation
 
-  test "Prepare rename":
-    let renameParams = PrepareRenameParams(
-      textDocument: TextDocumentIdentifier(uri: helloWorldUri),
-      workDoneToken: "",
-      position: Position(line: 2, character: 6)
-    )
-    let resp = client.call("textDocument/prepareRename", %renameParams)
-                        .waitFor()
-    check resp["defaultBehaviour"].getBool == true
-
-
-  test "Prepare rename doesn't allow non-project symbols":
-    let renameParams = PrepareRenameParams(
-      textDocument: TextDocumentIdentifier(uri: helloWorldUri),
-      workDoneToken: "",
-      position: Position(line: 8, character: 10)
-    )
-    let resp = client.call("textDocument/prepareRename", %renameParams)
-                        .waitFor()
-    check resp.kind == JNull
-
-  test "Rename":
-    let renameParams = RenameParams(
-        textDocument: TextDocumentIdentifier(uri: helloWorldUri),
-        newName: "hello",
-        position: Position(line: 2, character: 6)
-    )
-    let changes = client.call("textDocument/rename", %renameParams)
-                        .waitFor().to(WorkSpaceEdit).changes.get()
-    check changes.len == 1
-    check changes[helloWorldUri].len == 3
-    check changes[helloWorldUri].mapIt(it["newText"].getStr()) == "hello".repeat(3)
-
-
-
   pipeClient.close()
   pipeServer.close()
 
@@ -458,7 +455,12 @@ suite "Null configuration:":
       "processId": %getCurrentProcessId(),
       "rootUri": fixtureUri("projects/hw/"),
       "capabilities": {
-        "workspace": {"configuration": true}
+        "workspace": {"configuration": true},
+        "textDocument": {
+          "rename": {
+            "prepareSupport": true
+          }
+        }
       }
   }
 
