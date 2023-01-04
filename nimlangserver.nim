@@ -814,14 +814,14 @@ proc documentHighlight(ls: LanguageServer, params: TextDocumentPositionParams, i
                              .orCancelled(ls, id)
     result = suggestLocations.map(toDocumentHighlight);
 
-proc shutdownServers(ls: LanguageServer): void =
-  for ns in ls.projectFiles.values:
-    if ns.finished():
-      ns.read().stop()
-
 proc shutdown(ls: LanguageServer, params: JsonNode):
-    Future[seq[SymbolInformation]] {.async} =
-  ls.shutdownServers()
+    Future[JsonNode] {.async.} =
+  debug "Shutting down"
+  for ns in ls.projectFiles.values:
+    let ns = await ns
+    ns.stop()
+  result = newJNull()
+  trace "Shutdown complete"
 
 proc registerHandlers*(connection: StreamConnection) =
   let ls = LanguageServer(
