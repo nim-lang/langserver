@@ -21,9 +21,11 @@ suite "Client/server initialization sequence":
   let pipeServer = createPipe();
   let pipeClient = createPipe();
 
-  let server = StreamConnection.new(pipeServer);
-  registerHandlers(server);
-  discard server.start(asyncPipeInput(pipeClient));
+  let
+    server = StreamConnection.new(pipeServer)
+    inputPipe = asyncPipeInput(pipeClient)
+  discard registerHandlers(server, inputPipe);
+  discard server.start(inputPipe);
 
   let client = StreamConnection.new(pipeClient);
   discard client.start(asyncPipeInput(pipeServer));
@@ -79,9 +81,11 @@ suite "Suggest API selection":
   let pipeServer = createPipe();
   let pipeClient = createPipe();
 
-  let server = StreamConnection.new(pipeServer);
-  registerHandlers(server);
-  discard server.start(asyncPipeInput(pipeClient));
+  let
+    server = StreamConnection.new(pipeServer)
+    inputPipe = asyncPipeInput(pipeClient)
+  discard registerHandlers(server, inputPipe);
+  discard server.start(inputPipe);
 
   let client = StreamConnection.new(pipeClient);
   discard client.start(asyncPipeInput(pipeServer));
@@ -169,9 +173,11 @@ suite "LSP features":
   let pipeServer = createPipe();
   let pipeClient = createPipe();
 
-  let server = StreamConnection.new(pipeServer);
-  registerHandlers(server);
-  discard server.start(asyncPipeInput(pipeClient));
+  let
+    server = StreamConnection.new(pipeServer)
+    inputPipe = asyncPipeInput(pipeClient)
+    ls = registerHandlers(server, inputPipe);
+  discard server.start(inputPipe);
 
   let client = StreamConnection.new(pipeClient);
   discard client.start(asyncPipeInput(pipeServer));
@@ -388,6 +394,14 @@ suite "LSP features":
     doAssert actualEchoCompletionItem.detail == expected.detail
     doAssert actualEchoCompletionItem.documentation != expected.documentation
 
+  test "Shutdown":
+    let
+      nullValue = newJNull()
+      nullResponse = waitFor client.call("shutdown", nullValue)
+
+    doAssert nullResponse == nullValue
+    doAssert ls.isShutdown
+
   pipeClient.close()
   pipeServer.close()
 
@@ -397,9 +411,11 @@ suite "Null configuration:":
   let pipeServer = createPipe();
   let pipeClient = createPipe();
 
-  let server = StreamConnection.new(pipeServer);
-  registerHandlers(server);
-  discard server.start(asyncPipeInput(pipeClient));
+  let
+    server = StreamConnection.new(pipeServer)
+    inputPipe = asyncPipeInput(pipeClient)
+  discard registerHandlers(server, inputPipe);
+  discard server.start(inputPipe);
 
   let client = StreamConnection.new(pipeClient);
   discard client.start(asyncPipeInput(pipeServer));
@@ -435,9 +451,11 @@ suite "LSP expand":
   let pipeServer = createPipe();
   let pipeClient = createPipe();
 
-  let server = StreamConnection.new(pipeServer);
-  registerHandlers(server);
-  discard server.start(asyncPipeInput(pipeClient));
+  let
+    server = StreamConnection.new(pipeServer)
+    inputPipe = asyncPipeInput(pipeClient)
+  discard registerHandlers(server, inputPipe);
+  discard server.start(inputPipe);
 
   let client = StreamConnection.new(pipeClient);
   discard client.start(asyncPipeInput(pipeServer));
