@@ -50,7 +50,7 @@ type
     workspaceConfiguration: Future[JsonNode]
     filesWithDiags: HashSet[string]
     lastNimsuggest: Future[Nimsuggest]
-    isShutdown: bool
+    isShutdown*: bool
 
   Certainty = enum
     None,
