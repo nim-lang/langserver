@@ -50,6 +50,7 @@ type
     workspaceConfiguration: Future[JsonNode]
     filesWithDiags: HashSet[string]
     lastNimsuggest: Future[Nimsuggest]
+    isShutdown*: bool
 
   Certainty = enum
     None,
@@ -868,16 +869,22 @@ proc documentHighlight(ls: LanguageServer, params: TextDocumentPositionParams, i
                              .orCancelled(ls, id)
     result = suggestLocations.map(toDocumentHighlight);
 
-proc shutdownServers(ls: LanguageServer): void =
-  for ns in ls.projectFiles.values:
-    if ns.finished():
-      ns.read().stop()
-
 proc shutdown(ls: LanguageServer, params: JsonNode):
-    Future[seq[SymbolInformation]] {.async} =
-  ls.shutdownServers()
+    Future[JsonNode] {.async.} =
+  debug "Shutting down"
+  for ns in ls.projectFiles.values:
+    let ns = await ns
+    ns.stop()
+  ls.isShutdown = true
+  result = newJNull()
+  trace "Shutdown complete"
 
-proc registerHandlers*(connection: StreamConnection) =
+proc exit(pipeInput: AsyncInputStream, _: JsonNode):
+    Future[void] {.async.} =
+  debug "Quitting process"
+  pipeInput.close()
+
+proc registerHandlers*(connection: StreamConnection, pipeInput: AsyncInputStream): LanguageServer =
   let ls = LanguageServer(
     connection: connection,
     workspaceConfiguration: Future[JsonNode](),
@@ -885,6 +892,8 @@ proc registerHandlers*(connection: StreamConnection) =
     cancelFutures: initTable[int, Future[void]](),
     filesWithDiags: initHashSet[string](),
     openFiles: initTable[string, FileInfo]())
+  result = ls
+
   connection.register("initialize", partial(initialize, ls))
   connection.register("textDocument/completion", partial(completion, ls))
   connection.register("textDocument/definition", partial(definition, ls))
@@ -903,6 +912,7 @@ proc registerHandlers*(connection: StreamConnection) =
   connection.register("shutdown", partial(shutdown, ls))
 
   connection.registerNotification("$/cancelRequest", partial(cancelRequest, ls))
+  connection.registerNotification("exit", partial(exit, pipeInput))
   connection.registerNotification("initialized", partial(initialized, ls))
   connection.registerNotification("textDocument/didChange", partial(didChange, ls))
   connection.registerNotification("textDocument/didOpen", partial(didOpen, ls))
@@ -916,6 +926,10 @@ when isMainModule:
 
   createThread(stdioThread, copyFileToPipe, (pipe: pipe, file: stdin))
 
-  let connection = StreamConnection.new(Async(fileOutput(stdout, allowAsyncOps = true)));
-  registerHandlers(connection)
-  waitFor connection.start(asyncPipeInput(pipe))
+  let
+    connection = StreamConnection.new(Async(fileOutput(stdout, allowAsyncOps = true)))
+    pipeInput = asyncPipeInput(pipe)
+    ls = registerHandlers(connection, pipeInput)
+
+  waitFor connection.start(pipeInput)
+  quit(if ls.isShutdown: 0 else: 1)
