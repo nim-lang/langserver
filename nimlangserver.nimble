@@ -16,18 +16,7 @@ requires "nim >= 1.0.0",
 
 --path:"."
 
-proc configForTests() =
-  --hints: off
-  --debuginfo
-  --run
-  --threads:on
-  --silent
-  --define:"debugLogging=on"
-  --define:"chronicles_disable_thread_id"
-  --define:"async_backend=asyncdispatch"
-  --define:"chronicles_timestamps=None"
-  --define:"debugLogging"
-
 task test, "run tests":
-  configForTests()
+  --silent
+  --run
   setCommand "c", "tests/all.nim"

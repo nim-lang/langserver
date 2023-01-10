@@ -4,6 +4,11 @@ var bbb = 100
 bbb = 200
 bbb = ""
 
+import std/options
+var
+  x: Option[string]
+  y: Option[string]
+
 import std/macros
 
 macro myAssertMacroInner(arg: untyped): untyped =

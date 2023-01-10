@@ -148,26 +148,26 @@ suite "Suggest API selection":
   test "Suggest api":
     client.notify("textDocument/didOpen", %createDidOpenParams("projects/hw/hw.nim"))
     let (_, params) = suggestInit.read.waitFor
-    doAssert %params ==
+    check %params ==
       %ProgressParams(
         token: fmt "Creating nimsuggest for {uriToPath(helloWorldUri)}")
-    doAssert "begin" == progress.read.waitFor[1].value.get()["kind"].getStr
-    doAssert "end" == progress.read.waitFor[1].value.get()["kind"].getStr
+    check "begin" == progress.read.waitFor[1].value.get()["kind"].getStr
+    check "end" == progress.read.waitFor[1].value.get()["kind"].getStr
     client.notify("textDocument/didOpen",
                   %createDidOpenParams("projects/hw/useRoot.nim"))
     let
       rootNimFileUri = "projects/hw/root.nim".fixtureUri.uriToPath
       rootParams2 = suggestInit.read.waitFor[1]
 
-    doAssert %rootParams2 ==
+    check %rootParams2 ==
       %ProgressParams(token: fmt "Creating nimsuggest for {rootNimFileUri}")
 
-    doAssert "begin" == progress.read.waitFor[1].value.get()["kind"].getStr
-    doAssert "end" == progress.read.waitFor[1].value.get()["kind"].getStr
+    check "begin" == progress.read.waitFor[1].value.get()["kind"].getStr
+    check "end" == progress.read.waitFor[1].value.get()["kind"].getStr
     let
       hoverParams = positionParams("projects/hw/hw.nim".fixtureUri, 2, 0)
       hover = client.call("textDocument/hover", %hoverParams).waitFor
-    doAssert hover.kind == JNull
+    check hover.kind == JNull
 
 
 suite "LSP features":
@@ -237,7 +237,7 @@ suite "LSP features":
     let
       hoverParams = positionParams( helloWorldUri, 2, 0)
       hover = client.call("textDocument/hover", %hoverParams).waitFor
-    doAssert hover.kind == JNull
+    check hover.kind == JNull
 
   test "Definitions.":
     let
@@ -257,7 +257,7 @@ suite "LSP features":
           }
         }
       }]
-    doAssert %locations == %expected
+    check %locations == %expected
 
   test "References.":
     let referenceParams = ReferenceParams %* {
@@ -299,7 +299,7 @@ suite "LSP features":
         }
       }
     }]
-    doAssert %locations == %expected
+    check %locations == %expected
 
   test "References(exclude def)":
     let referenceParams =  ReferenceParams %* {
@@ -330,7 +330,41 @@ suite "LSP features":
         }
       }
     }]
-    doAssert %locations == %expected
+    check %locations == %expected
+
+  test "Prepare rename":
+    let renameParams = PrepareRenameParams(
+      textDocument: TextDocumentIdentifier(uri: helloWorldUri),
+      position: Position(line: 2, character: 6)
+    )
+    let resp = client.call("textDocument/prepareRename", %renameParams)
+                        .waitFor()
+    check resp == %* {
+        "start":{"line":2,"character":4},
+        "end":{"line":2,"character":7}
+    }
+
+
+  test "Prepare rename doesn't allow non-project symbols":
+    let renameParams = PrepareRenameParams(
+      textDocument: TextDocumentIdentifier(uri: helloWorldUri),
+      position: Position(line: 8, character: 10)
+    )
+    let resp = client.call("textDocument/prepareRename", %renameParams)
+                        .waitFor()
+    check resp.kind == JNull
+
+  test "Rename":
+    let renameParams = RenameParams(
+        textDocument: TextDocumentIdentifier(uri: helloWorldUri),
+        newName: "hello",
+        position: Position(line: 2, character: 6)
+    )
+    let changes = client.call("textDocument/rename", %renameParams)
+                        .waitFor().to(WorkSpaceEdit).changes.get()
+    check changes.len == 1
+    check changes[helloWorldUri].len == 3
+    check changes[helloWorldUri].mapIt(it["newText"].getStr()) == "hello".repeat(3)
 
   test "didChange then sending hover.":
     let didChangeParams = DidChangeTextDocumentParams %* {
@@ -360,6 +394,7 @@ suite "LSP features":
          "uri": fixtureUri("projects/hw/hw.nim")
        }
     }
+
     let actualEchoCompletionItem =
       to(waitFor client.call("textDocument/completion", %completionParams),
          seq[CompletionItem])
@@ -369,7 +404,7 @@ suite "LSP features":
     doAssert actualEchoCompletionItem.kind.get == 3
     doAssert actualEchoCompletionItem.detail.get().contains("proc")
     doAssert actualEchoCompletionItem.documentation.isSome
-
+    
   test "Shutdown":
     let
       nullValue = newJNull()
@@ -410,7 +445,12 @@ suite "Null configuration:":
       "processId": %getCurrentProcessId(),
       "rootUri": fixtureUri("projects/hw/"),
       "capabilities": {
-        "workspace": {"configuration": true}
+        "workspace": {"configuration": true},
+        "textDocument": {
+          "rename": {
+            "prepareSupport": true
+          }
+        }
       }
   }
 

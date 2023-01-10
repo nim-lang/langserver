@@ -61,6 +61,7 @@ nimble build
 - Document symbols
 - Find references
 - Workspace symbols
+- Rename symbols
 
 You can install `nimlangserver` using the instuctions for your text editor below:
 
