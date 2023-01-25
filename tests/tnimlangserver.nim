@@ -364,7 +364,7 @@ suite "LSP features":
                         .waitFor().to(WorkSpaceEdit).changes.get()
     check changes.len == 1
     check changes[helloWorldUri].len == 3
-    check changes[helloWorldUri].mapIt(it["newText"].getStr()) == "hello".repeat(3)
+    check changes[helloWorldUri].mapIt(it["newText"].getStr()) == @["hello", "hello", "hello"]
 
   test "didChange then sending hover.":
     let didChangeParams = DidChangeTextDocumentParams %* {
@@ -404,7 +404,7 @@ suite "LSP features":
     doAssert actualEchoCompletionItem.kind.get == 3
     doAssert actualEchoCompletionItem.detail.get().contains("proc")
     doAssert actualEchoCompletionItem.documentation.isSome
-    
+
   test "Shutdown":
     let
       nullValue = newJNull()
