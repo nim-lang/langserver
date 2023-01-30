@@ -25,10 +25,19 @@ jobs:
         with:
           nim-version: ${{ matrix.nimversion }}
           nimble-version: 1df4a0dad3d24ef7aa424ebce0fe7d476e1069ee
-      - run: nim --version
+      - name: nimble install
+        run: |
+          git clone https://github.com/nim-lang/nimble
+          cd nimble
+          git checkout 1df4a0dad3d24ef7aa424ebce0fe7d476e1069ee
+          nim -d:release -o:nimble --skipParentCfg c src/nimble.nim
+          echo '${{ github.workspace }}/nimble/' >> $GITHUB_PATH
       - name: Install Mercurial on macOS
         if: matrix.os == 'macos-latest'
         run: brew install mercurial
       - name: nimble install
         run: |
+          echo ------------------
+          which nimble
+          echo ------------------
           nimble -y install
