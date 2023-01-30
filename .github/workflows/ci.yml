@@ -24,6 +24,7 @@ jobs:
       - uses: jiro4989/setup-nim-action@v1
         with:
           nim-version: ${{ matrix.nimversion }}
+          nimble-version: 1df4a0dad3d24ef7aa424ebce0fe7d476e1069ee
       - run: nim --version
       - name: Install Mercurial on macOS
         if: matrix.os == 'macos-latest'
