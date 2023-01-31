@@ -13,34 +13,26 @@ jobs:
           # - macos-latest
           - ubuntu-latest
         nimversion: # used for installation
-          - 1.6.10
-        nim-version: # actually used
           - devel
           - "#version-1-6"
-    name: ${{ matrix.os }} - ${{ matrix.nim-version }}
+    name: ${{ matrix.os }} - ${{ matrix.nimversion }}
     runs-on: ${{ matrix.os }}
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v3
-      - uses: jiro4989/setup-nim-action@v1.4.1
+      - uses: jiro4989/setup-nim-action@v1.4.3
         with:
-          nim-version: ${{ matrix.nimversion }}
+          nimversion: ${{ matrix.nimversion }}
           yes: true
       - name: Install Mercurial on macOS
         if: matrix.os == 'macos-latest'
         run: brew install mercurial
-      - name: choosenim ${{ matrix.nim-version }}
-        run: choosenim "${{ matrix.nim-version }}" --yes
       - name: Install nimble
         run: |
           git clone https://github.com/yyoncho/nimble -b nim-as-dep
           cd nimble
           nimble -y build
-      # - name: install deps
-      #   shell: bash
-      #   run: |
-      #     ./nimble/nimble -y install
       - name: test
         shell: bash
         run: |
