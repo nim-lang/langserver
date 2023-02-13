@@ -61,12 +61,7 @@ jobs:
         run: |
           ./nimble/nimble install
       - name: Compress the Nim Language Server binaries
-        if: matrix.target.os != 'windows'
-        run: tar -c -z -v -f nimlangserver-${{ matrix.target.os }}-${{ matrix.target.cpu }}.tar.gz nimlangserver
-
-      - name: Compress the Nim Language Server binaries
-        if: matrix.target.os == 'windows'
-        run: tar -c -z -v -f nimlangserver-${{ matrix.target.os }}-${{ matrix.target.cpu }}.tar.gz nimlangserver.exe
+        run: tar -c -z -v -f nimlangserver-${{ matrix.target.os }}-${{ matrix.target.cpu }}.tar.gz nimlangserver{,.exe}
 
       - name: Upload the Nim Language Server Binaries
         uses: actions/upload-artifact@v2
