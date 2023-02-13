@@ -57,7 +57,7 @@ jobs:
           cd nimble
           nimble -y build -d:release
 
-      - name: test
+      - name: build
         run: |
           ./nimble/nimble install
       - name: Compress the Nim Language Server binaries
