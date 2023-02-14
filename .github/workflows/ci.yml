@@ -10,7 +10,7 @@ jobs:
       matrix:
         os:
           # - windows-latest
-          - macos-latest
+          # - macos-latest
           - ubuntu-latest
         nimversion: # used for installation
           - devel
