@@ -8,19 +8,20 @@ let
     pname = "latest-nimble";
     version = "0.15.0-dev";
     strictDeps = true;
+    gitRev = "b2f9acc0af176fda37d6c7dd782d6165b6188784";
 
     src = pkgs.fetchFromGitHub {
       owner = "nim-lang";
       repo = "nimble";
-      rev = "d45af2fb6e07e55768d74349628246af58d61d9d";
-      hash = "sha256-6nEK58gZduZquHEvsJMWHt23sEV5cTl8EMTrgK/q3js=";
+      rev = gitRev;
+      hash = "sha256-7vYDyyRQoOjLftIolDFZ1dg8CTu670kEsVyqIzMgDiU=";
     };
 
     depsBuildBuild = [ pkgs.nim ];
     buildInputs = [ pkgs.openssl ]
       ++ pkgs.lib.optional pkgs.stdenv.isDarwin pkgs.Security;
 
-    nimFlags = [ "-d:release" ];
+    nimFlags = [ "-d:release -d:git_revision_override=${gitRev}" ];
 
     buildPhase = ''
       runHook preBuild
