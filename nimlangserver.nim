@@ -920,16 +920,21 @@ proc registerHandlers*(connection: StreamConnection, pipeInput: AsyncInputStream
   connection.registerNotification("textDocument/didClose", partial(didClose, ls))
 
 when isMainModule:
-  var
-    pipe = createPipe(register = true, nonBlockingWrite = false)
-    stdioThread: Thread[tuple[pipe: AsyncPipe, file: File]]
+  try:
+    var
+      pipe = createPipe(register = true, nonBlockingWrite = false)
+      stdioThread: Thread[tuple[pipe: AsyncPipe, file: File]]
 
-  createThread(stdioThread, copyFileToPipe, (pipe: pipe, file: stdin))
+    createThread(stdioThread, copyFileToPipe, (pipe: pipe, file: stdin))
 
-  let
-    connection = StreamConnection.new(Async(fileOutput(stdout, allowAsyncOps = true)))
-    pipeInput = asyncPipeInput(pipe)
-    ls = registerHandlers(connection, pipeInput)
+    let
+      connection = StreamConnection.new(Async(fileOutput(stdout, allowAsyncOps = true)))
+      pipeInput = asyncPipeInput(pipe)
+      ls = registerHandlers(connection, pipeInput)
 
-  waitFor connection.start(pipeInput)
-  quit(if ls.isShutdown: 0 else: 1)
+    waitFor connection.start(pipeInput)
+    quit(if ls.isShutdown: 0 else: 1)
+  except Exception as ex:
+    echo "Shutting down due to an error: ", ex.msg
+    echo ex.getStackTrace()
+    quit 1
