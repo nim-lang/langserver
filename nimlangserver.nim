@@ -5,13 +5,10 @@ import macros, strformat, faststreams/async_backend,
   ./utils, ./pipes, chronicles, std/re, uri, "$nim/compiler/pathutils"
 
 const
-  STORAGE = getTempDir() / "nimlangserver"
   RESTART_COMMAND = "nimlangserver.restart"
   RECOMPILE_COMMAND = "nimlangserver.recompile"
   CHECK_PROJECT_COMMAND = "nimlangserver.checkProject"
   FILE_CHECK_DELAY = 1000
-
-discard existsOrCreateDir(STORAGE)
 
 type
   NlsNimsuggestConfig = ref object of RootObj
@@ -51,6 +48,7 @@ type
     filesWithDiags: HashSet[string]
     lastNimsuggest: Future[Nimsuggest]
     isShutdown*: bool
+    storageDir*: string
 
   Certainty = enum
     None,
@@ -246,12 +244,9 @@ proc cancelRequest(ls: LanguageServer, params: CancelParams):
   if not cancelFuture.isNil:
     cancelFuture.complete()
 
-proc uriToStash(uri: string): string =
-  STORAGE / (hash(uri).toHex & ".nim")
-
 proc uriToStash(ls: LanguageServer, uri: string): string =
   if ls.openFiles[uri].changed:
-    result = uriToStash(uri)
+    result = ls.storageDir / (hash(uri).toHex & ".nim")
   else:
     result = ""
 
@@ -484,7 +479,7 @@ proc didOpen(ls: LanguageServer, params: DidOpenTextDocumentParams):
   with params.textDocument:
     debug "New document opened for URI:", uri = uri
     let
-      file = open(uriToStash(uri), fmWrite)
+      file = open(ls.uriToStash(uri), fmWrite)
       projectFileFuture = getProjectFile(uriToPath(uri), ls)
 
     ls.openFiles[uri] = FileInfo(
@@ -537,7 +532,7 @@ proc didChange(ls: LanguageServer, params: DidChangeTextDocumentParams):
    with params:
      let
        uri = textDocument.uri
-       file = open(uriToStash(uri), fmWrite)
+       file = open(ls.uriToStash(uri), fmWrite)
 
      ls.openFiles[uri].fingerTable = @[]
      ls.openFiles[uri].changed = true
@@ -884,14 +879,17 @@ proc exit(pipeInput: AsyncInputStream, _: JsonNode):
   debug "Quitting process"
   pipeInput.close()
 
-proc registerHandlers*(connection: StreamConnection, pipeInput: AsyncInputStream): LanguageServer =
+proc registerHandlers*(connection: StreamConnection,
+                       pipeInput: AsyncInputStream,
+                       storageDir: string): LanguageServer =
   let ls = LanguageServer(
     connection: connection,
     workspaceConfiguration: Future[JsonNode](),
     projectFiles: initTable[string, Future[Nimsuggest]](),
     cancelFutures: initTable[int, Future[void]](),
     filesWithDiags: initHashSet[string](),
-    openFiles: initTable[string, FileInfo]())
+    openFiles: initTable[string, FileInfo](),
+    storageDir: storageDir)
   result = ls
 
   connection.register("initialize", partial(initialize, ls))
@@ -920,21 +918,27 @@ proc registerHandlers*(connection: StreamConnection, pipeInput: AsyncInputStream
   connection.registerNotification("textDocument/didClose", partial(didClose, ls))
 
 when isMainModule:
-  try:
-    var
-      pipe = createPipe(register = true, nonBlockingWrite = false)
-      stdioThread: Thread[tuple[pipe: AsyncPipe, file: File]]
+  proc main =
+    try:
+      let storageDir = getTempDir() / "nimlangserver"
+      discard existsOrCreateDir(storageDir)
 
-    createThread(stdioThread, copyFileToPipe, (pipe: pipe, file: stdin))
+      var
+        pipe = createPipe(register = true, nonBlockingWrite = false)
+        stdioThread: Thread[tuple[pipe: AsyncPipe, file: File]]
 
-    let
-      connection = StreamConnection.new(Async(fileOutput(stdout, allowAsyncOps = true)))
-      pipeInput = asyncPipeInput(pipe)
-      ls = registerHandlers(connection, pipeInput)
+      createThread(stdioThread, copyFileToPipe, (pipe: pipe, file: stdin))
 
-    waitFor connection.start(pipeInput)
-    quit(if ls.isShutdown: 0 else: 1)
-  except Exception as ex:
-    echo "Shutting down due to an error: ", ex.msg
-    echo ex.getStackTrace()
-    quit 1
+      let
+        connection = StreamConnection.new(Async(fileOutput(stdout, allowAsyncOps = true)))
+        pipeInput = asyncPipeInput(pipe)
+        ls = registerHandlers(connection, pipeInput, storageDir)
+
+      waitFor connection.start(pipeInput)
+      quit(if ls.isShutdown: 0 else: 1)
+    except Exception as ex:
+      echo "Shutting down due to an error: ", ex.msg
+      echo ex.getStackTrace()
+      quit 1
+
+  main()
