@@ -244,11 +244,14 @@ proc cancelRequest(ls: LanguageServer, params: CancelParams):
   if not cancelFuture.isNil:
     cancelFuture.complete()
 
+proc uriStorageLocation(ls: LanguageServer, uri: string): string =
+  ls.storageDir / (hash(uri).toHex & ".nim")
+
 proc uriToStash(ls: LanguageServer, uri: string): string =
-  if ls.openFiles[uri].changed:
-    result = ls.storageDir / (hash(uri).toHex & ".nim")
+  if ls.openFiles.hasKey(uri) and ls.openFiles[uri].changed:
+    uriStorageLocation(ls, uri)
   else:
-    result = ""
+    ""
 
 proc getNimsuggest(ls: LanguageServer, uri: string): Future[Nimsuggest] {.async.} =
   let projectFile = await ls.openFiles[uri].projectFile
@@ -479,7 +482,7 @@ proc didOpen(ls: LanguageServer, params: DidOpenTextDocumentParams):
   with params.textDocument:
     debug "New document opened for URI:", uri = uri
     let
-      file = open(ls.uriToStash(uri), fmWrite)
+      file = open(ls.uriStorageLocation(uri), fmWrite)
       projectFileFuture = getProjectFile(uriToPath(uri), ls)
 
     ls.openFiles[uri] = FileInfo(
@@ -532,7 +535,7 @@ proc didChange(ls: LanguageServer, params: DidChangeTextDocumentParams):
    with params:
      let
        uri = textDocument.uri
-       file = open(ls.uriToStash(uri), fmWrite)
+       file = open(ls.uriStorageLocation(uri), fmWrite)
 
      ls.openFiles[uri].fingerTable = @[]
      ls.openFiles[uri].changed = true
@@ -917,12 +920,14 @@ proc registerHandlers*(connection: StreamConnection,
   connection.registerNotification("textDocument/didSave", partial(didSave, ls))
   connection.registerNotification("textDocument/didClose", partial(didClose, ls))
 
+proc ensureStorageDir*: string =
+  result = getTempDir() / "nimlangserver"
+  discard existsOrCreateDir(result)
+
 when isMainModule:
   proc main =
     try:
-      let storageDir = getTempDir() / "nimlangserver"
-      discard existsOrCreateDir(storageDir)
-
+      let storageDir = ensureStorageDir()
       var
         pipe = createPipe(register = true, nonBlockingWrite = false)
         stdioThread: Thread[tuple[pipe: AsyncPipe, file: File]]

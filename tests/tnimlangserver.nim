@@ -18,6 +18,8 @@ import
 proc fixtureUri(path: string): string =
   result = pathToUri(getCurrentDir() / "tests" / path)
 
+let storageDir = ensureStorageDir()
+
 suite "Client/server initialization sequence":
   let pipeServer = createPipe();
   let pipeClient = createPipe();
@@ -25,7 +27,7 @@ suite "Client/server initialization sequence":
   let
     server = StreamConnection.new(pipeServer)
     inputPipe = asyncPipeInput(pipeClient)
-  discard registerHandlers(server, inputPipe);
+  discard registerHandlers(server, inputPipe, storageDir);
   discard server.start(inputPipe);
 
   let client = StreamConnection.new(pipeClient);
@@ -85,7 +87,7 @@ suite "Suggest API selection":
   let
     server = StreamConnection.new(pipeServer)
     inputPipe = asyncPipeInput(pipeClient)
-  discard registerHandlers(server, inputPipe);
+  discard registerHandlers(server, inputPipe, storageDir);
   discard server.start(inputPipe);
 
   let client = StreamConnection.new(pipeClient);
@@ -177,7 +179,7 @@ suite "LSP features":
   let
     server = StreamConnection.new(pipeServer)
     inputPipe = asyncPipeInput(pipeClient)
-    ls = registerHandlers(server, inputPipe);
+    ls = registerHandlers(server, inputPipe, storageDir);
   discard server.start(inputPipe);
 
   let client = StreamConnection.new(pipeClient);
@@ -425,7 +427,7 @@ suite "Null configuration:":
   let
     server = StreamConnection.new(pipeServer)
     inputPipe = asyncPipeInput(pipeClient)
-  discard registerHandlers(server, inputPipe);
+  discard registerHandlers(server, inputPipe, storageDir);
   discard server.start(inputPipe);
 
   let client = StreamConnection.new(pipeClient);
@@ -470,7 +472,7 @@ suite "LSP expand":
   let
     server = StreamConnection.new(pipeServer)
     inputPipe = asyncPipeInput(pipeClient)
-  discard registerHandlers(server, inputPipe);
+  discard registerHandlers(server, inputPipe, storageDir);
   discard server.start(inputPipe);
 
   let client = StreamConnection.new(pipeClient);
