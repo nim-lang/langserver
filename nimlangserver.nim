@@ -942,8 +942,8 @@ when isMainModule:
       waitFor connection.start(pipeInput)
       quit(if ls.isShutdown: 0 else: 1)
     except Exception as ex:
-      echo "Shutting down due to an error: ", ex.msg
-      echo ex.getStackTrace()
+      stderr.writeLine("Shutting down due to an error: ", ex.msg)
+      stderr.writeLine(ex.getStackTrace())
       quit 1
 
   main()
