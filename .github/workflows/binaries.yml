@@ -2,10 +2,10 @@ on:
   push:
     paths-ignore: ['media/**', 'docs/**', '**/*.md']
     branches:
-    - master
-    pull_request:
-      paths-ignore: ['media/**', 'docs/**', '**/*.md']
-    workflow_dispatch:
+      - master
+  pull_request:
+    paths-ignore: ['media/**', 'docs/**', '**/*.md']
+  workflow_dispatch:
 
 jobs:
   build:
