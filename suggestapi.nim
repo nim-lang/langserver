@@ -313,7 +313,7 @@ proc processQueue(self: Nimsuggest): Future[void] {.async.}=
           let chunk = newString(received)
           copyMem(chunk[0].unsafeAddr, buffer[0].unsafeAddr, received)
           content = content & chunk
-          received = await socket.recvInto(addr buffer, bufferSize)
+          received = await socket.recvInto(addr buffer[0], bufferSize)
 
         for lineStr  in content.splitLines:
           if lineStr != "":
