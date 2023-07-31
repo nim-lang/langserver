@@ -882,6 +882,13 @@ proc exit(pipeInput: AsyncInputStream, _: JsonNode):
   debug "Quitting process"
   pipeInput.close()
 
+proc didChangeConfiguration(ls: LanguageServer, conf: JsonNode):
+    Future[void] {.async, gcsafe.} =
+  debug "Changed configuration: ", conf = conf
+
+  ls.workspaceConfiguration = newFuture[JsonNode]()
+  ls.workspaceConfiguration.complete(conf)
+
 proc registerHandlers*(connection: StreamConnection,
                        pipeInput: AsyncInputStream,
                        storageDir: string): LanguageServer =
@@ -919,6 +926,7 @@ proc registerHandlers*(connection: StreamConnection,
   connection.registerNotification("textDocument/didOpen", partial(didOpen, ls))
   connection.registerNotification("textDocument/didSave", partial(didSave, ls))
   connection.registerNotification("textDocument/didClose", partial(didClose, ls))
+  connection.registerNotification("workspace/didChangeConfiguration", partial(didChangeConfiguration, ls))
 
 proc ensureStorageDir*: string =
   result = getTempDir() / "nimlangserver"
