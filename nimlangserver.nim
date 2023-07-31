@@ -236,13 +236,14 @@ proc orCancelled[T](fut: Future[T], ls: LanguageServer, id: int): Future[T] {.as
 
 proc cancelRequest(ls: LanguageServer, params: CancelParams):
     Future[void] {.async.} =
-  let
-    id = params.id.getInt
-    cancelFuture = ls.cancelFutures.getOrDefault id
+  if params.id.isSome:
+    let
+      id = params.id.get.getInt
+      cancelFuture = ls.cancelFutures.getOrDefault id
 
-  debug "Cancelling: ", id = id
-  if not cancelFuture.isNil:
-    cancelFuture.complete()
+    debug "Cancelling: ", id = id
+    if not cancelFuture.isNil:
+      cancelFuture.complete()
 
 proc uriStorageLocation(ls: LanguageServer, uri: string): string =
   ls.storageDir / (hash(uri).toHex & ".nim")
