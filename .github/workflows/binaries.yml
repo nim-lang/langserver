@@ -1,75 +1,77 @@
 on:
   push:
-    paths-ignore: ['media/**', 'docs/**', '**/*.md']
+    tags:
+    - 'v*' # "v1.2.3"
     branches:
-      - master
-  pull_request:
+    - master
     paths-ignore: ['media/**', 'docs/**', '**/*.md']
-  workflow_dispatch:
-
+    pull_request:
+      paths-ignore: ['media/**', 'docs/**', '**/*.md']
+    workflow_dispatch:
 jobs:
   build:
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         target:
           - os: linux
+            triple: x86_64-linux-musl
+            name: linux
             cpu: amd64
-          - os: linux
-            cpu: arm64
-          - os: macos
+          - os: macosx
+            triple: x86_64-apple-darwin14
+            name: apple
             cpu: amd64
-          - os: macos
-            cpu: arm64
           - os: windows
+            triple: x86_64-w64-mingw32
+            name: windows
             cpu: amd64
         include:
           - target:
               os: linux
-            builder: ubuntu-22.04
-            shell: bash
+            builder: ubuntu-20.04
           - target:
-              os: macos
+              os: macosx
             builder: macos-11
-            shell: bash
           - target:
               os: windows
             builder: windows-2019
-            shell: bash
     defaults:
       run:
-        shell: ${{ matrix.shell }}
+        shell: bash
 
-    name: '${{ matrix.target.os }}-${{ matrix.target.cpu }}'
+    name: '${{ matrix.target.triple }}'
     runs-on: ${{ matrix.builder }}
     steps:
       - name: Checkout
         uses: actions/checkout@v3
 
-      - uses: jiro4989/setup-nim-action@v1.4.3
+      - name: Setup Nimble
+        uses: nim-lang/nimble/.github/actions/install_nimble@master
         with:
-          nim-version: stable
-          yes: true
+          os: ${{ matrix.target.name }}
+          cpu: ${{ matrix.target.cpu }}
 
-      - name: Install nimble
-        run: |
-          git clone https://github.com/yyoncho/nimble -b nim-as-dep
-          cd nimble
-          nimble -y build -d:release
+      - name: Restore nimble dependencies from cache
+        id: nimble_deps
+        uses: actions/cache@v3
+        with:
+          path: ~/.nimble/
+          key: ${{ matrix.target.os }}-${{ env.cache_nonce }}
 
-      - name: build
+      - name: build nimlangserver
         run: |
-          ./nimble/nimble install
+          nimble build -d:release
+
       - name: Compress the Nim Language Server binaries
         run: |
-          shopt -s extglob
-          tar -c -z -v -f nimlangserver-${{ matrix.target.os }}-${{ matrix.target.cpu }}.tar.gz nimlangserver@(|.exe)
+          tar -c -z -v -f ../nimlangserver-${{ matrix.target.name }}.tar.gz `ls nimlangserver{,.exe} 2>/dev/null || true`
 
       - name: Upload the Nim Language Server Binaries
         uses: actions/upload-artifact@v2
         with:
-          name: nimlangserver-${{ matrix.target.os }}-${{ matrix.target.cpu }}.tar.gz
-          path: nimlangserver-${{ matrix.target.os }}-${{ matrix.target.cpu }}.tar.gz
+          name: nimlangserver-${{ matrix.target.name }}.tar.gz
+          path: nimlangserver-${{ matrix.target.name }}.tar.gz
 
   create-github-release:
     name: Create Github Release
@@ -83,7 +85,7 @@ jobs:
 
       - uses: ncipollo/release-action@v1
         with:
-          name: Latest Langserver Binaries
+          name: Latest Nimlangserver Binaries
           artifacts: "*/*"
           allowUpdates: true
           makeLatest: true
