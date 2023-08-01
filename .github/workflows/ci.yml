@@ -12,28 +12,26 @@ jobs:
           # - windows-latest
           # - macos-latest
           - ubuntu-latest
-        nimversion: # used for installation
-          - devel
-          - "#version-1-6"
     name: ${{ matrix.os }} - ${{ matrix.nimversion }}
     runs-on: ${{ matrix.os }}
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v3
-      - uses: jiro4989/setup-nim-action@v1.4.3
+      - name: Setup Nimble
+        uses: nim-lang/nimble/.github/actions/install_nimble@master
         with:
-          nimversion: ${{ matrix.nimversion }}
-          yes: true
-      - name: Install Mercurial on macOS
-        if: matrix.os == 'macos-latest'
-        run: brew install mercurial
-      - name: Install nimble
-        run: |
-          git clone https://github.com/yyoncho/nimble -b nim-as-dep
-          cd nimble
-          nimble -y build
+          os: linux
+          cpu: amd64
+
+      - name: Restore nimble dependencies from cache
+        id: nimble_deps
+        uses: actions/cache@v3
+        with:
+          path: ~/.nimble/
+          key: ${{ matrix.os }}-${{ env.cache_nonce }}
+
       - name: test
         shell: bash
         run: |
-          ./nimble/nimble -y test
+          nimble -y install
