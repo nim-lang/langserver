@@ -7,6 +7,47 @@ Nim Language Server, or `nimlangserver`, is a language server for Nim.
 - [vscode-nim](https://github.com/saem/vscode-nim) has support for `nimlangserver`. Follow the instructions at:
 https://github.com/saem/vscode-nim#nim-lanugage-server-integration-experimental
 
+### Neovim
+- [lsp](https://neovim.io/doc/user/lsp.html) Neovim has built-in LSP support. Although, you might want to use something like [lsp-config](https://github.com/neovim/nvim-lspconfig) to take care of the boilerplate code for the most LSP configurations. Install `lsp-config` using your favourite plugin manager an place the following code into your `init.vim` config:
+```lua
+lua <<EOF
+
+require'lspconfig'.nim_langserver.setup{
+  settings = {
+    nim = {
+      nimsuggestPath = "~/.nimble/bin/custom_lang_server_build"
+    }
+  }
+}
+
+EOF
+```
+Change configuration to your liking (most probably you don't need to provide any settings at all, defaults should work fine for the majority of the users). You might also want to read `lsp-config` documentation to setup key bindings, autocompletion and so on.
+
+**IMPORTANT** you might want to use latest build of the `nimlangserver` and/or build it from source.
+
+### VIM/Neovim
+- [coc.nvim](https://github.com/neoclide/coc.nvim) supports both classical VIM as well as Neovim. It also supports vscode-like `coc-settings.json` for LSP configuraition. Install the plugin via your favourite plugin manager, create `coc-settings.json` alongside your `init.vim` and add the following contents to it:
+```json
+{
+  "languageserver": {
+    "nim": {
+      "command": "nimlangserver",
+      "filetypes": ["nim"],
+      "trace.server": "verbose",
+      "settings": {
+        "nim": {
+          "nimsuggestPath": "~/.nimble/bin/nimsuggest"
+        }
+      }
+    }
+  }
+}
+```
+Ofcourse, change the configuraition to your liking. You might also want to read `coc.nvim` documentation to setup key bindings, autocompletion and so on.
+
+**IMPORTANT** you might want to use latest build of the `nimlangserver` and/or build it from source.
+
 ### Installing binaries
 
 _NB:_ `nimlangserver` requires `nimsuggest` version that supports `--v3`:
