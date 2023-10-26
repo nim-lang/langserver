@@ -1,6 +1,9 @@
 type
   ErrorCode* = enum
-    RequestCancelled = -32800 # All the other error codes are from JSON-RPC
+    RequestFailed = -32803,
+    ServerCancelled = -32802,
+    ContentModified = -32801,
+    RequestCancelled = -32800, # All the other error codes are from JSON-RPC
     ParseError = -32700,
     InternalError = -32603,
     InvalidParams = -32602,
@@ -8,7 +11,8 @@ type
     InvalidRequest = -32600,
     ServerErrorStart = -32099,
     ServerNotInitialized = -32002,
-    ServerErrorEnd = -32000,
+    UnknownErrorCode = -32001,
+    ServerErrorEnd = -32000
 # Anything below here comes from the LSP specification
 type
   DiagnosticSeverity* {.pure.} = enum
@@ -16,6 +20,9 @@ type
     Warning = 2,
     Information = 3,
     Hint = 4
+  DiagnosticTag* {.pure.} = enum
+    Unnecessary = 1,
+    Deprecated = 2
   SymbolKind* {.pure.} = enum
     File = 1,
     Module = 2,
@@ -77,7 +84,8 @@ type
     Error = 1,
     Warning = 2,
     Info = 3,
-    Log = 4
+    Log = 4,
+    Debug = 5
   FileChangeType* {.pure.} = enum
     Created = 1,
     Changed = 2,
@@ -105,3 +113,23 @@ type
     Invoked = 1,
     TriggerCharacter = 2,
     ContentChange = 3
+  InitializeErrorCodes* {.pure.} = enum
+    unknownProtocolVersion = 1
+  NotebookCellKind* {.pure.} = enum
+    Markup = 1,
+    Code = 2
+  SymbolTag* {.pure.} = enum
+    Deprecated = 1
+  InlayHintKind* {.pure.} = enum
+    Type = 1,
+    Parameter = 2
+  CompletionItemTag* {.pure.} = enum
+    Deprecated = 1
+  InsertTextMode* {.pure.} = enum
+    asIs = 1,
+    adjustIndentation = 2
+  CodeActionTriggerKind* {.pure.} = enum
+    Invoked = 1,
+    Automatic = 2
+  PrepareSupportDefaultBehavior* {.pure.} = enum
+    Identifier = 1

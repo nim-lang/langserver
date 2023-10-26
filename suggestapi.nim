@@ -368,6 +368,11 @@ template createGlobalCommand(command: untyped) {.dirty.} =
   proc command*(self: Nimsuggest): Future[seq[Suggest]] =
     return self.call(astToStr(command), "-", "", 0, 0)
 
+template createRangeCommand(command: untyped) {.dirty.} =
+  proc command*(self: Nimsuggest, file: string, dirtyfile = "",
+                startLine, startCol, endLine, endCol: int): Future[seq[Suggest]] =
+    return self.call(astToStr(command), file, dirtyfile, startLine, startCol, fmt ":{endLine}:{endCol}")
+
 # create commands
 createFullCommand(sug)
 createFullCommand(con)
@@ -384,6 +389,7 @@ createFileOnlyCommand(outline)
 createFileOnlyCommand(known)
 createFileOnlyCommand(globalSymbols)
 createGlobalCommand(recompile)
+createRangeCommand(inlayHints)
 
 proc `mod`*(nimsuggest: Nimsuggest, file: string, dirtyfile = ""): Future[seq[Suggest]] =
   return nimsuggest.call("ideMod", file, dirtyfile, 0, 0)

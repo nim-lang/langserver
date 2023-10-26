@@ -9,8 +9,8 @@ type
     id*: OptionalNode
 
   Position* = ref object of RootObj
-    line*: int
-    character*: int
+    line*: int  # uinteger
+    character*: int  # uinteger
 
   Range* = ref object of RootObj
     start*: Position
@@ -55,7 +55,7 @@ type
     documentChanges*: OptionalSeq[TextDocumentEdit]
 
   TextDocumentIdentifier* = ref object of RootObj
-    uri*: string
+    uri*: DocumentUri
 
   TextDocumentItem* = ref object of RootObj
     uri*: string
@@ -83,13 +83,24 @@ type
     kind*: string
     value*: string
 
+  InitializeParams_clientInfo* = ref object of RootObj
+    name*: string
+    version*: Option[string]
+
+  DocumentUri = string
+
+  # 'off' | 'messages' | 'verbose'
+  TraceValue_str = string
+
   InitializeParams* = ref object of RootObj
     processId*: OptionalNode # int or float
+    clientInfo*: Option[InitializeParams_clientInfo]
+    locale*: Option[string]
     rootPath*: Option[string]
-    rootUri*: string
+    rootUri*: DocumentUri
     initializationOptions*: OptionalNode
     capabilities*: ClientCapabilities
-    trace*: Option[string]
+    trace*: Option[TraceValue_str]
     workspaceFolders*: OptionalSeq[WorkspaceFolder]
 
   WorkDoneProgressBegin* = ref object of RootObj
@@ -120,150 +131,411 @@ type
   ConfigurationParams* = ref object of RootObj
     items*: seq[ConfigurationItem]
 
-  WorkspaceEditCapability* = ref object of RootObj
+  ChangeAnnotationSupportWorkspaceEditClientCapabilities* = ref object of RootObj
+    groupsOnLabel*: Option[bool]
+
+  # 'create' | 'rename' | 'delete'
+  ResourceOperationKind = string
+
+  # 'abort' | 'transactional' | 'undo' | 'textOnlyTransactional'
+  FailureHandlingKind = string
+
+  WorkspaceEditClientCapabilities* = ref object of RootObj
     documentChanges*: Option[bool]
+    resourceOperations*: OptionalSeq[ResourceOperationKind]
+    failureHandling*: Option[FailureHandlingKind]
+    normalizesLineEndings*: Option[bool]
+    changeAnnotationSupport*: Option[ChangeAnnotationSupportWorkspaceEditClientCapabilities]
 
-  DidChangeConfigurationCapability* = ref object of RootObj
+  DidChangeConfigurationClientCapabilities* = ref object of RootObj
     dynamicRegistration*: Option[bool]
 
-  DidChangeWatchedFilesCapability* = ref object of RootObj
+  DidChangeWatchedFilesClientCapabilities* = ref object of RootObj
     dynamicRegistration*: Option[bool]
+    relativePatternSupport*: Option[bool]
 
-  SymbolKindCapability* = ref object of RootObj
+  WorkspaceSymbolClientCapabilities_symbolKind* = ref object of RootObj
     valueSet*: OptionalSeq[int]
 
-  SymbolCapability* = ref object of RootObj
-    dynamicRegistration*: Option[bool]
-    symbolKind*: Option[SymbolKindCapability]
+  WorkspaceSymbolClientCapabilities_tagSupport* = ref object of RootObj
+    valueSet*: seq[int]
 
-  ExecuteCommandCapability* = ref object of RootObj
+  WorkspaceSymbolClientCapabilities_resolveSupport* = ref object of RootObj
+    properties*: seq[string]
+
+  WorkspaceSymbolClientCapabilities* = ref object of RootObj
+    dynamicRegistration*: Option[bool]
+    symbolKind*: Option[WorkspaceSymbolClientCapabilities_symbolKind]
+    tagSupport*: Option[WorkspaceSymbolClientCapabilities_tagSupport]
+    resolveSupport*: Option[WorkspaceSymbolClientCapabilities_ResolveSupport]
+
+  ExecuteCommandClientCapabilities* = ref object of RootObj
     dynamicRegistration*: Option[bool]
 
-  WorkspaceClientCapabilities* = ref object of RootObj
+  ClientCapabilities_workspace_fileOperations* = ref object of RootObj
+    dynamicRegistration*: Option[bool]
+    didCreate*: Option[bool]
+    willCreate*: Option[bool]
+    didRename*: Option[bool]
+    willRename*: Option[bool]
+    didDelete*: Option[bool]
+    willDelete*: Option[bool]
+
+  SemanticTokensWorkspaceClientCapabilities* = ref object of RootObj
+    refreshSupport*: Option[bool]
+
+  CodeLensWorkspaceClientCapabilities* = ref object of RootObj
+    refreshSupport*: Option[bool]
+
+  InlineValueWorkspaceClientCapabilities* = ref object of RootObj
+    refreshSupport*: Option[bool]
+
+  InlayHintWorkspaceClientCapabilities* = ref object of RootObj
+    refreshSupport*: Option[bool]
+
+  DiagnosticWorkspaceClientCapabilities* = ref object of RootObj
+    refreshSupport*: Option[bool]
+
+  ClientCapabilities_workspace* = ref object of RootObj
     applyEdit*: Option[bool]
-    workspaceEdit*: Option[WorkspaceEditCapability]
-    didChangeConfiguration*: Option[DidChangeConfigurationCapability]
-    didChangeWatchedFiles*: Option[DidChangeWatchedFilesCapability]
-    symbol*: Option[SymbolCapability]
-    executeCommand*: Option[ExecuteCommandCapability]
+    workspaceEdit*: Option[WorkspaceEditClientCapabilities]
+    didChangeConfiguration*: Option[DidChangeConfigurationClientCapabilities]
+    didChangeWatchedFiles*: Option[DidChangeWatchedFilesClientCapabilities]
+    symbol*: Option[WorkspaceSymbolClientCapabilities]
+    executeCommand*: Option[ExecuteCommandClientCapabilities]
     workspaceFolders*: Option[bool]
     configuration*: Option[bool]
+    semanticTokens*: Option[SemanticTokensWorkspaceClientCapabilities]
+    codeLens*: Option[CodeLensWorkspaceClientCapabilities]
+    fileOperations*: Option[ClientCapabilities_workspace_fileOperations]
+    inlineValue*: Option[InlineValueWorkspaceClientCapabilities]
+    inlayHint*: Option[InlayHintWorkspaceClientCapabilities]
+    diagnostics*: Option[DiagnosticWorkspaceClientCapabilities]
 
-  SynchronizationCapability* = ref object of RootObj
+  TextDocumentSyncClientCapabilities* = ref object of RootObj
     dynamicRegistration*: Option[bool]
     willSave*: Option[bool]
     willSaveWaitUntil*: Option[bool]
     didSave*: Option[bool]
 
-  CompletionItemCapability* = ref object of RootObj
+  # 'plaintext' | 'markdown'
+  MarkupKind_str = string
+
+  CompletionItemTag_int = int
+
+  CompletionClientCapabilities_completionItem_tagSupport* = ref object of RootObj
+    valueSet*: seq[CompletionItemTag_int]
+
+  CompletionClientCapabilities_completionItem_resolveSupport* = ref object of RootObj
+    properties*: seq[string]
+
+  InsertTextMode_int = int
+
+  CompletionClientCapabilities_completionItem_insertTextModeSupport* = ref object of RootObj
+    valueSet*: seq[InsertTextMode_int]
+
+  CompletionClientCapabilities_completionItem* = ref object of RootObj
     snippetSupport*: Option[bool]
     commitCharactersSupport*: Option[bool]
-    documentFormat*: OptionalSeq[string]
+    documentFormat*: OptionalSeq[MarkupKind_str]
     deprecatedSupport*: Option[bool]
+    preselectSupport*: Option[bool]
+    tagSupport*: Option[CompletionClientCapabilities_completionItem_tagSupport]
+    insertReplaceSupport*: Option[bool]
+    resolveSupport*: Option[CompletionClientCapabilities_completionItem_resolveSupport]
+    insertTextModeSupport*: Option[CompletionClientCapabilities_completionItem_insertTextModeSupport]
+    labelDetailsSupport*: Option[bool]
 
-  CompletionItemKindCapability* = ref object of RootObj
-    valueSet*: OptionalSeq[int]
+  CompletionItemKind_int = int
 
-  CompletionCapability* = ref object of RootObj
+  CompletionClientCapabilities_completionItemKind* = ref object of RootObj
+    valueSet*: OptionalSeq[CompletionItemKind_int]
+
+  CompletionClientCapabilities_completionList* = ref object of RootObj
+    itemDefaults*: OptionalSeq[string]
+
+  CompletionClientCapabilities* = ref object of RootObj
     dynamicRegistration*: Option[bool]
-    completionItem*: Option[CompletionItemCapability]
-    completionItemKind*: Option[CompletionItemKindCapability]
+    completionItem*: Option[CompletionClientCapabilities_completionItem]
+    completionItemKind*: Option[CompletionClientCapabilities_completionItemKind]
+    contextSupport*: Option[bool]
+    insertTextMode*: Option[InsertTextMode_int]
+    completionList*: Option[CompletionClientCapabilities_completionList]
+
+  HoverClientCapabilities* = ref object of RootObj
+    dynamicRegistration*: Option[bool]
+    contentFormat*: OptionalSeq[MarkupKind_str]
+
+  SignatureHelpClientCapabilities_signatureInformation_parameterInformation* = ref object of RootObj
+    labelOffsetSupport*: Option[bool]
+
+  SignatureHelpClientCapabilities_signatureInformation* = ref object of RootObj
+    documentationFormat*: OptionalSeq[MarkupKind_str]
+    parameterInformation*: Option[SignatureHelpClientCapabilities_signatureInformation_parameterInformation]
+    activeParameterSupport*: Option[bool]
+
+  SignatureHelpClientCapabilities* = ref object of RootObj
+    dynamicRegistration*: Option[bool]
+    signatureInformation*: Option[SignatureHelpClientCapabilities_signatureInformation]
     contextSupport*: Option[bool]
 
-  HoverCapability* = ref object of RootObj
-    dynamicRegistration*: Option[bool]
-    contentFormat*: OptionalSeq[string]
-
-  SignatureInformationCapability* = ref object of RootObj
-    documentationFormat*: OptionalSeq[string]
-
-  SignatureHelpCapability* = ref object of RootObj
-    dynamicRegistration*: Option[bool]
-    signatureInformation*: Option[SignatureInformationCapability]
-
-  ReferencesCapability* = ref object of RootObj
+  ReferenceClientCapabilities* = ref object of RootObj
     dynamicRegistration*: Option[bool]
 
-  DocumentHighlightCapability* = ref object of RootObj
+  DocumentHighlightClientCapabilities* = ref object of RootObj
     dynamicRegistration*: Option[bool]
 
-  DocumentSymbolCapability* = ref object of RootObj
-    dynamicRegistration*: Option[bool]
-    symbolKind*: Option[SymbolKindCapability]
+  SymbolKind_int = int
 
-  FormattingCapability* = ref object of RootObj
-    dynamicRegistration*: Option[bool]
+  DocumentSymbolClientCapabilities_symbolKind* = ref object of RootObj
+    valueSet*: OptionalSeq[SymbolKind_int]
 
-  RangeFormattingCapability* = ref object of RootObj
-    dynamicRegistration*: Option[bool]
+  SymbolTag_int = int
 
-  OnTypeFormattingCapability* = ref object of RootObj
-    dynamicRegistration*: Option[bool]
+  DocumentSymbolClientCapabilities_tagSupport* = ref object of RootObj
+    valueSet*: seq[SymbolTag_int]
 
-  DefinitionCapability* = ref object of RootObj
+  DocumentSymbolClientCapabilities* = ref object of RootObj
     dynamicRegistration*: Option[bool]
+    symbolKind*: Option[DocumentSymbolClientCapabilities_symbolKind]
+    hierarchicalDocumentSymbolSupport*: Option[bool]
+    tagSupport*: Option[DocumentSymbolClientCapabilities_tagSupport]
+    labelSupport*: Option[bool]
 
-  TypeDefinitionCapability* = ref object of RootObj
-    dynamicRegistration*: Option[bool]
-
-  ImplementationCapability* = ref object of RootObj
+  DocumentFormattingClientCapabilities* = ref object of RootObj
     dynamicRegistration*: Option[bool]
 
-  CodeActionCapability* = ref object of RootObj
+  DocumentRangeFormattingClientCapabilities* = ref object of RootObj
     dynamicRegistration*: Option[bool]
 
-  CodeLensCapability* = ref object of RootObj
+  DocumentOnTypeFormattingClientCapabilities* = ref object of RootObj
     dynamicRegistration*: Option[bool]
 
-  DocumentLinkCapability* = ref object of RootObj
+  DefinitionClientCapabilities* = ref object of RootObj
+    dynamicRegistration*: Option[bool]
+    linkSupport*: Option[bool]
+
+  TypeDefinitionClientCapabilities* = ref object of RootObj
+    dynamicRegistration*: Option[bool]
+    linkSupport*: Option[bool]
+
+  ImplementationClientCapabilities* = ref object of RootObj
+    dynamicRegistration*: Option[bool]
+    linkSupport*: Option[bool]
+
+  CodeActionKind_str = string
+
+  CodeActionClientCapabilities_codeActionLiteralSupport_codeActionKind* = ref object of RootObj
+    valueSet*: seq[CodeActionKind_str]
+
+  CodeActionClientCapabilities_codeActionLiteralSupport* = ref object of RootObj
+    codeActionKind*: CodeActionClientCapabilities_codeActionLiteralSupport_codeActionKind
+
+  CodeActionClientCapabilities_resolveSupport* = ref object of RootObj
+    properties*: seq[string]
+
+  CodeActionClientCapabilities* = ref object of RootObj
+    dynamicRegistration*: Option[bool]
+    codeActionLiteralSupport*: Option[CodeActionClientCapabilities_codeActionLiteralSupport]
+    isPreferredSupport*: Option[bool]
+    disabledSupport*: Option[bool]
+    dataSupport*: Option[bool]
+    resolveSupport*: Option[CodeActionClientCapabilities_resolveSupport]
+    honorsChangeAnnotations*: Option[bool]
+
+  CodeLensClientCapabilities* = ref object of RootObj
     dynamicRegistration*: Option[bool]
 
-  ColorProviderCapability* = ref object of RootObj
+  DocumentLinkClientCapabilities* = ref object of RootObj
+    dynamicRegistration*: Option[bool]
+    tooltipSupport*: Option[bool]
+
+  DocumentColorClientCapabilities* = ref object of RootObj
     dynamicRegistration*: Option[bool]
 
-  RenameCapability* = ref object of RootObj
+  PrepareSupportDefaultBehavior_int = int
+
+  RenameClientCapabilities* = ref object of RootObj
     dynamicRegistration*: Option[bool]
     prepareSupport*: Option[bool]
+    prepareSupportDefaultBehavior*: Option[PrepareSupportDefaultBehavior_int]
+    honorsChangeAnnotations*: Option[bool]
 
-  PublishDiagnosticsCapability* = ref object of RootObj
+  DiagnosticTag_int = int
+
+  PublishDiagnosticsClientCapabilities_tagSupport* = ref object of RootObj
+    valueSet*: seq[DiagnosticTag_int]
+
+  PublishDiagnosticsClientCapabilities* = ref object of RootObj
+    relatedInformation*: Option[bool]
+    tagSupport*: Option[PublishDiagnosticsClientCapabilities_tagSupport]
+    versionSupport*: Option[bool]
+    codeDescriptionSupport*: Option[bool]
+    dataSupport*: Option[bool]
+
+  DeclarationClientCapabilities* = ref object of RootObj
+    dynamicRegistration*: Option[bool]
+    linkSupport*: Option[bool]
+
+  # 'comment' | 'imports' | 'region' | ...
+  FoldingRangeKind_str = string
+
+  FoldingRangeClientCapabilities_foldingRangeKind* = ref object of RootObj
+    valueSet*: OptionalSeq[FoldingRangeKind_str]
+
+  FoldingRangeClientCapabilities_foldingRange* = ref object of RootObj
+    collapsedText*: Option[bool]
+
+  FoldingRangeClientCapabilities* = ref object of RootObj
+    dynamicRegistration*: Option[bool]
+    rangeLimit*: Option[int]  # uinteger
+    lineFoldingOnly*: Option[bool]
+    foldingRangeKind*: Option[FoldingRangeClientCapabilities_foldingRangeKind]
+    foldingRange*: Option[FoldingRangeClientCapabilities_foldingRange]
+
+  SelectionRangeClientCapabilities* = ref object of RootObj
     dynamicRegistration*: Option[bool]
 
-  TextDocumentClientCapabilities* = ref object of RootObj
-    synchronization*: Option[SynchronizationCapability]
-    completion*: Option[CompletionCapability]
-    hover*: Option[HoverCapability]
-    signatureHelp*: Option[SignatureHelpCapability]
-    references*: Option[ReferencesCapability]
-    documentHighlight*: Option[DocumentHighlightCapability]
-    documentSymbol*: Option[DocumentSymbolCapability]
-    formatting*: Option[FormattingCapability]
-    rangeFormatting*: Option[RangeFormattingCapability]
-    onTypeFormatting*: Option[OnTypeFormattingCapability]
-    definition*: Option[DefinitionCapability]
-    typeDefinition*: Option[TypeDefinitionCapability]
-    implementation*: Option[ImplementationCapability]
-    codeAction*: Option[CodeActionCapability]
-    codeLens*: Option[CodeLensCapability]
-    documentLink*: Option[DocumentLinkCapability]
-    colorProvider*: Option[ColorProviderCapability]
-    rename*: Option[RenameCapability]
-    publishDiagnostics*: Option[PublishDiagnosticsCapability]
+  LinkedEditingRangeClientCapabilities* = ref object of RootObj
+    dynamicRegistration*: Option[bool]
 
-  WindowCapabilities* = ref object of RootObj
+  CallHierarchyClientCapabilities* = ref object of RootObj
+    dynamicRegistration*: Option[bool]
+
+  SemanticTokensClientCapabilities_requests* = ref object of RootObj
+    range*: OptionalNode  # boolean | { }
+    full*: OptionalNode   # boolean | { delta?: boolean; }
+
+  # 'relative'
+  TokenFormat_str = string
+
+  SemanticTokensClientCapabilities* = ref object of RootObj
+    dynamicRegistration*: Option[bool]
+    requests*: SemanticTokensClientCapabilities_requests
+    tokenTypes*: seq[string]
+    tokenModifiers*: seq[string]
+    formats*: seq[TokenFormat_str]
+    overlappingTokenSupport*: Option[bool]
+    multilineTokenSupport*: Option[bool]
+    serverCancelSupport*: Option[bool]
+    augmentsSyntaxTokens*: Option[bool]
+
+  MonikerClientCapabilities* = ref object of RootObj
+    dynamicRegistration*: Option[bool]
+
+  TypeHierarchyClientCapabilities* = ref object of RootObj
+    dynamicRegistration*: Option[bool]
+
+  InlineValueClientCapabilities* = ref object of RootObj
+    dynamicRegistration*: Option[bool]
+
+  InlayHintClientCapabilities_resolveSupport* = ref object of RootObj
+    properties*: seq[string]
+
+  InlayHintClientCapabilities* = ref object of RootObj
+    dynamicRegistration*: Option[bool]
+    resolveSupport*: Option[InlayHintClientCapabilities_resolveSupport]
+
+  DiagnosticClientCapabilities* = ref object of RootObj
+    dynamicRegistration*: Option[bool]
+    relatedDocumentSupport*: Option[bool]
+
+  TextDocumentClientCapabilities* = ref object of RootObj
+    synchronization*: Option[TextDocumentSyncClientCapabilities]
+    completion*: Option[CompletionClientCapabilities]
+    hover*: Option[HoverClientCapabilities]
+    signatureHelp*: Option[SignatureHelpClientCapabilities]
+    declaration*: Option[DeclarationClientCapabilities]
+    definition*: Option[DefinitionClientCapabilities]
+    typeDefinition*: Option[TypeDefinitionClientCapabilities]
+    implementation*: Option[ImplementationClientCapabilities]
+    references*: Option[ReferenceClientCapabilities]
+    documentHighlight*: Option[DocumentHighlightClientCapabilities]
+    documentSymbol*: Option[DocumentSymbolClientCapabilities]
+    codeAction*: Option[CodeActionClientCapabilities]
+    codeLens*: Option[CodeLensClientCapabilities]
+    documentLink*: Option[DocumentLinkClientCapabilities]
+    colorProvider*: Option[DocumentColorClientCapabilities]
+    formatting*: Option[DocumentFormattingClientCapabilities]
+    rangeFormatting*: Option[DocumentRangeFormattingClientCapabilities]
+    onTypeFormatting*: Option[DocumentOnTypeFormattingClientCapabilities]
+    rename*: Option[RenameClientCapabilities]
+    publishDiagnostics*: Option[PublishDiagnosticsClientCapabilities]
+    foldingRange*: Option[FoldingRangeClientCapabilities]
+    selectionRange*: Option[SelectionRangeClientCapabilities]
+    linkedEditingRange*: Option[LinkedEditingRangeClientCapabilities]
+    callHierarchy*: Option[CallHierarchyClientCapabilities]
+    semanticTokens*: Option[SemanticTokensClientCapabilities]
+    moniker*: Option[MonikerClientCapabilities]
+    typeHierarchy*: Option[TypeHierarchyClientCapabilities]
+    inlineValue*: Option[InlineValueClientCapabilities]
+    inlayHint*: Option[InlayHintClientCapabilities]
+    diagnostic*: Option[DiagnosticClientCapabilities]
+
+  ShowMessageRequestClientCapabilities_messageActionItem* = ref object of RootObj
+    additionalPropertiesSupport*: Option[bool]
+
+  ShowMessageRequestClientCapabilities* = ref object of RootObj
+    messageActionItem*: Option[ShowMessageRequestClientCapabilities_messageActionItem]
+
+  ShowDocumentClientCapabilities* = ref object of RootObj
+    support*: bool
+
+  ClientCapabilities_window* = ref object of RootObj
     workDoneProgress*: Option[bool]
+    showMessage*: Option[ShowMessageRequestClientCapabilities]
+    showDocument*: Option[ShowDocumentClientCapabilities]
+
+  NotebookDocumentSyncClientCapabilities* = ref object of RootObj
+    dynamicRegistration*: Option[bool]
+    executionSummarySupport*: Option[bool]
+
+  NotebookDocumentClientCapabilities* = ref object of RootObj
+    synchronization*: NotebookDocumentSyncClientCapabilities
+
+  ClientCapabilities_general_staleRequestSupport* = ref object of RootObj
+    cancel*: bool
+    retryOnContentModified*: seq[string]
+
+  RegularExpressionsClientCapabilities* = ref object of RootObj
+    engine*: string
+    version*: Option[string]
+
+  MarkdownClientCapabilities* = ref object of RootObj
+    parser*: string
+    version*: Option[string]
+    allowedTags*: OptionalSeq[string]
+
+  # 'utf-8' | 'utf-16' | 'utf-32' | ...
+  PositionEncodingKind_str = string
+
+  ClientCapabilities_general* = ref object of RootObj
+    staleRequestSupport*: Option[ClientCapabilities_general_staleRequestSupport]
+    regularExpressions*: Option[RegularExpressionsClientCapabilities]
+    markdown*: Option[MarkdownClientCapabilities]
+    positionEncodings*: OptionalSeq[PositionEncodingKind_str]
 
   ClientCapabilities* = ref object of RootObj
-    workspace*: Option[WorkspaceClientCapabilities]
+    workspace*: Option[ClientCapabilities_workspace]
     textDocument*: Option[TextDocumentClientCapabilities]
-    window*: Option[WindowCapabilities]
-    # experimental*: OptionalNode
+    notebookDocument*: Option[NotebookDocumentClientCapabilities]
+    window*: Option[ClientCapabilities_window]
+    general*: Option[ClientCapabilities_general]
+    experimental*: OptionalNode
+
+  URI = string
 
   WorkspaceFolder* = ref object of RootObj
-    uri*: string
+    uri*: URI
     name*: string
+
+  InitializeResult_serverInfo* = ref object of RootObj
+    name*: string
+    version*: Option[string]
 
   InitializeResult* = ref object of RootObj
     capabilities*: ServerCapabilities
+    #!!!serverInfo*: Option[InitializeResult_serverInfo]
 
   InitializeError* = ref object of RootObj
     retry*: bool
@@ -293,9 +565,11 @@ type
 
   ColorProviderOptions* = ref object of RootObj
 
+  TextDocumentSyncKind_int = int
+
   TextDocumentSyncOptions* = ref object of RootObj
     openClose*: Option[bool]
-    change*: Option[int]
+    change*: Option[TextDocumentSyncKind_int]
     willSave*: Option[bool]
     willSaveWaitUntil*: Option[bool]
     save*: Option[SaveOptions]
@@ -303,12 +577,39 @@ type
   StaticRegistrationOptions* = ref object of RootObj
     id*: Option[string]
 
-  WorkspaceFolderCapability* = ref object of RootObj
+  WorkspaceFoldersServerCapabilities* = ref object of RootObj
     supported*: Option[bool]
     changeNotifications*: Option[OptionalNode] # string or bool
 
-  WorkspaceCapability* = ref object of RootObj
-    workspaceFolders*: Option[WorkspaceFolderCapability]
+  # 'file' | 'folder'
+  FileOperationPatternKind_str = string
+
+  FileOperationPatternOptions* = ref object of RootObj
+    ignoreCase*: Option[bool]
+
+  FileOperationPattern* = ref object of RootObj
+    glob*: string
+    matches*: Option[FileOperationPatternKind_str]
+    options*: Option[FileOperationPatternOptions]
+
+  FileOperationFilter* = ref object of RootObj
+    scheme*: Option[string]
+    pattern: FileOperationPattern
+
+  FileOperationRegistrationOptions* = ref object of RootObj
+    filters*: seq[FileOperationFilter]
+
+  ServerCapabilities_workspace_fileOperations* = ref object of RootObj
+    didCreate*: Option[FileOperationRegistrationOptions]
+    willCreate*: Option[FileOperationRegistrationOptions]
+    didRename*: Option[FileOperationRegistrationOptions]
+    willRename*: Option[FileOperationRegistrationOptions]
+    didDelete*: Option[FileOperationRegistrationOptions]
+    willDelete*: Option[FileOperationRegistrationOptions]
+
+  ServerCapabilities_workspace* = ref object of RootObj
+    workspaceFolders*: Option[WorkspaceFoldersServerCapabilities]
+    #!!!!!!!fileOperations*: Option[ServerCapabilities_workspace_fileOperations]
 
   TextDocumentRegistrationOptions* = ref object of RootObj
     documentSelector*: OptionalSeq[DocumentFilter]
@@ -321,13 +622,18 @@ type
     # depending on if the client supports prepare or not
     supportsPrepare*: bool
 
+  InlayHintOptions* = object
+    resolveProvider*: Option[bool]
+
   ServerCapabilities* = ref object of RootObj
-    textDocumentSync*: OptionalNode # TextDocumentSyncOptions or int
-    hoverProvider*: Option[bool]
+    #!!!positionEncoding*: Option[PositionEncodingKind_str]
+    textDocumentSync*: OptionalNode # TextDocumentSyncOptions or TextDocumentSyncKind_int
+    #notebookDocumentSync?: NotebookDocumentSyncOptions | NotebookDocumentSyncRegistrationOptions;
     completionProvider*: CompletionOptions
+    hoverProvider*: Option[bool]
     signatureHelpProvider*: SignatureHelpOptions
-    definitionProvider*: Option[bool]
     declarationProvider*: Option[bool]
+    definitionProvider*: Option[bool]
     typeDefinitionProvider*: Option[bool]
     implementationProvider*: OptionalNode # bool or TextDocumentAndStaticRegistrationOptions
     referencesProvider*: Option[bool]
@@ -336,14 +642,26 @@ type
     workspaceSymbolProvider*: Option[bool]
     codeActionProvider*: Option[bool]
     codeLensProvider*: CodeLensOptions
+    documentLinkProvider*: Option[DocumentLinkOptions]
+    # colorProvider?: boolean | DocumentColorOptions | DocumentColorRegistrationOptions;
+    colorProvider*: OptionalNode # bool or ColorProviderOptions or TextDocumentAndStaticRegistrationOptions
     documentFormattingProvider*: Option[bool]
     documentRangeFormattingProvider*: Option[bool]
     documentOnTypeFormattingProvider*: DocumentOnTypeFormattingOptions
     renameProvider*: JsonNode # bool or RenameOptions
-    documentLinkProvider*: DocumentLinkOptions
-    colorProvider*: OptionalNode # bool or ColorProviderOptions or TextDocumentAndStaticRegistrationOptions
-    executeCommandProvider*: ExecuteCommandOptions
-    workspace*: WorkspaceCapability
+    # foldingRangeProvider?: boolean | FoldingRangeOptions | FoldingRangeRegistrationOptions;
+    executeCommandProvider*: Option[ExecuteCommandOptions]
+    # selectionRangeProvider?: boolean | SelectionRangeOptions | SelectionRangeRegistrationOptions;
+    # linkedEditingRangeProvider?: boolean | LinkedEditingRangeOptions | LinkedEditingRangeRegistrationOptions;
+    # callHierarchyProvider?: boolean | CallHierarchyOptions | CallHierarchyRegistrationOptions;
+    # semanticTokensProvider?: SemanticTokensOptions | SemanticTokensRegistrationOptions;
+    # monikerProvider?: boolean | MonikerOptions | MonikerRegistrationOptions;
+    # typeHierarchyProvider?: boolean | TypeHierarchyOptions | TypeHierarchyRegistrationOptions;
+    # inlineValueProvider?: boolean | InlineValueOptions | InlineValueRegistrationOptions;
+    inlayHintProvider*: Option[InlayHintOptions]  # boolean | InlayHintOptions | InlayHintRegistrationOptions;
+    # diagnosticProvider?: DiagnosticOptions | DiagnosticRegistrationOptions;
+    # workspaceSymbolProvider?: boolean | WorkspaceSymbolOptions;
+    workspace*: Option[ServerCapabilities_workspace]
     experimental*: OptionalNode
 
   InitializedParams* = ref object of RootObj
@@ -629,3 +947,19 @@ type
   ExpandResult* = ref object of RootObj
     range*: Range
     content*: string
+
+  InlayHintParams* = ref object of RootObj  # TODO: extends WorkDoneProgressParams
+    textDocument*: TextDocumentIdentifier
+    range*: Range
+
+  InlayHintKind_int = int
+
+  InlayHint* = ref object of RootObj
+    position*: Position
+    label*: string  # string | InlayHintLabelPart[]
+    kind*: Option[InlayHintKind_int]
+    textEdits*: OptionalSeq[TextEdit]
+    #tooltip*: Option[string]  # string | MarkupContent
+    paddingLeft*: Option[bool]
+    paddingRight*: Option[bool]
+    #data*: OptionalNode
