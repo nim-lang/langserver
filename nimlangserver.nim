@@ -187,7 +187,7 @@ proc initialize(ls: LanguageServer, params: InitializeParams):
         commands: some(@[RESTART_COMMAND, RECOMPILE_COMMAND, CHECK_PROJECT_COMMAND])
       )),
       inlayHintProvider: some(InlayHintOptions(
-        resolveProvider: some(true)
+        resolveProvider: some(false)
       )),
       documentSymbolProvider: some(true),
       codeActionProvider: some(true)
