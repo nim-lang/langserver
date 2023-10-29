@@ -796,25 +796,6 @@ proc inlayHint(ls: LanguageServer, params: InlayHintParams, id: int): Future[seq
         .orCancelled(ls, id)
     result = suggestions
       .map(toInlayHint);
-  #let elem = InlayHint(
-  #  position: Position(
-  #    line: params.range.start.line, character: params.range.start.character
-  #  ),
-  #  label: "tralala",
-  #  kind: some(1),
-  #  paddingLeft: some(false),
-  #  paddingRight: some(false),
-  #  textEdits: some(@[
-  #    TextEdit(
-  #      newText: "tralala",
-  #      `range`: Range(
-  #        start: params.range.start,
-  #        `end`: params.range.start
-  #      )
-  #    )
-  #  ])
-  #)
-  #result = @[elem]
 
 proc codeAction(ls: LanguageServer, params: CodeActionParams):
     Future[seq[CodeAction]] {.async.} =
