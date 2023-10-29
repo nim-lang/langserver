@@ -754,7 +754,6 @@ proc toInlayHint(suggest: Suggest): InlayHint =
   let hint_line = suggest.line - 1
   # TODO: how to convert column?
   var hint_col = suggest.column + suggest.tokenLen
-  let a = 5;
   return InlayHint(
     position: Position(
       line: hint_line,
