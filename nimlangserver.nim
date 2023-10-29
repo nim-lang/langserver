@@ -749,7 +749,6 @@ proc rename(ls: LanguageServer, params: RenameParams, id: int): Future[Workspace
   result = WorkspaceEdit(changes: some edits)
 
 proc toInlayHint(suggest: Suggest): InlayHint =
-  debug "toInlayHint()"
   let str = ": " & suggest.forth
   let hint_line = suggest.line - 1
   # TODO: how to convert column?
