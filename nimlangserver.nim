@@ -774,7 +774,7 @@ method toInlayHint(suggest: SuggestInlayHint): InlayHint =
   let hint_line = suggest.line - 1
   # TODO: how to convert column?
   var hint_col = suggest.column
-  return InlayHint(
+  result = InlayHint(
     position: Position(
       line: hint_line,
       character: hint_col
@@ -782,8 +782,10 @@ method toInlayHint(suggest: SuggestInlayHint): InlayHint =
     label: suggest.label,
     kind: some(convertInlayHintKind(suggest.kind)),
     paddingLeft: some(suggest.paddingLeft),
-    paddingRight: some(suggest.paddingRight),
-    textEdits: some(@[
+    paddingRight: some(suggest.paddingRight)
+  )
+  if suggest.allowInsert:
+    result.textEdits = some(@[
       TextEdit(
         newText: suggest.label,
         `range`: Range(
@@ -798,7 +800,6 @@ method toInlayHint(suggest: SuggestInlayHint): InlayHint =
         )
       )
     ])
-  )
 
 proc inlayHint(ls: LanguageServer, params: InlayHintParams, id: int): Future[seq[InlayHint]] {.async.} =
   debug "inlayHint received..."
