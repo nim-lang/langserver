@@ -34,6 +34,8 @@ type
   NimsuggestCallback = proc(self: Nimsuggest): void {.gcsafe.}
 
   Suggest* = ref object of RootObj
+
+  SuggestDef* = ref object of Suggest
     section*: IdeCmd
     qualifiedPath*: seq[string] # part of 'qualifiedPath'
     filePath*: string
@@ -56,6 +58,18 @@ type
     commandString: string
     future: Future[seq[Suggest]]
     command: string
+
+  SuggestInlayHintKind* = enum
+    sihkType = "Type",
+    sihkParameter = "Parameter"
+
+  SuggestInlayHint* = ref object of Suggest
+    kind*: SuggestInlayHintKind
+    line*: int                   # Starts at 1
+    column*: int                 # Starts at 0
+    label*: string
+    paddingLeft*: bool
+    paddingRight*: bool
 
   Nimsuggest* = ref object
     failed*: bool
@@ -82,7 +96,7 @@ template benchmark(benchmarkName: string, code: untyped) =
     let elapsedStr = elapsed.formatFloat(format = ffDecimal, precision = 3)
     debug "CPU Time", benchmark = benchmarkName, time = elapsedStr
 
-func nimSymToLSPKind*(suggest: Suggest): CompletionItemKind =
+func nimSymToLSPKind*(suggest: SuggestDef): CompletionItemKind =
   case suggest.symKind:
   of "skConst": CompletionItemKind.Value
   of "skEnumField": CompletionItemKind.Enum
@@ -118,7 +132,7 @@ func nimSymToLSPSymbolKind*(suggest: string): SymbolKind =
   of "skFunc": SymbolKind.Function
   else: SymbolKind.Function
 
-func nimSymDetails*(suggest: Suggest): string =
+func nimSymDetails*(suggest: SuggestDef): string =
   case suggest.symKind:
   of "skConst": "const " & suggest.qualifiedPath.join(".") & ": " & suggest.forth
   of "skEnumField": "enum " & suggest.forth
@@ -159,12 +173,12 @@ proc parseQualifiedPath*(input: string): seq[string] =
   if item != "":
     result.add item
 
-proc parseSuggest*(line: string): Suggest =
+proc parseSuggestDef*(line: string): SuggestDef =
   let tokens = line.split('\t');
   if tokens.len < 8:
     error "Failed to parse: ", line = line
     raise newException(ValueError, fmt "Failed to parse line {line}")
-  result = Suggest(
+  result = SuggestDef(
     qualifiedPath: tokens[2].parseQualifiedPath,
     filePath: tokens[4],
     line: parseInt(tokens[5]),
@@ -177,7 +191,20 @@ proc parseSuggest*(line: string): Suggest =
     result.endLine = parseInt(tokens[9])
     result.endCol = parseInt(tokens[10])
 
-proc name*(sug: Suggest): string =
+proc parseSuggestInlayHint*(line: string): SuggestInlayHint =
+  let tokens = line.split('\t');
+  if tokens.len < 6:
+    error "Failed to parse: ", line = line
+    raise newException(ValueError, fmt "Failed to parse line {line}")
+  result = SuggestInlayHint(
+    kind: parseEnum[SuggestInlayHintKind](capitalizeAscii(tokens[0])),
+    line: parseInt(tokens[1]),
+    column: parseInt(tokens[2]),
+    label: tokens[3],
+    paddingLeft: parseBool(tokens[4]),
+    paddingRight: parseBool(tokens[5]))
+
+proc name*(sug: SuggestDef): string =
   return sug.qualifiedPath[^1]
 
 proc markFailed(self: Nimsuggest, errMessage: string) =
@@ -317,13 +344,16 @@ proc processQueue(self: Nimsuggest): Future[void] {.async.}=
 
         for lineStr  in content.splitLines:
           if lineStr != "":
-            if req.command != "known":
-              res.add parseSuggest(lineStr)
-            else:
-              let sug = Suggest()
+            case req.command
+            of "known":
+              let sug = SuggestDef()
               sug.section = ideKnown
               sug.forth = lineStr
               res.add sug
+            of "inlayHints":
+              res.add parseSuggestInlayHint(lineStr)
+            else:
+              res.add parseSuggestDef(lineStr)
 
         if (content == ""):
           self.markFailed "Server crashed/socket closed."

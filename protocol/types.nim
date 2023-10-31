@@ -952,7 +952,7 @@ type
     textDocument*: TextDocumentIdentifier
     range*: Range
 
-  InlayHintKind_int = int
+  InlayHintKind_int* = int
 
   InlayHint* = ref object of RootObj
     position*: Position
