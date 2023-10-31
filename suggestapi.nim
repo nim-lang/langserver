@@ -71,6 +71,7 @@ type
     paddingLeft*: bool
     paddingRight*: bool
     allowInsert*: bool
+    tooltip*: string
 
   Nimsuggest* = ref object
     failed*: bool
@@ -194,7 +195,7 @@ proc parseSuggestDef*(line: string): SuggestDef =
 
 proc parseSuggestInlayHint*(line: string): SuggestInlayHint =
   let tokens = line.split('\t');
-  if tokens.len < 7:
+  if tokens.len < 8:
     error "Failed to parse: ", line = line
     raise newException(ValueError, fmt "Failed to parse line {line}")
   result = SuggestInlayHint(
@@ -204,7 +205,8 @@ proc parseSuggestInlayHint*(line: string): SuggestInlayHint =
     label: tokens[3],
     paddingLeft: parseBool(tokens[4]),
     paddingRight: parseBool(tokens[5]),
-    allowInsert: parseBool(tokens[6]))
+    allowInsert: parseBool(tokens[6]),
+    tooltip: tokens[7])
 
 proc name*(sug: SuggestDef): string =
   return sug.qualifiedPath[^1]
