@@ -274,15 +274,12 @@ proc range*(startLine, startCharacter, endLine, endCharacter: int): Range =
      }
   }
 
-proc toLabelRange(suggest: SuggestDef): Range =
+proc toLabelRange(suggest: Suggest): Range =
   with suggest:
     let endColumn = column + qualifiedPath[^1].strip(chars = {'`'}).len
     return range(line - 1, column, line - 1, endColumn)
 
-method toDiagnostic(suggest: Suggest): Diagnostic {.base, gcsafe.} =
-  raiseAssert "internal error: unexpected conversion"
-
-method toDiagnostic(suggest: SuggestDef): Diagnostic =
+proc toDiagnostic(suggest: Suggest): Diagnostic =
   with suggest:
     let
       endColumn = column + doc.rfind('\'') - doc.find('\'') - 2
@@ -329,7 +326,7 @@ proc sendDiagnostics(ls: LanguageServer, diagnostics: seq[Suggest], path: string
   debug "Sending diagnostics", count = diagnostics.len, path = path
   let params = PublishDiagnosticsParams %* {
     "uri": pathToUri(path),
-    "diagnostics": diagnostics.map(x => x.toDiagnostic())
+    "diagnostics": diagnostics.map(toDiagnostic)
   }
   ls.connection.notify("textDocument/publishDiagnostics", %params)
 
@@ -383,12 +380,12 @@ proc checkProject(ls: LanguageServer, uri: string): Future[void] {.async, gcsafe
   ls.workDoneProgressCreate(token)
   ls.progress(token, "begin", fmt "Checking project {uri.uriToPath}")
   nimsuggest.checkProjectInProgress = true
-  proc getFilepath(s: Suggest): string = SuggestDef(s).filepath
+  proc getFilepath(s: Suggest): string = s.filepath
   let
     diagnostics = nimsuggest.chk(uriToPath(uri), ls.uriToStash(uri))
       .await()
-      .filter(sug => SuggestDef(sug).filepath != "???")
-    filesWithDiags = diagnostics.map(s => SuggestDef(s).filepath).toHashSet
+      .filter(sug => sug.filepath != "???")
+    filesWithDiags = diagnostics.map(s => s.filepath).toHashSet
 
   ls.progress(token, "end")
 
@@ -479,7 +476,7 @@ proc warnIfUnknown(ls: LanguageServer, ns: Nimsuggest, uri: string, projectFile:
      Future[void] {.async, gcsafe.} =
   let path = uri.uriToPath
   let sug = await ns.known(path)
-  if SuggestDef(sug[0]).forth == "false":
+  if sug[0].forth == "false":
     ls.showMessage(fmt """{path} is not compiled as part of project {projectFile}.
 In orde to get the IDE features working you must either configure nim.projectMapping or import the module.""",
                    MessageType.Warning)
@@ -576,10 +573,7 @@ proc didClose(ls: LanguageServer, params: DidCloseTextDocumentParams):
 
   ls.openFiles.del uri
 
-method toMarkedStrings(suggest: Suggest): seq[MarkedStringOption] {.base, gcsafe.} =
-  raiseAssert "internal error: unexpected conversion"
-
-method toMarkedStrings(suggest: SuggestDef): seq[MarkedStringOption] =
+proc toMarkedStrings(suggest: Suggest): seq[MarkedStringOption] =
   var label = suggest.qualifiedPath.join(".")
   if suggest.forth != "":
     label &= ": " & suggest.forth
@@ -613,10 +607,7 @@ proc hover(ls: LanguageServer, params: HoverParams, id: int):
     else:
       return some(Hover(contents: some(%toMarkedStrings(suggestions[0]))))
 
-method toLocation(suggest: Suggest): Location {.base, gcsafe.} =
-  raiseAssert "internal error: unexpected conversion"
-
-method toLocation(suggest: SuggestDef): Location =
+proc toLocation(suggest: Suggest): Location =
   return Location %* {
     "uri": pathToUri(suggest.filepath),
     "range": toLabelRange(suggest)
@@ -633,7 +624,7 @@ proc definition(ls: LanguageServer, params: TextDocumentPositionParams, id: int)
            ls.getCharacter(uri, line, character))
       .orCancelled(ls, id)
       .await()
-      .map(x => x.toLocation())
+      .map(toLocation)
 
 proc declaration(ls: LanguageServer, params: TextDocumentPositionParams, id: int):
     Future[seq[Location]] {.async.} =
@@ -646,7 +637,7 @@ proc declaration(ls: LanguageServer, params: TextDocumentPositionParams, id: int
            ls.getCharacter(uri, line, character))
       .orCancelled(ls, id)
       .await()
-      .map(x => x.toLocation())
+      .map(toLocation)
 
 proc expandAll(ls: LanguageServer, params: TextDocumentPositionParams):
     Future[ExpandResult] {.async.} =
@@ -659,10 +650,7 @@ proc expandAll(ls: LanguageServer, params: TextDocumentPositionParams):
            ls.getCharacter(uri, line, character))
       .await()
 
-method createRangeFromSuggest(suggest: Suggest): Range {.base, gcsafe.} =
-  raiseAssert "internal error: unexpected conversion"
-
-method createRangeFromSuggest(suggest: SuggestDef): Range =
+proc createRangeFromSuggest(suggest: Suggest): Range =
   result = range(suggest.line - 1,
                  0,
                  suggest.endLine - 1,
@@ -691,7 +679,7 @@ proc expand(ls: LanguageServer, params: ExpandTextDocumentPositionParams):
              fmt "  {tag}")
         .await()
     if expand.len != 0:
-      result = ExpandResult(content: SuggestDef(expand[0]).doc.fixIdentation(character),
+      result = ExpandResult(content: expand[0].doc.fixIdentation(character),
                             range: expand[0].createRangeFromSuggest())
 
 proc typeDefinition(ls: LanguageServer, params: TextDocumentPositionParams, id: int):
@@ -705,7 +693,7 @@ proc typeDefinition(ls: LanguageServer, params: TextDocumentPositionParams, id: 
               ls.getCharacter(uri, line, character))
       .orCancelled(ls, id)
       .await()
-      .map(x => x.toLocation())
+      .map(toLocation)
 
 proc references(ls: LanguageServer, params: ReferenceParams):
     Future[seq[Location]] {.async.} =
@@ -718,8 +706,8 @@ proc references(ls: LanguageServer, params: ReferenceParams):
            line + 1,
            ls.getCharacter(uri, line, character))
     result = refs
-      .filter(suggest => SuggestDef(suggest).section != ideDef or includeDeclaration)
-      .map(x => x.toLocation());
+      .filter(suggest => suggest.section != ideDef or includeDeclaration)
+      .map(toLocation);
 
 proc prepareRename(ls: LanguageServer, params: PrepareRenameParams,
                    id: int): Future[JsonNode] {.async.} =
@@ -736,7 +724,7 @@ proc prepareRename(ls: LanguageServer, params: PrepareRenameParams,
       return newJNull()
     # Check if the symbol belongs to the project
     let projectDir = ls.initializeParams.rootUri.uriToPath
-    if SuggestDef(def[0]).filePath.isRelativeTo(projectDir):
+    if def[0].filePath.isRelativeTo(projectDir):
       return %def[0].toLocation().range
 
     return newJNull()
@@ -767,10 +755,7 @@ proc convertInlayHintKind(kind: SuggestInlayHintKind): InlayHintKind_int =
   of sihkParameter:
     result = 2
 
-method toInlayHint(suggest: Suggest): InlayHint {.base, gcsafe.} =
-  raiseAssert "internal error: unexpected conversion"
-
-method toInlayHint(suggest: SuggestInlayHint): InlayHint =
+proc toInlayHint(suggest: SuggestInlayHint): InlayHint =
   let hint_line = suggest.line - 1
   # TODO: how to convert column?
   var hint_col = suggest.column
@@ -815,7 +800,7 @@ proc inlayHint(ls: LanguageServer, params: InlayHintParams, id: int): Future[seq
                     ls.getCharacter(uri, `end`.line, `end`.character))
         .orCancelled(ls, id)
     result = suggestions
-      .map(x => x.toInlayHint());
+      .map(x => x.inlayHintInfo.toInlayHint());
 
 proc codeAction(ls: LanguageServer, params: CodeActionParams):
     Future[seq[CodeAction]] {.async.} =
@@ -872,10 +857,7 @@ proc executeCommand(ls: LanguageServer, params: ExecuteCommandParams):
 
   result = newJNull()
 
-method toCompletionItem(suggest: Suggest): CompletionItem {.base, gcsafe.} =
-  raiseAssert "internal error: unexpected conversion"
-
-method toCompletionItem(suggest: SuggestDef): CompletionItem =
+proc toCompletionItem(suggest: Suggest): CompletionItem =
   with suggest:
     return CompletionItem %* {
       "label": qualifiedPath[^1].strip(chars = {'`'}),
@@ -895,12 +877,9 @@ proc completion(ls: LanguageServer, params: CompletionParams, id: int):
                                  line + 1,
                                  ls.getCharacter(uri, line, character))
                             .orCancelled(ls, id)
-    return completions.map(x => x.toCompletionItem());
+    return completions.map(toCompletionItem);
 
-method toSymbolInformation(suggest: Suggest): SymbolInformation {.base.} =
-  raiseAssert "internal error: unexpected conversion"
-
-method toSymbolInformation(suggest: SuggestDef): SymbolInformation =
+proc toSymbolInformation(suggest: Suggest): SymbolInformation =
   with suggest:
     return SymbolInformation %* {
       "location": toLocation(suggest),
@@ -916,7 +895,7 @@ proc documentSymbols(ls: LanguageServer, params: DocumentSymbolParams, id: int):
     .outline(uriToPath(uri), ls.uriToStash(uri))
     .orCancelled(ls, id)
     .await()
-    .map(x => x.toSymbolInformation())
+    .map(toSymbolInformation)
 
 proc workspaceSymbol(ls: LanguageServer, params: WorkspaceSymbolParams, id: int):
     Future[seq[SymbolInformation]] {.async.} =
@@ -926,12 +905,9 @@ proc workspaceSymbol(ls: LanguageServer, params: WorkspaceSymbolParams, id: int)
       symbols = await nimsuggest
                         .globalSymbols(params.query, "-")
                         .orCancelled(ls, id)
-    return symbols.map(x => x.toSymbolInformation());
+    return symbols.map(toSymbolInformation);
 
-method toDocumentHighlight(suggest: Suggest): DocumentHighlight {.base.} =
-  raiseAssert "internal error: unexpected conversion"
-
-method toDocumentHighlight(suggest: SuggestDef): DocumentHighlight =
+proc toDocumentHighlight(suggest: Suggest): DocumentHighlight =
   return DocumentHighlight %* {
     "range": toLabelRange(suggest)
   }
@@ -947,7 +923,7 @@ proc documentHighlight(ls: LanguageServer, params: TextDocumentPositionParams, i
                                 line + 1,
                                 ls.getCharacter(uri, line, character))
                              .orCancelled(ls, id)
-    result = suggestLocations.map(x => x.toDocumentHighlight());
+    result = suggestLocations.map(toDocumentHighlight);
 
 proc shutdown(ls: LanguageServer, params: JsonNode):
     Future[JsonNode] {.async.} =
