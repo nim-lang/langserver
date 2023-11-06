@@ -93,7 +93,7 @@ jobs:
           tag: latest
 
       - name: Delete artefacts
-        uses: geekyeggo/delete-artifact@v1
+        uses: geekyeggo/delete-artifact@v2
         with:
           failOnError: false
           name: "nimlangserver-*"
