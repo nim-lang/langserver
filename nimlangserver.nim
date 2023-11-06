@@ -170,9 +170,9 @@ proc initialize(ls: LanguageServer, params: InitializeParams):
         save: some(SaveOptions(includeText: some(true))))
       ),
       hoverProvider: some(true),
-      workspace: WorkspaceCapability(
-        workspaceFolders: some(WorkspaceFolderCapability())
-      ),
+      workspace: some(ServerCapabilities_workspace(
+        workspaceFolders: some(WorkspaceFoldersServerCapabilities())
+      )),
       completionProvider: CompletionOptions(
         triggerCharacters: some(@["."]),
         resolveProvider: some(false)
@@ -183,9 +183,12 @@ proc initialize(ls: LanguageServer, params: InitializeParams):
       referencesProvider: some(true),
       documentHighlightProvider: some(true),
       workspaceSymbolProvider: some(true),
-      executeCommandProvider: ExecuteCommandOptions(
+      executeCommandProvider: some(ExecuteCommandOptions(
         commands: some(@[RESTART_COMMAND, RECOMPILE_COMMAND, CHECK_PROJECT_COMMAND])
-      ),
+      )),
+      inlayHintProvider: some(InlayHintOptions(
+        resolveProvider: some(false)
+      )),
       documentSymbolProvider: some(true),
       codeActionProvider: some(true)
     )
@@ -298,7 +301,7 @@ proc progressSupported(ls: LanguageServer): bool =
   result = ls.initializeParams
     .capabilities
     .window
-    .get(WindowCapabilities())
+    .get(ClientCapabilities_window())
     .workDoneProgress
     .get(false)
 
@@ -677,7 +680,7 @@ proc expand(ls: LanguageServer, params: ExpandTextDocumentPositionParams):
         .await()
     if expand.len != 0:
       result = ExpandResult(content: expand[0].doc.fixIdentation(character),
-                            range: createRangeFromSuggest(expand[0]))
+                            range: expand[0].createRangeFromSuggest())
 
 proc typeDefinition(ls: LanguageServer, params: TextDocumentPositionParams, id: int):
     Future[seq[Location]] {.async.} =
@@ -744,6 +747,60 @@ proc rename(ls: LanguageServer, params: RenameParams, id: int): Future[Workspace
         edits[reference.uri] = newJArray()
       edits[reference.uri] &= %TextEdit(range: reference.range, newText: params.newName)
   result = WorkspaceEdit(changes: some edits)
+
+proc convertInlayHintKind(kind: SuggestInlayHintKind): InlayHintKind_int =
+  case kind
+  of sihkType:
+    result = 1
+  of sihkParameter:
+    result = 2
+
+proc toInlayHint(suggest: SuggestInlayHint): InlayHint =
+  let hint_line = suggest.line - 1
+  # TODO: how to convert column?
+  var hint_col = suggest.column
+  result = InlayHint(
+    position: Position(
+      line: hint_line,
+      character: hint_col
+    ),
+    label: suggest.label,
+    kind: some(convertInlayHintKind(suggest.kind)),
+    paddingLeft: some(suggest.paddingLeft),
+    paddingRight: some(suggest.paddingRight)
+  )
+  if suggest.allowInsert:
+    result.textEdits = some(@[
+      TextEdit(
+        newText: suggest.label,
+        `range`: Range(
+          start: Position(
+            line: hint_line,
+            character: hint_col
+          ),
+          `end`: Position(
+            line: hint_line,
+            character: hint_col
+          )
+        )
+      )
+    ])
+
+proc inlayHint(ls: LanguageServer, params: InlayHintParams, id: int): Future[seq[InlayHint]] {.async.} =
+  debug "inlayHint received..."
+  with (params.range, params.textDocument):
+    let
+      nimsuggest = await ls.getNimsuggest(uri)
+      suggestions = await nimsuggest
+        .inlayHints(uriToPath(uri),
+                    ls.uriToStash(uri),
+                    start.line + 1,
+                    ls.getCharacter(uri, start.line, start.character),
+                    `end`.line + 1,
+                    ls.getCharacter(uri, `end`.line, `end`.character))
+        .orCancelled(ls, id)
+    result = suggestions
+      .map(x => x.inlayHintInfo.toInlayHint());
 
 proc codeAction(ls: LanguageServer, params: CodeActionParams):
     Future[seq[CodeAction]] {.async.} =
@@ -914,6 +971,7 @@ proc registerHandlers*(connection: StreamConnection,
   connection.register("textDocument/codeAction", partial(codeAction, ls))
   connection.register("textDocument/prepareRename", partial(prepareRename, ls))
   connection.register("textDocument/rename", partial(rename, ls))
+  connection.register("textDocument/inlayHint", partial(inlayHint, ls))
   connection.register("workspace/executeCommand", partial(executeCommand, ls))
   connection.register("workspace/symbol", partial(workspaceSymbol, ls))
   connection.register("textDocument/documentHighlight", partial(documentHighlight, ls))

@@ -33,7 +33,7 @@ type
     ideHighlight, ideOutline, ideKnown, ideMsg, ideProject, ideType, ideExpand
   NimsuggestCallback = proc(self: Nimsuggest): void {.gcsafe.}
 
-  Suggest* = ref object of RootObj
+  Suggest* = ref object
     section*: IdeCmd
     qualifiedPath*: seq[string] # part of 'qualifiedPath'
     filePath*: string
@@ -51,11 +51,26 @@ type
     version*: int
     endLine*: int
     endCol*: int
+    inlayHintInfo*: SuggestInlayHint
 
   SuggestCall* = ref object
     commandString: string
     future: Future[seq[Suggest]]
     command: string
+
+  SuggestInlayHintKind* = enum
+    sihkType = "Type",
+    sihkParameter = "Parameter"
+
+  SuggestInlayHint* = ref object
+    kind*: SuggestInlayHintKind
+    line*: int                   # Starts at 1
+    column*: int                 # Starts at 0
+    label*: string
+    paddingLeft*: bool
+    paddingRight*: bool
+    allowInsert*: bool
+    tooltip*: string
 
   Nimsuggest* = ref object
     failed*: bool
@@ -159,7 +174,7 @@ proc parseQualifiedPath*(input: string): seq[string] =
   if item != "":
     result.add item
 
-proc parseSuggest*(line: string): Suggest =
+proc parseSuggestDef*(line: string): Suggest =
   let tokens = line.split('\t');
   if tokens.len < 8:
     error "Failed to parse: ", line = line
@@ -176,6 +191,21 @@ proc parseSuggest*(line: string): Suggest =
   if tokens.len == 11:
     result.endLine = parseInt(tokens[9])
     result.endCol = parseInt(tokens[10])
+
+proc parseSuggestInlayHint*(line: string): SuggestInlayHint =
+  let tokens = line.split('\t');
+  if tokens.len < 8:
+    error "Failed to parse: ", line = line
+    raise newException(ValueError, fmt "Failed to parse line {line}")
+  result = SuggestInlayHint(
+    kind: parseEnum[SuggestInlayHintKind](capitalizeAscii(tokens[0])),
+    line: parseInt(tokens[1]),
+    column: parseInt(tokens[2]),
+    label: tokens[3],
+    paddingLeft: parseBool(tokens[4]),
+    paddingRight: parseBool(tokens[5]),
+    allowInsert: parseBool(tokens[6]),
+    tooltip: tokens[7])
 
 proc name*(sug: Suggest): string =
   return sug.qualifiedPath[^1]
@@ -317,13 +347,16 @@ proc processQueue(self: Nimsuggest): Future[void] {.async.}=
 
         for lineStr  in content.splitLines:
           if lineStr != "":
-            if req.command != "known":
-              res.add parseSuggest(lineStr)
-            else:
+            case req.command
+            of "known":
               let sug = Suggest()
               sug.section = ideKnown
               sug.forth = lineStr
               res.add sug
+            of "inlayHints":
+              res.add Suggest( inlayHintInfo: parseSuggestInlayHint(lineStr) )
+            else:
+              res.add parseSuggestDef(lineStr)
 
         if (content == ""):
           self.markFailed "Server crashed/socket closed."
@@ -368,6 +401,11 @@ template createGlobalCommand(command: untyped) {.dirty.} =
   proc command*(self: Nimsuggest): Future[seq[Suggest]] =
     return self.call(astToStr(command), "-", "", 0, 0)
 
+template createRangeCommand(command: untyped) {.dirty.} =
+  proc command*(self: Nimsuggest, file: string, dirtyfile = "",
+                startLine, startCol, endLine, endCol: int): Future[seq[Suggest]] =
+    return self.call(astToStr(command), file, dirtyfile, startLine, startCol, fmt ":{endLine}:{endCol}")
+
 # create commands
 createFullCommand(sug)
 createFullCommand(con)
@@ -384,6 +422,7 @@ createFileOnlyCommand(outline)
 createFileOnlyCommand(known)
 createFileOnlyCommand(globalSymbols)
 createGlobalCommand(recompile)
+createRangeCommand(inlayHints)
 
 proc `mod`*(nimsuggest: Nimsuggest, file: string, dirtyfile = ""): Future[seq[Suggest]] =
   return nimsuggest.call("ideMod", file, dirtyfile, 0, 0)
