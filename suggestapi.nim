@@ -88,7 +88,7 @@ type
     processing: bool
     timeout: int
     timeoutCallback: NimsuggestCallback
-    protocolVersion: int
+    protocolVersion*: int
 
 template benchmark(benchmarkName: string, code: untyped) =
   block:
