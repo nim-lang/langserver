@@ -19,6 +19,7 @@ import osproc,
   chronicles
 
 const REQUEST_TIMEOUT* = 120000
+const HighestSupportedNimSuggestProtocolVersion = 4
 
 # coppied from Nim repo
 type
@@ -87,6 +88,7 @@ type
     processing: bool
     timeout: int
     timeoutCallback: NimsuggestCallback
+    protocolVersion*: int
 
 template benchmark(benchmarkName: string, code: untyped) =
   block:
@@ -255,6 +257,24 @@ proc doWithTimeout*[T](fut: Future[T], timeout: int, s: string): owned(Future[bo
 
   return retFuture
 
+proc detectNimsuggestVersion(root: string,
+                             nimsuggestPath: string,
+                             workingDir: string): int {.gcsafe.} =
+  var process = startProcess(command = nimsuggestPath,
+                             workingDir = workingDir,
+                             args = @[root, "--info:protocolVer"],
+                             options = {poUsePath})
+  var l: string
+  if not process.outputStream.readLine(l):
+    l = ""
+  var exitCode = process.waitForExit()
+  if exitCode != 0 or l == "":
+    # older versions of NimSuggest don't support the --info:protocolVer option
+    # use protocol version 3 with them
+    return 3
+  else:
+    return parseInt(l)
+
 proc createNimsuggest*(root: string,
                        nimsuggestPath: string,
                        timeout: int,
@@ -279,9 +299,12 @@ proc createNimsuggest*(root: string,
   result.errorCallback = errorCallback
 
   if fullPath != "":
+    result.protocolVersion = detectNimsuggestVersion(root, nimsuggestPath, workingDir)
+    if result.protocolVersion > HighestSupportedNimSuggestProtocolVersion:
+      result.protocolVersion = HighestSupportedNimSuggestProtocolVersion
     result.process = startProcess(command = nimsuggestPath,
                                   workingDir = workingDir,
-                                  args = @[root, "--v3", "--autobind"],
+                                  args = @[root, "--v" & $result.protocolVersion, "--autobind"],
                                   options = {poUsePath})
 
     # all this is needed to avoid the need to block on the main thread.

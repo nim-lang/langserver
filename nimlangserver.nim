@@ -791,6 +791,9 @@ proc inlayHint(ls: LanguageServer, params: InlayHintParams, id: int): Future[seq
   with (params.range, params.textDocument):
     let
       nimsuggest = await ls.getNimsuggest(uri)
+    if nimsuggest.protocolVersion < 4:
+      return @[]
+    let
       suggestions = await nimsuggest
         .inlayHints(uriToPath(uri),
                     ls.uriToStash(uri),
