@@ -302,9 +302,13 @@ proc createNimsuggest*(root: string,
     result.protocolVersion = detectNimsuggestVersion(root, nimsuggestPath, workingDir)
     if result.protocolVersion > HighestSupportedNimSuggestProtocolVersion:
       result.protocolVersion = HighestSupportedNimSuggestProtocolVersion
+    var
+      args = @[root, "--v" & $result.protocolVersion, "--autobind"]
+    if result.protocolVersion >= 4:
+      args.add("--clientProcessId:" & $getCurrentProcessId())
     result.process = startProcess(command = nimsuggestPath,
                                   workingDir = workingDir,
-                                  args = @[root, "--v" & $result.protocolVersion, "--autobind"],
+                                  args = args,
                                   options = {poUsePath})
 
     # all this is needed to avoid the need to block on the main thread.
