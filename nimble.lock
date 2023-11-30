@@ -192,12 +192,12 @@
     },
     "asynctools": {
       "version": "0.1.1",
-      "vcsRevision": "f1ad7289ff38f3b1c1987307845de373fc9af499",
-      "url": "https://github.com/yyoncho/asynctools",
+      "vcsRevision": "bb01d965a2ad0f08eaff6a53874f028ddbab4909",
+      "url": "https://github.com/nickysn/asynctools.git",
       "downloadMethod": "git",
       "dependencies": [],
       "checksums": {
-        "sha1": "e66b868cc432b4e28c6149715b567faea8429cd2"
+        "sha1": "7ac3e69cb9dfcedb140a707bcbd21a099904dafb"
       }
     },
     "json_rpc": {
