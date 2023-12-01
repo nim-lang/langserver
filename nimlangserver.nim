@@ -2,7 +2,8 @@ import macros, strformat, faststreams/async_backend,
   faststreams/asynctools_adapters, faststreams/inputs, faststreams/outputs,
   json_rpc/streamconnection, os, sugar, sequtils, hashes, osproc,
   suggestapi, protocol/enums, protocol/types, with, tables, strutils, sets,
-  ./utils, ./pipes, chronicles, std/re, uri, "$nim/compiler/pathutils"
+  ./utils, ./pipes, chronicles, std/re, uri, "$nim/compiler/pathutils",
+  procmonitor
 
 const
   RESTART_COMMAND = "nimlangserver.restart"
@@ -159,6 +160,10 @@ proc getCharacter(ls: LanguageServer, uri: string, line: int, character: int): i
 proc initialize(ls: LanguageServer, params: InitializeParams):
     Future[InitializeResult] {.async.} =
   debug "Initialize received..."
+  if params.processId.isSome:
+    let pid = params.processId.get
+    if pid.kind == JInt:
+      hookProcMonitor(int(pid.num))
   ls.initializeParams = params
   result = InitializeResult(
     capabilities: ServerCapabilities(
