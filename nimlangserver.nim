@@ -24,8 +24,14 @@ type
   NlsInlayTypeHintsConfig = ref object of RootObj
     enable*: Option[bool]
 
+  NlsInlayExceptionHintsConfig = ref object of RootObj
+    enable*: Option[bool]
+    hintStringLeft*: Option[string]
+    hintStringRight*: Option[string]
+
   NlsInlayHintsConfig = ref object of RootObj
     typeHints*: Option[NlsInlayTypeHintsConfig]
+    exceptionHints*: Option[NlsInlayExceptionHintsConfig]
 
   NlsConfig = ref object of RootObj
     projectMapping*: OptionalSeq[NlsNimsuggestConfig]
@@ -784,8 +790,11 @@ proc convertInlayHintKind(kind: SuggestInlayHintKind): InlayHintKind_int =
     result = 1
   of sihkParameter:
     result = 2
+  of sihkException:
+    # LSP doesn't have an exception inlay hint type, so we pretend (i.e. lie) that it is a type hint.
+    result = 1
 
-proc toInlayHint(suggest: SuggestInlayHint): InlayHint =
+proc toInlayHint(suggest: SuggestInlayHint; configuration: NlsConfig): InlayHint =
   let hint_line = suggest.line - 1
   # TODO: how to convert column?
   var hint_col = suggest.column
@@ -799,6 +808,14 @@ proc toInlayHint(suggest: SuggestInlayHint): InlayHint =
     paddingLeft: some(suggest.paddingLeft),
     paddingRight: some(suggest.paddingRight)
   )
+  if suggest.kind == sihkException and suggest.label == "try " and configuration.inlayHints.isSome and configuration.inlayHints.get.exceptionHints.isSome and configuration.inlayHints.get.exceptionHints.get.hintStringLeft.isSome:
+    result.label = configuration.inlayHints.get.exceptionHints.get.hintStringLeft.get
+  if suggest.kind == sihkException and suggest.label == "!" and configuration.inlayHints.isSome and configuration.inlayHints.get.exceptionHints.isSome and configuration.inlayHints.get.exceptionHints.get.hintStringRight.isSome:
+    result.label = configuration.inlayHints.get.exceptionHints.get.hintStringRight.get
+  if suggest.tooltip != "":
+    result.tooltip = some(suggest.tooltip)
+  else:
+    result.tooltip = some("")
   if suggest.allowInsert:
     result.textEdits = some(@[
       TextEdit(
@@ -816,31 +833,42 @@ proc toInlayHint(suggest: SuggestInlayHint): InlayHint =
       )
     ])
 
-proc typeHintsEnabled(cnf: NlsConfig): bool =
+func typeHintsEnabled(cnf: NlsConfig): bool =
   result = true
   if cnf.inlayHints.isSome and cnf.inlayHints.get.typeHints.isSome and cnf.inlayHints.get.typeHints.get.enable.isSome:
     result = cnf.inlayHints.get.typeHints.get.enable.get
+
+func exceptionHintsEnabled(cnf: NlsConfig): bool =
+  result = true
+  if cnf.inlayHints.isSome and cnf.inlayHints.get.exceptionHints.isSome and cnf.inlayHints.get.exceptionHints.get.enable.isSome:
+    result = cnf.inlayHints.get.exceptionHints.get.enable.get
+
+func inlayHintsEnabled(cnf: NlsConfig): bool =
+  typeHintsEnabled(cnf) or exceptionHintsEnabled(cnf)
 
 proc inlayHint(ls: LanguageServer, params: InlayHintParams, id: int): Future[seq[InlayHint]] {.async.} =
   debug "inlayHint received..."
   with (params.range, params.textDocument):
     let
+      configuration = ls.getWorkspaceConfiguration.await()
       nimsuggest = await ls.getNimsuggest(uri)
-    if nimsuggest.protocolVersion < 4:
+    if nimsuggest.protocolVersion < 4 or not configuration.inlayHintsEnabled:
       return @[]
     let
-      configuration = ls.getWorkspaceConfiguration.await()
       suggestions = await nimsuggest
         .inlayHints(uriToPath(uri),
                     ls.uriToStash(uri),
                     start.line + 1,
                     ls.getCharacter(uri, start.line, start.character),
                     `end`.line + 1,
-                    ls.getCharacter(uri, `end`.line, `end`.character))
+                    ls.getCharacter(uri, `end`.line, `end`.character),
+                    " +exceptionHints")
         .orCancelled(ls, id)
     result = suggestions
-      .filter(x => (x.inlayHintInfo.kind == sihkType) and configuration.typeHintsEnabled)
-      .map(x => x.inlayHintInfo.toInlayHint())
+      .filter(x => ((x.inlayHintInfo.kind == sihkType) and configuration.typeHintsEnabled) or
+                   ((x.inlayHintInfo.kind == sihkException) and configuration.exceptionHintsEnabled))
+      .map(x => x.inlayHintInfo.toInlayHint(configuration))
+      .filter(x => x.label != "")
 
 proc codeAction(ls: LanguageServer, params: CodeActionParams):
     Future[seq[CodeAction]] {.async.} =
