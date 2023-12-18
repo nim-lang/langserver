@@ -68,7 +68,7 @@ jobs:
           tar -czvf nimlangserver-${{ matrix.target.name }}.tar.gz `ls nimlangserver{,.exe} 2>/dev/null || true`
 
       - name: Upload the Nim Language Server Binaries
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: nimlangserver-${{ matrix.target.name }}.tar.gz
           path: nimlangserver-${{ matrix.target.name }}.tar.gz
