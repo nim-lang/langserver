@@ -794,8 +794,8 @@ type
     filterText*: Option[string]
     insertText*: Option[string]
     insertTextFormat*: Option[int]
-    textEdit*: Option[TextEdit]
-    additionalTextEdits*: Option[TextEdit]
+    # textEdit*: Option[TextEdit]
+    # additionalTextEdits*: Option[TextEdit]
     commitCharacters*: OptionalSeq[string]
     command*: Option[Command]
     data*: OptionalNode
