@@ -14,7 +14,7 @@ suite "Nimsuggest tests":
     doAssert parseQualifiedPath("system.`..<`") == @["system", "`..<`"]
 
   test "Parsing suggest":
-    doAssert parseSuggest(inputLine)[] == Suggest(
+    doAssert parseSuggestDef(inputLine)[] == Suggest(
       filePath: "hw/hw.nim",
       qualifiedPath: @["hw", "a"],
       symKind: "skProc",
@@ -25,7 +25,7 @@ suite "Nimsuggest tests":
       section: ideDef)[]
 
   test "Parsing suggest with endLine":
-    let res = parseSuggest(inputLineWithEndLine)[]
+    let res = parseSuggestDef(inputLineWithEndLine)[]
     doAssert res == Suggest(
       filePath: "basic_types.nim",
       qualifiedPath: @["system", "bool", "true"],
