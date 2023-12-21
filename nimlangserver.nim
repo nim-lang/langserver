@@ -107,6 +107,7 @@ proc getProjectFileAutoGuess(fileUri: string): string =
           debug "Found nimble project", projectFile = projectFile
           result = projectFile
           certainty = Nimble
+    if path == dir: break
     path = dir
 
 proc getWorkspaceConfiguration(ls: LanguageServer): Future[NlsConfig] {.async.} =
