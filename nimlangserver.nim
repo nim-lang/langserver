@@ -119,9 +119,14 @@ proc getWorkspaceConfiguration(ls: LanguageServer): Future[NlsConfig] {.async.} 
     debug "Failed to parse the configuration."
     result = NlsConfig()
 
+proc getRootPath(ip: InitializeParams): string =
+  if ip.rootUri == "":
+    return fmt"file://{getCurrentDir()}".uriToPath
+  return ip.rootUri.uriToPath
+
 proc getProjectFile(fileUri: string, ls: LanguageServer): Future[string] {.async.} =
   let
-    rootPath = AbsoluteDir(ls.initializeParams.rootUri.uriToPath)
+    rootPath = AbsoluteDir(ls.initializeParams.getRootPath)
     pathRelativeToRoot = string(AbsoluteFile(fileUri).relativeTo(rootPath))
     mappings = ls.getWorkspaceConfiguration.await().projectMapping.get(@[])
   
@@ -419,7 +424,7 @@ proc checkProject(ls: LanguageServer, uri: string): Future[void] {.async, gcsafe
 
 proc getWorkingDir(ls: LanguageServer, path: string): Future[string] {.async.} =
   let
-    rootPath = AbsoluteDir(ls.initializeParams.rootUri.uriToPath)
+    rootPath = AbsoluteDir(ls.initializeParams.getRootPath)
     pathRelativeToRoot = string(AbsoluteFile(path).relativeTo(rootPath))
     mapping = ls.getWorkspaceConfiguration.await().workingDirectoryMapping.get(@[])
 
@@ -729,7 +734,7 @@ proc prepareRename(ls: LanguageServer, params: PrepareRenameParams,
     if def.len == 0:
       return newJNull()
     # Check if the symbol belongs to the project
-    let projectDir = ls.initializeParams.rootUri.uriToPath
+    let projectDir = ls.initializeParams.getRootPath
     if def[0].filePath.isRelativeTo(projectDir):
       return %def[0].toLocation().range
 
@@ -743,7 +748,7 @@ proc rename(ls: LanguageServer, params: RenameParams, id: int): Future[Workspace
     position: params.position
   ))
   # Build up list of edits that the client needs to perform for each file
-  let projectDir = ls.initializeParams.rootUri.uriToPath
+  let projectDir = ls.initializeParams.getRootPath
   var edits = newJObject()
   for reference in references:
     # Only rename symbols in the project.
