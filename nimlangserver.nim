@@ -3,7 +3,7 @@ import macros, strformat, faststreams/async_backend,
   json_rpc/streamconnection, os, sugar, sequtils, hashes, osproc,
   suggestapi, protocol/enums, protocol/types, with, tables, strutils, sets,
   ./utils, ./pipes, chronicles, std/re, uri, "$nim/compiler/pathutils",
-  procmonitor
+  procmonitor, std/strscans
 
 const
   RESTART_COMMAND = "nimlangserver.restart"
@@ -194,6 +194,10 @@ proc initialize(ls: LanguageServer, params: InitializeParams):
       inlayHintProvider: some(InlayHintOptions(
         resolveProvider: some(false)
       )),
+      #  #TODO register only after checking nimsuggest capability (only works on devel so far)
+      # signatureHelpProvider: SignatureHelpOptions(
+      #   triggerCharacters: some(@["(", ","])
+      # ),
       documentSymbolProvider: some(true),
       codeActionProvider: some(true)
     )
@@ -871,7 +875,7 @@ proc toCompletionItem(suggest: Suggest): CompletionItem =
       "label": qualifiedPath[^1].strip(chars = {'`'}),
       "kind": nimSymToLSPKind(suggest).int,
       "documentation": doc,
-      "detail": nimSymDetails(suggest)
+      "detail": nimSymDetails(suggest),
     }
 
 proc completion(ls: LanguageServer, params: CompletionParams, id: int):
@@ -886,6 +890,55 @@ proc completion(ls: LanguageServer, params: CompletionParams, id: int):
                                  ls.getCharacter(uri, line, character))
                             .orCancelled(ls, id)
     return completions.map(toCompletionItem);
+
+proc toSignatureInformation(suggest: Suggest): SignatureInformation = 
+  var fnKind, strParams: string
+  var params = newSeq[ParameterInformation]()
+  #TODO handle params. Ideally they are handled in the compiler but as fallback we could handle them as follows
+  #notice we will need to also handle the  ',' and the back and forths between the client and the server
+  if scanf(suggest.forth, "$*($*)", fnKind, strParams):
+    for param in strParams.split(","):
+      params.add(ParameterInformation(label: param))
+
+  let name = suggest.qualifiedPath[^1].strip(chars = {'`'})
+  let detail = suggest.forth.split(" ")
+  var label = name
+  if detail.len > 1:
+    label = &"{fnKind} {name}({strParams})"
+  return SignatureInformation %* {
+    "label": label,
+    "documentation": suggest.doc,
+    "parameters": newSeq[ParameterInformation](), #notice params is not used
+    }
+
+
+proc signatureHelp(ls: LanguageServer, params: SignatureHelpParams, id: int): 
+  Future[Option[SignatureHelp]] {.async.} = 
+    #TODO handle prev signature
+    # if params.context.activeSignatureHelp.isSome:
+    #   let prevSignature = params.context.activeSignatureHelp.get.signatures.get[params.context.activeSignatureHelp.get.activeSignature.get]
+    #   debug "prevSignature ", prevSignature = $prevSignature.label
+    # else:
+    #   debug "no prevSignature"
+
+    with (params.position, params.textDocument):
+      let
+        nimsuggest = await ls.getNimsuggest(uri)
+        completions = await nimsuggest
+                              .con(uriToPath(uri),                              
+                                  ls.uriToStash(uri),
+                                  line + 1,
+                                  ls.getCharacter(uri, line, character))
+                              .orCancelled(ls, id)
+      let signatures = completions.map(toSignatureInformation);
+      if signatures.len() > 0:
+        some SignatureHelp(
+          signatures: some(signatures),
+          activeSignature: some(0),
+          activeParameter: some(0)
+        )
+      else: 
+        none[SignatureHelp]()
 
 proc toSymbolInformation(suggest: Suggest): SymbolInformation =
   with suggest:
@@ -980,6 +1033,7 @@ proc registerHandlers*(connection: StreamConnection,
   connection.register("textDocument/prepareRename", partial(prepareRename, ls))
   connection.register("textDocument/rename", partial(rename, ls))
   connection.register("textDocument/inlayHint", partial(inlayHint, ls))
+  connection.register("textDocument/signatureHelp", partial(signatureHelp, ls))
   connection.register("workspace/executeCommand", partial(executeCommand, ls))
   connection.register("workspace/symbol", partial(workspaceSymbol, ls))
   connection.register("textDocument/documentHighlight", partial(documentHighlight, ls))
