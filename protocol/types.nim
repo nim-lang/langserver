@@ -783,6 +783,10 @@ type
     isIncomplete*: bool
     `items`*: OptionalSeq[CompletionItem]
 
+  CompletionItemLabelDetails* = ref object of RootObj
+    detail*: Option[string]
+    description*: Option[string]
+
   CompletionItem* = ref object of RootObj
     label*: string
     kind*: Option[int]
@@ -799,6 +803,7 @@ type
     commitCharacters*: OptionalSeq[string]
     command*: Option[Command]
     data*: OptionalNode
+    labelDetails*: Option[CompletionItemLabelDetails]
 
   CompletionRegistrationOptions* = ref object of TextDocumentRegistrationOptions
     triggerCharacters*: OptionalSeq[string]
@@ -821,12 +826,12 @@ type
 
   SignatureInformation* = ref object of RootObj
     label*: string
-    documentation*: Option[string or MarkupContent]
-    parameters*: OptionalSeq[ParameterInformation]
+    # documentation*: Option[string]
+    parameters*: seq[ParameterInformation]
 
   ParameterInformation* = ref object of RootObj
     label*: string
-    documentation*: Option[string or MarkupContent]
+    # documentation*: Option[string]
 
   SignatureHelpRegistrationOptions* = ref object of TextDocumentRegistrationOptions
     triggerCharacters*: OptionalSeq[string]
@@ -939,7 +944,7 @@ type
     triggerKind*: int
     triggerCharacter*: Option[string]
     isRetrigger*: bool
-    activeSignatureHelp*: SignatureHelp
+    activeSignatureHelp*: Option[SignatureHelp]
 
   SignatureHelpParams* = ref object of TextDocumentPositionParams
     context*: SignatureHelpContext
