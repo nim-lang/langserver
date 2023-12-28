@@ -27,7 +27,7 @@ Change configuration to your liking (most probably you don't need to provide any
 **IMPORTANT** you might want to use latest build of the `nimlangserver` and/or build it from source.
 
 ### VIM/Neovim
-- [coc.nvim](https://github.com/neoclide/coc.nvim) supports both classical VIM as well as Neovim. It also supports vscode-like `coc-settings.json` for LSP configuraition. Install the plugin via your favourite plugin manager, create `coc-settings.json` alongside your `init.vim` and add the following contents to it:
+- [coc.nvim](https://github.com/neoclide/coc.nvim) supports both classical VIM as well as Neovim. It also supports vscode-like `coc-settings.json` for LSP configuration. Install the plugin via your favourite plugin manager, create `coc-settings.json` alongside your `init.vim` and add the following contents to it:
 ```json
 {
   "languageserver": {
@@ -44,7 +44,7 @@ Change configuration to your liking (most probably you don't need to provide any
   }
 }
 ```
-Ofcourse, change the configuraition to your liking. You might also want to read `coc.nvim` documentation to setup key bindings, autocompletion and so on.
+Of course, change the configuration to your liking. You might also want to read `coc.nvim` documentation to setup key bindings, autocompletion and so on.
 
 **IMPORTANT** you might want to use latest build of the `nimlangserver` and/or build it from source.
 
@@ -104,7 +104,7 @@ nimble build
 - Workspace symbols
 - Rename symbols
 
-You can install `nimlangserver` using the instuctions for your text editor below:
+You can install `nimlangserver` using the instructions for your text editor below:
 
 ### Extension methods
 In addition to the standard `LSP` methods, `nimlangserver` provides additional nim specific methods.
