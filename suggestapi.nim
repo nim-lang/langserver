@@ -6,6 +6,7 @@ import osproc,
   sets,
   os,
   asyncnet,
+  sequtils,
   streams,
   protocol/enums,
   faststreams/asynctools_adapters,
@@ -73,6 +74,9 @@ type
     allowInsert*: bool
     tooltip*: string
 
+  NimSuggestCapability* = enum 
+    nsCon = "con"
+
   Nimsuggest* = ref object
     failed*: bool
     errorMessage*: string
@@ -89,6 +93,8 @@ type
     timeout: int
     timeoutCallback: NimsuggestCallback
     protocolVersion*: int
+    capabilities: set[NimSuggestCapability]
+
 
 template benchmark(benchmarkName: string, code: untyped) =
   block:
@@ -275,6 +281,22 @@ proc detectNimsuggestVersion(root: string,
   else:
     return parseInt(l)
 
+proc getNimsuggestCapabilities(root: string,
+                             nimsuggestPath: string,
+                             workingDir: string): set[NimSuggestCapability] {.gcsafe.} =
+  var process = startProcess(command = nimsuggestPath,
+                             workingDir = workingDir,
+                             args = @[root, "--info:capabilities"],
+                             options = {poUsePath})
+  var l: string
+  if not process.outputStream.readLine(l):
+    l = ""
+  var exitCode = process.waitForExit()
+  if exitCode == 0: 
+    # older versions of NimSuggest don't support the --info:capabilities option
+    for cap in l.split(" ").mapIt(parseEnum[NimSuggestCapability](it)):
+      result.incl(cap)
+
 proc createNimsuggest*(root: string,
                        nimsuggestPath: string,
                        timeout: int,
@@ -306,6 +328,7 @@ proc createNimsuggest*(root: string,
       args = @[root, "--v" & $result.protocolVersion, "--autobind"]
     if result.protocolVersion >= 4:
       args.add("--clientProcessId:" & $getCurrentProcessId())
+    result.capabilities = getNimsuggestCapabilities(root, nimsuggestPath, workingDir)
     result.process = startProcess(command = nimsuggestPath,
                                   workingDir = workingDir,
                                   args = args,
