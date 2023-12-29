@@ -188,6 +188,9 @@ proc initialize(ls: LanguageServer, params: InitializeParams):
         triggerCharacters: some(@["."]),
         resolveProvider: some(false)
       ),
+      signatureHelpProvider: SignatureHelpOptions(
+            triggerCharacters: some(@["(", ","])
+      ),
       definitionProvider: some(true),
       declarationProvider: some(true),
       typeDefinitionProvider: some(true),
@@ -203,16 +206,7 @@ proc initialize(ls: LanguageServer, params: InitializeParams):
       documentSymbolProvider: some(true),
       codeActionProvider: some(true)
     )
-  )
-  #notice initial capabilities use NimSuggest from path
-  let nimSuggestCapablities = getNimsuggestCapabilities("nimsuggest")
-  debug "NimSuggest capabilties ", capabilities = nimSuggestCapablities
-  if nsCon in nimSuggestCapablities:
-    #support signatureHelpProvider only if the current version of NimSuggest supports it. 
-    result.capabilities.signatureHelpProvider = 
-      SignatureHelpOptions(
-          triggerCharacters: some(@["(", ","])
-        )
+  )  
   # Support rename by default, but check if we can also support prepare
   result.capabilities.renameProvider = %true
   if params.capabilities.textDocument.isSome:
@@ -933,9 +927,12 @@ proc signatureHelp(ls: LanguageServer, params: SignatureHelpParams, id: int):
     #   debug "no prevSignature"
 
     with (params.position, params.textDocument):
-      let
-        nimsuggest = await ls.getNimsuggest(uri)
-        completions = await nimsuggest
+      let nimsuggest = await ls.getNimsuggest(uri)
+      if nsCon notin nimSuggest.capabilities:
+        #support signatureHelp only if the current version of NimSuggest supports it. 
+        return none[SignatureHelp]()
+
+      let completions = await nimsuggest
                               .con(uriToPath(uri),                              
                                   ls.uriToStash(uri),
                                   line + 1,
