@@ -93,7 +93,7 @@ type
     timeout: int
     timeoutCallback: NimsuggestCallback
     protocolVersion*: int
-    capabilities: set[NimSuggestCapability]
+    capabilities*: set[NimSuggestCapability]
 
 
 template benchmark(benchmarkName: string, code: untyped) =
@@ -281,12 +281,10 @@ proc detectNimsuggestVersion(root: string,
   else:
     return parseInt(l)
 
-proc getNimsuggestCapabilities(root: string,
-                             nimsuggestPath: string,
-                             workingDir: string): set[NimSuggestCapability] {.gcsafe.} =
+proc getNimsuggestCapabilities*(nimsuggestPath: string): 
+  set[NimSuggestCapability] {.gcsafe.} =
   var process = startProcess(command = nimsuggestPath,
-                             workingDir = workingDir,
-                             args = @[root, "--info:capabilities"],
+                             args = @["--info:capabilities"],
                              options = {poUsePath})
   var l: string
   if not process.outputStream.readLine(l):
@@ -328,7 +326,7 @@ proc createNimsuggest*(root: string,
       args = @[root, "--v" & $result.protocolVersion, "--autobind"]
     if result.protocolVersion >= 4:
       args.add("--clientProcessId:" & $getCurrentProcessId())
-    result.capabilities = getNimsuggestCapabilities(root, nimsuggestPath, workingDir)
+    result.capabilities = getNimsuggestCapabilities(nimsuggestPath)
     result.process = startProcess(command = nimsuggestPath,
                                   workingDir = workingDir,
                                   args = args,

@@ -200,14 +200,19 @@ proc initialize(ls: LanguageServer, params: InitializeParams):
       inlayHintProvider: some(InlayHintOptions(
         resolveProvider: some(false)
       )),
-      #  #TODO register only after checking nimsuggest capability (only works on devel so far)
-      # signatureHelpProvider: SignatureHelpOptions(
-      #   triggerCharacters: some(@["(", ","])
-      # ),
       documentSymbolProvider: some(true),
       codeActionProvider: some(true)
     )
   )
+  #notice initial capabilities use NimSuggest from path
+  let nimSuggestCapablities = getNimsuggestCapabilities("nimsuggest")
+  debug "NimSuggest capabilties ", capabilities = nimSuggestCapablities
+  if nsCon in nimSuggestCapablities:
+    #support signatureHelpProvider only if the current version of NimSuggest supports it. 
+    result.capabilities.signatureHelpProvider = 
+      SignatureHelpOptions(
+          triggerCharacters: some(@["(", ","])
+        )
   # Support rename by default, but check if we can also support prepare
   result.capabilities.renameProvider = %true
   if params.capabilities.textDocument.isSome:
