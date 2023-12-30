@@ -894,7 +894,15 @@ proc completion(ls: LanguageServer, params: CompletionParams, id: int):
                                  line + 1,
                                  ls.getCharacter(uri, line, character))
                             .orCancelled(ls, id)
-    return completions.map(toCompletionItem);
+    result = completions.map(toCompletionItem)
+
+    if nsCon in nimSuggest.capabilities:
+      #show only unique overloads if we support signatureHelp
+      var unique = initTable[string, CompletionItem]()
+      for completion in result:
+        if completion.label notin unique:
+          unique[completion.label] = completion
+      result = unique.values.toSeq     
 
 proc toSignatureInformation(suggest: Suggest): SignatureInformation = 
   var fnKind, strParams: string
