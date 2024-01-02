@@ -3,7 +3,8 @@ import macros, strformat, faststreams/async_backend,
   json_rpc/streamconnection, os, sugar, sequtils, hashes, osproc,
   suggestapi, protocol/enums, protocol/types, with, tables, strutils, sets,
   ./utils, ./pipes, chronicles, std/re, uri, "$nim/compiler/pathutils",
-  procmonitor, std/strscans
+  procmonitor, std/strscans, parsecfg
+
 
 const
   RESTART_COMMAND = "nimlangserver.restart"
@@ -948,13 +949,13 @@ proc signatureHelp(ls: LanguageServer, params: SignatureHelpParams, id: int):
                               .orCancelled(ls, id)
       let signatures = completions.map(toSignatureInformation);
       if signatures.len() > 0:
-        some SignatureHelp(
+        return some SignatureHelp(
           signatures: some(signatures),
           activeSignature: some(0),
           activeParameter: some(0)
         )
       else: 
-        none[SignatureHelp]()
+        return none[SignatureHelp]()
 
 proc toSymbolInformation(suggest: Suggest): SymbolInformation =
   with suggest:
@@ -1070,8 +1071,15 @@ proc ensureStorageDir*: string =
   discard existsOrCreateDir(result)
 
 when isMainModule:
+  proc handleParams() = 
+    if paramCount() > 0 and paramStr(1) in ["-v", "--version"]:
+      let p = loadConfig("./nimlangserver.nimble")
+      echo p.getSectionValue("", "version")
+      quit()
+
   proc main =
     try:
+      handleParams() 
       let storageDir = ensureStorageDir()
       var
         pipe = createPipe(register = true, nonBlockingWrite = false)
