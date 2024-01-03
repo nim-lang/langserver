@@ -1075,7 +1075,7 @@ proc ensureStorageDir*: string =
 when isMainModule:
   proc handleParams() = 
     if paramCount() > 0 and paramStr(1) in ["-v", "--version"]:
-      let p = loadConfig("./nimlangserver.nimble")
+      let p = loadConfig(getAppDir() / "nimlangserver.nimble")
       echo p.getSectionValue("", "version")
       quit()
 
