@@ -189,9 +189,6 @@ proc initialize(ls: LanguageServer, params: InitializeParams):
         triggerCharacters: some(@["."]),
         resolveProvider: some(false)
       ),
-      signatureHelpProvider: SignatureHelpOptions(
-            triggerCharacters: some(@["(", ","])
-      ),
       definitionProvider: some(true),
       declarationProvider: some(true),
       typeDefinitionProvider: some(true),
@@ -217,6 +214,11 @@ proc initialize(ls: LanguageServer, params: InitializeParams):
       result.capabilities.renameProvider = %* {
         "prepareProvider": true
       }
+    #only support signatureHelp if the client supports it
+    if docCaps.signatureHelp.isSome and docCaps.signatureHelp.get.contextSupport.get(false):    
+      result.capabilities.signatureHelpProvider = SignatureHelpOptions(
+              triggerCharacters: some(@["(", ","])
+      )
 
 proc initialized(ls: LanguageServer, _: JsonNode):
     Future[void] {.async.} =
