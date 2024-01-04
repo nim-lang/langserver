@@ -74,6 +74,11 @@ proc partial*[A, B, C] (fn: proc(a: A, b: B, id: int): C {.gcsafe.}, a: A):
     proc(b: B, id: int): C {.gcsafe, raises: [Defect, CatchableError, Exception].} =
       return fn(a, b, id)
 
+proc supportSignatureHelp(cc: ClientCapabilities): bool = 
+  if cc.isNil: return false
+  let caps = cc.textDocument
+  caps.isSome and caps.get.signatureHelp.isSome and caps.get.signatureHelp.get.contextSupport.get(false)
+
 proc getProjectFileAutoGuess(fileUri: string): string =
   let file = fileUri.decodeUrl
   result = file
@@ -172,6 +177,7 @@ proc initialize(ls: LanguageServer, params: InitializeParams):
     if pid.kind == JInt:
       hookProcMonitor(int(pid.num))
   ls.initializeParams = params
+  ls.clientCapabilities = params.capabilities
   result = InitializeResult(
     capabilities: ServerCapabilities(
       textDocumentSync: some(%TextDocumentSyncOptions(
@@ -188,6 +194,9 @@ proc initialize(ls: LanguageServer, params: InitializeParams):
       completionProvider: CompletionOptions(
         triggerCharacters: some(@["."]),
         resolveProvider: some(false)
+      ),
+      signatureHelpProvider: SignatureHelpOptions(
+        triggerCharacters: some(@["(", ","])
       ),
       definitionProvider: some(true),
       declarationProvider: some(true),
@@ -210,15 +219,11 @@ proc initialize(ls: LanguageServer, params: InitializeParams):
   if params.capabilities.textDocument.isSome:
     let docCaps = params.capabilities.textDocument.unsafeGet()
     # Check if the client support prepareRename
+    #TODO do the test on the action
     if docCaps.rename.isSome and docCaps.rename.get().prepareSupport.get(false):
       result.capabilities.renameProvider = %* {
         "prepareProvider": true
       }
-    #only support signatureHelp if the client supports it
-    if docCaps.signatureHelp.isSome and docCaps.signatureHelp.get.contextSupport.get(false):    
-      result.capabilities.signatureHelpProvider = SignatureHelpOptions(
-              triggerCharacters: some(@["(", ","])
-      )
 
 proc initialized(ls: LanguageServer, _: JsonNode):
     Future[void] {.async.} =
@@ -899,7 +904,7 @@ proc completion(ls: LanguageServer, params: CompletionParams, id: int):
                             .orCancelled(ls, id)
     result = completions.map(toCompletionItem)
 
-    if nsCon in nimSuggest.capabilities:
+    if ls.clientCapabilities.supportSignatureHelp() and nsCon in nimSuggest.capabilities:
       #show only unique overloads if we support signatureHelp
       var unique = initTable[string, CompletionItem]()
       for completion in result:
@@ -936,7 +941,14 @@ proc signatureHelp(ls: LanguageServer, params: SignatureHelpParams, id: int):
     #   debug "prevSignature ", prevSignature = $prevSignature.label
     # else:
     #   debug "no prevSignature"
-
+    #only support signatureHelp if the client supports it
+    # if docCaps.signatureHelp.isSome and docCaps.signatureHelp.get.contextSupport.get(false):    
+    #   result.capabilities.signatureHelpProvider = SignatureHelpOptions(
+    #           triggerCharacters: some(@["(", ","])
+    #   )
+    if not ls.clientCapabilities.supportSignatureHelp():
+    #Some clients doesnt support signatureHelp
+      return none[SignatureHelp]()
     with (params.position, params.textDocument):
       let nimsuggest = await ls.getNimsuggest(uri)
       if nsCon notin nimSuggest.capabilities:
