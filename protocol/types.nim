@@ -947,7 +947,7 @@ type
     activeSignatureHelp*: Option[SignatureHelp]
 
   SignatureHelpParams* = ref object of TextDocumentPositionParams
-    context*: SignatureHelpContext
+    context*: Option[SignatureHelpContext]
 
   ExpandResult* = ref object of RootObj
     range*: Range

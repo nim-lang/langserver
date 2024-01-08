@@ -77,7 +77,7 @@ proc partial*[A, B, C] (fn: proc(a: A, b: B, id: int): C {.gcsafe.}, a: A):
 proc supportSignatureHelp(cc: ClientCapabilities): bool = 
   if cc.isNil: return false
   let caps = cc.textDocument
-  caps.isSome and caps.get.signatureHelp.isSome and caps.get.signatureHelp.get.contextSupport.get(false)
+  caps.isSome and caps.get.signatureHelp.isSome
 
 proc getProjectFileAutoGuess(fileUri: string): string =
   let file = fileUri.decodeUrl
