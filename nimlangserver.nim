@@ -21,6 +21,12 @@ type
     projectFile: string
     directory: string
 
+  NlsInlayTypeHintsConfig = ref object of RootObj
+    enable*: Option[bool]
+
+  NlsInlayHintsConfig = ref object of RootObj
+    typeHints*: Option[NlsInlayTypeHintsConfig]
+
   NlsConfig = ref object of RootObj
     projectMapping*: OptionalSeq[NlsNimsuggestConfig]
     workingDirectoryMapping*: OptionalSeq[NlsWorkingDirectoryMaping]
@@ -31,6 +37,7 @@ type
     autoCheckFile*: Option[bool]
     autoCheckProject*: Option[bool]
     logNimsuggest*: Option[bool]
+    inlayHints*: Option[NlsInlayHintsConfig]
 
   FileInfo = ref object of RootObj
     projectFile: Future[string]
@@ -809,6 +816,11 @@ proc toInlayHint(suggest: SuggestInlayHint): InlayHint =
       )
     ])
 
+proc typeHintsEnabled(cnf: NlsConfig): bool =
+  result = true
+  if cnf.inlayHints.isSome and cnf.inlayHints.get.typeHints.isSome and cnf.inlayHints.get.typeHints.get.enable.isSome:
+    result = cnf.inlayHints.get.typeHints.get.enable.get
+
 proc inlayHint(ls: LanguageServer, params: InlayHintParams, id: int): Future[seq[InlayHint]] {.async.} =
   debug "inlayHint received..."
   with (params.range, params.textDocument):
@@ -817,6 +829,7 @@ proc inlayHint(ls: LanguageServer, params: InlayHintParams, id: int): Future[seq
     if nimsuggest.protocolVersion < 4:
       return @[]
     let
+      configuration = ls.getWorkspaceConfiguration.await()
       suggestions = await nimsuggest
         .inlayHints(uriToPath(uri),
                     ls.uriToStash(uri),
@@ -826,7 +839,8 @@ proc inlayHint(ls: LanguageServer, params: InlayHintParams, id: int): Future[seq
                     ls.getCharacter(uri, `end`.line, `end`.character))
         .orCancelled(ls, id)
     result = suggestions
-      .map(x => x.inlayHintInfo.toInlayHint());
+      .filter(x => (x.inlayHintInfo.kind == sihkType) and configuration.typeHintsEnabled)
+      .map(x => x.inlayHintInfo.toInlayHint())
 
 proc codeAction(ls: LanguageServer, params: CodeActionParams):
     Future[seq[CodeAction]] {.async.} =
