@@ -300,7 +300,8 @@ proc createNimsuggest*(root: string,
                        timeout: int,
                        timeoutCallback: NimsuggestCallback,
                        errorCallback: NimsuggestCallback,
-                       workingDir = getCurrentDir()): Future[Nimsuggest] {.async, gcsafe.} =
+                       workingDir = getCurrentDir(),
+                       enableLog: bool = false): Future[Nimsuggest] {.async, gcsafe.} =
   var
     pipe = createPipe(register = true, nonBlockingWrite = false)
     thread: Thread[tuple[pipe: AsyncPipe, process: Process]]
@@ -326,6 +327,8 @@ proc createNimsuggest*(root: string,
       args = @[root, "--v" & $result.protocolVersion, "--autobind"]
     if result.protocolVersion >= 4:
       args.add("--clientProcessId:" & $getCurrentProcessId())
+    if enableLog:
+      args.add("--log")
     result.capabilities = getNimsuggestCapabilities(nimsuggestPath)
     result.process = startProcess(command = nimsuggestPath,
                                   workingDir = workingDir,

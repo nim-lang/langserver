@@ -30,6 +30,7 @@ type
     autoRestart*: Option[bool]
     autoCheckFile*: Option[bool]
     autoCheckProject*: Option[bool]
+    logNimsuggest*: Option[bool]
 
   FileInfo = ref object of RootObj
     projectFile: Future[string]
@@ -467,7 +468,7 @@ proc createOrRestartNimsuggest(ls: LanguageServer, projectFile: string, uri = ""
                        MessageType.Error)
 
     nimsuggestFut = createNimsuggest(projectFile, nimsuggestPath,
-                                     timeout, restartCallback, errorCallback, workingDir)
+                                     timeout, restartCallback, errorCallback, workingDir, configuration.logNimsuggest.get(false))
     token = fmt "Creating nimsuggest for {projectFile}"
 
   if ls.projectFiles.hasKey(projectFile):
