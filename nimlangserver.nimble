@@ -1,7 +1,7 @@
 mode = ScriptMode.Verbose
 
 packageName   = "nimlangserver"
-version       = "1.0.0"
+version       = "1.1.0"
 author        = "The core Nim team"
 description   = "Nim language server for IDEs"
 license       = "MIT"
