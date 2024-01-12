@@ -964,7 +964,7 @@ type
     label*: string  # string | InlayHintLabelPart[]
     kind*: Option[InlayHintKind_int]
     textEdits*: OptionalSeq[TextEdit]
-    #tooltip*: Option[string]  # string | MarkupContent
+    tooltip*: Option[string]  # string | MarkupContent
     paddingLeft*: Option[bool]
     paddingRight*: Option[bool]
     #data*: OptionalNode

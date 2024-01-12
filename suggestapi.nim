@@ -63,6 +63,7 @@ type
   SuggestInlayHintKind* = enum
     sihkType = "Type",
     sihkParameter = "Parameter"
+    sihkException = "Exception"
 
   SuggestInlayHint* = ref object
     kind*: SuggestInlayHintKind
@@ -454,8 +455,9 @@ template createGlobalCommand(command: untyped) {.dirty.} =
 
 template createRangeCommand(command: untyped) {.dirty.} =
   proc command*(self: Nimsuggest, file: string, dirtyfile = "",
-                startLine, startCol, endLine, endCol: int): Future[seq[Suggest]] =
-    return self.call(astToStr(command), file, dirtyfile, startLine, startCol, fmt ":{endLine}:{endCol}")
+                startLine, startCol, endLine, endCol: int,
+                extra: string): Future[seq[Suggest]] =
+    return self.call(astToStr(command), file, dirtyfile, startLine, startCol, fmt ":{endLine}:{endCol}{extra}")
 
 # create commands
 createFullCommand(sug)
