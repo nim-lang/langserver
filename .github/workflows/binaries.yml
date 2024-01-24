@@ -124,25 +124,24 @@ jobs:
       - name: Extract binaries for amd64-macos
         shell: bash
         run: |
-          pwd
-          mkdir amd64 && cd amd64 && tar -xvf ../nimlangserver-macos-amd64.tar.gz
+          tar -xvf nimlangserver-macos-amd64.tar.gz
+          mv nimlangserver nimlangserver-amd64
 
       - name: Extract binaries for arm64-macos
         shell: bash
         run: |
-          pwd
-          mkdir arm64 && cd arm64 && tar -xvf ../nimlangserver-macos-arm64.tar.gz
+          tar -xvf ../nimlangserver-macos-arm64.tar.gz
+          mv nimlangserver nimlangserver-arm64
 
       - name: Build Universal binary
         shell: bash
         run: |
-          mkdir universal
-          lipo -create -output universal/nimlangserver amd64/nimlangserver arm64/nimlangserver
+          lipo -create -output nimlangserver nimlangserver-amd64 nimlangserver-arm64
 
       - name: Compress the Nim Language Server binaries
         shell: bash
         run: |
-          cd universal && tar -czvf ../nimlangserver-macos-universal.tar.gz `ls nimlangserver{,.exe} 2>/dev/null || true`
+          tar -czvf nimlangserver-macos-universal.tar.gz nimlangserver
 
       - name: Upload the Nim Language Server Binaries
         uses: actions/upload-artifact@v2
