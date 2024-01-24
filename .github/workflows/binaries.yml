@@ -65,13 +65,13 @@ jobs:
 
       - name: Compress the Nim Language Server binaries
         run: |
-          tar -czvf nimlangserver-${{ matrix.target.name }}.tar.gz `ls nimlangserver{,.exe} 2>/dev/null || true`
+          tar -czvf nimlangserver-${{ matrix.target.name }}-${{ matrix.target.cpu }}.tar.gz `ls nimlangserver{,.exe} 2>/dev/null || true`
 
       - name: Upload the Nim Language Server Binaries
         uses: actions/upload-artifact@v2
         with:
-          name: nimlangserver-${{ matrix.target.name }}.tar.gz
-          path: nimlangserver-${{ matrix.target.name }}.tar.gz
+          name: nimlangserver-${{ matrix.target.name }}-${{ matrix.target.cpu }}.tar.gz
+          path: nimlangserver-${{ matrix.target.name }}-${{ matrix.target.cpu }}.tar.gz
 
   create-github-release:
     name: Create Github Release
