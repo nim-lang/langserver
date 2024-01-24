@@ -29,9 +29,9 @@ jobs:
             name: linux
             cpu: arm64
             nimble_cpu: aarch64
-          - os: macosx
+          - os: macos
             triple: x86_64-apple-darwin14
-            name: macosx
+            name: macos
             cpu: amd64
             nimble_cpu: amd64
           - os: windows
@@ -44,7 +44,7 @@ jobs:
               os: linux
             builder: ubuntu-20.04
           - target:
-              os: macosx
+              os: macos
             builder: macos-11
           - target:
               os: windows
