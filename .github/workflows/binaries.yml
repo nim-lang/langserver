@@ -43,7 +43,7 @@ jobs:
             name: macos
             cpu: arm64
             nim_cpu: arm64
-            nimble_cpu: aarch64
+            nimble_cpu: amd64
           - os: windows
             triple: x86_64-w64-mingw32
             name: windows
