@@ -18,26 +18,31 @@ jobs:
             triple: x86_64-linux-musl
             name: linux
             cpu: amd64
+            nim_cpu: amd64
             nimble_cpu: amd64
           - os: linux
             triple: i686-linux-musl
             name: linux
             cpu: i686
+            nim_cpu: i386
             nimble_cpu: i386
           - os: linux
             triple: aarch64-linux-musl
             name: linux
             cpu: arm64
+            nim_cpu: arm64
             nimble_cpu: aarch64
           - os: macos
             triple: x86_64-apple-darwin14
             name: macos
             cpu: amd64
+            nim_cpu: amd64
             nimble_cpu: amd64
           - os: windows
             triple: x86_64-w64-mingw32
             name: windows
             cpu: amd64
+            nim_cpu: amd64
             nimble_cpu: amd64
         include:
           - target:
@@ -56,6 +61,13 @@ jobs:
     name: '${{ matrix.target.triple }}'
     runs-on: ${{ matrix.builder }}
     steps:
+      - name: Setup Build
+        if: ${{ matrix.builder }} == "ubuntu-20.04"
+        run: |
+          sudo apt install gcc make gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu \
+                                    gcc-i686-linux-gnu binutils-i686-linux-gnu \
+                                    mingw-w64
+
       - name: Checkout
         uses: actions/checkout@v3
 
@@ -74,7 +86,7 @@ jobs:
 
       - name: build nimlangserver
         run: |
-          nimble build -d:release
+          nimble build -d:release --cpu:${{ matrix.target.nim_cpu }}
 
       - name: Compress the Nim Language Server binaries
         run: |
