@@ -18,6 +18,14 @@ jobs:
             triple: x86_64-linux-musl
             name: linux
             cpu: amd64
+          - os: linux
+            triple: i686-linux-musl
+            name: linux
+            cpu: i686
+          - os: linux
+            triple: aarch64-linux-musl
+            name: linux
+            cpu: arm64
           - os: macosx
             triple: x86_64-apple-darwin14
             name: macosx
