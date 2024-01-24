@@ -18,22 +18,27 @@ jobs:
             triple: x86_64-linux-musl
             name: linux
             cpu: amd64
+            nimble_cpu: amd64
           - os: linux
             triple: i686-linux-musl
             name: linux
             cpu: i686
+            nimble_cpu: i386
           - os: linux
             triple: aarch64-linux-musl
             name: linux
             cpu: arm64
+            nimble_cpu: aarch64
           - os: macosx
             triple: x86_64-apple-darwin14
             name: macosx
             cpu: amd64
+            nimble_cpu: amd64
           - os: windows
             triple: x86_64-w64-mingw32
             name: windows
             cpu: amd64
+            nimble_cpu: amd64
         include:
           - target:
               os: linux
@@ -58,7 +63,7 @@ jobs:
         uses: nim-lang/nimble/.github/actions/install_nimble@master
         with:
           os: ${{ matrix.target.name }}
-          cpu: ${{ matrix.target.cpu }}
+          cpu: ${{ matrix.target.nimble_cpu }}
 
       - name: Restore nimble dependencies from cache
         id: nimble_deps
