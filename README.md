@@ -103,6 +103,7 @@ nimble build
 - Find references
 - Workspace symbols
 - Rename symbols
+- Inlay hints
 
 You can install `nimlangserver` using the instructions for your text editor below:
 
