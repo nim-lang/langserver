@@ -38,6 +38,12 @@ jobs:
             cpu: amd64
             nim_cpu: amd64
             nimble_cpu: amd64
+          - os: macos
+            triple: aarch64-apple-darwin14
+            name: macos
+            cpu: arm64
+            nim_cpu: arm64
+            nimble_cpu: aarch64
           - os: windows
             triple: x86_64-w64-mingw32
             name: windows
@@ -88,7 +94,11 @@ jobs:
         run: |
           echo i386.linux.gcc.exe = \"i686-linux-gnu-gcc\" >> nimlangserver.nim.cfg
           echo i386.linux.gcc.linkerexe = \"i686-linux-gnu-gcc\" >> nimlangserver.nim.cfg
-          nimble build -d:release --cpu:${{ matrix.target.nim_cpu }}
+          if [ ${{ matrix.target.triple }} = 'aarch64-apple-darwin14' ]; then
+            nimble build -d:release --cpu:arm64 --os:arm64 --clang.exe=oa64-clang --clang.linkerexe=oa64-clang passC:'-mcpu=apple-a13' --passL:'-mcpu=apple-a13'
+          else
+            nimble build -d:release --cpu:${{ matrix.target.nim_cpu }}
+          fi
 
       - name: Compress the Nim Language Server binaries
         run: |
