@@ -86,6 +86,8 @@ jobs:
 
       - name: build nimlangserver
         run: |
+          echo i386.linux.gcc.exe = \"i686-linux-gnu-gcc\" >> nimlangserver.nim.cfg
+          echo i386.linux.gcc.linkerexe = \"i686-linux-gnu-gcc\" >> nimlangserver.nim.cfg
           nimble build -d:release --cpu:${{ matrix.target.nim_cpu }}
 
       - name: Compress the Nim Language Server binaries
