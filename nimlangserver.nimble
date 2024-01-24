@@ -12,7 +12,10 @@ requires "nim >= 1.0.0",
          "https://github.com/nickysn/asynctools#fixes_for_nimlangserver",
          "https://github.com/yyoncho/nim-json-rpc#notif-changes",
          "with",
-         "chronicles"
+         "chronicles",
+         "serialization",
+         "json_serialization"
+
 
 --path:"."
 

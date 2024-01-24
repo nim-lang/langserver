@@ -3,7 +3,7 @@ import macros, strformat, faststreams/async_backend,
   json_rpc/streamconnection, os, sugar, sequtils, hashes, osproc,
   suggestapi, protocol/enums, protocol/types, with, tables, strutils, sets,
   ./utils, ./pipes, chronicles, std/re, uri, "$nim/compiler/pathutils",
-  procmonitor, std/strscans, parsecfg
+  procmonitor, std/strscans, parsecfg, json_serialization, serialization/formats
 
 
 const
@@ -71,6 +71,9 @@ type
     Folder,
     Cfg,
     Nimble
+
+createJsonFlavor(LSPFlavour, omitOptionalFields = true)
+Option.useDefaultSerializationIn LSPFlavour
 
 macro `%*`*(t: untyped, inputStream: untyped): untyped =
   result = newCall(bindSym("to", brOpen),
