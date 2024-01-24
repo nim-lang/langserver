@@ -97,6 +97,7 @@ jobs:
           if [ ${{ matrix.target.triple }} = 'aarch64-apple-darwin14' ]; then
             echo "--passC:'-target arm64-apple-macos11'" >> nimlangserver.nim.cfg
             echo "--passL:'-target arm64-apple-macos11'" >> nimlangserver.nim.cfg
+            cat nimlangserver.nim.cfg
             nimble build -d:release --cpu:arm64 --os:macosx
           else
             nimble build -d:release --cpu:${{ matrix.target.nim_cpu }}
