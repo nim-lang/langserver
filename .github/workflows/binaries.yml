@@ -20,7 +20,7 @@ jobs:
             cpu: amd64
           - os: macosx
             triple: x86_64-apple-darwin14
-            name: apple
+            name: macosx
             cpu: amd64
           - os: windows
             triple: x86_64-w64-mingw32
