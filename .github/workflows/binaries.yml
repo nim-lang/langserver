@@ -124,13 +124,13 @@ jobs:
       - name: Extract binaries for amd64-macos
         shell: bash
         run: |
-          tar -xvf nimlangserver-macos-amd64.tar.gz
+          tar -xvf nimlangserver-macos-amd64.tar.gz/nimlangserver-macos-amd64.tar.gz
           mv nimlangserver nimlangserver-amd64
 
       - name: Extract binaries for arm64-macos
         shell: bash
         run: |
-          tar -xvf ../nimlangserver-macos-arm64.tar.gz
+          tar -xvf nimlangserver-macos-arm64.tar.gz/nimlangserver-macos-arm64.tar.gz
           mv nimlangserver nimlangserver-arm64
 
       - name: Build Universal binary
