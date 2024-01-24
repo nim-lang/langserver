@@ -113,9 +113,47 @@ jobs:
           name: nimlangserver-${{ matrix.target.name }}-${{ matrix.target.cpu }}.tar.gz
           path: nimlangserver-${{ matrix.target.name }}-${{ matrix.target.cpu }}.tar.gz
 
+  create-macos-universal-binary:
+    name: Create a Universal macOS binary
+    needs: [build]
+    runs-on: macos-11
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v2
+
+      - name: Extract binaries for amd64-macos
+        shell: bash
+        run: |
+          mkdir amd64
+          cd amd64
+          tar -xvf ../nimlangserver-macos-amd64.tar.gz
+
+      - name: Extract binaries for arm64-macos
+        shell: bash
+        run: |
+          mkdir arm64
+          cd arm64
+          tar -xvf ../nimlangserver-macos-arm64.tar.gz
+
+      - name: Build Universal binary
+        run: |
+          mkdir universal
+          lipo -create -output universal/nimlangserver amd64/nimlangserver arm64/nimlangserver
+
+      - name: Compress the Nim Language Server binaries
+        run: |
+          cd universal
+          tar -czvf ../nimlangserver-macos-universal.tar.gz `ls nimlangserver{,.exe} 2>/dev/null || true`
+
+      - name: Upload the Nim Language Server Binaries
+        uses: actions/upload-artifact@v2
+        with:
+          name: nimlangserver-macos-universal.tar.gz
+          path: nimlangserver-macos-universal.tar.gz
+
   create-github-release:
     name: Create Github Release
-    needs: [build]
+    needs: [build, create-macos-universal-binary]
     runs-on: ubuntu-latest
     permissions:
       contents: write
