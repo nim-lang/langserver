@@ -95,7 +95,9 @@ jobs:
           echo i386.linux.gcc.exe = \"i686-linux-gnu-gcc\" >> nimlangserver.nim.cfg
           echo i386.linux.gcc.linkerexe = \"i686-linux-gnu-gcc\" >> nimlangserver.nim.cfg
           if [ ${{ matrix.target.triple }} = 'aarch64-apple-darwin14' ]; then
-            nimble build -d:release --cpu:arm64 --os:macosx --passC:'-target arm64-apple-macos11' --passL:'-target arm64-apple-macos11'
+            echo "--passC:'-target arm64-apple-macos11'" >> nimlangserver.nim.cfg
+            echo "--passL:'-target arm64-apple-macos11'" >> nimlangserver.nim.cfg
+            nimble build -d:release --cpu:arm64 --os:macosx
           else
             nimble build -d:release --cpu:${{ matrix.target.nim_cpu }}
           fi
