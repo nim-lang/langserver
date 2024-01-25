@@ -110,7 +110,11 @@ jobs:
           echo i386.windows.gcc.exe = \"i686-w64-mingw32-gcc.exe\" >> nimlangserver.nim.cfg
           echo i386.windows.gcc.linkerexe = \"i686-w64-mingw32-gcc.exe\" >> nimlangserver.nim.cfg
           if [ ${{ matrix.target.triple }} = 'i686-w32-mingw32' ]; then
-            export PATH=`pwd`\\mingw32\\bin;$PATH
+            echo old PATH:
+            echo ${PATH}
+            export PATH=`pwd`/mingw32/bin;${PATH}
+            echo new PATH:
+            echo ${PATH}
           fi
           if [ ${{ matrix.target.triple }} = 'aarch64-apple-darwin14' ]; then
             echo "--passC:\"-target arm64-apple-macos11\"" >> nimlangserver.nim.cfg
