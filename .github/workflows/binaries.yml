@@ -83,7 +83,7 @@ jobs:
       - name: Setup Build
         if: matrix.builder == 'windows-2019'
         run: |
-          curl -O https://github.com/brechtsanders/winlibs_mingw/releases/download/11.1.0-12.0.0-8.0.2-r1/winlibs-i686-posix-dwarf-gcc-11.1.0-mingw-w64-8.0.2-r1.7z
+          curl -LSsO https://github.com/brechtsanders/winlibs_mingw/releases/download/11.1.0-12.0.0-8.0.2-r1/winlibs-i686-posix-dwarf-gcc-11.1.0-mingw-w64-8.0.2-r1.7z
           echo "588794e11be36389501610cf78de777e52a920e03db256ee8bd1a7c2c45e39a4 winlibs-i686-posix-dwarf-gcc-11.1.0-mingw-w64-8.0.2-r1.7z" | sha256sum -c
           7z x winlibs-i686-posix-dwarf-gcc-11.1.0-mingw-w64-8.0.2-r1.7z
 
