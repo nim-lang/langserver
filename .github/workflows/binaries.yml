@@ -25,13 +25,13 @@ jobs:
             name: linux
             cpu: i686
             nim_cpu: i386
-            nimble_cpu: i386
+            nimble_cpu: amd64
           - os: linux
             triple: aarch64-linux-musl
             name: linux
             cpu: arm64
             nim_cpu: arm64
-            nimble_cpu: aarch64
+            nimble_cpu: amd64
           - os: macos
             triple: x86_64-apple-darwin14
             name: macos
