@@ -115,7 +115,7 @@ jobs:
 
   create-macos-universal-binary:
     name: Create a Universal macOS binary
-    needs: [x86_64-apple-darwin14, aarch64-apple-darwin14]
+    needs: [build]
     runs-on: macos-11
     steps:
       - name: Download artifacts
