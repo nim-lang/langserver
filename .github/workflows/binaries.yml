@@ -80,6 +80,13 @@ jobs:
                                     gcc-i686-linux-gnu binutils-i686-linux-gnu \
                                     mingw-w64
 
+      - name: Setup Build
+        if: matrix.builder == 'windows-2019'
+        run: |
+          curl -O https://github.com/brechtsanders/winlibs_mingw/releases/download/11.1.0-12.0.0-8.0.2-r1/winlibs-i686-posix-dwarf-gcc-11.1.0-mingw-w64-8.0.2-r1.7z
+          echo "588794e11be36389501610cf78de777e52a920e03db256ee8bd1a7c2c45e39a4 winlibs-i686-posix-dwarf-gcc-11.1.0-mingw-w64-8.0.2-r1.7z" | sha256sum -c
+          7z x winlibs-i686-posix-dwarf-gcc-11.1.0-mingw-w64-8.0.2-r1.7z
+
       - name: Checkout
         uses: actions/checkout@v3
 
@@ -102,6 +109,9 @@ jobs:
           echo i386.linux.gcc.linkerexe = \"i686-linux-gnu-gcc\" >> nimlangserver.nim.cfg
           echo i386.windows.gcc.exe = \"i686-w64-mingw32-gcc.exe\" >> nimlangserver.nim.cfg
           echo i386.windows.gcc.linkerexe = \"i686-w64-mingw32-gcc.exe\" >> nimlangserver.nim.cfg
+          if [ ${{ matrix.target.triple }} = 'i686-w32-mingw32' ]; then
+            export PATH=`pwd`\\mingw32\\bin;$PATH
+          fi
           if [ ${{ matrix.target.triple }} = 'aarch64-apple-darwin14' ]; then
             echo "--passC:\"-target arm64-apple-macos11\"" >> nimlangserver.nim.cfg
             echo "--passL:\"-target arm64-apple-macos11\"" >> nimlangserver.nim.cfg
