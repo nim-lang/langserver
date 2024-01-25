@@ -120,6 +120,8 @@ jobs:
     steps:
       - name: Download artifacts
         uses: actions/download-artifact@v4
+        with:
+          pattern: nimlangserver-macos-*.tar.gz
 
       - name: Extract binaries for amd64-macos
         shell: bash
