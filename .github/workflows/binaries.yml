@@ -155,6 +155,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: write
     steps:
       - name: Download artefacts
         uses: actions/download-artifact@v4
