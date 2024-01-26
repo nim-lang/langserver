@@ -487,6 +487,8 @@ proc createOrRestartNimsuggest(ls: LanguageServer, projectFile: string, uri = ""
                                      timeout, restartCallback, errorCallback, workingDir, configuration.logNimsuggest.get(false))
     token = fmt "Creating nimsuggest for {projectFile}"
 
+  ls.workDoneProgressCreate(token)
+
   if ls.projectFiles.hasKey(projectFile):
     var nimsuggestData = ls.projectFiles[projectFile]
     nimSuggestData.addCallback() do (fut: Future[Nimsuggest]) -> void:
@@ -496,8 +498,6 @@ proc createOrRestartNimsuggest(ls: LanguageServer, projectFile: string, uri = ""
   else:
     ls.progress(token, "begin", fmt "Creating nimsuggest for {projectFile}")
     ls.projectFiles[projectFile] = nimsuggestFut
-
-  ls.workDoneProgressCreate(token)
 
   nimsuggestFut.addCallback do (fut: Future[Nimsuggest]):
     if fut.read.failed:
