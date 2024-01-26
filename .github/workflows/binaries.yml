@@ -122,13 +122,20 @@ jobs:
       - name: Compress the Nim Language Server binaries
         run: |
           if [ ${{ matrix.target.name }} = 'windows' ]; then
-            EXEEXT=.exe
+            zip -9 nimlangserver-${{ matrix.target.name }}-${{ matrix.target.cpu }}.zip nimlangserver.exe
           else
-            EXEEXT=
+            tar -czvf nimlangserver-${{ matrix.target.name }}-${{ matrix.target.cpu }}.tar.gz nimlangserver${EXEEXT}
           fi
-          tar -czvf nimlangserver-${{ matrix.target.name }}-${{ matrix.target.cpu }}.tar.gz nimlangserver${EXEEXT}
 
-      - name: Upload the Nim Language Server Binaries
+      - name: Upload the Nim Language Server Binaries (.zip)
+        if: matrix.target.name == 'windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: nimlangserver-${{ matrix.target.name }}-${{ matrix.target.cpu }}.zip
+          path: nimlangserver-${{ matrix.target.name }}-${{ matrix.target.cpu }}.zip
+
+      - name: Upload the Nim Language Server Binaries (.tar.gz)
+        if: matrix.target.name != 'windows'
         uses: actions/upload-artifact@v4
         with:
           name: nimlangserver-${{ matrix.target.name }}-${{ matrix.target.cpu }}.tar.gz
