@@ -68,7 +68,7 @@ nimble build
 
 ## Configuration Options
 
-- `nim.projectMapping` - configure how `nimsuggest` should be started. Here it is sample configuration for `VScode`. We don't want `nimlangserver` to start `nimsuggest` for each file and this configuration will allow configuring pair `projectPath`/`fileRegex` so when one of the regexp in the list matches current file
+- `nim.projectMapping` - configure how `nimsuggest` should be started. Here it is sample configuration for `VScode`. We don't want `nimlangserver` to start `nimsuggest` for each file and this configuration will allow configuring pair `projectFile`/`fileRegex` so when one of the regexp in the list matches current file
   then `nimls` will use `root` to start `nimsuggest`. In case there are no matches `nimlangserver` will try to guess the most suitable project root.
 - `nim.timeout` - the request timeout in ms after which `nimlangserver` will restart the language server. If not specified the default is 2 minutes.
 - `nim.nimsuggestPath` - the path to the `nimsuggest`. The default is `"nimsuggest"`.
@@ -82,11 +82,11 @@ nimble build
 {
     "nim.projectMapping": [{
         // open files under tests using one nimsuggest instance started with root = test/all.nim
-        "projectPath": "tests/all.nim",
+        "projectFile": "tests/all.nim",
         "fileRegex": "tests/.*\\.nim"
     }, {
         // everything else - use main.nim as root.
-        "projectPath": "main.nim",
+        "projectFile": "main.nim",
         "fileRegex": ".*\\.nim"
     }]
 }
