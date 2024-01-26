@@ -20,42 +20,49 @@ jobs:
             cpu: amd64
             nim_cpu: amd64
             nimble_cpu: amd64
+            archive_format: tgz
           - os: linux
             triple: i686-linux-musl
             name: linux
             cpu: i686
             nim_cpu: i386
             nimble_cpu: amd64
+            archive_format: tgz
           - os: linux
             triple: aarch64-linux-musl
             name: linux
             cpu: arm64
             nim_cpu: arm64
             nimble_cpu: amd64
+            archive_format: tgz
           - os: macos
             triple: x86_64-apple-darwin14
             name: macos
             cpu: amd64
             nim_cpu: amd64
             nimble_cpu: amd64
+            archive_format: zip
           - os: macos
             triple: aarch64-apple-darwin14
             name: macos
             cpu: arm64
             nim_cpu: arm64
             nimble_cpu: amd64
+            archive_format: zip
           - os: windows
             triple: x86_64-w64-mingw32
             name: windows
             cpu: amd64
             nim_cpu: amd64
             nimble_cpu: amd64
+            archive_format: zip
           - os: windows
             triple: i686-w32-mingw32
             name: windows
             cpu: i686
             nim_cpu: i386
             nimble_cpu: amd64
+            archive_format: zip
         include:
           - target:
               os: linux
@@ -121,21 +128,26 @@ jobs:
 
       - name: Compress the Nim Language Server binaries
         run: |
-          if [ ${{ matrix.target.name }} = 'windows' ]; then
-            7z a -tzip nimlangserver-${{ matrix.target.name }}-${{ matrix.target.cpu }}.zip nimlangserver.exe
+          if [ ${{matrix.target.name}} = 'windows' ]; then
+            EXEEXT=.exe
+          else
+            EXEEXT=
+          fi
+          if [ ${{ matrix.target.archive_format }} = 'zip' ]; then
+            7z a -tzip nimlangserver-${{ matrix.target.name }}-${{ matrix.target.cpu }}.zip nimlangserver${EXEEXT}
           else
             tar -czvf nimlangserver-${{ matrix.target.name }}-${{ matrix.target.cpu }}.tar.gz nimlangserver${EXEEXT}
           fi
 
       - name: Upload the Nim Language Server Binaries (.zip)
-        if: matrix.target.name == 'windows'
+        if: matrix.target.archive_format == 'zip'
         uses: actions/upload-artifact@v4
         with:
           name: nimlangserver-${{ matrix.target.name }}-${{ matrix.target.cpu }}.zip
           path: nimlangserver-${{ matrix.target.name }}-${{ matrix.target.cpu }}.zip
 
       - name: Upload the Nim Language Server Binaries (.tar.gz)
-        if: matrix.target.name != 'windows'
+        if: matrix.target.archive_format == 'tgz'
         uses: actions/upload-artifact@v4
         with:
           name: nimlangserver-${{ matrix.target.name }}-${{ matrix.target.cpu }}.tar.gz
@@ -149,18 +161,18 @@ jobs:
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: nimlangserver-macos-*.tar.gz
+          pattern: nimlangserver-macos-*.zip
 
       - name: Extract binaries for amd64-macos
         shell: bash
         run: |
-          tar -xvf nimlangserver-macos-amd64.tar.gz/nimlangserver-macos-amd64.tar.gz
+          7z x nimlangserver-macos-amd64.zip/nimlangserver-macos-amd64.zip
           mv nimlangserver nimlangserver-amd64
 
       - name: Extract binaries for arm64-macos
         shell: bash
         run: |
-          tar -xvf nimlangserver-macos-arm64.tar.gz/nimlangserver-macos-arm64.tar.gz
+          7z x nimlangserver-macos-arm64.zip/nimlangserver-macos-arm64.zip
           mv nimlangserver nimlangserver-arm64
 
       - name: Build Universal binary
@@ -171,13 +183,13 @@ jobs:
       - name: Compress the Nim Language Server binaries
         shell: bash
         run: |
-          tar -czvf nimlangserver-macos-universal.tar.gz nimlangserver
+          7z a -tzip nimlangserver-macos-universal.zip nimlangserver
 
       - name: Upload the Nim Language Server Binaries
         uses: actions/upload-artifact@v4
         with:
-          name: nimlangserver-macos-universal.tar.gz
-          path: nimlangserver-macos-universal.tar.gz
+          name: nimlangserver-macos-universal.zip
+          path: nimlangserver-macos-universal.zip
 
   create-github-release:
     name: Create Github Release
