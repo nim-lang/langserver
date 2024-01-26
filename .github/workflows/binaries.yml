@@ -122,7 +122,7 @@ jobs:
       - name: Compress the Nim Language Server binaries
         run: |
           if [ ${{ matrix.target.name }} = 'windows' ]; then
-            zip -9 nimlangserver-${{ matrix.target.name }}-${{ matrix.target.cpu }}.zip nimlangserver.exe
+            7z a -tzip nimlangserver-${{ matrix.target.name }}-${{ matrix.target.cpu }}.zip nimlangserver.exe
           else
             tar -czvf nimlangserver-${{ matrix.target.name }}-${{ matrix.target.cpu }}.tar.gz nimlangserver${EXEEXT}
           fi
