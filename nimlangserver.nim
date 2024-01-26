@@ -3,7 +3,7 @@ import macros, strformat, faststreams/async_backend,
   json_rpc/streamconnection, os, sugar, sequtils, hashes, osproc,
   suggestapi, protocol/enums, protocol/types, with, tables, strutils, sets,
   ./utils, ./pipes, chronicles, std/re, uri, "$nim/compiler/pathutils",
-  procmonitor, std/strscans, parsecfg, json_serialization, serialization/formats
+  procmonitor, std/strscans, json_serialization, serialization/formats
 
 
 const
@@ -1131,10 +1131,18 @@ proc ensureStorageDir*: string =
   discard existsOrCreateDir(result)
 
 when isMainModule:
+
+  proc getVersionFromNimble(): string = 
+    const content = staticRead("nimlangserver.nimble")
+    for v in content.splitLines:
+      if v.startsWith("version"):
+        return v.split("=")[^1].strip(chars = {' ', '"'})
+    return "unknown"
+
   proc handleParams() = 
     if paramCount() > 0 and paramStr(1) in ["-v", "--version"]:
-      let p = loadConfig(getAppDir() / "nimlangserver.nimble")
-      echo p.getSectionValue("", "version")
+      const version = getVersionFromNimble()
+      echo version
       quit()
 
   proc main =
