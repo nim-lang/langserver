@@ -89,7 +89,7 @@ jobs:
           echo "C:\\mingw32\\bin" >> $GITHUB_PATH
 
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Setup Nimble
         uses: nim-lang/nimble/.github/actions/install_nimble@master
