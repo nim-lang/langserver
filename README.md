@@ -4,8 +4,8 @@ Nim Language Server, or `nimlangserver`, is a language server for Nim.
 
 ## Installation
 ### VSCode
-- [vscode-nim](https://github.com/saem/vscode-nim) has support for `nimlangserver`. Follow the instructions at:
-https://github.com/saem/vscode-nim#nim-lanugage-server-integration-experimental
+- [vscode-nim](https://github.com/nim-lang/vscode-nim) has support for `nimlangserver`. Follow the instructions at:
+https://github.com/nim-lang/vscode-nim#using
 
 ### Neovim
 - [lsp](https://neovim.io/doc/user/lsp.html) Neovim has built-in LSP support. Although, you might want to use something like [lsp-config](https://github.com/neovim/nvim-lspconfig) to take care of the boilerplate code for the most LSP configurations. Install `lsp-config` using your favourite plugin manager an place the following code into your `init.vim` config:
@@ -171,7 +171,7 @@ Result: {
 
 ### VSCode
 
-Install the `vscode-nim` extension from [here](https://github.com/saem/vscode-nim)
+Install the `vscode-nim` extension from [here](https://github.com/nim-lang/vscode-nim)
 
 ### Emacs
 
