@@ -1082,8 +1082,9 @@ proc didChangeConfiguration(ls: LanguageServer, conf: JsonNode):
     Future[void] {.async, gcsafe.} =
   debug "Changed configuration: ", conf = conf
 
-  ls.workspaceConfiguration = newFuture[JsonNode]()
-  ls.workspaceConfiguration.complete(conf)
+  if ls.workspaceConfiguration.finished:
+    ls.workspaceConfiguration = newFuture[JsonNode]()
+    ls.workspaceConfiguration.complete(conf)
 
 proc registerHandlers*(connection: StreamConnection,
                        pipeInput: AsyncInputStream,
