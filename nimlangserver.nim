@@ -3,7 +3,8 @@ import macros, strformat, faststreams/async_backend,
   json_rpc/streamconnection, json_rpc/server, os, sugar, sequtils, hashes, osproc,
   suggestapi, protocol/enums, protocol/types, with, tables, strutils, sets,
   ./utils, ./pipes, chronicles, std/re, uri, "$nim/compiler/pathutils",
-  procmonitor, std/strscans, json_serialization, serialization/formats
+  procmonitor, std/strscans, json_serialization, serialization/formats,
+  std/json, std/parseutils
 
 
 const
@@ -1063,23 +1064,23 @@ proc documentHighlight(ls: LanguageServer, params: TextDocumentPositionParams, i
                              .orCancelled(ls, id)
     result = suggestLocations.map(toDocumentHighlight);
 
-proc shutdown(ls: LanguageServer, params: JsonNode):
-    Future[JsonNode] {.async.} =
+proc extractId  (id: JsonNode): int =
+  if id.kind == JInt:
+    result = id.getInt
+  if id.kind == JString:
+    discard parseInt(id.getStr, result)
+
+proc shutdown(ls: LanguageServer, input: JsonNode): Future[RpcResult] {.async, gcsafe, raises: [Defect, CatchableError, Exception].} =
   debug "Shutting down"
   for ns in ls.projectFiles.values:
     let ns = await ns
     ns.stop()
   ls.isShutdown = true
-  result = newJNull()
-  trace "Shutdown complete"
-
-proc shutdown2(params: JsonNode): Future[RpcResult] {.async, gcsafe, raises: [Defect, CatchableError, Exception].} =
-  debug "Shutdown 2"
+  let id = input{"id"}.extractId
   result = some(  StringOfJson(
-    """{"jsonrpc":"2.0","id":$1,"error":{"code":$2,"message":$3,"data":$4}}""" % [
-      $id, $code, escapeJson(msg), $data
-    ] & "\r\n")
+    """{"jsonrpc":"2.0","result":null,"id":$1}""" % [$id] & "\r\n")
   )
+  trace "Shutdown complete"
 
 proc exit(pipeInput: AsyncInputStream, _: JsonNode):
     Future[void] {.async.} =
@@ -1124,8 +1125,7 @@ proc registerHandlers*(connection: StreamConnection,
   connection.register("workspace/symbol", partial(workspaceSymbol, ls))
   connection.register("textDocument/documentHighlight", partial(documentHighlight, ls))
   connection.register("extension/macroExpand", partial(expand, ls))
-#  connection.register("shutdown", partial(shutdown, ls))
-  connection.register("shutdown", shutdown2)
+  connection.register("shutdown", partial(shutdown, ls))
 
   connection.registerNotification("$/cancelRequest", partial(cancelRequest, ls))
   connection.registerNotification("exit", partial(exit, pipeInput))
