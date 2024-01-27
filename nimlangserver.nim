@@ -1083,8 +1083,9 @@ proc shutdown(ls: LanguageServer, input: JsonNode): Future[RpcResult] {.async, g
   trace "Shutdown complete"
 
 proc exit(pipeInput: AsyncInputStream, _: JsonNode):
-    Future[void] {.async.} =
+    Future[RpcResult] {.async, gcsafe, raises: [Defect, CatchableError, Exception].} =
   debug "Quitting process"
+  result = none[StringOfJson]()
   pipeInput.close()
 
 proc didChangeConfiguration(ls: LanguageServer, conf: JsonNode):
@@ -1126,9 +1127,9 @@ proc registerHandlers*(connection: StreamConnection,
   connection.register("textDocument/documentHighlight", partial(documentHighlight, ls))
   connection.register("extension/macroExpand", partial(expand, ls))
   connection.register("shutdown", partial(shutdown, ls))
+  connection.register("exit", partial(exit, pipeInput))
 
   connection.registerNotification("$/cancelRequest", partial(cancelRequest, ls))
-  connection.registerNotification("exit", partial(exit, pipeInput))
   connection.registerNotification("initialized", partial(initialized, ls))
   connection.registerNotification("textDocument/didChange", partial(didChange, ls))
   connection.registerNotification("textDocument/didOpen", partial(didOpen, ls))
