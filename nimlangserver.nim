@@ -1,6 +1,6 @@
 import macros, strformat, faststreams/async_backend,
   faststreams/asynctools_adapters, faststreams/inputs, faststreams/outputs,
-  json_rpc/streamconnection, os, sugar, sequtils, hashes, osproc,
+  json_rpc/streamconnection, json_rpc/server, os, sugar, sequtils, hashes, osproc,
   suggestapi, protocol/enums, protocol/types, with, tables, strutils, sets,
   ./utils, ./pipes, chronicles, std/re, uri, "$nim/compiler/pathutils",
   procmonitor, std/strscans, json_serialization, serialization/formats
@@ -1073,6 +1073,14 @@ proc shutdown(ls: LanguageServer, params: JsonNode):
   result = newJNull()
   trace "Shutdown complete"
 
+proc shutdown2(params: JsonNode): Future[RpcResult] {.async, gcsafe, raises: [Defect, CatchableError, Exception].} =
+  debug "Shutdown 2"
+  result = some(  StringOfJson(
+    """{"jsonrpc":"2.0","id":$1,"error":{"code":$2,"message":$3,"data":$4}}""" % [
+      $id, $code, escapeJson(msg), $data
+    ] & "\r\n")
+  )
+
 proc exit(pipeInput: AsyncInputStream, _: JsonNode):
     Future[void] {.async.} =
   debug "Quitting process"
@@ -1116,7 +1124,8 @@ proc registerHandlers*(connection: StreamConnection,
   connection.register("workspace/symbol", partial(workspaceSymbol, ls))
   connection.register("textDocument/documentHighlight", partial(documentHighlight, ls))
   connection.register("extension/macroExpand", partial(expand, ls))
-  connection.register("shutdown", partial(shutdown, ls))
+#  connection.register("shutdown", partial(shutdown, ls))
+  connection.register("shutdown", shutdown2)
 
   connection.registerNotification("$/cancelRequest", partial(cancelRequest, ls))
   connection.registerNotification("exit", partial(exit, pipeInput))
