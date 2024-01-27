@@ -297,8 +297,12 @@ proc uriToStash(ls: LanguageServer, uri: string): string =
   else:
     ""
 
+proc createOrRestartNimsuggest(ls: LanguageServer, projectFile: string, uri = ""): void {.gcsafe.}
+
 proc getNimsuggest(ls: LanguageServer, uri: string): Future[Nimsuggest] {.async.} =
   let projectFile = await ls.openFiles[uri].projectFile
+  if not ls.projectFiles.hasKey(projectFile):
+    ls.createOrRestartNimsuggest(projectFile, uri)
   ls.lastNimsuggest = ls.projectFiles[projectFile]
   return await ls.projectFiles[projectFile]
 
