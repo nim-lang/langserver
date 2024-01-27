@@ -82,12 +82,12 @@ proc uriToPath*(uri: string): string =
   let parsed = uri.parseUri
   if parsed.scheme != "file":
     var e = newException(UriParseError,
-      "Invalid scheme: {parsed.scheme}, only \"file\" is supported".fmt)
+      "Invalid scheme in uri \"{uri}\": {parsed.scheme}, only \"file\" is supported".fmt)
     e.uri = uri
     raise e
   if parsed.hostname != "":
     var e = newException(UriParseError,
-      "Invalid hostname: {parsed.hostname}, only empty hostname is supported".fmt)
+      "Invalid hostname in uri \"{uri}\": {parsed.hostname}, only empty hostname is supported".fmt)
     e.uri = uri
     raise e
   return normalizedPath(
