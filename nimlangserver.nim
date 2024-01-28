@@ -1086,11 +1086,16 @@ proc shutdown(ls: LanguageServer, input: JsonNode): Future[RpcResult] {.async, g
   )
   trace "Shutdown complete"
 
-proc exit(pipeInput: AsyncInputStream, _: JsonNode):
+proc exit(p: tuple[ls: LanguageServer, pipeInput: AsyncInputStream], _: JsonNode):
     Future[RpcResult] {.async, gcsafe, raises: [Defect, CatchableError, Exception].} =
+  if not p.ls.isShutdown:
+    debug "Received an exit request without prior shutdown request"
+    for ns in p.ls.projectFiles.values:
+      let ns = await ns
+      ns.stop()
   debug "Quitting process"
   result = none[StringOfJson]()
-  pipeInput.close()
+  p.pipeInput.close()
 
 proc didChangeConfiguration(ls: LanguageServer, conf: JsonNode):
     Future[void] {.async, gcsafe.} =
@@ -1131,7 +1136,7 @@ proc registerHandlers*(connection: StreamConnection,
   connection.register("textDocument/documentHighlight", partial(documentHighlight, ls))
   connection.register("extension/macroExpand", partial(expand, ls))
   connection.register("shutdown", partial(shutdown, ls))
-  connection.register("exit", partial(exit, pipeInput))
+  connection.register("exit", partial(exit, (ls: ls, pipeInput: pipeInput)))
 
   connection.registerNotification("$/cancelRequest", partial(cancelRequest, ls))
   connection.registerNotification("initialized", partial(initialized, ls))
