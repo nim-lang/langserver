@@ -54,6 +54,9 @@ type
     checkInProgress: bool
     needsChecking: bool
 
+  CommandLineParams = object
+    clientProcessId: Option[int]
+
   LanguageServer* = ref object
     clientCapabilities*: ClientCapabilities
     initializeParams*: InitializeParams
@@ -66,6 +69,7 @@ type
     lastNimsuggest: Future[Nimsuggest]
     isShutdown*: bool
     storageDir*: string
+    cmdLineClientProcessId: Option[int]
 
   Certainty = enum
     None,
@@ -210,7 +214,16 @@ proc initialize(p: tuple[ls: LanguageServer, pipeInput: AsyncInputStream], param
     let pid = params.processId.get
     if pid.kind == JInt:
       debug "Registering monitor for process ", pid=pid.num
-      hookAsyncProcMonitor(int(pid.num), onClientProcessExit)
+      var pidInt = int(pid.num)
+      if p.ls.cmdLineClientProcessId.isSome:
+        if p.ls.cmdLineClientProcessId.get == pidInt:
+          debug "Process ID already specified in command line, no need to register monitor again"
+        else:
+          debug "Warning! Client Process ID in initialize request differs from the one, specified in the command line. This means the client violates the LSP spec!"
+          debug "Will monitor both process IDs..."
+          hookAsyncProcMonitor(pidInt, onClientProcessExit)
+      else:
+        hookAsyncProcMonitor(pidInt, onClientProcessExit)
   p.ls.initializeParams = params
   p.ls.clientCapabilities = params.capabilities
   result = InitializeResult(
@@ -1120,7 +1133,8 @@ proc didChangeConfiguration(ls: LanguageServer, conf: JsonNode):
 
 proc registerHandlers*(connection: StreamConnection,
                        pipeInput: AsyncInputStream,
-                       storageDir: string): LanguageServer =
+                       storageDir: string,
+                       cmdLineParams: CommandLineParams): LanguageServer =
   let ls = LanguageServer(
     connection: connection,
     workspaceConfiguration: Future[JsonNode](),
@@ -1128,7 +1142,8 @@ proc registerHandlers*(connection: StreamConnection,
     cancelFutures: initTable[int, Future[void]](),
     filesWithDiags: initHashSet[string](),
     openFiles: initTable[string, FileInfo](),
-    storageDir: storageDir)
+    storageDir: storageDir,
+    cmdLineClientProcessId: cmdLineParams.clientProcessId)
   result = ls
 
   connection.register("initialize", partial(initialize, (ls: ls, pipeInput: pipeInput)))
@@ -1172,15 +1187,27 @@ when isMainModule:
         return v.split("=")[^1].strip(chars = {' ', '"'})
     return "unknown"
 
-  proc handleParams() = 
+  proc handleParams(): CommandLineParams =
     if paramCount() > 0 and paramStr(1) in ["-v", "--version"]:
       const version = getVersionFromNimble()
       echo version
       quit()
+    var i = 1
+    while i <= paramCount():
+      var para = paramStr(i)
+      if para.startsWith("--clientProcessId="):
+        var pidStr = para.substr(18)
+        try:
+          var pid = pidStr.parseInt
+          result.clientProcessId = some(pid)
+        except ValueError:
+          stderr.writeLine("Invalid client process ID: ", pidStr)
+          quit 1
+      inc i
 
   proc main =
     try:
-      handleParams() 
+      let cmdLineParams = handleParams() 
       let storageDir = ensureStorageDir()
       var
         pipe = createPipe(register = true, nonBlockingWrite = false)
@@ -1191,7 +1218,22 @@ when isMainModule:
       let
         connection = StreamConnection.new(Async(fileOutput(stdout, allowAsyncOps = true)))
         pipeInput = asyncPipeInput(pipe)
-        ls = registerHandlers(connection, pipeInput, storageDir)
+        ls = registerHandlers(connection, pipeInput, storageDir, cmdLineParams)
+
+      if cmdLineParams.clientProcessId.isSome:
+        debug "Registering monitor for process id, specified on command line", clientProcessId=cmdLineParams.clientProcessId.get
+
+        proc onCmdLineClientProcessExitAsync(): Future[void] {.async.} =
+          debug "onCmdLineClientProcessExitAsync"
+          await ls.stopNimsuggestProcesses
+          pipeInput.close()
+
+        proc onCmdLineClientProcessExit(fd: AsyncFD): bool =
+          debug "onCmdLineClientProcessExit"
+          waitFor onCmdLineClientProcessExitAsync()
+          result = true
+
+        hookAsyncProcMonitor(cmdLineParams.clientProcessId.get, onCmdLineClientProcessExit)
 
       waitFor connection.start(pipeInput)
       debug "exiting main thread", isShutdown=ls.isShutdown
