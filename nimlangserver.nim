@@ -3,7 +3,7 @@ import macros, strformat, faststreams/async_backend,
   json_rpc/streamconnection, json_rpc/server, os, sugar, sequtils, hashes, osproc,
   suggestapi, protocol/enums, protocol/types, with, tables, strutils, sets,
   ./utils, ./pipes, chronicles, std/re, uri, "$nim/compiler/pathutils",
-  procmonitor, std/strscans, json_serialization, serialization/formats,
+  asyncprocmonitor, std/strscans, json_serialization, serialization/formats,
   std/json, std/parseutils
 
 
@@ -187,15 +187,32 @@ proc `or`*[T, Y](fut1: Future[T], fut2: Future[Y]): Future[void] =
 proc getCharacter(ls: LanguageServer, uri: string, line: int, character: int): int =
   return ls.openFiles[uri].fingerTable[line].utf16to8(character)
 
-proc initialize(ls: LanguageServer, params: InitializeParams):
+proc stopNimsuggestProcesses(ls: LanguageServer) {.async.} =
+  for ns in ls.projectFiles.values:
+    let ns = await ns
+    ns.stop()
+
+proc initialize(p: tuple[ls: LanguageServer, pipeInput: AsyncInputStream], params: InitializeParams):
     Future[InitializeResult] {.async.} =
+
+  proc onClientProcessExitAsync(): Future[void] {.async.} =
+    debug "onClientProcessExitAsync"
+    await p.ls.stopNimsuggestProcesses
+    p.pipeInput.close()
+
+  proc onClientProcessExit(fd: AsyncFD): bool =
+    debug "onClientProcessExit"
+    waitFor onClientProcessExitAsync()
+    result = true
+
   debug "Initialize received..."
   if params.processId.isSome:
     let pid = params.processId.get
     if pid.kind == JInt:
-      hookProcMonitor(int(pid.num))
-  ls.initializeParams = params
-  ls.clientCapabilities = params.capabilities
+      debug "Registering monitor for process ", pid=pid.num
+      hookAsyncProcMonitor(int(pid.num), onClientProcessExit)
+  p.ls.initializeParams = params
+  p.ls.clientCapabilities = params.capabilities
   result = InitializeResult(
     capabilities: ServerCapabilities(
       textDocumentSync: some(%TextDocumentSyncOptions(
@@ -1074,11 +1091,6 @@ proc extractId  (id: JsonNode): int =
   if id.kind == JString:
     discard parseInt(id.getStr, result)
 
-proc stopNimsuggestProcesses(ls: LanguageServer) {.async.} =
-  for ns in ls.projectFiles.values:
-    let ns = await ns
-    ns.stop()
-
 proc shutdown(ls: LanguageServer, input: JsonNode): Future[RpcResult] {.async, gcsafe, raises: [Defect, CatchableError, Exception].} =
   debug "Shutting down"
   await ls.stopNimsuggestProcesses()
@@ -1119,7 +1131,7 @@ proc registerHandlers*(connection: StreamConnection,
     storageDir: storageDir)
   result = ls
 
-  connection.register("initialize", partial(initialize, ls))
+  connection.register("initialize", partial(initialize, (ls: ls, pipeInput: pipeInput)))
   connection.register("textDocument/completion", partial(completion, ls))
   connection.register("textDocument/definition", partial(definition, ls))
   connection.register("textDocument/declaration", partial(declaration, ls))
@@ -1182,6 +1194,7 @@ when isMainModule:
         ls = registerHandlers(connection, pipeInput, storageDir)
 
       waitFor connection.start(pipeInput)
+      debug "exiting main thread", isShutdown=ls.isShutdown
       quit(if ls.isShutdown: 0 else: 1)
     except Exception as ex:
       stderr.writeLine("Shutting down due to an error: ", ex.msg)
