@@ -1074,11 +1074,14 @@ proc extractId  (id: JsonNode): int =
   if id.kind == JString:
     discard parseInt(id.getStr, result)
 
-proc shutdown(ls: LanguageServer, input: JsonNode): Future[RpcResult] {.async, gcsafe, raises: [Defect, CatchableError, Exception].} =
-  debug "Shutting down"
+proc stopNimsuggestProcesses(ls: LanguageServer) {.async.} =
   for ns in ls.projectFiles.values:
     let ns = await ns
     ns.stop()
+
+proc shutdown(ls: LanguageServer, input: JsonNode): Future[RpcResult] {.async, gcsafe, raises: [Defect, CatchableError, Exception].} =
+  debug "Shutting down"
+  await ls.stopNimsuggestProcesses()
   ls.isShutdown = true
   let id = input{"id"}.extractId
   result = some(  StringOfJson(
@@ -1090,9 +1093,7 @@ proc exit(p: tuple[ls: LanguageServer, pipeInput: AsyncInputStream], _: JsonNode
     Future[RpcResult] {.async, gcsafe, raises: [Defect, CatchableError, Exception].} =
   if not p.ls.isShutdown:
     debug "Received an exit request without prior shutdown request"
-    for ns in p.ls.projectFiles.values:
-      let ns = await ns
-      ns.stop()
+    await p.ls.stopNimsuggestProcesses()
   debug "Quitting process"
   result = none[StringOfJson]()
   p.pipeInput.close()
