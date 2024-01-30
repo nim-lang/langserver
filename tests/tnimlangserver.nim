@@ -15,6 +15,11 @@ import
   sugar,
   unittest
 
+proc registerHandlers*(connection: StreamConnection,
+                       pipeInput: AsyncInputStream,
+                       storageDir: string): LanguageServer =
+  registerHandlers(connection, pipeInput, storageDir, CommandLineParams())
+
 proc fixtureUri(path: string): string =
   result = pathToUri(getCurrentDir() / "tests" / path)
 
