@@ -56,7 +56,7 @@ type
     checkInProgress: bool
     needsChecking: bool
 
-  CommandLineParams = object
+  CommandLineParams* = object
     clientProcessId: Option[int]
 
   LanguageServer* = ref object
