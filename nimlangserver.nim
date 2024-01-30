@@ -1120,9 +1120,7 @@ proc shutdown(ls: LanguageServer, input: JsonNode): Future[RpcResult] {.async, g
   await ls.stopNimsuggestProcesses()
   ls.isShutdown = true
   let id = input{"id"}.extractId
-  result = some(  StringOfJson(
-    """{"jsonrpc":"2.0","result":null,"id":$1}""" % [$id] & "\r\n")
-  )
+  result = some(StringOfJson("null"))
   trace "Shutdown complete"
 
 proc exit(p: tuple[ls: LanguageServer, pipeInput: AsyncInputStream], _: JsonNode):
