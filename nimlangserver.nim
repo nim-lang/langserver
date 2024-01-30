@@ -1258,6 +1258,7 @@ when isMainModule:
         onSignal(SIGINT, SIGTERM, SIGHUP, SIGQUIT, SIGPIPE):
           debug "Terminated via signal", sig
           globalLS.stopNimsuggestProcessesP()
+          exitnow(1)
 
       waitFor connection.start(pipeInput)
       debug "exiting main thread", isShutdown=ls.isShutdown
