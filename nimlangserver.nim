@@ -1239,6 +1239,8 @@ when isMainModule:
       debug "exiting main thread", isShutdown=ls.isShutdown
       quit(if ls.isShutdown: 0 else: 1)
     except Exception as ex:
+      debug "Shutting down due to an error: ", msg = ex.msg
+      debug "Stack trace: ", stack_trace = ex.getStackTrace()
       stderr.writeLine("Shutting down due to an error: ", ex.msg)
       stderr.writeLine(ex.getStackTrace())
       quit 1
