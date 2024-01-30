@@ -6,6 +6,8 @@ import macros, strformat, faststreams/async_backend,
   asyncprocmonitor, std/strscans, json_serialization, serialization/formats,
   std/json, std/parseutils
 
+when defined(posix):
+  import posix
 
 const
   RESTART_COMMAND = "nimlangserver.restart"
@@ -67,6 +69,7 @@ type
     workspaceConfiguration: Future[JsonNode]
     filesWithDiags: HashSet[string]
     lastNimsuggest: Future[Nimsuggest]
+    childNimsuggestProcessesStopped*: bool
     isShutdown*: bool
     storageDir*: string
     cmdLineClientProcessId: Option[int]
@@ -192,9 +195,17 @@ proc getCharacter(ls: LanguageServer, uri: string, line: int, character: int): i
   return ls.openFiles[uri].fingerTable[line].utf16to8(character)
 
 proc stopNimsuggestProcesses(ls: LanguageServer) {.async.} =
-  for ns in ls.projectFiles.values:
-    let ns = await ns
-    ns.stop()
+  if not ls.childNimsuggestProcessesStopped:
+    debug "stopping child nimsuggest processes"
+    ls.childNimsuggestProcessesStopped = true
+    for ns in ls.projectFiles.values:
+      let ns = await ns
+      ns.stop()
+  else:
+    debug "child nimsuggest processes already stopped: CHECK!"
+
+proc stopNimsuggestProcessesP(ls: ptr LanguageServer) =
+  waitFor stopNimsuggestProcesses(ls[])
 
 proc initialize(p: tuple[ls: LanguageServer, pipeInput: AsyncInputStream], params: InitializeParams):
     Future[InitializeResult] {.async.} =
@@ -1178,6 +1189,11 @@ proc ensureStorageDir*: string =
   result = getTempDir() / "nimlangserver"
   discard existsOrCreateDir(result)
 
+var
+  # global var, only used in the signal handlers (for stopping the child nimsuggest
+  # processes during an abnormal program termination)
+  globalLS: ptr LanguageServer
+
 when isMainModule:
 
   proc getVersionFromNimble(): string = 
@@ -1218,7 +1234,10 @@ when isMainModule:
       let
         connection = StreamConnection.new(Async(fileOutput(stdout, allowAsyncOps = true)))
         pipeInput = asyncPipeInput(pipe)
+      var
         ls = registerHandlers(connection, pipeInput, storageDir, cmdLineParams)
+
+      globalLS = addr ls
 
       if cmdLineParams.clientProcessId.isSome:
         debug "Registering monitor for process id, specified on command line", clientProcessId=cmdLineParams.clientProcessId.get
@@ -1234,6 +1253,11 @@ when isMainModule:
           result = true
 
         hookAsyncProcMonitor(cmdLineParams.clientProcessId.get, onCmdLineClientProcessExit)
+
+      when defined(posix):
+        onSignal(SIGINT, SIGTERM, SIGHUP, SIGQUIT, SIGPIPE):
+          debug "Terminated via signal", sig
+          globalLS.stopNimsuggestProcessesP()
 
       waitFor connection.start(pipeInput)
       debug "exiting main thread", isShutdown=ls.isShutdown
