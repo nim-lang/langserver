@@ -103,6 +103,9 @@ type
     trace*: Option[TraceValue_str]
     workspaceFolders*: OptionalSeq[WorkspaceFolder]
 
+  SetTraceParams* = ref object of RootObj
+    value*: TraceValue_str
+
   WorkDoneProgressBegin* = ref object of RootObj
     kind*: string
     title*: string
