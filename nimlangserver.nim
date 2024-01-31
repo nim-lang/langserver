@@ -141,14 +141,16 @@ proc getProjectFileAutoGuess(fileUri: string): string =
     if path == dir: break
     path = dir
 
-proc getWorkspaceConfiguration(ls: LanguageServer): Future[NlsConfig] {.async.} =
+proc parseWorkspaceConfiguration(conf: JsonNode): NlsConfig =
   try:
-    let nlsConfig: seq[NlsConfig] =
-      (%ls.workspaceConfiguration.await).to(seq[NlsConfig])
+    let nlsConfig: seq[NlsConfig] = (%conf).to(seq[NlsConfig])
     result = if nlsConfig.len > 0 and nlsConfig[0] != nil: nlsConfig[0] else: NlsConfig()
   except CatchableError:
     debug "Failed to parse the configuration."
     result = NlsConfig()
+
+proc getWorkspaceConfiguration(ls: LanguageServer): Future[NlsConfig] {.async.} =
+  parseWorkspaceConfiguration(ls.workspaceConfiguration.await)
 
 proc getRootPath(ip: InitializeParams): string =
   if ip.rootUri == "":
