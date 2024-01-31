@@ -1140,6 +1140,9 @@ proc didChangeConfiguration(ls: LanguageServer, conf: JsonNode):
     ls.workspaceConfiguration = newFuture[JsonNode]()
     ls.workspaceConfiguration.complete(conf)
 
+proc setTrace(ls: LanguageServer, params: SetTraceParams) {.async.} =
+  debug "setTrace", value = params.value
+
 proc registerHandlers*(connection: StreamConnection,
                        pipeInput: AsyncInputStream,
                        storageDir: string,
@@ -1182,6 +1185,7 @@ proc registerHandlers*(connection: StreamConnection,
   connection.registerNotification("textDocument/didSave", partial(didSave, ls))
   connection.registerNotification("textDocument/didClose", partial(didClose, ls))
   connection.registerNotification("workspace/didChangeConfiguration", partial(didChangeConfiguration, ls))
+  connection.registerNotification("$/setTrace", partial(setTrace, ls))
 
 proc ensureStorageDir*: string =
   result = getTempDir() / "nimlangserver"
