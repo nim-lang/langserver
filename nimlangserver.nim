@@ -68,6 +68,7 @@ type
     cancelFutures: Table[int, Future[void]]
     workspaceConfiguration: Future[JsonNode]
     inlayHintsRefreshRequest: Future[JsonNode]
+    didChangeConfigurationRegistrationRequest: Future[JsonNode]
     filesWithDiags: HashSet[string]
     lastNimsuggest: Future[Nimsuggest]
     childNimsuggestProcessesStopped*: bool
@@ -286,6 +287,22 @@ proc initialize(p: tuple[ls: LanguageServer, pipeInput: AsyncInputStream], param
       result.capabilities.renameProvider = %* {
         "prepareProvider": true
       }
+
+proc maybeRegisterCapabilityDidChangeConfiguration(ls: LanguageServer) =
+  if ls.clientCapabilities.workspace.isSome and
+     ls.clientCapabilities.workspace.get.didChangeConfiguration.isSome and
+     ls.clientCapabilities.workspace.get.didChangeConfiguration.get.dynamicRegistration.get(false):
+    let registrationParams = RegistrationParams(
+      registrations: some(@[Registration(
+        id: "a4606617-82c1-4e22-83db-0095fecb1093",
+        `method`: "workspace/didChangeConfiguration"
+      )])
+    )
+    ls.didChangeConfigurationRegistrationRequest = ls.connection.call(
+      "client/registerCapability",
+      %registrationParams)
+    ls.didChangeConfigurationRegistrationRequest.addCallback() do (res: Future[JsonNode]):
+      debug "Got response for the didChangeConfiguration registration:", res = res.read()
 
 proc initialized(ls: LanguageServer, _: JsonNode):
     Future[void] {.async.} =
