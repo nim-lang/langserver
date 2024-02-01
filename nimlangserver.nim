@@ -288,10 +288,21 @@ proc initialize(p: tuple[ls: LanguageServer, pipeInput: AsyncInputStream], param
         "prepareProvider": true
       }
 
+proc requiresDynamicRegistrationForDidChangeConfiguration(ls: LanguageServer): bool =
+  ls.clientCapabilities.workspace.isSome and
+  ls.clientCapabilities.workspace.get.didChangeConfiguration.isSome and
+  ls.clientCapabilities.workspace.get.didChangeConfiguration.get.dynamicRegistration.get(false)
+
+proc supportsConfigurationRequest(ls: LanguageServer): bool =
+  ls.clientCapabilities.workspace.isSome and
+  ls.clientCapabilities.workspace.get.configuration.get(false)
+
+proc usePullConfigurationModel(ls: LanguageServer): bool =
+  ls.requiresDynamicRegistrationForDidChangeConfiguration and
+  ls.supportsConfigurationRequest
+
 proc maybeRegisterCapabilityDidChangeConfiguration(ls: LanguageServer) =
-  if ls.clientCapabilities.workspace.isSome and
-     ls.clientCapabilities.workspace.get.didChangeConfiguration.isSome and
-     ls.clientCapabilities.workspace.get.didChangeConfiguration.get.dynamicRegistration.get(false):
+  if ls.requiresDynamicRegistrationForDidChangeConfiguration:
     let registrationParams = RegistrationParams(
       registrations: some(@[Registration(
         id: "a4606617-82c1-4e22-83db-0095fecb1093",
@@ -305,8 +316,7 @@ proc maybeRegisterCapabilityDidChangeConfiguration(ls: LanguageServer) =
       debug "Got response for the didChangeConfiguration registration:", res = res.read()
 
 proc maybeRequestConfigurationFromClient(ls: LanguageServer) =
-  let workspaceCap = ls.initializeParams.capabilities.workspace
-  if workspaceCap.isSome and workspaceCap.get.configuration.get(false):
+  if ls.supportsConfigurationRequest:
      debug "Requesting configuration from the client"
      let configurationParams = ConfigurationParams %* {"items": [{"section": "nim"}]}
 
