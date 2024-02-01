@@ -1183,6 +1183,15 @@ proc inlayHintsConfigurationEquals(a, b: NlsConfig): bool =
   else:
     result = a.inlayHints.isSome == b.inlayHints.isSome
 
+proc handleConfigurationChanges(ls: LanguageServer, oldConfiguration, newConfiguration: NlsConfig) =
+  if ls.clientCapabilities.workspace.isSome and
+      ls.clientCapabilities.workspace.get.inlayHint.isSome and
+      ls.clientCapabilities.workspace.get.inlayHint.get.refreshSupport.get(false) and
+      not inlayHintsConfigurationEquals(oldConfiguration, newConfiguration):
+    debug "Sending inlayHint refresh"
+    ls.inlayHintsRefreshRequest = ls.connection.call("workspace/inlayHint/refresh",
+                                                          newJNull())
+
 proc didChangeConfiguration(ls: LanguageServer, conf: JsonNode):
     Future[void] {.async, gcsafe.} =
   debug "Changed configuration: ", conf = conf
@@ -1193,13 +1202,7 @@ proc didChangeConfiguration(ls: LanguageServer, conf: JsonNode):
       newConfiguration = parseWorkspaceConfiguration(conf)
     ls.workspaceConfiguration = newFuture[JsonNode]()
     ls.workspaceConfiguration.complete(conf)
-    if ls.clientCapabilities.workspace.isSome and
-       ls.clientCapabilities.workspace.get.inlayHint.isSome and
-       ls.clientCapabilities.workspace.get.inlayHint.get.refreshSupport.get(false) and
-       not inlayHintsConfigurationEquals(oldConfiguration, newConfiguration):
-      debug "Sending inlayHint refresh"
-      ls.inlayHintsRefreshRequest = ls.connection.call("workspace/inlayHint/refresh",
-                                                       newJNull())
+    handleConfigurationChanges(ls, oldConfiguration, newConfiguration)
 
 proc setTrace(ls: LanguageServer, params: SetTraceParams) {.async.} =
   debug "setTrace", value = params.value
