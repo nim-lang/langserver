@@ -304,9 +304,7 @@ proc maybeRegisterCapabilityDidChangeConfiguration(ls: LanguageServer) =
     ls.didChangeConfigurationRegistrationRequest.addCallback() do (res: Future[JsonNode]):
       debug "Got response for the didChangeConfiguration registration:", res = res.read()
 
-proc initialized(ls: LanguageServer, _: JsonNode):
-    Future[void] {.async.} =
-  debug "Client initialized."
+proc maybeRequestConfigurationFromClient(ls: LanguageServer) =
   let workspaceCap = ls.initializeParams.capabilities.workspace
   if workspaceCap.isSome and workspaceCap.get.configuration.get(false):
      debug "Requesting configuration from the client"
@@ -321,6 +319,11 @@ proc initialized(ls: LanguageServer, _: JsonNode):
   else:
     debug "Client does not support workspace/configuration"
     ls.workspaceConfiguration.complete(newJArray())
+
+proc initialized(ls: LanguageServer, _: JsonNode):
+    Future[void] {.async.} =
+  debug "Client initialized."
+  maybeRequestConfigurationFromClient(ls)
 
 proc orCancelled[T](fut: Future[T], ls: LanguageServer, id: int): Future[T] {.async.} =
   ls.cancelFutures[id] = newFuture[void]()
