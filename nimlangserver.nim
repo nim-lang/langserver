@@ -317,15 +317,15 @@ proc maybeRegisterCapabilityDidChangeConfiguration(ls: LanguageServer) =
 
 proc maybeRequestConfigurationFromClient(ls: LanguageServer) =
   if ls.supportsConfigurationRequest:
-     debug "Requesting configuration from the client"
-     let configurationParams = ConfigurationParams %* {"items": [{"section": "nim"}]}
+    debug "Requesting configuration from the client"
+    let configurationParams = ConfigurationParams %* {"items": [{"section": "nim"}]}
 
-     ls.workspaceConfiguration =
-       ls.connection.call("workspace/configuration",
-                          %configurationParams)
-     ls.workspaceConfiguration.addCallback() do (futConfiguration: Future[JsonNode]):
-       if futConfiguration.error.isNil:
-         debug "Received the following configuration", configuration = futConfiguration.read()
+    ls.workspaceConfiguration =
+      ls.connection.call("workspace/configuration",
+                         %configurationParams)
+    ls.workspaceConfiguration.addCallback() do (futConfiguration: Future[JsonNode]):
+      if futConfiguration.error.isNil:
+        debug "Received the following configuration", configuration = futConfiguration.read()
   else:
     debug "Client does not support workspace/configuration"
     ls.workspaceConfiguration.complete(newJArray())
