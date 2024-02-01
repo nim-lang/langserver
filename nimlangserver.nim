@@ -67,6 +67,7 @@ type
     openFiles: Table[string, FileInfo]
     cancelFutures: Table[int, Future[void]]
     workspaceConfiguration: Future[JsonNode]
+    prevWorkspaceConfiguration: Future[JsonNode]
     inlayHintsRefreshRequest: Future[JsonNode]
     didChangeConfigurationRegistrationRequest: Future[JsonNode]
     filesWithDiags: HashSet[string]
@@ -301,6 +302,43 @@ proc usePullConfigurationModel(ls: LanguageServer): bool =
   ls.requiresDynamicRegistrationForDidChangeConfiguration and
   ls.supportsConfigurationRequest
 
+proc inlayHintsConfigurationEquals(a, b: NlsConfig): bool =
+
+  proc inlayTypeHintsConfigurationEquals(a, b: NlsInlayHintsConfig): bool =
+    if a.typeHints.isSome and b.typeHints.isSome:
+      result = a.typeHints.get.enable == b.typeHints.get.enable
+    else:
+      result = a.typeHints.isSome == b.typeHints.isSome
+
+  proc inlayExceptionHintsConfigurationEquals(a, b: NlsInlayHintsConfig): bool =
+    if a.exceptionHints.isSome and b.exceptionHints.isSome:
+      let
+        ae = a.exceptionHints.get
+        be = b.exceptionHints.get
+      result = (ae.enable == be.enable) and
+              (ae.hintStringLeft == be.hintStringLeft) and
+              (ae.hintStringRight == be.hintStringRight)
+    else:
+      result = a.exceptionHints.isSome == b.exceptionHints.isSome
+
+  proc inlayHintsConfigurationEquals(a, b: NlsInlayHintsConfig): bool =
+    result = inlayTypeHintsConfigurationEquals(a, b) and
+             inlayExceptionHintsConfigurationEquals(a, b)
+
+  if a.inlayHints.isSome and b.inlayHints.isSome:
+    result = inlayHintsConfigurationEquals(a.inlayHints.get, b.inlayHints.get)
+  else:
+    result = a.inlayHints.isSome == b.inlayHints.isSome
+
+proc handleConfigurationChanges(ls: LanguageServer, oldConfiguration, newConfiguration: NlsConfig) =
+  if ls.clientCapabilities.workspace.isSome and
+      ls.clientCapabilities.workspace.get.inlayHint.isSome and
+      ls.clientCapabilities.workspace.get.inlayHint.get.refreshSupport.get(false) and
+      not inlayHintsConfigurationEquals(oldConfiguration, newConfiguration):
+    debug "Sending inlayHint refresh"
+    ls.inlayHintsRefreshRequest = ls.connection.call("workspace/inlayHint/refresh",
+                                                          newJNull())
+
 proc maybeRegisterCapabilityDidChangeConfiguration(ls: LanguageServer) =
   if ls.requiresDynamicRegistrationForDidChangeConfiguration:
     let registrationParams = RegistrationParams(
@@ -320,12 +358,20 @@ proc maybeRequestConfigurationFromClient(ls: LanguageServer) =
     debug "Requesting configuration from the client"
     let configurationParams = ConfigurationParams %* {"items": [{"section": "nim"}]}
 
+    ls.prevWorkspaceConfiguration = ls.workspaceConfiguration
+
     ls.workspaceConfiguration =
       ls.connection.call("workspace/configuration",
                          %configurationParams)
     ls.workspaceConfiguration.addCallback() do (futConfiguration: Future[JsonNode]):
       if futConfiguration.error.isNil:
         debug "Received the following configuration", configuration = futConfiguration.read()
+        if not isNil(ls.prevWorkspaceConfiguration) and ls.prevWorkspaceConfiguration.finished:
+          let
+            oldConfiguration = parseWorkspaceConfiguration(ls.prevWorkspaceConfiguration.read)
+            newConfiguration = parseWorkspaceConfiguration(futConfiguration.read)
+          handleConfigurationChanges(ls, oldConfiguration, newConfiguration)
+
   else:
     debug "Client does not support workspace/configuration"
     ls.workspaceConfiguration.complete(newJArray())
@@ -333,7 +379,23 @@ proc maybeRequestConfigurationFromClient(ls: LanguageServer) =
 proc initialized(ls: LanguageServer, _: JsonNode):
     Future[void] {.async.} =
   debug "Client initialized."
+  maybeRegisterCapabilityDidChangeConfiguration(ls)
   maybeRequestConfigurationFromClient(ls)
+
+proc didChangeConfiguration(ls: LanguageServer, conf: JsonNode):
+    Future[void] {.async, gcsafe.} =
+  debug "Changed configuration: ", conf = conf
+
+  if ls.usePullConfigurationModel:
+    ls.maybeRequestConfigurationFromClient
+  else:
+    if ls.workspaceConfiguration.finished:
+      let
+        oldConfiguration = parseWorkspaceConfiguration(ls.workspaceConfiguration.read)
+        newConfiguration = parseWorkspaceConfiguration(conf)
+      ls.workspaceConfiguration = newFuture[JsonNode]()
+      ls.workspaceConfiguration.complete(conf)
+      handleConfigurationChanges(ls, oldConfiguration, newConfiguration)
 
 proc orCancelled[T](fut: Future[T], ls: LanguageServer, id: int): Future[T] {.async.} =
   ls.cancelFutures[id] = newFuture[void]()
@@ -1164,55 +1226,6 @@ proc exit(p: tuple[ls: LanguageServer, pipeInput: AsyncInputStream], _: JsonNode
   debug "Quitting process"
   result = none[StringOfJson]()
   p.pipeInput.close()
-
-proc inlayHintsConfigurationEquals(a, b: NlsConfig): bool =
-
-  proc inlayTypeHintsConfigurationEquals(a, b: NlsInlayHintsConfig): bool =
-    if a.typeHints.isSome and b.typeHints.isSome:
-      result = a.typeHints.get.enable == b.typeHints.get.enable
-    else:
-      result = a.typeHints.isSome == b.typeHints.isSome
-
-  proc inlayExceptionHintsConfigurationEquals(a, b: NlsInlayHintsConfig): bool =
-    if a.exceptionHints.isSome and b.exceptionHints.isSome:
-      let
-        ae = a.exceptionHints.get
-        be = b.exceptionHints.get
-      result = (ae.enable == be.enable) and
-              (ae.hintStringLeft == be.hintStringLeft) and
-              (ae.hintStringRight == be.hintStringRight)
-    else:
-      result = a.exceptionHints.isSome == b.exceptionHints.isSome
-
-  proc inlayHintsConfigurationEquals(a, b: NlsInlayHintsConfig): bool =
-    result = inlayTypeHintsConfigurationEquals(a, b) and
-             inlayExceptionHintsConfigurationEquals(a, b)
-
-  if a.inlayHints.isSome and b.inlayHints.isSome:
-    result = inlayHintsConfigurationEquals(a.inlayHints.get, b.inlayHints.get)
-  else:
-    result = a.inlayHints.isSome == b.inlayHints.isSome
-
-proc handleConfigurationChanges(ls: LanguageServer, oldConfiguration, newConfiguration: NlsConfig) =
-  if ls.clientCapabilities.workspace.isSome and
-      ls.clientCapabilities.workspace.get.inlayHint.isSome and
-      ls.clientCapabilities.workspace.get.inlayHint.get.refreshSupport.get(false) and
-      not inlayHintsConfigurationEquals(oldConfiguration, newConfiguration):
-    debug "Sending inlayHint refresh"
-    ls.inlayHintsRefreshRequest = ls.connection.call("workspace/inlayHint/refresh",
-                                                          newJNull())
-
-proc didChangeConfiguration(ls: LanguageServer, conf: JsonNode):
-    Future[void] {.async, gcsafe.} =
-  debug "Changed configuration: ", conf = conf
-
-  if ls.workspaceConfiguration.finished:
-    let
-      oldConfiguration = parseWorkspaceConfiguration(ls.workspaceConfiguration.read)
-      newConfiguration = parseWorkspaceConfiguration(conf)
-    ls.workspaceConfiguration = newFuture[JsonNode]()
-    ls.workspaceConfiguration.complete(conf)
-    handleConfigurationChanges(ls, oldConfiguration, newConfiguration)
 
 proc setTrace(ls: LanguageServer, params: SetTraceParams) {.async.} =
   debug "setTrace", value = params.value
