@@ -284,6 +284,15 @@ proc detectNimsuggestVersion(root: string,
 
 proc getNimsuggestCapabilities*(nimsuggestPath: string): 
   set[NimSuggestCapability] {.gcsafe.} =
+
+  proc parseCapability(c: string): Option[NimSuggestCapability] =
+    debug "Parsing nimsuggest capability", capability=c
+    try:
+      result = some(parseEnum[NimSuggestCapability](c))
+    except:
+      debug "Capability not supported. Ignoring.", capability=c
+      result = none(NimSuggestCapability)
+
   var process = startProcess(command = nimsuggestPath,
                              args = @["--info:capabilities"],
                              options = {poUsePath})
@@ -293,8 +302,9 @@ proc getNimsuggestCapabilities*(nimsuggestPath: string):
   var exitCode = process.waitForExit()
   if exitCode == 0: 
     # older versions of NimSuggest don't support the --info:capabilities option
-    for cap in l.split(" ").mapIt(parseEnum[NimSuggestCapability](it)):
-      result.incl(cap)
+    for cap in l.split(" ").mapIt(parseCapability(it)):
+      if cap.isSome:
+        result.incl(cap.get)
 
 proc createNimsuggest*(root: string,
                        nimsuggestPath: string,
