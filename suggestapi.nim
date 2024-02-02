@@ -76,7 +76,8 @@ type
     tooltip*: string
 
   NimSuggestCapability* = enum 
-    nsCon = "con"
+    nsCon = "con",
+    nsExceptionInlayHints = "exceptionInlayHints"
 
   Nimsuggest* = ref object
     failed*: bool
@@ -312,7 +313,8 @@ proc createNimsuggest*(root: string,
                        timeoutCallback: NimsuggestCallback,
                        errorCallback: NimsuggestCallback,
                        workingDir = getCurrentDir(),
-                       enableLog: bool = false): Future[Nimsuggest] {.async, gcsafe.} =
+                       enableLog: bool = false,
+                       enableExceptionInlayHints: bool = false): Future[Nimsuggest] {.async, gcsafe.} =
   var
     pipe = createPipe(register = true, nonBlockingWrite = false)
     thread: Thread[tuple[pipe: AsyncPipe, process: Process]]
@@ -341,6 +343,11 @@ proc createNimsuggest*(root: string,
     if enableLog:
       args.add("--log")
     result.capabilities = getNimsuggestCapabilities(nimsuggestPath)
+    if nsExceptionInlayHints in result.capabilities:
+      if enableExceptionInlayHints:
+        args.add("--exceptionInlayHints:on")
+      else:
+        args.add("--exceptionInlayHints:off")
     result.process = startProcess(command = nimsuggestPath,
                                   workingDir = workingDir,
                                   args = args,

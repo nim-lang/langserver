@@ -102,6 +102,19 @@ proc partial*[A, B, C] (fn: proc(a: A, b: B, id: int): C {.gcsafe.}, a: A):
     proc(b: B, id: int): C {.gcsafe, raises: [Defect, CatchableError, Exception].} =
       return fn(a, b, id)
 
+func typeHintsEnabled(cnf: NlsConfig): bool =
+  result = true
+  if cnf.inlayHints.isSome and cnf.inlayHints.get.typeHints.isSome and cnf.inlayHints.get.typeHints.get.enable.isSome:
+    result = cnf.inlayHints.get.typeHints.get.enable.get
+
+func exceptionHintsEnabled(cnf: NlsConfig): bool =
+  result = true
+  if cnf.inlayHints.isSome and cnf.inlayHints.get.exceptionHints.isSome and cnf.inlayHints.get.exceptionHints.get.enable.isSome:
+    result = cnf.inlayHints.get.exceptionHints.get.enable.get
+
+func inlayHintsEnabled(cnf: NlsConfig): bool =
+  typeHintsEnabled(cnf) or exceptionHintsEnabled(cnf)
+
 proc supportSignatureHelp(cc: ClientCapabilities): bool = 
   if cc.isNil: return false
   let caps = cc.textDocument
@@ -625,7 +638,8 @@ proc createOrRestartNimsuggest(ls: LanguageServer, projectFile: string, uri = ""
                        MessageType.Error)
 
     nimsuggestFut = createNimsuggest(projectFile, nimsuggestPath,
-                                     timeout, restartCallback, errorCallback, workingDir, configuration.logNimsuggest.get(false))
+                                     timeout, restartCallback, errorCallback, workingDir, configuration.logNimsuggest.get(false),
+                                     configuration.exceptionHintsEnabled)
     token = fmt "Creating nimsuggest for {projectFile}"
 
   ls.workDoneProgressCreate(token)
@@ -976,19 +990,6 @@ proc toInlayHint(suggest: SuggestInlayHint; configuration: NlsConfig): InlayHint
         )
       )
     ])
-
-func typeHintsEnabled(cnf: NlsConfig): bool =
-  result = true
-  if cnf.inlayHints.isSome and cnf.inlayHints.get.typeHints.isSome and cnf.inlayHints.get.typeHints.get.enable.isSome:
-    result = cnf.inlayHints.get.typeHints.get.enable.get
-
-func exceptionHintsEnabled(cnf: NlsConfig): bool =
-  result = true
-  if cnf.inlayHints.isSome and cnf.inlayHints.get.exceptionHints.isSome and cnf.inlayHints.get.exceptionHints.get.enable.isSome:
-    result = cnf.inlayHints.get.exceptionHints.get.enable.get
-
-func inlayHintsEnabled(cnf: NlsConfig): bool =
-  typeHintsEnabled(cnf) or exceptionHintsEnabled(cnf)
 
 proc inlayHint(ls: LanguageServer, params: InlayHintParams, id: int): Future[seq[InlayHint]] {.async.} =
   debug "inlayHint received..."
