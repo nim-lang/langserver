@@ -36,6 +36,12 @@ type
     typeHints*: Option[NlsInlayTypeHintsConfig]
     exceptionHints*: Option[NlsInlayExceptionHintsConfig]
 
+  NlsNotificationVerbosity = enum
+    nvNone = "none"
+    nvError = "error"
+    nvWarning = "warning"
+    nvInfo = "info"
+
   NlsConfig = ref object of RootObj
     projectMapping*: OptionalSeq[NlsNimsuggestConfig]
     workingDirectoryMapping*: OptionalSeq[NlsWorkingDirectoryMaping]
@@ -47,6 +53,7 @@ type
     autoCheckProject*: Option[bool]
     logNimsuggest*: Option[bool]
     inlayHints*: Option[NlsInlayHintsConfig]
+    notificationVerbosity*: Option[NlsNotificationVerbosity]
 
   FileInfo = ref object of RootObj
     projectFile: Future[string]
@@ -162,7 +169,7 @@ proc parseWorkspaceConfiguration(conf: JsonNode): NlsConfig =
     let nlsConfig: seq[NlsConfig] = (%conf).to(seq[NlsConfig])
     result = if nlsConfig.len > 0 and nlsConfig[0] != nil: nlsConfig[0] else: NlsConfig()
   except CatchableError:
-    debug "Failed to parse the configuration."
+    debug "Failed to parse the configuration.", error = getCurrentExceptionMsg()
     result = NlsConfig()
 
 proc getWorkspaceConfiguration(ls: LanguageServer): Future[NlsConfig] {.async.} =
@@ -190,13 +197,30 @@ proc getProjectFile(fileUri: string, ls: LanguageServer): Future[string] {.async
   result = getProjectFileAutoGuess(fileUri)
   debug "getProjectFile", project = result
 
-proc showMessage(ls: LanguageServer, message: string, typ: MessageType) =
-  ls.connection.notify(
-    "window/showMessage",
-    %* {
+proc showMessage(ls: LanguageServer, message: string, typ: MessageType) =  
+  proc notify() =
+    ls.connection.notify(
+      "window/showMessage",
+      %* {
          "type": typ.int,
-         "message": message
-    })
+         "message": message 
+      })
+  let verbosity = 
+    ls
+    .getWorkspaceConfiguration
+    .waitFor
+    .notificationVerbosity.get(NlsNotificationVerbosity.nvInfo)
+  debug "ShowMessage ", message = message
+  case verbosity:
+  of nvInfo: 
+    notify()
+  of nvWarning:
+    if typ.int <= MessageType.Warning.int :
+       notify()
+  of nvError:
+    if typ == MessageType.Error: 
+      notify()
+  else: discard
 
 # Fixes callback clobbering in core implementation
 proc `or`*[T, Y](fut1: Future[T], fut2: Future[Y]): Future[void] =
