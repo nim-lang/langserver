@@ -97,7 +97,7 @@ type
     clientInfo*: Option[InitializeParams_clientInfo]
     locale*: Option[string]
     rootPath*: Option[string]
-    rootUri*: DocumentUri
+    rootUri*: Option[DocumentUri]
     initializationOptions*: OptionalNode
     capabilities*: ClientCapabilities
     trace*: Option[TraceValue_str]
