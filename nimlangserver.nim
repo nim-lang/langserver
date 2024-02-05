@@ -176,9 +176,9 @@ proc getWorkspaceConfiguration(ls: LanguageServer): Future[NlsConfig] {.async.} 
   parseWorkspaceConfiguration(ls.workspaceConfiguration.await)
 
 proc getRootPath(ip: InitializeParams): string =
-  if ip.rootUri == "":
+  if ip.rootUri.isNone or ip.rootUri.get == "":
     return getCurrentDir().pathToUri.uriToPath
-  return ip.rootUri.uriToPath
+  return ip.rootUri.get.uriToPath
 
 proc getProjectFile(fileUri: string, ls: LanguageServer): Future[string] {.async.} =
   let

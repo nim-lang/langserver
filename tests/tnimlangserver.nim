@@ -41,7 +41,7 @@ suite "Client/server initialization sequence":
   test "Sending initialize.":
     let initParams = InitializeParams(
         processId: some(%getCurrentProcessId()),
-        rootUri: "file:///tmp/",
+        rootUri: some("file:///tmp/"),
         capabilities: ClientCapabilities())
 
     let initializeResult = waitFor client.call("initialize", %initParams)
