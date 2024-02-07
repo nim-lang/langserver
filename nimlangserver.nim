@@ -32,9 +32,13 @@ type
     hintStringLeft*: Option[string]
     hintStringRight*: Option[string]
 
+  NlsInlayParameterHintsConfig = ref object of RootObj
+    enable*: Option[bool]
+
   NlsInlayHintsConfig = ref object of RootObj
     typeHints*: Option[NlsInlayTypeHintsConfig]
     exceptionHints*: Option[NlsInlayExceptionHintsConfig]
+    parameterHints*: Option[NlsInlayParameterHintsConfig]
 
   NlsNotificationVerbosity = enum
     nvNone = "none"
@@ -119,8 +123,13 @@ func exceptionHintsEnabled(cnf: NlsConfig): bool =
   if cnf.inlayHints.isSome and cnf.inlayHints.get.exceptionHints.isSome and cnf.inlayHints.get.exceptionHints.get.enable.isSome:
     result = cnf.inlayHints.get.exceptionHints.get.enable.get
 
+func parameterHintsEnabled(cnf: NlsConfig): bool =
+  result = true
+  if cnf.inlayHints.isSome and cnf.inlayHints.get.parameterHints.isSome and cnf.inlayHints.get.parameterHints.get.enable.isSome:
+    result = cnf.inlayHints.get.parameterHints.get.enable.get
+
 func inlayHintsEnabled(cnf: NlsConfig): bool =
-  typeHintsEnabled(cnf) or exceptionHintsEnabled(cnf)
+  typeHintsEnabled(cnf) or exceptionHintsEnabled(cnf) or parameterHintsEnabled(cnf)
 
 proc supportSignatureHelp(cc: ClientCapabilities): bool = 
   if cc.isNil: return false
@@ -1034,11 +1043,12 @@ proc inlayHint(ls: LanguageServer, params: InlayHintParams, id: int): Future[seq
                     ls.getCharacter(uri, start.line, start.character),
                     `end`.line + 1,
                     ls.getCharacter(uri, `end`.line, `end`.character),
-                    " +exceptionHints")
+                    " +exceptionHints +parameterHints")
         .orCancelled(ls, id)
     result = suggestions
       .filter(x => ((x.inlayHintInfo.kind == sihkType) and configuration.typeHintsEnabled) or
-                   ((x.inlayHintInfo.kind == sihkException) and configuration.exceptionHintsEnabled))
+                   ((x.inlayHintInfo.kind == sihkException) and configuration.exceptionHintsEnabled) or
+                   ((x.inlayHintInfo.kind == sihkParameter) and configuration.parameterHintsEnabled))
       .map(x => x.inlayHintInfo.toInlayHint(configuration))
       .filter(x => x.label != "")
 
