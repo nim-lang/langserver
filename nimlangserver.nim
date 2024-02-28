@@ -657,7 +657,7 @@ proc getWorkingDir(ls: LanguageServer, path: string): Future[string] {.async.} =
 proc createOrRestartNimsuggest(ls: LanguageServer, projectFile: string, uri = ""): void {.gcsafe.} =
   let
     configuration = ls.getWorkspaceConfiguration().waitFor()
-    nimsuggestPath = configuration.nimsuggestPath.get("nimsuggest")
+    nimsuggestPath = expandTilde(configuration.nimsuggestPath.get("nimsuggest"))
     workingDir = ls.getWorkingDir(projectFile).waitFor()
     timeout = configuration.timeout.get(REQUEST_TIMEOUT)
     restartCallback = proc (ns: Nimsuggest) {.gcsafe.} =
