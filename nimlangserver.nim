@@ -392,7 +392,7 @@ proc handleConfigurationChanges(ls: LanguageServer, oldConfiguration, newConfigu
       ls.clientCapabilities.workspace.get.inlayHint.isSome and
       ls.clientCapabilities.workspace.get.inlayHint.get.refreshSupport.get(false) and
       not inlayHintsConfigurationEquals(oldConfiguration, newConfiguration):
-    # toggling the exception hints triggers a full nimsuggest restart, since they are controller by a nimsuggest command line option
+    # toggling the exception hints triggers a full nimsuggest restart, since they are controlled by a nimsuggest command line option
     #   --exceptionInlayHints:on|off
     if not inlayExceptionHintsConfigurationEquals(oldConfiguration, newConfiguration):
       ls.restartAllNimsuggestInstances
