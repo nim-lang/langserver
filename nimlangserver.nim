@@ -351,6 +351,23 @@ proc usePullConfigurationModel(ls: LanguageServer): bool =
   ls.requiresDynamicRegistrationForDidChangeConfiguration and
   ls.supportsConfigurationRequest
 
+proc inlayExceptionHintsConfigurationEquals(a, b: NlsInlayHintsConfig): bool =
+  if a.exceptionHints.isSome and b.exceptionHints.isSome:
+    let
+      ae = a.exceptionHints.get
+      be = b.exceptionHints.get
+    result = (ae.enable == be.enable) and
+            (ae.hintStringLeft == be.hintStringLeft) and
+            (ae.hintStringRight == be.hintStringRight)
+  else:
+    result = a.exceptionHints.isSome == b.exceptionHints.isSome
+
+proc inlayExceptionHintsConfigurationEquals(a, b: NlsConfig): bool =
+  if a.inlayHints.isSome and b.inlayHints.isSome:
+    result = inlayExceptionHintsConfigurationEquals(a.inlayHints.get, b.inlayHints.get)
+  else:
+    result = a.inlayHints.isSome == b.inlayHints.isSome
+
 proc inlayHintsConfigurationEquals(a, b: NlsConfig): bool =
 
   proc inlayTypeHintsConfigurationEquals(a, b: NlsInlayHintsConfig): bool =
@@ -358,17 +375,6 @@ proc inlayHintsConfigurationEquals(a, b: NlsConfig): bool =
       result = a.typeHints.get.enable == b.typeHints.get.enable
     else:
       result = a.typeHints.isSome == b.typeHints.isSome
-
-  proc inlayExceptionHintsConfigurationEquals(a, b: NlsInlayHintsConfig): bool =
-    if a.exceptionHints.isSome and b.exceptionHints.isSome:
-      let
-        ae = a.exceptionHints.get
-        be = b.exceptionHints.get
-      result = (ae.enable == be.enable) and
-              (ae.hintStringLeft == be.hintStringLeft) and
-              (ae.hintStringRight == be.hintStringRight)
-    else:
-      result = a.exceptionHints.isSome == b.exceptionHints.isSome
 
   proc inlayHintsConfigurationEquals(a, b: NlsInlayHintsConfig): bool =
     result = inlayTypeHintsConfigurationEquals(a, b) and
@@ -379,11 +385,17 @@ proc inlayHintsConfigurationEquals(a, b: NlsConfig): bool =
   else:
     result = a.inlayHints.isSome == b.inlayHints.isSome
 
+proc restartAllNimsuggestInstances(ls: LanguageServer) {.gcsafe.}
+
 proc handleConfigurationChanges(ls: LanguageServer, oldConfiguration, newConfiguration: NlsConfig) =
   if ls.clientCapabilities.workspace.isSome and
       ls.clientCapabilities.workspace.get.inlayHint.isSome and
       ls.clientCapabilities.workspace.get.inlayHint.get.refreshSupport.get(false) and
       not inlayHintsConfigurationEquals(oldConfiguration, newConfiguration):
+    # toggling the exception hints triggers a full nimsuggest restart, since they are controller by a nimsuggest command line option
+    #   --exceptionInlayHints:on|off
+    if not inlayExceptionHintsConfigurationEquals(oldConfiguration, newConfiguration):
+      ls.restartAllNimsuggestInstances
     debug "Sending inlayHint refresh"
     ls.inlayHintsRefreshRequest = ls.connection.call("workspace/inlayHint/refresh",
                                                           newJNull())
@@ -701,6 +713,11 @@ proc createOrRestartNimsuggest(ls: LanguageServer, projectFile: string, uri = ""
       traceAsyncErrors ls.checkProject(uri)
       fut.read().openFiles.incl uri
     ls.progress(token, "end")
+
+proc restartAllNimsuggestInstances(ls: LanguageServer) =
+  debug "Restarting all nimsuggest instances"
+  for projectFile in ls.projectFiles.keys:
+    ls.createOrRestartNimsuggest(projectFile, projectFile.pathToUri)
 
 proc warnIfUnknown(ls: LanguageServer, ns: Nimsuggest, uri: string, projectFile: string):
      Future[void] {.async, gcsafe.} =
