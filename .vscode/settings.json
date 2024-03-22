@@ -1,5 +1,4 @@
 {
-    "nim.provider": "lsp",
     "nim.projectMapping": [{
             "projectFile": "nimlangserver.nim",
             "fileRegex": ".*\\.nim"
