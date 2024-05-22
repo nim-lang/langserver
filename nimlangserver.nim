@@ -677,8 +677,8 @@ proc getNimSuggestPath(ls: LanguageServer, conf: NlsConfig, workingDir: string):
   result = expandTilde(conf.nimsuggestPath.get("")) 
   if result == "":
     if nimDir != "" and nimDir.dirExists:
-      ls.showMessage(fmt "Using nimsuggest from your nimble project", MessageType.Info)
-      result = nimDir / "nimsuggest" #TODO test on win
+      ls.showMessage(fmt "Using nimsuggest from your nimble project", MessageType.Info)      
+      result = nimDir / "nimsuggest"      
     else:
       result = findExe "nimsuggest" 
 
