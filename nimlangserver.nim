@@ -665,12 +665,28 @@ proc getWorkingDir(ls: LanguageServer, path: string): Future[string] {.async.} =
       result = rootPath.string / m.directory
       break;
 
+proc getNimSuggestPath(ls: LanguageServer, conf: NlsConfig, workingDir: string): string =
+  #Attempting to see if the project is using a custom Nim version, if it's the case this will be slower than usual
+  let info: string = execProcess("nimble --nimdir ", workingDir)
+  var nimDir = ""
+  const NimDirSplit = "nimdir:"
+  for line in info.splitLines:
+    if NimDirSplit in line:
+        nimDir = line.split(NimDirSplit)[1].strip()
+      
+  result = expandTilde(conf.nimsuggestPath.get("")) 
+  if result == "":
+    if nimDir != "" and nimDir.dirExists:
+      ls.showMessage(fmt "Using nimsuggest from your nimble project", MessageType.Info)
+      result = nimDir / "nimsuggest" #TODO test on win
+    else:
+      result = findExe "nimsuggest" 
 
 proc createOrRestartNimsuggest(ls: LanguageServer, projectFile: string, uri = ""): void {.gcsafe.} =
   let
     configuration = ls.getWorkspaceConfiguration().waitFor()
-    nimsuggestPath = expandTilde(configuration.nimsuggestPath.get("nimsuggest"))
     workingDir = ls.getWorkingDir(projectFile).waitFor()
+    nimsuggestPath = ls.getNimSuggestPath(configuration, workingDir)
     timeout = configuration.timeout.get(REQUEST_TIMEOUT)
     restartCallback = proc (ns: Nimsuggest) {.gcsafe.} =
       warn "Restarting the server due to requests being to slow", projectFile = projectFile

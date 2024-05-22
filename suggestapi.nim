@@ -320,10 +320,9 @@ proc createNimsuggest*(root: string,
     thread: Thread[tuple[pipe: AsyncPipe, process: Process]]
     stderrThread: Thread[tuple[root: string, process: Process]]
     input = pipe.asyncPipeInput
-    fullPath = findExe(nimsuggestPath)
 
-  info "Starting nimsuggest", root = root, timeout = timeout, path = nimsuggestPath,
-    fullPath = fullPath, workingDir = workingDir
+  info "Starting nimsuggest", root = root, timeout = timeout, path = nimsuggestPath, 
+    workingDir = workingDir
 
   result = Nimsuggest()
   result.requestQueue = Deque[SuggestCall]()
@@ -332,7 +331,7 @@ proc createNimsuggest*(root: string,
   result.timeoutCallback = timeoutCallback
   result.errorCallback = errorCallback
 
-  if fullPath != "":
+  if nimsuggestPath != "":
     result.protocolVersion = detectNimsuggestVersion(root, nimsuggestPath, workingDir)
     if result.protocolVersion > HighestSupportedNimSuggestProtocolVersion:
       result.protocolVersion = HighestSupportedNimSuggestProtocolVersion
