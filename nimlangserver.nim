@@ -665,6 +665,16 @@ proc getWorkingDir(ls: LanguageServer, path: string): Future[string] {.async.} =
       result = rootPath.string / m.directory
       break;
 
+proc getNimVersion(nimDir: string): string =
+  let cmd = 
+    if nimDir == "": "nim --version"
+    else: nimDir / "nim --version"
+  let info = execProcess(cmd)
+  const NimCompilerVersion = "Nim Compiler Version "
+  for line in info.splitLines:
+    if line.startsWith(NimCompilerVersion):
+      return line
+
 proc getNimSuggestPath(ls: LanguageServer, conf: NlsConfig, workingDir: string): string =
   #Attempting to see if the project is using a custom Nim version, if it's the case this will be slower than usual
   let info: string = execProcess("nimble --nimdir ", workingDir)
@@ -675,12 +685,15 @@ proc getNimSuggestPath(ls: LanguageServer, conf: NlsConfig, workingDir: string):
         nimDir = line.split(NimDirSplit)[1].strip()
       
   result = expandTilde(conf.nimsuggestPath.get("")) 
+  var nimVersion = ""
   if result == "":
     if nimDir != "" and nimDir.dirExists:
-      ls.showMessage(fmt "Using nimsuggest from your nimble project", MessageType.Info)      
+      nimVersion = getNimVersion(nimDir) & " from " & nimDir
       result = nimDir / "nimsuggest"      
     else:
+      nimVersion = getNimVersion("")
       result = findExe "nimsuggest" 
+  ls.showMessage(fmt "Using {nimVersion}", MessageType.Info)      
 
 proc createOrRestartNimsuggest(ls: LanguageServer, projectFile: string, uri = ""): void {.gcsafe.} =
   let
