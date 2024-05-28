@@ -677,12 +677,12 @@ proc getNimVersion(nimDir: string): string =
 
 proc getNimSuggestPath(ls: LanguageServer, conf: NlsConfig, workingDir: string): string =
   #Attempting to see if the project is using a custom Nim version, if it's the case this will be slower than usual
-  let info: string = execProcess("nimble --nimdir ", workingDir)
+  let info: string = execProcess("nimble dump ", workingDir)
   var nimDir = ""
-  const NimDirSplit = "nimdir:"
+  const NimDirSplit = "nimDir:"
   for line in info.splitLines:
-    if NimDirSplit in line:
-        nimDir = line.split(NimDirSplit)[1].strip()
+    if line.startsWith(NimDirSplit):
+        nimDir = line.split(NimDirSplit)[1].strip.strip(chars = {'"', ' '})
       
   result = expandTilde(conf.nimsuggestPath.get("")) 
   var nimVersion = ""
