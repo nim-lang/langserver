@@ -665,12 +665,41 @@ proc getWorkingDir(ls: LanguageServer, path: string): Future[string] {.async.} =
       result = rootPath.string / m.directory
       break;
 
+proc getNimVersion(nimDir: string): string =
+  let cmd = 
+    if nimDir == "": "nim --version"
+    else: nimDir / "nim --version"
+  let info = execProcess(cmd)
+  const NimCompilerVersion = "Nim Compiler Version "
+  for line in info.splitLines:
+    if line.startsWith(NimCompilerVersion):
+      return line
+
+proc getNimSuggestPath(ls: LanguageServer, conf: NlsConfig, workingDir: string): string =
+  #Attempting to see if the project is using a custom Nim version, if it's the case this will be slower than usual
+  let info: string = execProcess("nimble dump ", workingDir)
+  var nimDir = ""
+  const NimDirSplit = "nimDir:"
+  for line in info.splitLines:
+    if line.startsWith(NimDirSplit):
+        nimDir = line.split(NimDirSplit)[1].strip.strip(chars = {'"', ' '})
+      
+  result = expandTilde(conf.nimsuggestPath.get("")) 
+  var nimVersion = ""
+  if result == "":
+    if nimDir != "" and nimDir.dirExists:
+      nimVersion = getNimVersion(nimDir) & " from " & nimDir
+      result = nimDir / "nimsuggest"      
+    else:
+      nimVersion = getNimVersion("")
+      result = findExe "nimsuggest" 
+  ls.showMessage(fmt "Using {nimVersion}", MessageType.Info)      
 
 proc createOrRestartNimsuggest(ls: LanguageServer, projectFile: string, uri = ""): void {.gcsafe.} =
   let
     configuration = ls.getWorkspaceConfiguration().waitFor()
-    nimsuggestPath = expandTilde(configuration.nimsuggestPath.get("nimsuggest"))
     workingDir = ls.getWorkingDir(projectFile).waitFor()
+    nimsuggestPath = ls.getNimSuggestPath(configuration, workingDir)
     timeout = configuration.timeout.get(REQUEST_TIMEOUT)
     restartCallback = proc (ns: Nimsuggest) {.gcsafe.} =
       warn "Restarting the server due to requests being to slow", projectFile = projectFile
