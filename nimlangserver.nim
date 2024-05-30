@@ -93,6 +93,12 @@ type
     Folder,
     Cfg,
     Nimble
+  
+  NimbleDumpInfo = object
+    srcDir: string
+    name: string
+    nimDir: Option[string]
+    nimblePath: Option[string]
 
 createJsonFlavor(LSPFlavour, omitOptionalFields = true)
 Option.useDefaultSerializationIn LSPFlavour
@@ -136,7 +142,19 @@ proc supportSignatureHelp(cc: ClientCapabilities): bool =
   let caps = cc.textDocument
   caps.isSome and caps.get.signatureHelp.isSome
 
-proc getProjectFileAutoGuess(fileUri: string): string =
+proc getNimbleDumpInfo(ls: LanguageServer, nimbleFile: string): NimbleDumpInfo =
+  let info = execProcess("nimble dump " & nimbleFile)
+  for line in info.splitLines:
+    if line.startsWith("srcDir"):
+      result.srcDir = line[(1 + line.find '"')..^2]
+    if line.startsWith("name"):
+      result.name = line[(1 + line.find '"')..^2]
+    if line.startsWith("nimDir"):
+      result.nimDir = some line[(1 + line.find '"')..^2]
+    if line.startsWith("nimblePath"):
+      result.nimblePath = some line[(1 + line.find '"')..^2]
+  
+proc getProjectFileAutoGuess(ls: LanguageServer, fileUri: string): string =
   let file = fileUri.decodeUrl
   result = file
   let (dir, _, _) = result.splitFile()
@@ -157,13 +175,9 @@ proc getProjectFileAutoGuess(fileUri: string): string =
       certainty = Cfg
     if certainty <= Nimble:
       for nimble in walkFiles(path / "*.nimble"):
-        let info = execProcess("nimble dump " & nimble)
-        var sourceDir, name: string
-        for line in info.splitLines:
-          if line.startsWith("srcDir"):
-            sourceDir = path / line[(1 + line.find '"')..^2]
-          if line.startsWith("name"):
-            name = line[(1 + line.find '"')..^2]
+        let dumpInfo = ls.getNimbleDumpInfo(nimble)
+        let name = dumpInfo.name
+        let sourceDir = path / dumpInfo.srcDir
         let projectFile = sourceDir / (name & ".nim")
         if sourceDir.len != 0 and name.len != 0 and
             file.isRelativeTo(sourceDir) and fileExists(projectFile):
@@ -206,7 +220,7 @@ proc getProjectFile(fileUri: string, ls: LanguageServer): Future[string] {.async
     else:
       trace "getProjectFile does not match", uri = fileUri, matchedRegex = mapping.fileRegex
 
-  result = getProjectFileAutoGuess(fileUri)
+  result = ls.getProjectFileAutoGuess(fileUri)
   debug "getProjectFile", project = result
 
 proc showMessage(ls: LanguageServer, message: string, typ: MessageType) =  
@@ -677,12 +691,8 @@ proc getNimVersion(nimDir: string): string =
 
 proc getNimSuggestPath(ls: LanguageServer, conf: NlsConfig, workingDir: string): string =
   #Attempting to see if the project is using a custom Nim version, if it's the case this will be slower than usual
-  let info: string = execProcess("nimble dump ", workingDir)
-  var nimDir = ""
-  const NimDirSplit = "nimDir:"
-  for line in info.splitLines:
-    if line.startsWith(NimDirSplit):
-        nimDir = line.split(NimDirSplit)[1].strip.strip(chars = {'"', ' '})
+  let nimbleDumpInfo = ls.getNimbleDumpInfo("")
+  let nimDir = nimbleDumpInfo.nimDir.get ""
       
   result = expandTilde(conf.nimsuggestPath.get("")) 
   var nimVersion = ""
