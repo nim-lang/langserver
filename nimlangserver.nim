@@ -87,6 +87,7 @@ type
     isShutdown*: bool
     storageDir*: string
     cmdLineClientProcessId: Option[int]
+    nimDumpCache: Table[string, NimbleDumpInfo] #path to NimbleDumpInfo
 
   Certainty = enum
     None,
@@ -143,6 +144,8 @@ proc supportSignatureHelp(cc: ClientCapabilities): bool =
   caps.isSome and caps.get.signatureHelp.isSome
 
 proc getNimbleDumpInfo(ls: LanguageServer, nimbleFile: string): NimbleDumpInfo =
+  if nimbleFile in ls.nimDumpCache:
+    return ls.nimDumpCache[nimbleFile]
   let info = execProcess("nimble dump " & nimbleFile)
   for line in info.splitLines:
     if line.startsWith("srcDir"):
@@ -153,6 +156,12 @@ proc getNimbleDumpInfo(ls: LanguageServer, nimbleFile: string): NimbleDumpInfo =
       result.nimDir = some line[(1 + line.find '"')..^2]
     if line.startsWith("nimblePath"):
       result.nimblePath = some line[(1 + line.find '"')..^2]
+  
+  var nimbleFile = nimbleFile
+  if nimbleFile == "" and result.nimblePath.isSome:
+    nimbleFile = result.nimblePath.get
+  if nimbleFile != "":
+    ls.nimDumpCache[nimbleFile] = result
   
 proc getProjectFileAutoGuess(ls: LanguageServer, fileUri: string): string =
   let file = fileUri.decodeUrl
