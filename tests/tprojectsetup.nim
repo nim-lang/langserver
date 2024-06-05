@@ -102,82 +102,136 @@ proc createDidOpenParams(file: string): DidOpenTextDocumentParams =
      }
   }
 
+
+template initLangServerForTestProject() {.dirty.}= 
+  cdNewDir testProjectDir:
+      
+    let (output, exitCode) = execNimbleYes("init")
+    check exitCode == 0
+    
+  let pipeServer = createPipe();
+  let pipeClient = createPipe();
+
+  let
+    server = StreamConnection.new(pipeServer)
+    inputPipe = asyncPipeInput(pipeClient)
+    storageDir = ensureStorageDir()
+
+  discard registerHandlers(server, inputPipe, storageDir);
+  discard server.start(inputPipe);
+
+  let client = StreamConnection.new(pipeClient);
+  discard client.start(asyncPipeInput(pipeServer));
+
+  let suggestInit = FutureStream[ProgressParams]()
+  client.register("window/workDoneProgress/create",
+                            partial(testHandler[ProgressParams, JsonNode],
+                                    (fut: suggestInit, res: newJNull())))
+  let workspaceConfiguration = %* [{
+      "workingDirectoryMapping": [{ 
+          "directory": testProjectDir,
+          "file": entryPoint,
+          "projectFile": entryPoint
+      }],
+      "autoCheckFile": false,
+      "autoCheckProject": false
+  }]
+
+  let configInit = FutureStream[ConfigurationParams]()
+  client.register(
+    "workspace/configuration",
+    partial(testHandler[ConfigurationParams, JsonNode],
+            (fut: configInit, res: workspaceConfiguration)))
+
+  let diagnostics = FutureStream[PublishDiagnosticsParams]()
+  client.registerNotification(
+    "textDocument/publishDiagnostics",
+    partial(testHandler[PublishDiagnosticsParams], diagnostics))
+
+  let progress = FutureStream[ProgressParams]()
+  client.registerNotification(
+    "$/progress",
+    partial(testHandler[ProgressParams], progress))
+
+  let showMessage = FutureStream[ShowMessageParams]()
+  client.registerNotification(
+    "window/showMessage",
+    partial(testHandler[ShowMessageParams], showMessage))
+
+  let initParams = InitializeParams %* {
+      "processId": %getCurrentProcessId(),
+      "capabilities": {
+        "window": {
+          "workDoneProgress": true
+        },
+        "workspace": {"configuration": true}
+      }
+  }
+
+  discard waitFor client.call("initialize", %initParams)
+  client.notify("initialized", newJObject())
+
+
 suite "nimble setup":
 
-  test "should pick `testproject.nim` as the main file":
+  test "should pick `testproject.nim` as the main file and provide suggestions":
     let testProjectDir = absolutePath "tests" / "projects" / "testproject"
     let entryPoint = testProjectDir / "src" / "testproject.nim"
-    cdNewDir testProjectDir:
-      let (output, exitCode) = execNimbleYes("init")
-      check exitCode == 0
-      
-    let pipeServer = createPipe();
-    let pipeClient = createPipe();
-
-    let
-      server = StreamConnection.new(pipeServer)
-      inputPipe = asyncPipeInput(pipeClient)
-      storageDir = ensureStorageDir()
-
-    discard registerHandlers(server, inputPipe, storageDir);
-    discard server.start(inputPipe);
-
-    let client = StreamConnection.new(pipeClient);
-    discard client.start(asyncPipeInput(pipeServer));
-
-    let suggestInit = FutureStream[ProgressParams]()
-    client.register("window/workDoneProgress/create",
-                              partial(testHandler[ProgressParams, JsonNode],
-                                      (fut: suggestInit, res: newJNull())))
-    let workspaceConfiguration = %* [{
-        "workingDirectoryMapping": [{ 
-            "directory": testProjectDir,
-            "file": entryPoint,
-            "projectFile": entryPoint
-        }],
-        "autoCheckFile": false,
-        "autoCheckProject": false
-    }]
-
-    let configInit = FutureStream[ConfigurationParams]()
-    client.register(
-      "workspace/configuration",
-      partial(testHandler[ConfigurationParams, JsonNode],
-              (fut: configInit, res: workspaceConfiguration)))
-
-    let diagnostics = FutureStream[PublishDiagnosticsParams]()
-    client.registerNotification(
-      "textDocument/publishDiagnostics",
-      partial(testHandler[PublishDiagnosticsParams], diagnostics))
-
-    let progress = FutureStream[ProgressParams]()
-    client.registerNotification(
-      "$/progress",
-      partial(testHandler[ProgressParams], progress))
-
-    let showMessage = FutureStream[ShowMessageParams]()
-    client.registerNotification(
-      "window/showMessage",
-      partial(testHandler[ShowMessageParams], showMessage))
-
-    let initParams = InitializeParams %* {
-        "processId": %getCurrentProcessId(),
-        "capabilities": {
-          "window": {
-            "workDoneProgress": true
-          },
-          "workspace": {"configuration": true}
-        }
-    }
-
-    discard waitFor client.call("initialize", %initParams)
-    client.notify("initialized", newJObject())
+    
+    initLangServerForTestProject()
     # #At this point we should know the main file is `testproject.nim` but for now just test the case were we open it
     client.notify("textDocument/didOpen", %createDidOpenParams(entryPoint))
     let (_, params) = suggestInit.read.waitFor
-    # echo "aqui"
     let nimsuggestNot = notificationOutputs[^1]["value"]["title"].getStr
     check nimsuggestNot == &"Creating nimsuggest for {entryPoint}"
+    
+    let completionParams = CompletionParams %* {
+      "position": {
+         "line": 7,
+         "character": 0
+      },
+      "textDocument": {
+         "uri": pathToUri(entryPoint)
+       }
+    }
+    #We need to call it twice, so we ignore the first call.
+    var res =  client.call("textDocument/completion", %completionParams).waitFor
+    res = client.call("textDocument/completion", %completionParams).waitFor
+    let completionList = res.to(seq[CompletionItem]).mapIt(it.label)
+    check completionList.len > 0
+  
+  # test "`submodule.nim` should not be part of the nimble project file":
+  #   let testProjectDir = absolutePath "tests" / "projects" / "testproject"
+  #   let entryPoint = testProjectDir / "src" / "testproject.nim"
+
+  #   initLangServerForTestProject()
+
+  #   let submodule = testProjectDir / "src" / "testproject" / "submodule.nim"
+  #   client.notify("textDocument/didOpen", %createDidOpenParams(submodule))
+  #   let (_, params) = suggestInit.read.waitFor
+  #   #Entry point is still the same. 
+  #   let nimsuggestNot = notificationOutputs[^1]["value"]["title"].getStr
+  #   check nimsuggestNot == &"Creating nimsuggest for {entryPoint}"
+  #   #Nimsuggest should still be able to give suggestions for the submodule
+
+  #   let completionParams = CompletionParams %* {
+  #     "position": {
+  #        "line": 8,
+  #        "character": 2
+  #     },
+  #     "textDocument": {
+  #        "uri": pathToUri(submodule)
+  #      }
+  #   }
+  #   #We need to call it twice, so we ignore the first call.
+  #   var res =  client.call("textDocument/completion", %completionParams).waitFor
+  #   res = client.call("textDocument/completion", %completionParams).waitFor
+  #   let completionList = res.to(seq[CompletionItem]).mapIt(it.label)
+  #   echo completionList
+  #   # echo actualEchoCompletionItem
+
+
+
     
 
 
