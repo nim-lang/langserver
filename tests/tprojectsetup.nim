@@ -68,13 +68,7 @@ proc execNimble*(args: varargs[string]): ProcessOutput =
 proc execNimbleYes*(args: varargs[string]): ProcessOutput =
   execNimble(@args & "-y")
 
-#[
-  1. The tests setup a new nimble project and makes sure when initializing it, the main 
-  file is set to `testproject.nim`
-  2. Modify the file `testproject.nim` and import `submodule.nim` then test the file doesnt require another nimsuggest
-]#
 #TODO extract testutils and reusue this functions in both, tnimlangserver and this file
-
 
 var notificationOutputs = newJArray()
 
@@ -108,13 +102,15 @@ proc createDidOpenParams(file: string): DidOpenTextDocumentParams =
      }
   }
 
-test "should pick `testproject.nim` as the main file":
-  let testProjectDir = absolutePath "tests" / "projects" / "testproject"
-  let entryPoint = testProjectDir / "src" / "testproject.nim"
-  cdNewDir testProjectDir:
-    let (output, exitCode) = execNimbleYes("init")
-    check exitCode == 0
-    
+suite "nimble setup":
+
+  test "should pick `testproject.nim` as the main file":
+    let testProjectDir = absolutePath "tests" / "projects" / "testproject"
+    let entryPoint = testProjectDir / "src" / "testproject.nim"
+    cdNewDir testProjectDir:
+      let (output, exitCode) = execNimbleYes("init")
+      check exitCode == 0
+      
     let pipeServer = createPipe();
     let pipeClient = createPipe();
 
@@ -182,8 +178,6 @@ test "should pick `testproject.nim` as the main file":
     # echo "aqui"
     let nimsuggestNot = notificationOutputs[^1]["value"]["title"].getStr
     check nimsuggestNot == &"Creating nimsuggest for {entryPoint}"
-    # check notificationOutputs[^1][^1]["title"].getStr == &"Creating nimsuggest for {entryPoint}"
-    # echo params
-  
+    
 
 

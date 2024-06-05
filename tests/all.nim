@@ -1,2 +1,3 @@
 import
-  tnimlangserver, tsuggestapi
+  tnimlangserver, tsuggestapi,
+  tprojectsetup
