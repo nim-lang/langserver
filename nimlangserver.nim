@@ -165,6 +165,7 @@ proc getNimbleDumpInfo(ls: LanguageServer, nimbleFile: string): NimbleDumpInfo =
   
 proc getProjectFileAutoGuess(ls: LanguageServer, fileUri: string): string =
   let file = fileUri.decodeUrl
+  debug "Auto-guessing project file for", file = file
   result = file
   let (dir, _, _) = result.splitFile()
   var
@@ -193,6 +194,7 @@ proc getProjectFileAutoGuess(ls: LanguageServer, fileUri: string): string =
           debug "Found nimble project", projectFile = projectFile
           result = projectFile
           certainty = Nimble
+          return
     if path == dir: break
     path = dir
 
