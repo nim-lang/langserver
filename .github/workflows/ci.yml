@@ -31,7 +31,12 @@ jobs:
           path: ~/.nimble/
           key: ${{ matrix.os }}-${{ env.cache_nonce }}
 
-      - name: test
+      - name: Nimble Install
         shell: bash
         run: |
           nimble -y install
+      
+      - name: Nimble Test
+        shell: bash
+        run: |
+          nimble test
