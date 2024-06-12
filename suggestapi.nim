@@ -96,6 +96,8 @@ type
     timeoutCallback: NimsuggestCallback
     protocolVersion*: int
     capabilities*: set[NimSuggestCapability]
+    nimSuggestPath*: string
+    version*: string
 
 
 template benchmark(benchmarkName: string, code: untyped) =
@@ -309,6 +311,7 @@ proc getNimsuggestCapabilities*(nimsuggestPath: string):
 
 proc createNimsuggest*(root: string,
                        nimsuggestPath: string,
+                       version: string,
                        timeout: int,
                        timeoutCallback: NimsuggestCallback,
                        errorCallback: NimsuggestCallback,
@@ -330,6 +333,8 @@ proc createNimsuggest*(root: string,
   result.timeout = timeout
   result.timeoutCallback = timeoutCallback
   result.errorCallback = errorCallback
+  result.nimSuggestPath = nimsuggestPath
+  result.version = version
 
   if nimsuggestPath != "":
     result.protocolVersion = detectNimsuggestVersion(root, nimsuggestPath, workingDir)
@@ -342,6 +347,7 @@ proc createNimsuggest*(root: string,
     if enableLog:
       args.add("--log")
     result.capabilities = getNimsuggestCapabilities(nimsuggestPath)
+    debug "Nimsuggest Capabilities", capabilities = result.capabilities
     if nsExceptionInlayHints in result.capabilities:
       if enableExceptionInlayHints:
         args.add("--exceptionInlayHints:on")
@@ -370,7 +376,7 @@ proc createNimsuggest*(root: string,
     result.markFailed fmt "Unable to start nimsuggest. `{nimsuggestPath}` is not present on the PATH"
 
 proc createNimsuggest*(root: string): Future[Nimsuggest] {.gcsafe.} =
-  result = createNimsuggest(root, "nimsuggest", REQUEST_TIMEOUT,
+  result = createNimsuggest(root, "nimsuggest", "", REQUEST_TIMEOUT,
                             proc (ns: Nimsuggest) = discard,
                             proc (ns: Nimsuggest) = discard)
 
@@ -495,3 +501,7 @@ createRangeCommand(inlayHints)
 
 proc `mod`*(nimsuggest: Nimsuggest, file: string, dirtyfile = ""): Future[seq[Suggest]] =
   return nimsuggest.call("ideMod", file, dirtyfile, 0, 0)
+
+proc isKnown*(nimsuggest: Nimsuggest, filePath: string): Future[bool] {.async.} =
+  let sug = await nimsuggest.known(filePath)
+  return sug.len > 0 and sug[0].forth == "true"

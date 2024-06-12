@@ -971,3 +971,19 @@ type
     paddingLeft*: Option[bool]
     paddingRight*: Option[bool]
     #data*: OptionalNode
+  
+  NimSuggestStatus* = object
+    projectFile*: string
+    capabilities*: seq[string]
+    version*: string
+    path*: string
+    pid*: int
+    knownFiles*: seq[string]
+    unknownFiles*: seq[string]
+  
+  NimLangServerStatus* = ref object
+    version*: string
+    nimsuggestInstances*: seq[NimSuggestStatus]
+
+  NimLangServerStatusParams* = ref object
+    
