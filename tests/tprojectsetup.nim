@@ -199,6 +199,15 @@ suite "nimble setup":
     res = client.call("textDocument/completion", %completionParams).waitFor
     let completionList = res.to(seq[CompletionItem]).mapIt(it.label)
     check completionList.len > 0
+
+    var resStatus =  client.call("extension/status", %()).waitFor
+    let status = resStatus.to(NimLangServerStatus)[]
+    check status.nimsuggestInstances.len == 1
+    let nsInfo = status.nimsuggestInstances[0]
+    check nsInfo.projectFile == entryPoint
+    check nsInfo.knownFiles.len == 1
+    check nsInfo.knownFiles[0] == entryPoint
+    check nsInfo.unknownFiles.len == 0
   
   # test "`submodule.nim` should not be part of the nimble project file":
   #   let testProjectDir = absolutePath "tests" / "projects" / "testproject"

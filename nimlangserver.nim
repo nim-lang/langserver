@@ -101,6 +101,16 @@ type
     nimDir: Option[string]
     nimblePath: Option[string]
 
+proc getVersionFromNimble(): string = 
+  #We should static run nimble dump instead
+  const content = staticRead("nimlangserver.nimble")
+  for v in content.splitLines:
+    if v.startsWith("version"):
+      return v.split("=")[^1].strip(chars = {' ', '"'})
+  return "unknown"
+
+const LSPVersion = getVersionFromNimble()
+
 createJsonFlavor(LSPFlavour, omitOptionalFields = true)
 Option.useDefaultSerializationIn LSPFlavour
 
@@ -700,27 +710,30 @@ proc getNimVersion(nimDir: string): string =
     if line.startsWith(NimCompilerVersion):
       return line
 
-proc getNimSuggestPath(ls: LanguageServer, conf: NlsConfig, workingDir: string): string =
+proc getNimSuggestPathAndVersion(ls: LanguageServer, conf: NlsConfig, workingDir: string): (string, string) =
   #Attempting to see if the project is using a custom Nim version, if it's the case this will be slower than usual
   let nimbleDumpInfo = ls.getNimbleDumpInfo("")
   let nimDir = nimbleDumpInfo.nimDir.get ""
       
-  result = expandTilde(conf.nimsuggestPath.get("")) 
+  var nimsuggestPath = expandTilde(conf.nimsuggestPath.get("")) 
   var nimVersion = ""
-  if result == "":
+  if nimsuggestPath == "":
     if nimDir != "" and nimDir.dirExists:
       nimVersion = getNimVersion(nimDir) & " from " & nimDir
-      result = nimDir / "nimsuggest"      
+      nimsuggestPath = nimDir / "nimsuggest"      
     else:
       nimVersion = getNimVersion("")
-      result = findExe "nimsuggest" 
-  ls.showMessage(fmt "Using {nimVersion}", MessageType.Info)      
+      nimsuggestPath = findExe "nimsuggest"
+  else:
+    nimVersion = getNimVersion(nimsuggestPath.parentDir)
+  ls.showMessage(fmt "Using {nimVersion}", MessageType.Info)    
+  (nimsuggestPath, nimVersion)  
 
 proc createOrRestartNimsuggest(ls: LanguageServer, projectFile: string, uri = ""): void {.gcsafe.} =
   let
     configuration = ls.getWorkspaceConfiguration().waitFor()
     workingDir = ls.getWorkingDir(projectFile).waitFor()
-    nimsuggestPath = ls.getNimSuggestPath(configuration, workingDir)
+    (nimsuggestPath, version) = ls.getNimSuggestPathAndVersion(configuration, workingDir)
     timeout = configuration.timeout.get(REQUEST_TIMEOUT)
     restartCallback = proc (ns: Nimsuggest) {.gcsafe.} =
       warn "Restarting the server due to requests being to slow", projectFile = projectFile
@@ -735,7 +748,7 @@ proc createOrRestartNimsuggest(ls: LanguageServer, projectFile: string, uri = ""
         ls.showMessage(fmt "Server failed with {ns.errorMessage}.",
                        MessageType.Error)
 
-    nimsuggestFut = createNimsuggest(projectFile, nimsuggestPath,
+    nimsuggestFut = createNimsuggest(projectFile, nimsuggestPath, version,
                                      timeout, restartCallback, errorCallback, workingDir, configuration.logNimsuggest.get(false),
                                      configuration.exceptionHintsEnabled)
     token = fmt "Creating nimsuggest for {projectFile}"
@@ -772,11 +785,11 @@ proc restartAllNimsuggestInstances(ls: LanguageServer) =
 proc warnIfUnknown(ls: LanguageServer, ns: Nimsuggest, uri: string, projectFile: string):
      Future[void] {.async, gcsafe.} =
   let path = uri.uriToPath
-  let sug = await ns.known(path)
-  if sug[0].forth == "false":
-    ls.showMessage(fmt """{path} is not compiled as part of project {projectFile}.
-In orde to get the IDE features working you must either configure nim.projectMapping or import the module.""",
-                   MessageType.Warning)
+  let isFileKnown = await ns.isKnown(path)
+  if not isFileKnown: #TODO only warn when ns doesnt have the unknownFile capability
+      ls.showMessage(fmt """{path} is not compiled as part of project {projectFile}.
+  In orde to get the IDE features working you must either configure nim.projectMapping or import the module.""",
+                    MessageType.Warning)
 
 proc didOpen(ls: LanguageServer, params: DidOpenTextDocumentParams):
     Future[void] {.async, gcsafe.} =
@@ -978,6 +991,27 @@ proc expand(ls: LanguageServer, params: ExpandTextDocumentPositionParams):
     if expand.len != 0:
       result = ExpandResult(content: expand[0].doc.fixIdentation(character),
                             range: expand[0].createRangeFromSuggest())
+
+proc status(ls: LanguageServer, params: NimLangServerStatusParams): Future[NimLangServerStatus] {.async.} = 
+  var status = NimLangServerStatus()
+  status.version = LSPVersion
+  for projectFile in ls.projectFiles.keys:
+    let ns = await ls.projectFiles[projectFile]
+    var nsStatus = NimSuggestStatus(
+      projectFile: projectFile,
+      capabilities: ns.capabilities.toSeq.mapIt($it),
+      version: ns.version,
+      path: ns.nimsuggestPath
+    )    
+    for openFile in ns.openFiles:
+      let openFilePath = openFile.uriToPath
+      let isKnown = await ns.isKnown(openFilePath)
+      if isKnown:
+        nsStatus.knownFiles.add openFilePath
+      else:
+        nsStatus.unknownFiles.add openFilePath
+    status.nimsuggestInstances.add nsStatus
+  status
 
 proc typeDefinition(ls: LanguageServer, params: TextDocumentPositionParams, id: int):
     Future[seq[Location]] {.async.} =
@@ -1367,6 +1401,7 @@ proc registerHandlers*(connection: StreamConnection,
   connection.register("workspace/symbol", partial(workspaceSymbol, ls))
   connection.register("textDocument/documentHighlight", partial(documentHighlight, ls))
   connection.register("extension/macroExpand", partial(expand, ls))
+  connection.register("extension/status", partial(status, ls))
   connection.register("shutdown", partial(shutdown, ls))
   connection.register("exit", partial(exit, (ls: ls, pipeInput: pipeInput)))
 
@@ -1390,17 +1425,9 @@ var
 
 when isMainModule:
 
-  proc getVersionFromNimble(): string = 
-    const content = staticRead("nimlangserver.nimble")
-    for v in content.splitLines:
-      if v.startsWith("version"):
-        return v.split("=")[^1].strip(chars = {' ', '"'})
-    return "unknown"
-
   proc handleParams(): CommandLineParams =
     if paramCount() > 0 and paramStr(1) in ["-v", "--version"]:
-      const version = getVersionFromNimble()
-      echo version
+      echo LSPVersion
       quit()
     var i = 1
     while i <= paramCount():
