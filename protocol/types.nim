@@ -972,18 +972,24 @@ type
     paddingRight*: Option[bool]
     #data*: OptionalNode
   
+  NimSuggestCapability* = enum 
+    nsCon = "con",
+    nsExceptionInlayHints = "exceptionInlayHints"
+    nsUnknownFile = "unknownFile"
+
   NimSuggestStatus* = object
     projectFile*: string
-    capabilities*: seq[string]
+    capabilities*: seq[NimSuggestCapability]
     version*: string
     path*: string
-    pid*: int
-    knownFiles*: seq[string]
+    port*: int
+    openFiles*: seq[string]
     unknownFiles*: seq[string]
   
   NimLangServerStatus* = ref object
     version*: string
     nimsuggestInstances*: seq[NimSuggestStatus]
+    openFiles*: seq[string]
 
   NimLangServerStatusParams* = ref object
     
