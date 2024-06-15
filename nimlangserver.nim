@@ -227,6 +227,8 @@ proc getRootPath(ip: InitializeParams): string =
       return getCurrentDir().pathToUri.uriToPath
   return ip.rootUri.get.uriToPath
 
+proc createOrRestartNimsuggest(ls: LanguageServer, projectFile: string, uri = ""): void {.gcsafe.}
+
 proc getProjectFile(fileUri: string, ls: LanguageServer): Future[string] {.async.} =
   let
     rootPath = AbsoluteDir(ls.initializeParams.getRootPath)
@@ -372,6 +374,7 @@ proc initialize(p: tuple[ls: LanguageServer, pipeInput: AsyncInputStream], param
       result.capabilities.renameProvider = %* {
         "prepareProvider": true
       }
+  debug "Initialize completed."
 
 proc requiresDynamicRegistrationForDidChangeConfiguration(ls: LanguageServer): bool =
   ls.clientCapabilities.workspace.isSome and
@@ -528,8 +531,6 @@ proc uriToStash(ls: LanguageServer, uri: string): string =
     uriStorageLocation(ls, uri)
   else:
     ""
-
-proc createOrRestartNimsuggest(ls: LanguageServer, projectFile: string, uri = ""): void {.gcsafe.}
 
 proc getNimsuggest(ls: LanguageServer, uri: string): Future[Nimsuggest] {.async.} =
   let projectFile = await ls.openFiles[uri].projectFile
@@ -786,7 +787,7 @@ proc warnIfUnknown(ls: LanguageServer, ns: Nimsuggest, uri: string, projectFile:
      Future[void] {.async, gcsafe.} =
   let path = uri.uriToPath
   let isFileKnown = await ns.isKnown(path)
-  if not isFileKnown: #TODO only warn when ns doesnt have the unknownFile capability
+  if not isFileKnown and nsUnknownFile notin ns.capabilities:
       ls.showMessage(fmt """{path} is not compiled as part of project {projectFile}.
   In orde to get the IDE features working you must either configure nim.projectMapping or import the module.""",
                     MessageType.Warning)
@@ -818,6 +819,14 @@ proc didOpen(ls: LanguageServer, params: DidOpenTextDocumentParams):
     ls.getNimsuggest(uri).addCallback() do (fut: Future[Nimsuggest]) -> void:
       if not fut.failed:
         discard ls.warnIfUnknown(fut.read, uri, projectFile)
+      
+    let projectFileUri = projectFile.pathToUri
+    if projectFileUri notin ls.openFiles:
+      var params = params
+      params.textDocument.uri = projectFileUri
+      await didOpen(ls, params)
+      
+      debug "Opening project file", uri = projectFile, file = uri
 
 proc scheduleFileCheck(ls: LanguageServer, uri: string) {.gcsafe.} =
   if not ls.getWorkspaceConfiguration().waitFor().autoCheckFile.get(true):
@@ -993,24 +1002,31 @@ proc expand(ls: LanguageServer, params: ExpandTextDocumentPositionParams):
                             range: expand[0].createRangeFromSuggest())
 
 proc status(ls: LanguageServer, params: NimLangServerStatusParams): Future[NimLangServerStatus] {.async.} = 
+  debug "Received status request"
   var status = NimLangServerStatus()
   status.version = LSPVersion
   for projectFile in ls.projectFiles.keys:
     let ns = await ls.projectFiles[projectFile]
     var nsStatus = NimSuggestStatus(
       projectFile: projectFile,
-      capabilities: ns.capabilities.toSeq.mapIt($it),
+      capabilities: ns.capabilities.toSeq,
       version: ns.version,
-      path: ns.nimsuggestPath
+      path: ns.nimsuggestPath,
+      port: ns.port,
     )    
     for openFile in ns.openFiles:
       let openFilePath = openFile.uriToPath
       let isKnown = await ns.isKnown(openFilePath)
-      if isKnown:
-        nsStatus.knownFiles.add openFilePath
-      else:
+      nsStatus.openFiles.add openFilePath
+      if not isKnown:
         nsStatus.unknownFiles.add openFilePath
+
     status.nimsuggestInstances.add nsStatus
+  
+  for openFile in ls.openFiles.keys:
+    let openFilePath = openFile.uriToPath
+    status.openFiles.add openFilePath
+  
   status
 
 proc typeDefinition(ls: LanguageServer, params: TextDocumentPositionParams, id: int):
@@ -1465,6 +1481,7 @@ when isMainModule:
 
         proc onCmdLineClientProcessExitAsync(): Future[void] {.async.} =
           debug "onCmdLineClientProcessExitAsync"
+          
           await ls.stopNimsuggestProcesses
           pipeInput.close()
 
