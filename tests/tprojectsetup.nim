@@ -321,14 +321,14 @@ suite "nimble setup":
     if nsUnknownFile in status.nimsuggestInstances[0].capabilities:
       #Only check when the current nimsuggest instance supports unknown files as this wont work in previous versions
       check completionList.len > 0
-    echo status
+      echo status
 
-    check status.nimsuggestInstances.len == 1
-    let nsInfo = status.nimsuggestInstances[0]
-    check nsInfo.projectFile == entryPoint
-    check status.openFiles.len == 2
-    check entryPoint in status.openFiles
-    check submodule in status.openFiles 
+      check status.nimsuggestInstances.len == 1
+      let nsInfo = status.nimsuggestInstances[0]
+      check nsInfo.projectFile == entryPoint
+      check status.openFiles.len == 2
+      check entryPoint in status.openFiles
+      check submodule in status.openFiles 
 
 
     
