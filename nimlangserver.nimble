@@ -8,7 +8,7 @@ license       = "MIT"
 bin           = @["nimlangserver"]
 skipDirs      = @["tests"]
 
-requires "nim >= 2.0.0",
+requires "nim >= 2.0.4",
          "https://github.com/nickysn/asynctools#fixes_for_nimlangserver",
          "https://github.com/yyoncho/nim-json-rpc#notif-changes",
          "with",
