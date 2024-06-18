@@ -17,7 +17,8 @@ import osproc,
   asynctools/asyncpipe,
   ./pipes,
   ./utils,
-  chronicles
+  chronicles,
+  protocol/types
 
 const REQUEST_TIMEOUT* = 120000
 const HighestSupportedNimSuggestProtocolVersion = 4
@@ -75,10 +76,6 @@ type
     allowInsert*: bool
     tooltip*: string
 
-  NimSuggestCapability* = enum 
-    nsCon = "con",
-    nsExceptionInlayHints = "exceptionInlayHints"
-
   Nimsuggest* = ref object
     failed*: bool
     errorMessage*: string
@@ -88,7 +85,7 @@ type
     successfullCall*: bool
     errorCallback: NimsuggestCallback
     process: Process
-    port: int
+    port*: int
     root: string
     requestQueue: Deque[SuggestCall]
     processing: bool
@@ -504,4 +501,5 @@ proc `mod`*(nimsuggest: Nimsuggest, file: string, dirtyfile = ""): Future[seq[Su
 
 proc isKnown*(nimsuggest: Nimsuggest, filePath: string): Future[bool] {.async.} =
   let sug = await nimsuggest.known(filePath)
+  debug "isKnown", filePath = filePath, sug = sug[0].forth
   return sug.len > 0 and sug[0].forth == "true"

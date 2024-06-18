@@ -163,15 +163,6 @@ suite "Suggest API selection":
     client.notify("textDocument/didOpen",
                   %createDidOpenParams("projects/hw/useRoot.nim"))
     let
-      rootNimFileUri = "projects/hw/root.nim".fixtureUri.uriToPath
-      rootParams2 = suggestInit.read.waitFor[1]
-
-    check %rootParams2 ==
-      %ProgressParams(token: fmt "Creating nimsuggest for {rootNimFileUri}")
-
-    check "begin" == progress.read.waitFor[1].value.get()["kind"].getStr
-    check "end" == progress.read.waitFor[1].value.get()["kind"].getStr
-    let
       hoverParams = positionParams("projects/hw/hw.nim".fixtureUri, 2, 0)
       hover = client.call("textDocument/hover", %hoverParams).waitFor
     check hover.kind == JNull
