@@ -229,6 +229,14 @@ proc getRootPath(ip: InitializeParams): string =
 
 proc createOrRestartNimsuggest(ls: LanguageServer, projectFile: string, uri = ""): void {.gcsafe.}
 
+proc isKnownByAnyNimsuggest(ls: LanguageServer, filePath: string): Future[Option[string]] {.async.} =
+  for projectFile in ls.projectFiles.keys:
+    let ns = await ls.projectFiles[projectFile]
+    let isKnown = await ns.isKnown(filePath)
+    if isKnown:
+      return some projectFile
+  none(string)
+
 proc getProjectFile(fileUri: string, ls: LanguageServer): Future[string] {.async.} =
   let
     rootPath = AbsoluteDir(ls.initializeParams.getRootPath)
@@ -243,7 +251,12 @@ proc getProjectFile(fileUri: string, ls: LanguageServer): Future[string] {.async
     else:
       trace "getProjectFile does not match", uri = fileUri, matchedRegex = mapping.fileRegex
 
-  result = ls.getProjectFileAutoGuess(fileUri)
+  let otherNsProject = await ls.isKnownByAnyNimsuggest(fileUri)
+  if otherNsProject.isSome:
+    debug "File is known by nimsuggest", uri = fileUri, projectFile = otherNsProject.get
+    result = otherNsProject.get
+  else:
+    result = ls.getProjectFileAutoGuess(fileUri)
   debug "getProjectFile", project = result
 
 proc showMessage(ls: LanguageServer, message: string, typ: MessageType) =  
