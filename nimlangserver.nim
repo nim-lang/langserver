@@ -282,14 +282,6 @@ proc getProjectFile(fileUri: string, ls: LanguageServer): Future[string] {.async
     result = otherNsProject.get
   else:
     result = ls.getProjectFileAutoGuess(fileUri)
-  #   if result != fileUri:
-  #     if result notin ls.projectFiles:
-  #       ls.createOrRestartNimsuggest(result, fileUri)
-  #     #We have a project file, we need to test if it actually knows the file:
-  #     let ns = await ls.projectFiles[result]
-  #     let isKnown = await ns.isKnown(fileUri.uriToPath)
-  #     if not isKnown:
-  #       result = fileUri
     
   debug "getProjectFile", project = result, fileUri = fileUri
 
