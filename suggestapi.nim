@@ -364,7 +364,7 @@ proc createNimsuggest*(root: string,
     if input.readable:
       let line = await input.readLine
       if line == failedToken:
-        result.markFailed "Nimsuggest process crashed."
+        result.markFailed &"Nimsuggest process crashed. Nimsuggest path {nimsuggestPath}"
       else:
         result.port = line.parseInt
         debug "Started nimsuggest", port = result.port, root = root
@@ -501,5 +501,7 @@ proc `mod`*(nimsuggest: Nimsuggest, file: string, dirtyfile = ""): Future[seq[Su
 
 proc isKnown*(nimsuggest: Nimsuggest, filePath: string): Future[bool] {.async.} =
   let sug = await nimsuggest.known(filePath)
+  if sug.len == 0:
+    return false
   debug "isKnown", filePath = filePath, sug = sug[0].forth
   return sug.len > 0 and sug[0].forth == "true"
