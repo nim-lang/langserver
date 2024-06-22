@@ -100,6 +100,15 @@ type
     name: string
     nimDir: Option[string]
     nimblePath: Option[string]
+    entryPoints: seq[string] #when it's empty, means the nimble version doesnt dump it.
+
+
+proc getNimbleEntryPoints(dumpInfo: NimbleDumpInfo, nimbleProjectPath: string): seq[string] =
+  if dumpInfo.entryPoints.len > 0:
+    return dumpInfo.entryPoints.mapIt(nimbleProjectPath / it)
+  #Nimble doesnt include the entry points, returning the nimble project file as the entry point
+  let sourceDir = nimbleProjectPath / dumpInfo.srcDir
+  @[sourceDir / (dumpInfo.name & ".nim")]
 
 proc getVersionFromNimble(): string = 
   #We should static run nimble dump instead
@@ -166,7 +175,9 @@ proc getNimbleDumpInfo(ls: LanguageServer, nimbleFile: string): NimbleDumpInfo =
       result.nimDir = some line[(1 + line.find '"')..^2]
     if line.startsWith("nimblePath"):
       result.nimblePath = some line[(1 + line.find '"')..^2]
-  
+    if line.startsWith("entryPoints"):
+      result.entryPoints = line[(1 + line.find '"')..^2].split(',').mapIt(it.strip(chars = {' ', '"'}))
+      
   var nimbleFile = nimbleFile
   if nimbleFile == "" and result.nimblePath.isSome:
     nimbleFile = result.nimblePath.get
@@ -251,13 +262,28 @@ proc getProjectFile(fileUri: string, ls: LanguageServer): Future[string] {.async
     else:
       trace "getProjectFile does not match", uri = fileUri, matchedRegex = mapping.fileRegex
 
+  once: #once we refactor the project to chronos, we may move this code into init. Right now it hangs for some odd reason
+    let rootPath = ls.initializeParams.getRootPath
+    if rootPath != "":
+      let nimbleFiles = walkFiles(rootPath / "*.nimble").toSeq
+      if nimbleFiles.len > 0:
+        let nimbleFile = nimbleFiles[0]
+        let nimbleDumpInfo = ls.getNimbleDumpInfo(nimbleFile)
+        let entryPoints = nimbleDumpInfo.getNimbleEntryPoints(ls.initializeParams.getRootPath)
+        for entryPoint in entryPoints:
+          debug "Starting nimsuggest for entry point ", entry = entryPoint
+          if not ls.projectFiles.hasKey(entryPoint):
+            ls.createOrRestartNimsuggest(entryPoint)
+        # let ns = await ls.projectFiles[entryPoint]
+
   let otherNsProject = await ls.isKnownByAnyNimsuggest(fileUri)
   if otherNsProject.isSome:
     debug "File is known by nimsuggest", uri = fileUri, projectFile = otherNsProject.get
     result = otherNsProject.get
   else:
     result = ls.getProjectFileAutoGuess(fileUri)
-  debug "getProjectFile", project = result
+    
+  debug "getProjectFile", project = result, fileUri = fileUri
 
 proc showMessage(ls: LanguageServer, message: string, typ: MessageType) =  
   proc notify() =
@@ -387,7 +413,11 @@ proc initialize(p: tuple[ls: LanguageServer, pipeInput: AsyncInputStream], param
       result.capabilities.renameProvider = %* {
         "prepareProvider": true
       }
-  debug "Initialize completed."
+  debug "Initialize completed. Trying to start nimsuggest instances"
+  #If we are in a nimble project here, we try to start the entry points
+  
+
+  
 
 proc requiresDynamicRegistrationForDidChangeConfiguration(ls: LanguageServer): bool =
   ls.clientCapabilities.workspace.isSome and
@@ -807,6 +837,8 @@ proc warnIfUnknown(ls: LanguageServer, ns: Nimsuggest, uri: string, projectFile:
 
 proc didOpen(ls: LanguageServer, params: DidOpenTextDocumentParams):
     Future[void] {.async, gcsafe.} =
+
+  
   with params.textDocument:
     debug "New document opened for URI:", uri = uri
     let
@@ -1027,13 +1059,6 @@ proc status(ls: LanguageServer, params: NimLangServerStatusParams): Future[NimLa
       path: ns.nimsuggestPath,
       port: ns.port,
     )    
-    for openFile in ns.openFiles:
-      let openFilePath = openFile.uriToPath
-      let isKnown = await ns.isKnown(openFilePath)
-      nsStatus.openFiles.add openFilePath
-      if not isKnown:
-        nsStatus.unknownFiles.add openFilePath
-
     status.nimsuggestInstances.add nsStatus
   
   for openFile in ls.openFiles.keys:
