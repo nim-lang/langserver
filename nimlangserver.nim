@@ -280,19 +280,19 @@ proc getProjectFile(fileUri: string, ls: LanguageServer): Future[string] {.async
     else:
       trace "getProjectFile does not match", uri = fileUri, matchedRegex = mapping.fileRegex
 
-  once: #once we refactor the project to chronos, we may move this code into init. Right now it hangs for some odd reason
-    let rootPath = ls.initializeParams.getRootPath
-    if rootPath != "":
-      let nimbleFiles = walkFiles(rootPath / "*.nimble").toSeq
-      if nimbleFiles.len > 0:
-        let nimbleFile = nimbleFiles[0]
-        let nimbleDumpInfo = ls.getNimbleDumpInfo(nimbleFile)
-        ls.entryPoints = nimbleDumpInfo.getNimbleEntryPoints(ls.initializeParams.getRootPath)
-        # ls.showMessage(fmt "Found entry point {ls.entryPoints}?", MessageType.Info)
-        for entryPoint in ls.entryPoints:
-          debug "Starting nimsuggest for entry point ", entry = entryPoint
-          if not ls.projectFiles.hasKey(entryPoint):
-            ls.createOrRestartNimsuggest(entryPoint)
+  # once: #once we refactor the project to chronos, we may move this code into init. Right now it hangs for some odd reason
+    # let rootPath = ls.initializeParams.getRootPath
+    # if rootPath != "":
+    #   let nimbleFiles = walkFiles(rootPath / "*.nimble").toSeq
+    #   if nimbleFiles.len > 0:
+    #     let nimbleFile = nimbleFiles[0]
+    #     let nimbleDumpInfo = ls.getNimbleDumpInfo(nimbleFile)
+    #     ls.entryPoints = nimbleDumpInfo.getNimbleEntryPoints(ls.initializeParams.getRootPath)
+    #     # ls.showMessage(fmt "Found entry point {ls.entryPoints}?", MessageType.Info)
+    #     for entryPoint in ls.entryPoints:
+    #       debug "Starting nimsuggest for entry point ", entry = entryPoint
+    #       if not ls.projectFiles.hasKey(entryPoint):
+    #         ls.createOrRestartNimsuggest(entryPoint)
   
   result = ls.getProjectFileAutoGuess(fileUri)
   if result in ls.projectFiles:
