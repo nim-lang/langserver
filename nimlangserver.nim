@@ -298,7 +298,7 @@ proc getProjectFile(fileUri: string, ls: LanguageServer): Future[string] {.async
   if result in ls.projectFiles:
     let ns = await ls.projectFiles[result]
     let isKnown = await ns.isKnown(fileUri)
-    if not isKnown:
+    if ns.canHandleUnknown and not isKnown:
       debug "File is not known by nimsuggest", uri = fileUri, projectFile = result
       result = fileUri
   
@@ -827,7 +827,7 @@ proc warnIfUnknown(ls: LanguageServer, ns: Nimsuggest, uri: string, projectFile:
      Future[void] {.async, gcsafe.} =
   let path = uri.uriToPath
   let isFileKnown = await ns.isKnown(path)
-  if not isFileKnown and nsUnknownFile notin ns.capabilities:
+  if not isFileKnown and not ns.canHandleUnknown:
       ls.showMessage(fmt """{path} is not compiled as part of project {projectFile}.
   In orde to get the IDE features working you must either configure nim.projectMapping or import the module.""",
                     MessageType.Warning)
@@ -927,16 +927,17 @@ proc didSave(ls: LanguageServer, params: DidSaveTextDocumentParams):
   #We first get the project file for the current file so we can test if this file recently imported another project
   let thisProjectFile = await getProjectFile(uri.uriToPath, ls)
   let ns = await ls.projectFiles[thisProjectFile]
-  for projectFile in ls.projectFiles.keys:
-    if projectFile in ls.entryPoints: continue
-    let isKnown = await ns.isKnown(projectFile)
-    if isKnown: 
-      toStop[projectFile] = await ls.projectFiles[projectFile]
-  
-  for projectFile, ns in toStop:
-    ns.stop()
-    ls.projectFiles.del projectFile
-    ls.showMessage &"File {projectFile} is known by another nimsuggest instance, stopping the current one", MessageType.Warning
+  if ns.canHandleUnknown:
+    for projectFile in ls.projectFiles.keys:
+      if projectFile in ls.entryPoints: continue
+      let isKnown = await ns.isKnown(projectFile)
+      if isKnown: 
+        toStop[projectFile] = await ls.projectFiles[projectFile]
+    
+    for projectFile, ns in toStop:
+      ns.stop()
+      ls.projectFiles.del projectFile
+      ls.showMessage &"File {projectFile} is known by another nimsuggest instance, stopping the current one", MessageType.Warning
 
 proc didClose(ls: LanguageServer, params: DidCloseTextDocumentParams):
     Future[void] {.async, gcsafe.} =
