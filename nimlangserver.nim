@@ -88,6 +88,7 @@ type
     storageDir*: string
     cmdLineClientProcessId: Option[int]
     nimDumpCache: Table[string, NimbleDumpInfo] #path to NimbleDumpInfo
+    entryPoints: seq[string]
 
   Certainty = enum
     None,
@@ -240,51 +241,6 @@ proc getRootPath(ip: InitializeParams): string =
 
 proc createOrRestartNimsuggest(ls: LanguageServer, projectFile: string, uri = ""): void {.gcsafe.}
 
-proc isKnownByAnyNimsuggest(ls: LanguageServer, filePath: string): Future[Option[string]] {.async.} =
-  for projectFile in ls.projectFiles.keys:
-    let ns = await ls.projectFiles[projectFile]
-    let isKnown = await ns.isKnown(filePath)
-    if isKnown:
-      return some projectFile
-  none(string)
-
-proc getProjectFile(fileUri: string, ls: LanguageServer): Future[string] {.async.} =
-  let
-    rootPath = AbsoluteDir(ls.initializeParams.getRootPath)
-    pathRelativeToRoot = string(AbsoluteFile(fileUri).relativeTo(rootPath))
-    mappings = ls.getWorkspaceConfiguration.await().projectMapping.get(@[])
-  
-  for mapping in mappings:
-    if find(cstring(pathRelativeToRoot), re(mapping.fileRegex), 0, pathRelativeToRoot.len) != -1:
-      result = string(rootPath) / mapping.projectFile
-      trace "getProjectFile", project = result, uri = fileUri, matchedRegex = mapping.fileRegex
-      return result
-    else:
-      trace "getProjectFile does not match", uri = fileUri, matchedRegex = mapping.fileRegex
-
-  once: #once we refactor the project to chronos, we may move this code into init. Right now it hangs for some odd reason
-    let rootPath = ls.initializeParams.getRootPath
-    if rootPath != "":
-      let nimbleFiles = walkFiles(rootPath / "*.nimble").toSeq
-      if nimbleFiles.len > 0:
-        let nimbleFile = nimbleFiles[0]
-        let nimbleDumpInfo = ls.getNimbleDumpInfo(nimbleFile)
-        let entryPoints = nimbleDumpInfo.getNimbleEntryPoints(ls.initializeParams.getRootPath)
-        for entryPoint in entryPoints:
-          debug "Starting nimsuggest for entry point ", entry = entryPoint
-          if not ls.projectFiles.hasKey(entryPoint):
-            ls.createOrRestartNimsuggest(entryPoint)
-        # let ns = await ls.projectFiles[entryPoint]
-
-  let otherNsProject = await ls.isKnownByAnyNimsuggest(fileUri)
-  if otherNsProject.isSome:
-    debug "File is known by nimsuggest", uri = fileUri, projectFile = otherNsProject.get
-    result = otherNsProject.get
-  else:
-    result = ls.getProjectFileAutoGuess(fileUri)
-    
-  debug "getProjectFile", project = result, fileUri = fileUri
-
 proc showMessage(ls: LanguageServer, message: string, typ: MessageType) =  
   proc notify() =
     ls.connection.notify(
@@ -309,6 +265,47 @@ proc showMessage(ls: LanguageServer, message: string, typ: MessageType) =
     if typ == MessageType.Error: 
       notify()
   else: discard
+
+proc getProjectFile(fileUri: string, ls: LanguageServer): Future[string] {.async.} =
+  let
+    rootPath = AbsoluteDir(ls.initializeParams.getRootPath)
+    pathRelativeToRoot = string(AbsoluteFile(fileUri).relativeTo(rootPath))
+    mappings = ls.getWorkspaceConfiguration.await().projectMapping.get(@[])
+  
+  for mapping in mappings:
+    if find(cstring(pathRelativeToRoot), re(mapping.fileRegex), 0, pathRelativeToRoot.len) != -1:
+      result = string(rootPath) / mapping.projectFile
+      trace "getProjectFile", project = result, uri = fileUri, matchedRegex = mapping.fileRegex
+      return result
+    else:
+      trace "getProjectFile does not match", uri = fileUri, matchedRegex = mapping.fileRegex
+
+  once: #once we refactor the project to chronos, we may move this code into init. Right now it hangs for some odd reason
+    let rootPath = ls.initializeParams.getRootPath
+    if rootPath != "":
+      let nimbleFiles = walkFiles(rootPath / "*.nimble").toSeq
+      if nimbleFiles.len > 0:
+        let nimbleFile = nimbleFiles[0]
+        let nimbleDumpInfo = ls.getNimbleDumpInfo(nimbleFile)
+        ls.entryPoints = nimbleDumpInfo.getNimbleEntryPoints(ls.initializeParams.getRootPath)
+        # ls.showMessage(fmt "Found entry point {ls.entryPoints}?", MessageType.Info)
+        for entryPoint in ls.entryPoints:
+          debug "Starting nimsuggest for entry point ", entry = entryPoint
+          if not ls.projectFiles.hasKey(entryPoint):
+            ls.createOrRestartNimsuggest(entryPoint)
+  
+  result = ls.getProjectFileAutoGuess(fileUri)
+  if result in ls.projectFiles:
+    let ns = await ls.projectFiles[result]
+    let isKnown = await ns.isKnown(fileUri)
+    if not isKnown:
+      debug "File is not known by nimsuggest", uri = fileUri, projectFile = result
+      result = fileUri
+  
+  if result == "":
+    result = fileUri
+
+  debug "getProjectFile", project = result, fileUri = fileUri
 
 # Fixes callback clobbering in core implementation
 proc `or`*[T, Y](fut1: Future[T], fut2: Future[Y]): Future[void] =
@@ -925,6 +922,21 @@ proc didSave(ls: LanguageServer, params: DidSaveTextDocumentParams):
   if ls.getWorkspaceConfiguration().await().checkOnSave.get(true):
     debug "Checking project", uri = uri
     traceAsyncErrors ls.checkProject(uri)
+  
+  var toStop = newTable[string, Nimsuggest]()
+  #We first get the project file for the current file so we can test if this file recently imported another project
+  let thisProjectFile = await getProjectFile(uri.uriToPath, ls)
+  let ns = await ls.projectFiles[thisProjectFile]
+  for projectFile in ls.projectFiles.keys:
+    if projectFile in ls.entryPoints: continue
+    let isKnown = await ns.isKnown(projectFile)
+    if isKnown: 
+      toStop[projectFile] = await ls.projectFiles[projectFile]
+  
+  for projectFile, ns in toStop:
+    ns.stop()
+    ls.projectFiles.del projectFile
+    ls.showMessage &"File {projectFile} is known by another nimsuggest instance, stopping the current one", MessageType.Warning
 
 proc didClose(ls: LanguageServer, params: DidCloseTextDocumentParams):
     Future[void] {.async, gcsafe.} =
