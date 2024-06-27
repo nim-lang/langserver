@@ -137,6 +137,11 @@ suite "Suggest API selection":
   client.registerNotification(
     "window/showMessage",
     partial(testHandler[ShowMessageParams], showMessage))
+  
+  let statusUpdate = FutureStream[NimLangServerStatus]()
+  client.registerNotification(
+    "extension/statusUpdate",
+    partial(testHandler[NimLangServerStatus], statusUpdate))
 
   let initParams = InitializeParams %* {
       "processId": %getCurrentProcessId(),
@@ -199,6 +204,11 @@ suite "LSP features":
   client.registerNotification(
     "window/showMessage",
     partial(testHandler[ShowMessageParams], showMessage))
+  
+  let statusChanged = FutureStream[NimLangServerStatus]()
+  client.registerNotification(
+    "extension/statusUpdate",
+    partial(testHandler[NimLangServerStatus], statusChanged))
 
 
   let configInit = FutureStream[ConfigurationParams]()
@@ -438,6 +448,7 @@ suite "Null configuration:":
 
   client.registerNotification("textDocument/publishDiagnostics", ignore)
   client.registerNotification("window/showMessage", ignore)
+  client.registerNotification("extension/statusUpdate", ignore)
 
   let initParams = InitializeParams %* {
       "processId": %getCurrentProcessId(),
@@ -492,6 +503,11 @@ suite "LSP expand":
   client.registerNotification(
     "window/showMessage",
     partial(testHandler[ShowMessageParams], showMessage))
+  
+  let statusChanged = FutureStream[NimLangServerStatus]()
+  client.registerNotification(
+    "extension/statusUpdate",
+    partial(testHandler[NimLangServerStatus], statusChanged))
 
 
   let configInit = FutureStream[ConfigurationParams]()
