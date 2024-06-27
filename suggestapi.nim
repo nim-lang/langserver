@@ -96,6 +96,8 @@ type
     nimSuggestPath*: string
     version*: string
 
+func canHandleUnknown*(ns: Nimsuggest): bool =
+  nsUnknownFile in ns.capabilities
 
 template benchmark(benchmarkName: string, code: untyped) =
   block:
