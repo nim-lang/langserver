@@ -268,6 +268,12 @@ proc showMessage(ls: LanguageServer, message: string, typ: MessageType) =
       notify()
   else: discard
 
+proc getLspStatus(ls: LanguageServer): NimLangServerStatus {.gcsafe.}
+
+proc sendStatusChanged*(ls: LanguageServer)  =
+  let status = ls.getLspStatus()
+  ls.connection.notify("extension/statusUpdate", %* status)
+
 proc getProjectFile(fileUri: string, ls: LanguageServer): Future[string] {.async.} =
   let
     rootPath = AbsoluteDir(ls.initializeParams.getRootPath)
@@ -295,7 +301,7 @@ proc getProjectFile(fileUri: string, ls: LanguageServer): Future[string] {.async
           debug "Starting nimsuggest for entry point ", entry = entryPoint
           if entryPoint notin ls.projectFiles:
             ls.createOrRestartNimsuggest(entryPoint)
-  
+
   result = ls.getProjectFileAutoGuess(fileUri)
   if result in ls.projectFiles:
     let ns = await ls.projectFiles[result]
@@ -578,6 +584,7 @@ proc getNimsuggest(ls: LanguageServer, uri: string): Future[Nimsuggest] {.async.
   let projectFile = await ls.openFiles[uri].projectFile
   if not ls.projectFiles.hasKey(projectFile):
     ls.createOrRestartNimsuggest(projectFile, uri)
+
   ls.lastNimsuggest = ls.projectFiles[projectFile]
   return await ls.projectFiles[projectFile]
 
@@ -783,6 +790,7 @@ proc createOrRestartNimsuggest(ls: LanguageServer, projectFile: string, uri = ""
       ls.showMessage(fmt "Restarting nimsuggest for file {projectFile} due to timeout.",
                      MessageType.Warning)
       ls.createOrRestartNimsuggest(projectFile, uri)
+      ls.sendStatusChanged()
     errorCallback = proc (ns: Nimsuggest) {.gcsafe.} =
       warn "Server stopped.", projectFile = projectFile
       if configuration.autoRestart.get(true) and ns.successfullCall:
@@ -790,6 +798,8 @@ proc createOrRestartNimsuggest(ls: LanguageServer, projectFile: string, uri = ""
       else:
         ls.showMessage(fmt "Server failed with {ns.errorMessage}.",
                        MessageType.Error)
+      ls.sendStatusChanged()
+
 
     nimsuggestFut = createNimsuggest(projectFile, nimsuggestPath, version,
                                      timeout, restartCallback, errorCallback, workingDir, configuration.logNimsuggest.get(false),
@@ -819,6 +829,8 @@ proc createOrRestartNimsuggest(ls: LanguageServer, projectFile: string, uri = ""
       traceAsyncErrors ls.checkProject(uri)
       fut.read().openFiles.incl uri
     ls.progress(token, "end")
+    ls.sendStatusChanged()
+
 
 proc restartAllNimsuggestInstances(ls: LanguageServer) =
   debug "Restarting all nimsuggest instances"
@@ -939,7 +951,8 @@ proc didSave(ls: LanguageServer, params: DidSaveTextDocumentParams):
     for projectFile, ns in toStop:
       ns.stop()
       ls.projectFiles.del projectFile
-      ls.showMessage &"File {projectFile} is known by another nimsuggest instance, stopping the current one", MessageType.Warning
+    if toStop.len > 0:
+      ls.sendStatusChanged()
 
 proc didClose(ls: LanguageServer, params: DidCloseTextDocumentParams):
     Future[void] {.async, gcsafe.} =
@@ -1061,26 +1074,28 @@ proc expand(ls: LanguageServer, params: ExpandTextDocumentPositionParams):
       result = ExpandResult(content: expand[0].doc.fixIdentation(character),
                             range: expand[0].createRangeFromSuggest())
 
-proc status(ls: LanguageServer, params: NimLangServerStatusParams): Future[NimLangServerStatus] {.async.} = 
-  debug "Received status request"
-  var status = NimLangServerStatus()
-  status.version = LSPVersion
-  for projectFile in ls.projectFiles.keys:
-    let ns = await ls.projectFiles[projectFile]
-    var nsStatus = NimSuggestStatus(
-      projectFile: projectFile,
-      capabilities: ns.capabilities.toSeq,
-      version: ns.version,
-      path: ns.nimsuggestPath,
-      port: ns.port,
-    )    
-    status.nimsuggestInstances.add nsStatus
+proc getLspStatus(ls: LanguageServer): NimLangServerStatus = 
+  result.version = LSPVersion
+  for projectFile, futNs in ls.projectFiles:
+    let futNs = ls.projectFiles[projectFile]
+    if futNs.finished:
+      var ns: NimSuggest = futNs.read
+      var nsStatus = NimSuggestStatus(
+        projectFile: projectFile,
+        capabilities: ns.capabilities.toSeq,
+        version: ns.version,
+        path: ns.nimsuggestPath,
+        port: ns.port,
+      )    
+      result.nimsuggestInstances.add nsStatus
   
   for openFile in ls.openFiles.keys:
     let openFilePath = openFile.uriToPath
-    status.openFiles.add openFilePath
-  
-  status
+    result.openFiles.add openFilePath
+
+proc status(ls: LanguageServer, params: NimLangServerStatusParams): Future[NimLangServerStatus] {.async.} = 
+  debug "Received status request"
+  ls.getLspStatus()
 
 proc typeDefinition(ls: LanguageServer, params: TextDocumentPositionParams, id: int):
     Future[seq[Location]] {.async.} =
