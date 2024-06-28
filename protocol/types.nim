@@ -986,10 +986,10 @@ type
     openFiles*: seq[string]
     unknownFiles*: seq[string]
   
-  NimLangServerStatus* = ref object
+  NimLangServerStatus* = object
     version*: string
     nimsuggestInstances*: seq[NimSuggestStatus]
     openFiles*: seq[string]
 
-  NimLangServerStatusParams* = ref object
+  NimLangServerStatusParams* = object
     
