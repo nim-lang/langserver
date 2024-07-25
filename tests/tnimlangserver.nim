@@ -1,5 +1,5 @@
 import
-  ../nimlangserver,
+  ../[ls, routes, nimlangserver],
   ../protocol/types,
   ../utils,
   faststreams/async_backend,
