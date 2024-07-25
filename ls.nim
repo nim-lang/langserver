@@ -108,6 +108,8 @@ type
     nimDir*: Option[string]
     nimblePath*: Option[string]
     entryPoints*: seq[string] #when it's empty, means the nimble version doesnt dump it.
+  
+  OnExitCallback* = proc (): Future[void] {.gcsafe.} #To be called when the server is shutting down 
 
 macro `%*`*(t: untyped, inputStream: untyped): untyped =
   result = newCall(bindSym("to", brOpen),
@@ -422,7 +424,6 @@ proc uriToStash*(ls: LanguageServer, uri: string): string =
     uriStorageLocation(ls, uri)
   else:
     ""
-
 
 proc range*(startLine, startCharacter, endLine, endCharacter: int): Range =
   return Range %* {

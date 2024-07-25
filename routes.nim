@@ -1,22 +1,20 @@
-import macros, strformat, faststreams/async_backend,
-  faststreams/asynctools_adapters, faststreams/inputs, faststreams/outputs,
-  json_rpc/streamconnection, json_rpc/server, os, sugar, sequtils, hashes, osproc,
-  suggestapi, protocol/enums, protocol/types, with, tables, strutils, sets,
-  ./utils, ./pipes, chronicles, std/re, uri, "$nim/compiler/pathutils",
+import macros, strformat, 
+  faststreams/async_backend, faststreams/asynctools_adapters, faststreams/inputs,
+  json_rpc/streamconnection, json_rpc/server, os, sugar, sequtils, hashes,
+  suggestapi, protocol/enums, protocol/types, with, tables, strutils,
+  ./utils, chronicles,
   asyncprocmonitor, std/strscans, json_serialization, serialization/formats,
   std/json, std/parseutils, ls
 
-when defined(posix):
-  import posix
 
 #routes
-proc initialize*(p: tuple[ls: LanguageServer, pipeInput: AsyncInputStream], params: InitializeParams):
+proc initialize*(p: tuple[ls: LanguageServer, onExit: OnExitCallback], params: InitializeParams):
     Future[InitializeResult] {.async.} =
 
   proc onClientProcessExitAsync(): Future[void] {.async.} =
     debug "onClientProcessExitAsync"
     await p.ls.stopNimsuggestProcesses
-    p.pipeInput.close()
+    await p.onExit()
 
   proc onClientProcessExit(fd: AsyncFD): bool =
     debug "onClientProcessExit"
@@ -572,14 +570,14 @@ proc shutdown*(ls: LanguageServer, input: JsonNode): Future[RpcResult] {.async, 
   result = some(StringOfJson("null"))
   trace "Shutdown complete"
 
-proc exit*(p: tuple[ls: LanguageServer, pipeInput: AsyncInputStream], _: JsonNode):
+proc exit*(p: tuple[ls: LanguageServer, onExit: OnExitCallback], _: JsonNode):
     Future[RpcResult] {.async, gcsafe, raises: [Defect, CatchableError, Exception].} =
   if not p.ls.isShutdown:
     debug "Received an exit request without prior shutdown request"
     await p.ls.stopNimsuggestProcesses()
   debug "Quitting process"
   result = none[StringOfJson]()
-  p.pipeInput.close()
+  await p.onExit()
 
 #Notifications
 proc initialized*(ls: LanguageServer, _: JsonNode):

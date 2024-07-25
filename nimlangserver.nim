@@ -51,7 +51,10 @@ proc registerHandlers*(connection: StreamConnection,
     cmdLineClientProcessId: cmdLineParams.clientProcessId)
   result = ls
 
-  connection.register("initialize", partial(initialize, (ls: ls, pipeInput: pipeInput)))
+  let onExit: OnExitCallback = proc () {.async.} = 
+    pipeInput.close()
+
+  connection.register("initialize", partial(initialize, (ls: ls, onExit: onExit)))
   connection.register("textDocument/completion", partial(completion, ls))
   connection.register("textDocument/definition", partial(definition, ls))
   connection.register("textDocument/declaration", partial(declaration, ls))
@@ -70,7 +73,7 @@ proc registerHandlers*(connection: StreamConnection,
   connection.register("extension/macroExpand", partial(expand, ls))
   connection.register("extension/status", partial(status, ls))
   connection.register("shutdown", partial(shutdown, ls))
-  connection.register("exit", partial(exit, (ls: ls, pipeInput: pipeInput)))
+  connection.register("exit", partial(exit, (ls: ls, onExit: onExit)))
 
   connection.registerNotification("$/cancelRequest", partial(cancelRequest, ls))
   connection.registerNotification("initialized", partial(initialized, ls))
