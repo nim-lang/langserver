@@ -40,9 +40,19 @@ proc registerHandlers*(connection: StreamConnection,
                        pipeInput: AsyncInputStream,
                        storageDir: string,
                        cmdLineParams: CommandLineParams): LanguageServer =
+  let onExit: OnExitCallback = proc () {.async.} = 
+    pipeInput.close()
+  
+  let notifyAction: NotifyAction = proc(name: string, params: JsonNode) =
+    connection.notify(name, params)
+
+  let callAction: CallAction = proc(name: string, params: JsonNode): Future[JsonNode] =
+    connection.call(name, params)
+
   let ls = LanguageServer(
-    connection: connection,
     workspaceConfiguration: Future[JsonNode](),
+    notify: notifyAction,
+    call: callAction,
     projectFiles: initTable[string, Future[Nimsuggest]](),
     cancelFutures: initTable[int, Future[void]](),
     filesWithDiags: initHashSet[string](),
@@ -51,8 +61,6 @@ proc registerHandlers*(connection: StreamConnection,
     cmdLineClientProcessId: cmdLineParams.clientProcessId)
   result = ls
 
-  let onExit: OnExitCallback = proc () {.async.} = 
-    pipeInput.close()
 
   connection.register("initialize", partial(initialize, (ls: ls, onExit: onExit)))
   connection.register("textDocument/completion", partial(completion, ls))

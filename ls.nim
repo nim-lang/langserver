@@ -1,9 +1,8 @@
 import macros, strformat, faststreams/async_backend,
-  faststreams/asynctools_adapters, faststreams/inputs,
-  json_rpc/streamconnection, json_rpc/server, os, sugar, sequtils, hashes, osproc,
+  faststreams/asynctools_adapters, faststreams/inputs, json_rpc/server, os, sugar, sequtils, hashes, osproc,
   suggestapi, protocol/enums, protocol/types, with, tables, strutils, sets,
   ./utils, chronicles, std/re, uri, "$nim/compiler/pathutils",
-  json_serialization, serialization/formats, std/json
+  json_serialization, serialization/formats, std/json, std/json
 
 
 proc getVersionFromNimble(): string = 
@@ -29,6 +28,7 @@ type
   NlsWorkingDirectoryMaping* = ref object of RootObj
     projectFile*: string
     directory*: string
+
 
   NlsInlayTypeHintsConfig* = ref object of RootObj
     enable*: Option[bool]
@@ -79,7 +79,8 @@ type
   LanguageServer* = ref object
     clientCapabilities*: ClientCapabilities
     initializeParams*: InitializeParams
-    connection*: StreamConnection #TODO remove this dep from here
+    notify*: NotifyAction
+    call*: CallAction
     projectFiles*: Table[string, Future[Nimsuggest]]
     openFiles*: Table[string, NlsFileInfo]
     cancelFutures*: Table[int, Future[void]]
@@ -110,6 +111,8 @@ type
     entryPoints*: seq[string] #when it's empty, means the nimble version doesnt dump it.
   
   OnExitCallback* = proc (): Future[void] {.gcsafe.} #To be called when the server is shutting down 
+  NotifyAction* = proc (name: string, params: JsonNode) {. gcsafe.} #Send a notification to the client
+  CallAction* = proc (name: string, params: JsonNode): Future[JsonNode] {. gcsafe.} #Send a request to the client
 
 macro `%*`*(t: untyped, inputStream: untyped): untyped =
   result = newCall(bindSym("to", brOpen),
@@ -198,7 +201,7 @@ proc getWorkspaceConfiguration*(ls: LanguageServer): Future[NlsConfig] {.async.}
 
 proc showMessage*(ls: LanguageServer, message: string, typ: MessageType) =  
   proc notify() =
-    ls.connection.notify(
+    ls.notify(
       "window/showMessage",
       %* {
          "type": typ.int,
@@ -243,7 +246,7 @@ proc getLspStatus*(ls: LanguageServer): NimLangServerStatus =
 
 proc sendStatusChanged*(ls: LanguageServer)  =
   let status = ls.getLspStatus()
-  ls.connection.notify("extension/statusUpdate", %* status)
+  ls.notify("extension/statusUpdate", %* status)
 
 
 proc requiresDynamicRegistrationForDidChangeConfiguration(ls: LanguageServer): bool =
@@ -388,7 +391,7 @@ proc progressSupported(ls: LanguageServer): bool =
 
 proc progress*(ls: LanguageServer; token, kind: string, title = "") =
   if ls.progressSupported:
-    ls.connection.notify(
+    ls.notify(
       "$/progress",
       %* {
            "token": token,
@@ -400,7 +403,7 @@ proc progress*(ls: LanguageServer; token, kind: string, title = "") =
 
 proc workDoneProgressCreate*(ls: LanguageServer, token: string) =
   if ls.progressSupported:
-    discard ls.connection.call("window/workDoneProgress/create",
+    discard ls.call("window/workDoneProgress/create",
                                %ProgressParams(token: token))
 
 proc cancelPendingFileChecks*(ls: LanguageServer, nimsuggest: Nimsuggest) =
@@ -466,7 +469,7 @@ proc sendDiagnostics*(ls: LanguageServer, diagnostics: seq[Suggest], path: strin
     "uri": pathToUri(path),
     "diagnostics": diagnostics.map(toDiagnostic)
   }
-  ls.connection.notify("textDocument/publishDiagnostics", %params)
+  ls.notify("textDocument/publishDiagnostics", %params)
 
   if diagnostics.len != 0:
     ls.filesWithDiags.incl path
@@ -511,7 +514,7 @@ proc checkProject*(ls: LanguageServer, uri: string): Future[void] {.async, gcsaf
         "uri": pathToUri(path),
         "diagnostics": @[]
       }
-      ls.connection.notify("textDocument/publishDiagnostics", %params)
+      ls.notify("textDocument/publishDiagnostics", %params)
   ls.filesWithDiags = filesWithDiags
   nimsuggest.checkProjectInProgress = false
 
@@ -594,7 +597,7 @@ proc maybeRegisterCapabilityDidChangeConfiguration*(ls: LanguageServer) =
         `method`: "workspace/didChangeConfiguration"
       )])
     )
-    ls.didChangeConfigurationRegistrationRequest = ls.connection.call(
+    ls.didChangeConfigurationRegistrationRequest = ls.call(
       "client/registerCapability",
       %registrationParams)
     ls.didChangeConfigurationRegistrationRequest.addCallback() do (res: Future[JsonNode]):
@@ -610,7 +613,7 @@ proc handleConfigurationChanges*(ls: LanguageServer, oldConfiguration, newConfig
     if not inlayExceptionHintsConfigurationEquals(oldConfiguration, newConfiguration):
       ls.restartAllNimsuggestInstances
     debug "Sending inlayHint refresh"
-    ls.inlayHintsRefreshRequest = ls.connection.call("workspace/inlayHint/refresh",
+    ls.inlayHintsRefreshRequest = ls.call("workspace/inlayHint/refresh",
                                                           newJNull())
 
 proc maybeRequestConfigurationFromClient*(ls: LanguageServer) =
@@ -621,7 +624,7 @@ proc maybeRequestConfigurationFromClient*(ls: LanguageServer) =
     ls.prevWorkspaceConfiguration = ls.workspaceConfiguration
 
     ls.workspaceConfiguration =
-      ls.connection.call("workspace/configuration",
+      ls.call("workspace/configuration",
                          %configurationParams)
     ls.workspaceConfiguration.addCallback() do (futConfiguration: Future[JsonNode]):
       if futConfiguration.error.isNil:
