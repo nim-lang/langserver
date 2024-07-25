@@ -1,9 +1,9 @@
 import macros, strformat, 
-  faststreams/async_backend, faststreams/asynctools_adapters, faststreams/inputs,
-  json_rpc/streamconnection, json_rpc/server, os, sugar, sequtils, hashes,
+  faststreams/async_backend,
+  json_rpc/streamconnection, json_rpc/server, os, sugar, sequtils,
   suggestapi, protocol/enums, protocol/types, with, tables, strutils,
   ./utils, chronicles,
-  asyncprocmonitor, std/strscans, json_serialization, serialization/formats,
+  asyncprocmonitor, std/strscans, json_serialization,
   std/json, std/parseutils, ls
 
 

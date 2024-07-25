@@ -1,8 +1,9 @@
-import macros, strformat, faststreams/async_backend,
-  faststreams/asynctools_adapters, faststreams/inputs, json_rpc/server, os, sugar, sequtils, hashes, osproc,
+import macros, strformat, 
+  faststreams/async_backend,
+  os, sugar, sequtils, hashes, osproc,
   suggestapi, protocol/enums, protocol/types, with, tables, strutils, sets,
   ./utils, chronicles, std/re, uri, "$nim/compiler/pathutils",
-  json_serialization, serialization/formats, std/json, std/json
+  json_serialization, std/json
 
 
 proc getVersionFromNimble(): string = 
