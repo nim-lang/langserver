@@ -283,8 +283,9 @@ proc getProjectFile(fileUri: string, ls: LanguageServer): Future[string] {.async
   for mapping in mappings:
     if find(cstring(pathRelativeToRoot), re(mapping.fileRegex), 0, pathRelativeToRoot.len) != -1:
       result = string(rootPath) / mapping.projectFile
-      trace "getProjectFile", project = result, uri = fileUri, matchedRegex = mapping.fileRegex
-      return result
+      if fileExists(result):
+        trace "getProjectFile", project = result, uri = fileUri, matchedRegex = mapping.fileRegex
+        return result
     else:
       trace "getProjectFile does not match", uri = fileUri, matchedRegex = mapping.fileRegex
 
