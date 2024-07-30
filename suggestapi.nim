@@ -9,16 +9,11 @@ import osproc,
   sequtils,
   streams,
   protocol/enums,
-  faststreams/asynctools_adapters,
-  faststreams/async_backend,
-  faststreams/inputs,
-  faststreams/textio,
   asyncdispatch,
-  asynctools/asyncpipe,
-  ./pipes,
   ./utils,
   chronicles,
-  protocol/types
+  protocol/types,
+  std/options
 
 const REQUEST_TIMEOUT* = 120000
 const HighestSupportedNimSuggestProtocolVersion = 4
@@ -76,7 +71,7 @@ type
     allowInsert*: bool
     tooltip*: string
 
-  Nimsuggest* = ref object
+  NimsuggestImpl* = object
     failed*: bool
     errorMessage*: string
     checkProjectInProgress*: bool
@@ -95,6 +90,8 @@ type
     capabilities*: set[NimSuggestCapability]
     nimSuggestPath*: string
     version*: string
+  
+  NimSuggest* = ref NimsuggestImpl
 
 func canHandleUnknown*(ns: Nimsuggest): bool =
   nsUnknownFile in ns.capabilities
@@ -227,14 +224,14 @@ proc markFailed(self: Nimsuggest, errMessage: string) =
   if self.errorCallback != nil:
     self.errorCallback(self)
 
-proc readPort(param: tuple[pipe: AsyncPipe, process: Process]) {.thread.} =
+proc readPort(param: tuple[ns: ptr NimSuggestImpl, process: Process]) {.thread.} =
   try:
     var line = param.process.outputStream.readLine & "\n"
-    writeToPipe(param.pipe, line[0].addr, line.len)
+    param.ns.port = line.strip.parseInt
   except IOError:
     error "Failed to read nimsuggest port"
     var msg = failedToken & "\n"
-    writeToPipe(param.pipe, msg[0].addr, msg.len)
+    param.ns.port = -1
 
 proc logStderr(param: tuple[root: string, process: Process]) {.thread.} =
   try:
@@ -308,6 +305,15 @@ proc getNimsuggestCapabilities*(nimsuggestPath: string):
       if cap.isSome:
         result.incl(cap.get)
 
+proc waitUntilPortIsRead(ns: NimSuggest): Future[void] {.async.} =
+  while ns.port == 0:
+    await sleepAsync(10)
+
+  if ns.port == -1:
+    ns.markFailed "Failed to start nimsuggest"
+  else:
+    debug "Started nimsuggest", port = ns.port, root = ns.root
+
 proc createNimsuggest*(root: string,
                        nimsuggestPath: string,
                        version: string,
@@ -318,10 +324,8 @@ proc createNimsuggest*(root: string,
                        enableLog: bool = false,
                        enableExceptionInlayHints: bool = false): Future[Nimsuggest] {.async, gcsafe.} =
   var
-    pipe = createPipe(register = true, nonBlockingWrite = false)
-    thread: Thread[tuple[pipe: AsyncPipe, process: Process]]
+    thread: Thread[tuple[ns: ptr NimSuggestImpl, process: Process]]
     stderrThread: Thread[tuple[root: string, process: Process]]
-    input = pipe.asyncPipeInput
 
   info "Starting nimsuggest", root = root, timeout = timeout, path = nimsuggestPath, 
     workingDir = workingDir
@@ -358,18 +362,12 @@ proc createNimsuggest*(root: string,
                                   options = {poUsePath})
 
     # all this is needed to avoid the need to block on the main thread.
-    createThread(thread, readPort, (pipe: pipe, process: result.process))
+    createThread(thread, readPort, (ns: cast[ptr NimSuggestImpl](result), process: result.process))
 
     # copy stderr of log
     createThread(stderrThread, logStderr, (root: root, process: result.process))
+    await waitUntilPortIsRead(result)   
 
-    if input.readable:
-      let line = await input.readLine
-      if line == failedToken:
-        result.markFailed &"Nimsuggest process crashed. Nimsuggest path {nimsuggestPath}"
-      else:
-        result.port = line.parseInt
-        debug "Started nimsuggest", port = result.port, root = root
   else:
     error "Unable to start nimsuggest. Unable to find binary on the $PATH", nimsuggestPath = nimsuggestPath
     result.markFailed fmt "Unable to start nimsuggest. `{nimsuggestPath}` is not present on the PATH"
