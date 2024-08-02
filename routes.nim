@@ -609,6 +609,9 @@ proc didChange*(ls: LanguageServer, params: DidChangeTextDocumentParams):
 
       ls.openFiles[uri].fingerTable = @[]
       ls.openFiles[uri].changed = true
+      if contentChanges.len <= 0:
+        file.close()
+        return
       for line in contentChanges[0].text.splitLines:
         ls.openFiles[uri].fingerTable.add line.createUTFMapping()
         file.writeLine line
