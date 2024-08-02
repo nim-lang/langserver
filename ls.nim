@@ -1,4 +1,4 @@
-import macros, strformat, 
+import macros, strformat,
   faststreams/async_backend,
   os, sugar, sequtils, hashes, osproc,
   suggestapi, protocol/enums, protocol/types, with, tables, strutils, sets,
@@ -6,7 +6,7 @@ import macros, strformat,
   json_serialization, std/json
 
 
-proc getVersionFromNimble(): string = 
+proc getVersionFromNimble(): string =
   #We should static run nimble dump instead
   const content = staticRead("nimlangserver.nimble")
   for v in content.splitLines:
@@ -14,7 +14,7 @@ proc getVersionFromNimble(): string =
       return v.split("=")[^1].strip(chars = {' ', '"'})
   return "unknown"
 
-const 
+const
   RESTART_COMMAND* = "nimlangserver.restart"
   RECOMPILE_COMMAND* = "nimlangserver.recompile"
   CHECK_PROJECT_COMMAND* = "nimlangserver.checkProject"
@@ -103,15 +103,15 @@ type
     Folder,
     Cfg,
     Nimble
-  
+
   NimbleDumpInfo* = object
     srcDir*: string
     name*: string
     nimDir*: Option[string]
     nimblePath*: Option[string]
     entryPoints*: seq[string] #when it's empty, means the nimble version doesnt dump it.
-  
-  OnExitCallback* = proc (): Future[void] {.gcsafe.} #To be called when the server is shutting down 
+
+  OnExitCallback* = proc (): Future[void] {.gcsafe.} #To be called when the server is shutting down
   NotifyAction* = proc (name: string, params: JsonNode) {. gcsafe.} #Send a notification to the client
   CallAction* = proc (name: string, params: JsonNode): Future[JsonNode] {. gcsafe.} #Send a request to the client
 
@@ -162,7 +162,7 @@ func parameterHintsEnabled*(cnf: NlsConfig): bool =
 func inlayHintsEnabled*(cnf: NlsConfig): bool =
   typeHintsEnabled(cnf) or exceptionHintsEnabled(cnf) or parameterHintsEnabled(cnf)
 
-proc supportSignatureHelp*(cc: ClientCapabilities): bool = 
+proc supportSignatureHelp*(cc: ClientCapabilities): bool =
   if cc.isNil: return false
   let caps = cc.textDocument
   caps.isSome and caps.get.signatureHelp.isSome
@@ -182,7 +182,7 @@ proc getNimbleDumpInfo*(ls: LanguageServer, nimbleFile: string): NimbleDumpInfo 
       result.nimblePath = some line[(1 + line.find '"')..^2]
     if line.startsWith("entryPoints"):
       result.entryPoints = line[(1 + line.find '"')..^2].split(',').mapIt(it.strip(chars = {' ', '"'}))
-      
+
   var nimbleFile = nimbleFile
   if nimbleFile == "" and result.nimblePath.isSome:
     nimbleFile = result.nimblePath.get
@@ -190,6 +190,11 @@ proc getNimbleDumpInfo*(ls: LanguageServer, nimbleFile: string): NimbleDumpInfo 
     ls.nimDumpCache[nimbleFile] = result
 
 proc parseWorkspaceConfiguration*(conf: JsonNode): NlsConfig =
+  try:
+    if conf.kind == JObject and conf["settings"].kind == JObject:
+      return conf["settings"]["nim"].to(NlsConfig)
+  except CatchableError:
+    discard
   try:
     let nlsConfig: seq[NlsConfig] = (%conf).to(seq[NlsConfig])
     result = if nlsConfig.len > 0 and nlsConfig[0] != nil: nlsConfig[0] else: NlsConfig()
@@ -200,32 +205,32 @@ proc parseWorkspaceConfiguration*(conf: JsonNode): NlsConfig =
 proc getWorkspaceConfiguration*(ls: LanguageServer): Future[NlsConfig] {.async.} =
   parseWorkspaceConfiguration(ls.workspaceConfiguration.await)
 
-proc showMessage*(ls: LanguageServer, message: string, typ: MessageType) =  
+proc showMessage*(ls: LanguageServer, message: string, typ: MessageType) =
   proc notify() =
     ls.notify(
       "window/showMessage",
       %* {
          "type": typ.int,
-         "message": message 
+         "message": message
       })
-  let verbosity = 
+  let verbosity =
     ls
     .getWorkspaceConfiguration
     .waitFor
     .notificationVerbosity.get(NlsNotificationVerbosity.nvInfo)
   debug "ShowMessage ", message = message
   case verbosity:
-  of nvInfo: 
+  of nvInfo:
     notify()
   of nvWarning:
     if typ.int <= MessageType.Warning.int :
        notify()
   of nvError:
-    if typ == MessageType.Error: 
+    if typ == MessageType.Error:
       notify()
   else: discard
 
-proc getLspStatus*(ls: LanguageServer): NimLangServerStatus = 
+proc getLspStatus*(ls: LanguageServer): NimLangServerStatus =
   result.version = LSPVersion
   for projectFile, futNs in ls.projectFiles:
     let futNs = ls.projectFiles[projectFile]
@@ -237,9 +242,9 @@ proc getLspStatus*(ls: LanguageServer): NimLangServerStatus =
         version: ns.version,
         path: ns.nimsuggestPath,
         port: ns.port,
-      )    
+      )
       result.nimsuggestInstances.add nsStatus
-  
+
   for openFile in ls.openFiles.keys:
     let openFilePath = openFile.uriToPath
     result.openFiles.add openFilePath
@@ -298,7 +303,7 @@ proc inlayHintsConfigurationEquals*(a, b: NlsConfig): bool =
     result = a.inlayHints.isSome == b.inlayHints.isSome
 
 proc getNimVersion(nimDir: string): string =
-  let cmd = 
+  let cmd =
     if nimDir == "": "nim --version"
     else: nimDir / "nim --version"
   let info = execProcess(cmd)
@@ -311,20 +316,20 @@ proc getNimSuggestPathAndVersion(ls: LanguageServer, conf: NlsConfig, workingDir
   #Attempting to see if the project is using a custom Nim version, if it's the case this will be slower than usual
   let nimbleDumpInfo = ls.getNimbleDumpInfo("")
   let nimDir = nimbleDumpInfo.nimDir.get ""
-      
-  var nimsuggestPath = expandTilde(conf.nimsuggestPath.get("")) 
+
+  var nimsuggestPath = expandTilde(conf.nimsuggestPath.get(""))
   var nimVersion = ""
   if nimsuggestPath == "":
     if nimDir != "" and nimDir.dirExists:
       nimVersion = getNimVersion(nimDir) & " from " & nimDir
-      nimsuggestPath = nimDir / "nimsuggest"      
+      nimsuggestPath = nimDir / "nimsuggest"
     else:
       nimVersion = getNimVersion("")
       nimsuggestPath = findExe "nimsuggest"
   else:
     nimVersion = getNimVersion(nimsuggestPath.parentDir)
-  ls.showMessage(fmt "Using {nimVersion}", MessageType.Info)    
-  (nimsuggestPath, nimVersion)  
+  ls.showMessage(fmt "Using {nimVersion}", MessageType.Info)
+  (nimsuggestPath, nimVersion)
 
 proc getProjectFileAutoGuess*(ls: LanguageServer, fileUri: string): string =
   let file = fileUri.decodeUrl
@@ -418,7 +423,7 @@ proc cancelPendingFileChecks*(ls: LanguageServer, nimsuggest: Nimsuggest) =
         cancelFileCheck.complete()
       fileData.needsChecking = false
 
-proc getNimsuggest*(ls: LanguageServer, uri: string): Future[Nimsuggest] {.async, gcsafe.} 
+proc getNimsuggest*(ls: LanguageServer, uri: string): Future[Nimsuggest] {.async, gcsafe.}
 
 proc uriStorageLocation*(ls: LanguageServer, uri: string): string =
   ls.storageDir / (hash(uri).toHex & ".nim")
@@ -661,7 +666,7 @@ proc getProjectFile*(fileUri: string, ls: LanguageServer): Future[string] {.asyn
     rootPath = AbsoluteDir(ls.initializeParams.getRootPath)
     pathRelativeToRoot = string(AbsoluteFile(fileUri).relativeTo(rootPath))
     mappings = ls.getWorkspaceConfiguration.await().projectMapping.get(@[])
-  
+
   for mapping in mappings:
     if find(cstring(pathRelativeToRoot), re(mapping.fileRegex), 0, pathRelativeToRoot.len) != -1:
       result = string(rootPath) / mapping.projectFile
@@ -692,7 +697,7 @@ proc getProjectFile*(fileUri: string, ls: LanguageServer): Future[string] {.asyn
     if ns.canHandleUnknown and not isKnown:
       debug "File is not known by nimsuggest", uri = fileUri, projectFile = result
       result = fileUri
-  
+
   if result == "":
     result = fileUri
 
