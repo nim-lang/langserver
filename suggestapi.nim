@@ -9,11 +9,11 @@ import osproc,
   sequtils,
   streams,
   protocol/enums,
-  asyncdispatch,
   ./utils,
   chronicles,
   protocol/types,
-  std/options
+  std/options,
+  chronos
 
 const REQUEST_TIMEOUT* = 120000
 const HighestSupportedNimSuggestProtocolVersion = 4
@@ -29,7 +29,7 @@ type
   IdeCmd* = enum
     ideNone, ideSug, ideCon, ideDef, ideUse, ideDus, ideChk, ideMod,
     ideHighlight, ideOutline, ideKnown, ideMsg, ideProject, ideType, ideExpand
-  NimsuggestCallback = proc(self: Nimsuggest): void {.gcsafe.}
+  NimsuggestCallback = proc(self: Nimsuggest): void {.gcsafe, raises: [].}
 
   Suggest* = ref object
     section*: IdeCmd
@@ -218,7 +218,7 @@ proc parseSuggestInlayHint*(line: string): SuggestInlayHint =
 proc name*(sug: Suggest): string =
   return sug.qualifiedPath[^1]
 
-proc markFailed(self: Nimsuggest, errMessage: string) =
+proc markFailed(self: Nimsuggest, errMessage: string) {.raises: [].} =
   self.failed = true
   self.errorMessage = errMessage
   if self.errorCallback != nil:
@@ -377,6 +377,9 @@ proc createNimsuggest*(root: string): Future[Nimsuggest] {.gcsafe.} =
                             proc (ns: Nimsuggest) = discard,
                             proc (ns: Nimsuggest) = discard)
 
+proc toString(bytes: openarray[byte]): string =
+  result = newString(bytes.len)
+  copyMem(result[0].addr, bytes[0].unsafeAddr, bytes.len)
 
 proc processQueue(self: Nimsuggest): Future[void] {.async.}=
   debug "processQueue", size = self.requestQueue.len
@@ -391,30 +394,36 @@ proc processQueue(self: Nimsuggest): Future[void] {.async.}=
       req.future.complete @[]
     else:
       benchmark req.commandString:
-        let socket = newAsyncSocket()
+        # let socket = newAsyncSocket()
         var res: seq[Suggest] = @[]
 
         if not self.timeoutCallback.isNil:
           debug "timeoutCallback is set", timeout = self.timeout
           doWithTimeout(req.future, self.timeout, fmt "running {req.commandString}").addCallback do (f: Future[bool]):
             if not f.failed and not f.read():
-              debug "Calling restart"
-              self.timeoutCallback(self)
-
-        await socket.connect("127.0.0.1", Port(self.port))
-        await socket.send(req.commandString & "\c\L")
+                debug "Calling restart"
+                self.timeoutCallback(self)
+        let ta = initTAddress(&"127.0.0.1:{self.port}")
+        let transport = await ta.connect()
+        discard await transport.write(req.commandString & "\c\L")
+        # await socket.connect("127.0.0.1", Port(self.port))
+        # await socket.send(req.commandString & "\c\L")
 
         const bufferSize = 1024 * 1024 * 4
         var buffer:seq[byte] = newSeq[byte](bufferSize);
 
-        var content = "";
-        var received = await socket.recvInto(addr buffer[0], bufferSize)
+        # var content = "";
+        # var received = await socket.recvInto(addr buffer[0], bufferSize)
+        var data = await transport.read()
+        let content = data.toString()
 
-        while received != 0:
-          let chunk = newString(received)
-          copyMem(chunk[0].unsafeAddr, buffer[0].unsafeAddr, received)
-          content = content & chunk
-          received = await socket.recvInto(addr buffer[0], bufferSize)
+        # while received != 0:
+        #   let chunk = newString(received)
+        #   copyMem(chunk[0].unsafeAddr, buffer[0].unsafeAddr, received)
+        #   content = content & chunk
+        #   # received = await socket.recvInto(addr buffer[0], bufferSize)
+        #   var received = await transport.readExactly(addr buffer[0], bufferSize)
+
 
         for lineStr  in content.splitLines:
           if lineStr != "":
@@ -439,10 +448,11 @@ proc processQueue(self: Nimsuggest): Future[void] {.async.}=
           debug "Sending result(s)", length = res.len
           req.future.complete res
           self.successfullCall = true
-          socket.close()
+          # socket.close()
+          transport.close()
         else:
           debug "Call was cancelled before sending the result", command = req.command
-          socket.close()
+          transport.close()
   self.processing = false
 
 proc call*(self: Nimsuggest, command: string, file: string, dirtyFile: string,
