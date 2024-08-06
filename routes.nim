@@ -1,4 +1,4 @@
-import macros, strformat, 
+import macros, strformat,
   faststreams/async_backend,
   json_rpc/streamconnection, json_rpc/server, os, sugar, sequtils,
   suggestapi, protocol/enums, protocol/types, with, tables, strutils,
@@ -73,7 +73,7 @@ proc initialize*(p: tuple[ls: LanguageServer, onExit: OnExitCallback], params: I
       documentSymbolProvider: some(true),
       codeActionProvider: some(true)
     )
-  )  
+  )
   # Support rename by default, but check if we can also support prepare
   result.capabilities.renameProvider = %true
   if params.capabilities.textDocument.isSome:
@@ -86,7 +86,7 @@ proc initialize*(p: tuple[ls: LanguageServer, onExit: OnExitCallback], params: I
       }
   debug "Initialize completed. Trying to start nimsuggest instances"
   #If we are in a nimble project here, we try to start the entry points
-  
+
 proc toCompletionItem(suggest: Suggest): CompletionItem =
   with suggest:
     return CompletionItem %* {
@@ -115,7 +115,7 @@ proc completion*(ls: LanguageServer, params: CompletionParams, id: int):
       for completion in result:
         if completion.label notin unique:
           unique[completion.label] = completion
-      result = unique.values.toSeq    
+      result = unique.values.toSeq
 
 proc toLocation*(suggest: Suggest): Location =
   return Location %* {
@@ -192,7 +192,7 @@ proc expand*(ls: LanguageServer, params: ExpandTextDocumentPositionParams):
       result = ExpandResult(content: expand[0].doc.fixIdentation(character),
                             range: expand[0].createRangeFromSuggest())
 
-proc status*(ls: LanguageServer, params: NimLangServerStatusParams): Future[NimLangServerStatus] {.async.} = 
+proc status*(ls: LanguageServer, params: NimLangServerStatusParams): Future[NimLangServerStatus] {.async.} =
   debug "Received status request"
   ls.getLspStatus()
 
@@ -468,9 +468,9 @@ proc executeCommand*(ls: LanguageServer, params: ExecuteCommandParams):
           ls.progress(token, "end")
           ls.checkProject(projectFile.pathToUri).traceAsyncErrors
 
-  result = newJNull() 
+  result = newJNull()
 
-proc toSignatureInformation(suggest: Suggest): SignatureInformation = 
+proc toSignatureInformation(suggest: Suggest): SignatureInformation =
   var fnKind, strParams: string
   var params = newSeq[ParameterInformation]()
   #TODO handle params. Ideally they are handled in the compiler but as fallback we could handle them as follows
@@ -490,8 +490,8 @@ proc toSignatureInformation(suggest: Suggest): SignatureInformation =
     "parameters": newSeq[ParameterInformation](), #notice params is not used
     }
 
-proc signatureHelp*(ls: LanguageServer, params: SignatureHelpParams, id: int): 
-  Future[Option[SignatureHelp]] {.async.} = 
+proc signatureHelp*(ls: LanguageServer, params: SignatureHelpParams, id: int):
+  Future[Option[SignatureHelp]] {.async.} =
     #TODO handle prev signature
     # if params.context.activeSignatureHelp.isSome:
     #   let prevSignature = params.context.activeSignatureHelp.get.signatures.get[params.context.activeSignatureHelp.get.activeSignature.get]
@@ -499,7 +499,7 @@ proc signatureHelp*(ls: LanguageServer, params: SignatureHelpParams, id: int):
     # else:
     #   debug "no prevSignature"
     #only support signatureHelp if the client supports it
-    # if docCaps.signatureHelp.isSome and docCaps.signatureHelp.get.contextSupport.get(false):    
+    # if docCaps.signatureHelp.isSome and docCaps.signatureHelp.get.contextSupport.get(false):
     #   result.capabilities.signatureHelpProvider = SignatureHelpOptions(
     #           triggerCharacters: some(@["(", ","])
     #   )
@@ -509,11 +509,11 @@ proc signatureHelp*(ls: LanguageServer, params: SignatureHelpParams, id: int):
     with (params.position, params.textDocument):
       let nimsuggest = await ls.getNimsuggest(uri)
       if nsCon notin nimSuggest.capabilities:
-        #support signatureHelp only if the current version of NimSuggest supports it. 
+        #support signatureHelp only if the current version of NimSuggest supports it.
         return none[SignatureHelp]()
 
       let completions = await nimsuggest
-                              .con(uriToPath(uri),                              
+                              .con(uriToPath(uri),
                                   ls.uriToStash(uri),
                                   line + 1,
                                   ls.getCharacter(uri, line, character))
@@ -525,7 +525,7 @@ proc signatureHelp*(ls: LanguageServer, params: SignatureHelpParams, id: int):
           activeSignature: some(0),
           activeParameter: some(0)
         )
-      else: 
+      else:
         return none[SignatureHelp]()
 
 proc workspaceSymbol*(ls: LanguageServer, params: WorkspaceSymbolParams, id: int):
@@ -603,18 +603,21 @@ proc setTrace*(ls: LanguageServer, params: SetTraceParams) {.async.} =
 proc didChange*(ls: LanguageServer, params: DidChangeTextDocumentParams):
     Future[void] {.async, gcsafe.} =
    with params:
-     let
-       uri = textDocument.uri
-       file = open(ls.uriStorageLocation(uri), fmWrite)
+      let
+        uri = textDocument.uri
+        file = open(ls.uriStorageLocation(uri), fmWrite)
 
-     ls.openFiles[uri].fingerTable = @[]
-     ls.openFiles[uri].changed = true
-     for line in contentChanges[0].text.splitLines:
-       ls.openFiles[uri].fingerTable.add line.createUTFMapping()
-       file.writeLine line
-     file.close()
+      ls.openFiles[uri].fingerTable = @[]
+      ls.openFiles[uri].changed = true
+      if contentChanges.len <= 0:
+        file.close()
+        return
+      for line in contentChanges[0].text.splitLines:
+        ls.openFiles[uri].fingerTable.add line.createUTFMapping()
+        file.writeLine line
+      file.close()
 
-     ls.scheduleFileCheck(uri)
+      ls.scheduleFileCheck(uri)
 
 proc didSave*(ls: LanguageServer, params: DidSaveTextDocumentParams):
     Future[void] {.async, gcsafe.} =
@@ -627,7 +630,7 @@ proc didSave*(ls: LanguageServer, params: DidSaveTextDocumentParams):
   if ls.getWorkspaceConfiguration().await().checkOnSave.get(true):
     debug "Checking project", uri = uri
     traceAsyncErrors ls.checkProject(uri)
-  
+
   var toStop = newTable[string, Nimsuggest]()
   #We first get the project file for the current file so we can test if this file recently imported another project
   let thisProjectFile = await getProjectFile(uri.uriToPath, ls)
@@ -636,9 +639,9 @@ proc didSave*(ls: LanguageServer, params: DidSaveTextDocumentParams):
     for projectFile in ls.projectFiles.keys:
       if projectFile in ls.entryPoints: continue
       let isKnown = await ns.isKnown(projectFile)
-      if isKnown: 
+      if isKnown:
         toStop[projectFile] = await ls.projectFiles[projectFile]
-    
+
     for projectFile, ns in toStop:
       ns.stop()
       ls.projectFiles.del projectFile
@@ -683,13 +686,13 @@ proc didOpen*(ls: LanguageServer, params: DidOpenTextDocumentParams):
     ls.getNimsuggest(uri).addCallback() do (fut: Future[Nimsuggest]) -> void:
       if not fut.failed:
         discard ls.warnIfUnknown(fut.read, uri, projectFile)
-      
+
     let projectFileUri = projectFile.pathToUri
     if projectFileUri notin ls.openFiles:
       var params = params
       params.textDocument.uri = projectFileUri
       await didOpen(ls, params)
-      
+
       debug "Opening project file", uri = projectFile, file = uri
 
 proc didChangeConfiguration*(ls: LanguageServer, conf: JsonNode):
