@@ -3,7 +3,7 @@ import options
 
 type
   OptionalSeq*[T] = Option[seq[T]]
-  OptionalNode = Option[JsonNode]
+  OptionalNode* = Option[JsonNode]
 
   CancelParams* = ref object of RootObj
     id*: OptionalNode

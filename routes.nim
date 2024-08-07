@@ -10,18 +10,17 @@ import macros, strformat, chronos,
 proc initialize*(p: tuple[ls: LanguageServer, onExit: OnExitCallback], params: InitializeParams):
     Future[InitializeResult] {.async.} =
 
-  proc onClientProcessExitAsync(): Future[void] {.async:(raises: [Exception]).} =    
+  proc onClientProcessExitAsync(): Future[void] {.async.} =    
       debug "onClientProcessExitAsync"      
       await p.ls.stopNimsuggestProcesses
       await p.onExit()
     
-  proc onClientProcessExit() {.closure, gcsafe, raises: [].} =
-    {.cast(raises: []).}:
+  proc onClientProcessExit() {.closure, gcsafe.} =    
       try:
         debug "onClientProcessExit"
         waitFor onClientProcessExitAsync()
-      except:
-        discard
+      except Exception:
+        error "Error in onClientProcessExit ", msg = getCurrentExceptionMsg()
 
   debug "Initialize received..."
   if params.processId.isSome:
@@ -568,7 +567,7 @@ proc extractId  (id: JsonNode): int =
   if id.kind == JString:
     discard parseInt(id.getStr, result)
 
-proc shutdown*(ls: LanguageServer, input: JsonNode): Future[JsonNode] {.async, gcsafe, raises: [Defect, CatchableError, Exception].} =
+proc shutdown*(ls: LanguageServer, input: JsonNode): Future[JsonNode] {.async, gcsafe.} =
   debug "Shutting down"
   await ls.stopNimsuggestProcesses()
   ls.isShutdown = true

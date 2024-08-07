@@ -20,7 +20,8 @@ const
   CHECK_PROJECT_COMMAND* = "nimlangserver.checkProject"
   FILE_CHECK_DELAY* = 1000
   LSPVersion* = getVersionFromNimble()
-
+  CRLF* = "\r\n"
+  CONTENT_LENGTH* = "Content-Length: "
 type
   NlsNimsuggestConfig* = ref object of RootObj
     projectFile*: string
