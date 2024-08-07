@@ -1,3 +1,5 @@
+import std/distros
+
 mode = ScriptMode.Verbose
 
 packageName   = "nimlangserver"
@@ -23,3 +25,15 @@ task test, "run tests":
   --silent
   --run
   setCommand "c", "tests/all.nim"
+
+task setup, "Setup":
+  if detectOs(Ubuntu):
+    foreignDep "libpcre3"
+    echo ""
+    echo "You may need to install following dependencies:"
+    echo ""
+    echoForeignDeps()
+    echo ""
+
+before install:
+  setupTask()
