@@ -459,8 +459,7 @@ proc executeCommand*(ls: LanguageServer, params: ExecuteCommandParams):
     ls.createOrRestartNimsuggest(projectFile, projectFile.pathToUri)
   of CHECK_PROJECT_COMMAND:
     debug "Checking project", projectFile = projectFile
-    # ls.checkProject(projectFile.pathToUri).traceAsyncErrors
-    asyncCheck ls.checkProject(projectFile.pathToUri)
+    ls.checkProject(projectFile.pathToUri).traceAsyncErrors
   of RECOMPILE_COMMAND:
     debug "Clean build", projectFile = projectFile
     let
@@ -473,8 +472,7 @@ proc executeCommand*(ls: LanguageServer, params: ExecuteCommandParams):
         .recompile()
         .addCallback() do ():
           ls.progress(token, "end")
-          # ls.checkProject(projectFile.pathToUri).traceAsyncErrors
-          asyncCheck ls.checkProject(projectFile.pathToUri)
+          ls.checkProject(projectFile.pathToUri).traceAsyncErrors
 
   result = newJNull()
 
@@ -637,7 +635,7 @@ proc didSave*(ls: LanguageServer, params: DidSaveTextDocumentParams):
 
   if ls.getWorkspaceConfiguration().await().checkOnSave.get(true):
     debug "Checking project", uri = uri
-    # traceAsyncErrors ls.checkProject(uri)
+    traceAsyncErrors ls.checkProject(uri)
 
   var toStop = newTable[string, Nimsuggest]()
   #We first get the project file for the current file so we can test if this file recently imported another project

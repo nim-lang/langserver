@@ -1,5 +1,6 @@
-import std/[unicode, uri, strformat, os, strutils]
+import std/[unicode, uri, strformat, os, strutils, options]
 import chronos, chronicles
+import "$nim/compiler/pathutils"
 
 type
   FingerTable = seq[tuple[u16pos, offset: int]]
@@ -149,7 +150,7 @@ proc callSoon*(cb: proc () {.gcsafe.}) {.gcsafe.} =
   callSoon() do (data: pointer) {.gcsafe,.}:
     cbWrapper()
 
-proc addCallback*(future: FutureBase, cb: proc() {.closure, gcsafe, raises: [].}) =
+proc addCallback*(future: FutureBase, cb: proc() {.closure, gcsafe, raises: [].}) {.deprecated: "Replace with built-in chronos mechanism".} =
   ## Adds the callbacks proc to be called when the future completes.
   ##
   ## If future has already completed then `cb` will be called immediately.
@@ -161,7 +162,7 @@ proc addCallback*(future: FutureBase, cb: proc() {.closure, gcsafe, raises: [].}
     future.addCallback() do (data: pointer) {.gcsafe,.}:
       cb()
 
-proc addCallbackNoEffects*[T](future: Future[T],
+proc addCallbackNoEffects[T](future: Future[T],
                      cb: proc (future: Future[T]) {.closure, gcsafe, raises: [].}) =
   ## Adds the callbacks proc to be called when the future completes.
   ##
@@ -172,7 +173,7 @@ proc addCallbackNoEffects*[T](future: Future[T],
   )
 
 proc addCallback*[T](future: Future[T],
-                     cb: proc (future: Future[T]) {.closure, gcsafe.}) =
+                     cb: proc (future: Future[T]) {.closure, gcsafe.}) {.deprecated.} =
   ## Adds the callbacks proc to be called when the future completes.
   ##
   ## If future has already completed then `cb` will be called immediately.
@@ -181,12 +182,11 @@ proc addCallback*[T](future: Future[T],
       {.cast(raises:[]).}:
         cb(fut)
     except CatchableError:
-      discard #TODO handle
+      future.fail((ref CatchableError)(msg: getCurrentExceptionMsg()))
 
   future.addCallbackNoEffects(
     proc(fut: Future[T]) {.closure, gcsafe, raises: [].} =      
       cbWrapper(future)
-      
   )
 
 proc isRelTo*(path, base: string): bool {.raises:[].} =  
@@ -195,3 +195,9 @@ proc isRelTo*(path, base: string): bool {.raises:[].} =
     isRelativeTo(path, base)
   except Exception:
     false
+
+proc tryRelativeTo*(path, base: string): Option[string] = 
+  try:
+    some relativeTo(AbsoluteFile(path), base.AbsoluteDir).string
+  except Exception:
+    none(string)

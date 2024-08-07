@@ -169,25 +169,28 @@ proc supportSignatureHelp*(cc: ClientCapabilities): bool =
 
 proc getNimbleDumpInfo*(ls: LanguageServer, nimbleFile: string): NimbleDumpInfo =
   if nimbleFile in ls.nimDumpCache:
-    return ls.nimDumpCache[nimbleFile]
-  let info = execProcess("nimble dump " & nimbleFile)
-  for line in info.splitLines:
-    if line.startsWith("srcDir"):
-      result.srcDir = line[(1 + line.find '"')..^2]
-    if line.startsWith("name"):
-      result.name = line[(1 + line.find '"')..^2]
-    if line.startsWith("nimDir"):
-      result.nimDir = some line[(1 + line.find '"')..^2]
-    if line.startsWith("nimblePath"):
-      result.nimblePath = some line[(1 + line.find '"')..^2]
-    if line.startsWith("entryPoints"):
-      result.entryPoints = line[(1 + line.find '"')..^2].split(',').mapIt(it.strip(chars = {' ', '"'}))
+    return ls.nimDumpCache.getOrDefault(nimbleFile)
+  try:
+    let info = execProcess("nimble dump " & nimbleFile)
+    for line in info.splitLines:
+      if line.startsWith("srcDir"):
+        result.srcDir = line[(1 + line.find '"')..^2]
+      if line.startsWith("name"):
+        result.name = line[(1 + line.find '"')..^2]
+      if line.startsWith("nimDir"):
+        result.nimDir = some line[(1 + line.find '"')..^2]
+      if line.startsWith("nimblePath"):
+        result.nimblePath = some line[(1 + line.find '"')..^2]
+      if line.startsWith("entryPoints"):
+        result.entryPoints = line[(1 + line.find '"')..^2].split(',').mapIt(it.strip(chars = {' ', '"'}))
 
-  var nimbleFile = nimbleFile
-  if nimbleFile == "" and result.nimblePath.isSome:
-    nimbleFile = result.nimblePath.get
-  if nimbleFile != "":
-    ls.nimDumpCache[nimbleFile] = result
+    var nimbleFile = nimbleFile
+    if nimbleFile == "" and result.nimblePath.isSome:
+      nimbleFile = result.nimblePath.get
+    if nimbleFile != "":
+      ls.nimDumpCache[nimbleFile] = result
+  except OSError, IOError:
+    debug "Failed to get nimble dump info", nimbleFile = nimbleFile
 
 proc parseWorkspaceConfiguration*(conf: JsonNode): NlsConfig =
   try:
@@ -368,7 +371,7 @@ proc getProjectFileAutoGuess*(ls: LanguageServer, fileUri: string): string =
         let sourceDir = path / dumpInfo.srcDir
         let projectFile = sourceDir / (name & ".nim")
         if sourceDir.len != 0 and name.len != 0 and
-            file.isRelativeTo(sourceDir) and fileExists(projectFile):
+            file.isRelTo(sourceDir) and fileExists(projectFile):
           debug "Found nimble project", projectFile = projectFile
           result = projectFile
           certainty = Nimble
@@ -385,21 +388,17 @@ proc getRootPath*(ip: InitializeParams): string =
   return ip.rootUri.get.uriToPath
 
 proc getWorkingDir(ls: LanguageServer, path: string): Future[string] {.async.} =
-  try:
-    let
-      rootPath = AbsoluteDir(ls.initializeParams.getRootPath)
-      pathRelativeToRoot = string(AbsoluteFile(path).relativeTo(rootPath))
-      mapping = ls.getWorkspaceConfiguration.await().workingDirectoryMapping.get(@[])
+  let
+    rootPath = ls.initializeParams.getRootPath
+    pathRelativeToRoot = path.tryRelativeTo(rootPath)
+    mapping = ls.getWorkspaceConfiguration.await().workingDirectoryMapping.get(@[])
 
-    result = getCurrentDir()
+  result = getCurrentDir()
 
-    for m in mapping:
-      if m.projectFile == pathRelativeToRoot:
-        result = rootPath.string / m.directory
-        break;
-  except Exception:
-    #TODO Add msg
-    discard
+  for m in mapping:
+    if pathRelativeToRoot.isSome and m.projectFile == pathRelativeToRoot.get():
+      result = rootPath.string / m.directory
+      break;
 
 proc progressSupported(ls: LanguageServer): bool =
   result = ls.initializeParams
@@ -496,7 +495,7 @@ proc sendDiagnostics*(ls: LanguageServer, diagnostics: seq[Suggest], path: strin
   else:
     ls.filesWithDiags.excl path
 
-proc checkProject*(ls: LanguageServer, uri: string): Future[void] {.async: (raises:[CatchableError]), gcsafe.} =
+proc checkProject*(ls: LanguageServer, uri: string): Future[void] {.async, gcsafe.} =
   if not ls.getWorkspaceConfiguration.await().autoCheckProject.get(true):
     return
   debug "Running diagnostics", uri = uri
@@ -542,8 +541,7 @@ proc checkProject*(ls: LanguageServer, uri: string): Future[void] {.async: (rais
     nimsuggest.needsCheckProject = false
     callSoon() do () {.gcsafe.}:
       debug "Running delayed check project...", uri = uri
-      # traceAsyncErrors ls.checkProject(uri)
-      asyncCheck ls.checkProject(uri)
+      traceAsyncErrors ls.checkProject(uri)
 
 proc createOrRestartNimsuggest*(ls: LanguageServer, projectFile: string, uri = ""): void {.gcsafe, raises: [].} =
   try:
@@ -593,8 +591,7 @@ proc createOrRestartNimsuggest*(ls: LanguageServer, projectFile: string, uri = "
       else:
         ls.showMessage(fmt "Nimsuggest initialized for {projectFile}",
                       MessageType.Info)
-        # traceAsyncErrors ls.checkProject(uri)
-        asyncCheck ls.checkProject(uri)
+        traceAsyncErrors ls.checkProject(uri)
         fut.read().openFiles.incl uri
       ls.progress(token, "end")
       ls.sendStatusChanged()
@@ -681,49 +678,47 @@ proc stopNimsuggestProcessesP*(ls: ptr LanguageServer) =
   waitFor stopNimsuggestProcesses(ls[])
 
 proc getProjectFile*(fileUri: string, ls: LanguageServer): Future[string] {.async.} =
-  try:
-    let
-      rootPath = AbsoluteDir(ls.initializeParams.getRootPath)
-      pathRelativeToRoot = string(AbsoluteFile(fileUri).relativeTo(rootPath))
-      mappings = ls.getWorkspaceConfiguration.await().projectMapping.get(@[])
+  let
+    rootPath = ls.initializeParams.getRootPath
+    pathRelativeToRoot = fileUri.tryRelativeTo(rootPath)
+    mappings = ls.getWorkspaceConfiguration.await().projectMapping.get(@[])
 
-    for mapping in mappings:
-      if find(cstring(pathRelativeToRoot), re(mapping.fileRegex), 0, pathRelativeToRoot.len) != -1:
-        result = string(rootPath) / mapping.projectFile
-        if fileExists(result):
-          trace "getProjectFile", project = result, uri = fileUri, matchedRegex = mapping.fileRegex
-          return result
-      else:
-        trace "getProjectFile does not match", uri = fileUri, matchedRegex = mapping.fileRegex
+  for mapping in mappings:
+    if pathRelativeToRoot.isSome and find(pathRelativeToRoot.get(), re(mapping.fileRegex), 0, pathRelativeToRoot.get().len) != -1:
+      result = string(rootPath) / mapping.projectFile
+      if fileExists(result):
+        trace "getProjectFile", project = result, uri = fileUri, matchedRegex = mapping.fileRegex
+        return result
+    else:
+      trace "getProjectFile does not match", uri = fileUri, matchedRegex = mapping.fileRegex
 
-    once: #once we refactor the project to chronos, we may move this code into init. Right now it hangs for some odd reason
-      let rootPath = ls.initializeParams.getRootPath
-      if rootPath != "":
-        let nimbleFiles = walkFiles(rootPath / "*.nimble").toSeq
-        if nimbleFiles.len > 0:
-          let nimbleFile = nimbleFiles[0]
-          let nimbleDumpInfo = ls.getNimbleDumpInfo(nimbleFile)
-          ls.entryPoints = nimbleDumpInfo.getNimbleEntryPoints(ls.initializeParams.getRootPath)
-          # ls.showMessage(fmt "Found entry point {ls.entryPoints}?", MessageType.Info)
-          for entryPoint in ls.entryPoints:
-            debug "Starting nimsuggest for entry point ", entry = entryPoint
-            if entryPoint notin ls.projectFiles:
-              ls.createOrRestartNimsuggest(entryPoint)
+  once: #once we refactor the project to chronos, we may move this code into init. Right now it hangs for some odd reason
+    let rootPath = ls.initializeParams.getRootPath
+    if rootPath != "":
+      let nimbleFiles = walkFiles(rootPath / "*.nimble").toSeq
+      if nimbleFiles.len > 0:
+        let nimbleFile = nimbleFiles[0]
+        let nimbleDumpInfo = ls.getNimbleDumpInfo(nimbleFile)
+        ls.entryPoints = nimbleDumpInfo.getNimbleEntryPoints(ls.initializeParams.getRootPath)
+        # ls.showMessage(fmt "Found entry point {ls.entryPoints}?", MessageType.Info)
+        for entryPoint in ls.entryPoints:
+          debug "Starting nimsuggest for entry point ", entry = entryPoint
+          if entryPoint notin ls.projectFiles:
+            ls.createOrRestartNimsuggest(entryPoint)
 
-    result = ls.getProjectFileAutoGuess(fileUri)
-    if result in ls.projectFiles:
-      let ns = await ls.projectFiles[result]
-      let isKnown = await ns.isKnown(fileUri)
-      if ns.canHandleUnknown and not isKnown:
-        debug "File is not known by nimsuggest", uri = fileUri, projectFile = result
-        result = fileUri
-
-    if result == "":
+  result = ls.getProjectFileAutoGuess(fileUri)
+  if result in ls.projectFiles:
+    let ns = await ls.projectFiles[result]
+    let isKnown = await ns.isKnown(fileUri)
+    if ns.canHandleUnknown and not isKnown:
+      debug "File is not known by nimsuggest", uri = fileUri, projectFile = result
       result = fileUri
 
-    debug "getProjectFile", project = result, fileUri = fileUri
-  except Exception:
-    discard
+  if result == "":
+    result = fileUri
+
+  debug "getProjectFile", project = result, fileUri = fileUri
+
 
 proc warnIfUnknown*(ls: LanguageServer, ns: Nimsuggest, uri: string, projectFile: string):
      Future[void] {.async, gcsafe.} =
