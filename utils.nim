@@ -181,8 +181,8 @@ proc addCallback*[T](future: Future[T],
     try:
       {.cast(raises:[]).}:
         cb(fut)
-    except CatchableError:
-      future.fail((ref CatchableError)(msg: getCurrentExceptionMsg()))
+    except CatchableError as exc:
+      future.fail((ref CatchableError)(msg: exc.msg))
 
   future.addCallbackNoEffects(
     proc(fut: Future[T]) {.closure, gcsafe, raises: [].} =      
