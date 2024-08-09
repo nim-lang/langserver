@@ -8,9 +8,8 @@ license       = "MIT"
 bin           = @["nimlangserver2"]
 skipDirs      = @["tests"]
 
-requires "nim == 2.0.8", "chronos",
-        #  "https://github.com/nickysn/asynctools#fixes_for_nimlangserver",
-        #  "https://github.com/yyoncho/nim-json-rpc#notif-changes",
+requires "nim == 2.0.8", 
+         "chronos",        
          "json_rpc#head",
          "with",
          "chronicles",
