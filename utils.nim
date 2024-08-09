@@ -1,4 +1,6 @@
-import unicode, uri, strformat, os, strutils, faststreams/async_backend, chronicles, tables
+import std/[unicode, uri, strformat, os, strutils, options]
+import chronos, chronicles
+import "$nim/compiler/pathutils"
 
 type
   FingerTable = seq[tuple[u16pos, offset: int]]
@@ -125,14 +127,77 @@ proc catchOrQuit*(error: Exception) =
     quit 1
 
 proc traceAsyncErrors*(fut: Future) =
-  fut.addCallback do ():
+  fut.addCallback do (data: pointer):
     if not fut.error.isNil:
       catchOrQuit fut.error[]
 
-iterator groupBy*[T, U](s: openArray[T], f: proc(a: T): U {.gcsafe.}): tuple[k: U, v: seq[T]] =
+iterator groupBy*[T, U](s: openArray[T], f: proc(a: T): U {.gcsafe, raises: [].}): tuple[k: U, v: seq[T]] =
   var t = initTable[U, seq[T]]()
   for x in s:
     let fx = f(x)
     t.mGetOrPut(fx, @[]).add(x)
   for x in t.pairs:
     yield x
+
+#Compatibility layer with asyncdispatch
+proc callSoon*(cb: proc () {.gcsafe.}) {.gcsafe.} = 
+  proc cbWrapper() {.gcsafe.} =
+    try:
+      {.cast(raises:[]).}:
+        cb()
+    except CatchableError:
+      discard #TODO handle  
+  callSoon() do (data: pointer) {.gcsafe,.}:
+    cbWrapper()
+
+proc addCallback*(future: FutureBase, cb: proc() {.closure, gcsafe, raises: [].}) {.deprecated: "Replace with built-in chronos mechanism".} =
+  ## Adds the callbacks proc to be called when the future completes.
+  ##
+  ## If future has already completed then `cb` will be called immediately.
+  assert cb != nil
+  if future.finished:
+    callSoon() do (data: pointer) {.gcsafe,.}:
+      cb()
+  else:
+    future.addCallback() do (data: pointer) {.gcsafe,.}:
+      cb()
+
+proc addCallbackNoEffects[T](future: Future[T],
+                     cb: proc (future: Future[T]) {.closure, gcsafe, raises: [].}) =
+  ## Adds the callbacks proc to be called when the future completes.
+  ##
+  ## If future has already completed then `cb` will be called immediately.
+  future.addCallback(
+    proc() =
+      cb(future)
+  )
+
+proc addCallback*[T](future: Future[T],
+                     cb: proc (future: Future[T]) {.closure, gcsafe.}) {.deprecated.} =
+  ## Adds the callbacks proc to be called when the future completes.
+  ##
+  ## If future has already completed then `cb` will be called immediately.
+  proc cbWrapper(fut: Future[T]) {.closure, gcsafe, raises: [].} =
+    try:
+      {.cast(raises:[]).}:
+        cb(fut)
+    except CatchableError as exc:
+      future.fail((ref CatchableError)(msg: exc.msg))
+
+  future.addCallbackNoEffects(
+    proc(fut: Future[T]) {.closure, gcsafe, raises: [].} =      
+      cbWrapper(future)
+  )
+
+proc isRelTo*(path, base: string): bool {.raises:[].} =  
+  ### isRelativeTo version that do not throws
+  try:
+    isRelativeTo(path, base)
+  except Exception:
+    false
+
+proc tryRelativeTo*(path, base: string): Option[string] = 
+  try:
+    some relativeTo(AbsoluteFile(path), base.AbsoluteDir).string
+  except Exception:
+    none(string)

@@ -1,6 +1,5 @@
-import macros, strformat,
-  faststreams/async_backend,
-  json_rpc/streamconnection, json_rpc/server, os, sugar, sequtils,
+import macros, strformat, chronos,
+  json_rpc/server, os, sugar, sequtils,
   suggestapi, protocol/enums, protocol/types, with, tables, strutils,
   ./utils, chronicles,
   asyncprocmonitor, std/strscans, json_serialization,
@@ -11,15 +10,17 @@ import macros, strformat,
 proc initialize*(p: tuple[ls: LanguageServer, onExit: OnExitCallback], params: InitializeParams):
     Future[InitializeResult] {.async.} =
 
-  proc onClientProcessExitAsync(): Future[void] {.async.} =
-    debug "onClientProcessExitAsync"
-    await p.ls.stopNimsuggestProcesses
-    await p.onExit()
-
-  proc onClientProcessExit(fd: AsyncFD): bool =
-    debug "onClientProcessExit"
-    waitFor onClientProcessExitAsync()
-    result = true
+  proc onClientProcessExitAsync(): Future[void] {.async.} =    
+      debug "onClientProcessExitAsync"      
+      await p.ls.stopNimsuggestProcesses
+      await p.onExit()
+    
+  proc onClientProcessExit() {.closure, gcsafe.} =    
+      try:
+        debug "onClientProcessExit"
+        waitFor onClientProcessExitAsync()
+      except Exception:
+        error "Error in onClientProcessExit ", msg = getCurrentExceptionMsg()
 
   debug "Initialize received..."
   if params.processId.isSome:
@@ -227,12 +228,12 @@ proc documentSymbols*(ls: LanguageServer, params: DocumentSymbolParams, id: int)
     .await()
     .map(toSymbolInformation)
 
-proc scheduleFileCheck(ls: LanguageServer, uri: string) {.gcsafe.} =
+proc scheduleFileCheck(ls: LanguageServer, uri: string) {.gcsafe, raises: [].} =
   if not ls.getWorkspaceConfiguration().waitFor().autoCheckFile.get(true):
     return
 
   # schedule file check after the file is modified
-  let fileData = ls.openFiles[uri]
+  let fileData = ls.openFiles.getOrDefault(uri)
   if fileData.cancelFileCheck != nil and not fileData.cancelFileCheck.finished:
     fileData.cancelFileCheck.complete()
 
@@ -246,12 +247,16 @@ proc scheduleFileCheck(ls: LanguageServer, uri: string) {.gcsafe.} =
   sleepAsync(FILE_CHECK_DELAY).addCallback() do ():
     if not cancelFuture.finished:
       fileData.checkInProgress = true
-      ls.checkFile(uri).addCallback() do() {.gcsafe.}:
-        ls.openFiles[uri].checkInProgress = false
-        if fileData.needsChecking:
-          fileData.needsChecking = false
-          ls.scheduleFileCheck(uri)
-
+      ls.checkFile(uri).addCallback() do() {.gcsafe, raises:[].}:
+        try:
+          ls.openFiles[uri].checkInProgress = false
+          if fileData.needsChecking:
+            fileData.needsChecking = false
+            ls.scheduleFileCheck(uri)
+        except KeyError:
+          discard 
+        # except Exception:
+        #   discard
 
 
 proc toMarkedStrings(suggest: Suggest): seq[MarkedStringOption] =
@@ -317,7 +322,7 @@ proc prepareRename*(ls: LanguageServer, params: PrepareRenameParams,
       return newJNull()
     # Check if the symbol belongs to the project
     let projectDir = ls.initializeParams.getRootPath
-    if def[0].filePath.isRelativeTo(projectDir):
+    if def[0].filePath.isRelTo(projectDir):
       return %def[0].toLocation().range
 
     return newJNull()
@@ -335,7 +340,7 @@ proc rename*(ls: LanguageServer, params: RenameParams, id: int): Future[Workspac
   for reference in references:
     # Only rename symbols in the project.
     # If client supports prepareRename then an error will already have been thrown
-    if reference.uri.uriToPath().isRelativeTo(projectDir):
+    if reference.uri.uriToPath().isRelTo(projectDir):
       if reference.uri notin edits:
         edits[reference.uri] = newJArray()
       edits[reference.uri] &= %TextEdit(range: reference.range, newText: params.newName)
@@ -562,21 +567,21 @@ proc extractId  (id: JsonNode): int =
   if id.kind == JString:
     discard parseInt(id.getStr, result)
 
-proc shutdown*(ls: LanguageServer, input: JsonNode): Future[RpcResult] {.async, gcsafe, raises: [Defect, CatchableError, Exception].} =
+proc shutdown*(ls: LanguageServer, input: JsonNode): Future[JsonNode] {.async, gcsafe.} =
   debug "Shutting down"
   await ls.stopNimsuggestProcesses()
   ls.isShutdown = true
   let id = input{"id"}.extractId
-  result = some(StringOfJson("null"))
+  result = newJNull()
   trace "Shutdown complete"
 
 proc exit*(p: tuple[ls: LanguageServer, onExit: OnExitCallback], _: JsonNode):
-    Future[RpcResult] {.async, gcsafe, raises: [Defect, CatchableError, Exception].} =
+    Future[JsonNode] {.async, gcsafe, raises: [Defect, CatchableError, Exception].} =
   if not p.ls.isShutdown:
     debug "Received an exit request without prior shutdown request"
     await p.ls.stopNimsuggestProcesses()
   debug "Quitting process"
-  result = none[StringOfJson]()
+  result = newJNull()
   await p.onExit()
 
 #Notifications
