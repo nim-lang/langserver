@@ -50,7 +50,7 @@ proc to*(params: RequestParamsRx, T: typedesc): T =
 proc wrapRpc*[T](fn: proc(params: T): Future[auto] {.gcsafe, raises: [].}): proc(params: RequestParamsRx): Future[JsonString] {.gcsafe, raises: [].} =
   return proc(params: RequestParamsRx): Future[JsonString] {.gcsafe, async.}  =     
     var val = params.to(T)
-    when typeof(fn(val)) is Future[void]:
+    when typeof(fn(val)) is Future[void]: #Notification
       await fn(val)
       return JsonString("{}")
     else:
@@ -87,18 +87,23 @@ proc startStdioLoop*(outStream: FileStream, rTransp: StreamTransport, srv: RpcSo
         let result2 =  srv.router.tryRoute(req, fut)
         debug "result2: ", result2
         let res = await fut
+        if res.string == "{}": 
+          #Notification, nothing to do here. 
+          return 
         var json =  newJObject()
         json["jsonrpc"] = %*"2.0"
         if req.id.kind == riNumber:
           json["id"] = %* req.id.num
         else:
           debug "Id is not a number", id = $req.id
+        
         json["result"] = parseJson(res.string)
         let jsonStr = $json
         let responseStr = jsonStr
         let contentLenght = responseStr.len  + 1
         let final = &"{CONTENT_LENGTH}{contentLenght}{CRLF}{CRLF}{responseStr}\n"
-    
+
+        debug "Sending response: ", final = final
         outStream.write(final)
         outStream.flush()
       else:
