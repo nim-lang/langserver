@@ -6,11 +6,17 @@ import ls, routes, suggestapi, protocol/enums
 
 import protocol/types
 
-proc partial*[A, B, C] (fn: proc(a: A, b: B): C {.gcsafe, raises: [].}, a: A):
-    proc (b: B) : C {.gcsafe, raises: [].} =
+
+proc partial*[A, B, C] (fn: proc(a: A, b: B): C {.gcsafe, raises: [], nimcall.}, a: A): proc (b: B) : C {.gcsafe, raises: [].} =
   return
     proc(b: B): C {.gcsafe, raises: [].} =
       return fn(a, b)
+
+proc partial*[A, B, C] (fn: proc(a: A, b: B, id: int): C {.gcsafe, raises: [], nimcall.}, a: A): proc (b: B, id: int) : C {.gcsafe, raises: [].} =
+  return
+    proc(b: B, id: int): C {.gcsafe, raises: [].} =
+      debug "Partial with id inner called"
+      return fn(a, b, id)
 
 
 template flavorUsesAutomaticObjectSerialization(T: type JrpcConv): bool = true
@@ -23,6 +29,11 @@ proc readValue*(r: var JsonReader, val: var OptionalNode) =
   except CatchableError:
     discard #None
 
+type LspClientResponse* = object
+    jsonrpc*: JsonRPC2
+    id*: string   
+    result*: JsonNode
+    
 proc writeValue*(w: var JsonWriter, value: OptionalNode) {.gcsafe, raises: [IOError].} =
   #We ignore none values
   if value.isSome:
@@ -57,6 +68,12 @@ proc wrapRpc*[T](fn: proc(params: T): Future[auto] {.gcsafe, raises: [].}): proc
       let res = await fn(val)
       return JsonString($(%*res))
 
+proc wrapRpc*[T](fn: proc(params: T, id: int): Future[auto] {.gcsafe, raises: [].}): proc(params: RequestParamsRx): Future[JsonString] {.gcsafe, raises: [].} =
+  return proc(params: RequestParamsRx): Future[JsonString] {.gcsafe, async.}  =     
+    var val = params.to(T)
+    debug "Params are ", val = %*val
+    let res = await fn(val, 0)#TODO Pass the id over
+    return JsonString($(%*res))
 
 proc readStdin*(transport: StreamTransport) {.thread.} =
   var
@@ -68,53 +85,83 @@ proc readStdin*(transport: StreamTransport) {.thread.} =
     let length = parseInt(parts[1])
     #TODO make this more efficient
     discard inputStream.readLine() # skip the \r\n
-    value = (inputStream.readStr(length)).mapIt($(it.char)).join() & "!END"
-    # debug "Read value: ", value = value
-    discard waitFor transport.write(value)
+    value = (inputStream.readStr(length)).mapIt($(it.char)).join()
+    discard waitFor transport.write(value & "!END")
   else:
     stderr.write "No content length \n"
   readStdin(transport)
 
+
+
 proc startStdioLoop*(outStream: FileStream, rTransp: StreamTransport, srv: RpcSocketServer, responseMap: TableRef[string, Future[JsonNode]]): Future[void] {.async.} =
+  debug "Pass stdioloop"
   #THIS IS BASICALLY A MOCKUP, has to be properly done
   #TODO outStream should be a StreamTransport
   {.cast(gcsafe).}:
     let content = await rTransp.readLine(sep = "!END")
-    let req = JrpcSys.decode(content, RequestRx)
-    var fut = Future[JsonString]()
-    try:
-      if req.`method`.isSome:
+    let contentJson: JsonNode = parseJson(content)
+    #Content can be a request or a response
+    let isReq = "method" in contentJson
+    # debug "Content received: ", isReq = isReq, content = content
+    try:     
+      if isReq:
+        var fut = Future[JsonString]()
+        let req = JrpcSys.decode(content, RequestRx)
         let result2 =  srv.router.tryRoute(req, fut)
-        debug "result2: ", result2
-        let res = await fut
-        if res.string == "{}": 
-          #Notification, nothing to do here. 
-          return 
-        var json =  newJObject()
-        json["jsonrpc"] = %*"2.0"
-        if req.id.kind == riNumber:
-          json["id"] = %* req.id.num
-        else:
-          debug "Id is not a number", id = $req.id
-        
-        json["result"] = parseJson(res.string)
-        let jsonStr = $json
-        let responseStr = jsonStr
-        let contentLenght = responseStr.len  + 1
-        let final = &"{CONTENT_LENGTH}{contentLenght}{CRLF}{CRLF}{responseStr}\n"
+        debug "result2 for method: ", result2, meth = req.`method`
+        if result2.isOk:
+          let m  = req.`method`.get
+          debug "open future", meth = m
+          proc cb(arg: pointer) = 
+            try:
+              let futur = cast[Future[JsonString]](arg)
+              let res = futur.read
+              debug "After future"
+              # if res.string == "{}": 
+                #Notification, nothing to do here. 
+                # return 
+              var json =  newJObject()
+              json["jsonrpc"] = %*"2.0"
+              if req.id.kind == riNumber:
+                json["id"] = %* req.id.num
+              else:
+                debug "Id is not a number", id = $req.id, meth = $req.`method`
+              
+              json["result"] = parseJson(res.string)
+              let jsonStr = $json
+              let responseStr = jsonStr
+              let contentLenght = responseStr.len  + 1
+              let final = &"{CONTENT_LENGTH}{contentLenght}{CRLF}{CRLF}{responseStr}\n"
 
-        debug "Sending response: ", final = final
-        outStream.write(final)
-        outStream.flush()
+              # debug "Sending response: ", final = final
+              outStream.write(final)
+
+              outStream.flush()
+            except CatchableError:
+              error "Error in startStdioLoop ", msg = getCurrentExceptionMsg(), trace = getStackTrace()
+          
+          fut.addCallback(cb)
       else:
-        debug "No method found. So the request is a response", reqId = req.id, req = $req
-        #TODO check it's actually a str and not empty
-        let id = req.id.str
-        #TODO check pararms are ok
-        let response = req.params.toJson()
-        responseMap[id].complete(response)
+        let  response = JrpcSys.decode(content, LspClientResponse)
+        let id = response.id
+        debug "Response received", id = id
+        if response.result == nil:
+          debug "Fue niiiiillll"
+          responseMap[id].complete(newJObject())
+          debug "Completed future with empty object"
+        else:
+          debug "Response received", res = response.result
+          
+          let r = response.result  
+
+          responseMap[id].complete(r)
+
+          debug "Completed future with content ", r = $r
+        
+
+        # responseMap.del(id)
     except CatchableError:
-      error "Error in startStdioLoop ", msg = getCurrentExceptionMsg() 
+      error "Error in startStdioLoop ", msg = getCurrentExceptionMsg(), trace = getStackTrace()    
     await startStdioLoop(outStream, rTransp, srv, responseMap)
 
 
@@ -126,9 +173,9 @@ proc main() =
     But we do construct a RPC socket server even in stdio mode, so that we can reuse the same code for both transports.
     The server is not started when using stdio transport.
   ]#
+  var responseMap: TableRef[system.string, Future[json.JsonNode]] = newTable[string, Future[JsonNode]]()
   var srv = newRpcSocketServer()
   #Holds the responses from the client done via the callAction. Likely this is only needed for stdio
-  var responseMap = newTable[string, Future[JsonNode]]()
   let outStream = newFileStream(stdout)
   let onExit: OnExitCallback = proc () {.async.} = 
     #TODO
@@ -140,7 +187,7 @@ proc main() =
       stderr.write "notifyAction called\n"
     except CatchableError:
       discard
-
+    
   let callAction: CallAction = proc(name: string, params: JsonNode): Future[JsonNode] =
     try:
       #TODO Refactor to unify the construction of the request
@@ -178,18 +225,52 @@ proc main() =
     # cmdLineClientProcessId: cmdLineParams.clientProcessId)
 
   srv.register("initialize", wrapRpc(partial(initialize, (ls: ls, onExit: onExit))))
+  srv.register("textDocument/completion", wrapRpc(partial(completion, ls)))
+  srv.register("textDocument/definition", wrapRpc(partial(definition, ls)))
+  srv.register("textDocument/declaration", wrapRpc(partial(declaration, ls)))
+  srv.register("textDocument/typeDefinition", wrapRpc(partial(typeDefinition, ls)))
+  srv.register("textDocument/documentSymbol", wrapRpc(partial(documentSymbols, ls)))
+  srv.register("textDocument/hover", wrapRpc(partial(hover, ls)))
+  srv.register("textDocument/references", wrapRpc(partial(references, ls)))
+  srv.register("textDocument/codeAction", wrapRpc(partial(codeAction, ls)))
+  srv.register("textDocument/prepareRename", wrapRpc(partial(prepareRename, ls)))
+  srv.register("textDocument/rename", wrapRpc(partial(rename, ls)))
+  srv.register("textDocument/inlayHint", wrapRpc(partial(inlayHint, ls)))
+  srv.register("textDocument/signatureHelp", wrapRpc(partial(signatureHelp, ls)))
+  srv.register("workspace/executeCommand", wrapRpc(partial(executeCommand, ls)))
+  srv.register("workspace/symbol", wrapRpc(partial(workspaceSymbol, ls)))
+  srv.register("textDocument/documentHighlight", wrapRpc(partial(documentHighlight, ls)))
+  srv.register("extension/macroExpand", wrapRpc(partial(expand, ls)))
+  srv.register("extension/status", wrapRpc(partial(status, ls)))
+  srv.register("shutdown", wrapRpc(partial(shutdown, ls)))
+  # srv.register("exit", wrapRpc(partial(exit, (ls: ls, onExit: onExit))))
   
 
-  #Notifications
-  srv.register("initialized", wrapRpc(partial(initialized, ls)))
-  srv.rpc("textDocument/didOpen") do(params: JsonNode) -> JsonNode:
-    debug "fake textDocument/didOpen called"
-    ls.showMessage(fmt """Notification test.""", MessageType.Info)
 
-    newJObject()
-  srv.rpc("$/setTrace") do(params: JsonNode) -> JsonNode:
-    debug "fake setTrace called"
-    newJObject()
+  #Notifications
+  
+  srv.register("$/cancelRequest", wrapRpc(partial(cancelRequest, ls)))
+  srv.register("initialized", wrapRpc(partial(initialized, ls)))
+  srv.register("textDocument/didOpen", wrapRpc(partial(didOpen, ls)))
+  srv.register("textDocument/didSave", wrapRpc(partial(didSave, ls)))
+  srv.register("textDocument/didClose", wrapRpc(partial(didClose, ls)))
+  srv.register("workspace/didChangeConfiguration", wrapRpc(partial(didChangeConfiguration, ls)))
+  srv.register("textDocument/didChange", wrapRpc(partial(didChange, ls)))
+  srv.register("$/setTrace", wrapRpc(partial(setTrace, ls)))
+
+  # srv.register("textDocument/didOpen", wrapRpc(partial(didOpen, ls)))
+  # srv.rpc("textDocument/completion") do(params: JsonNode) -> JsonNode:
+  #   debug "fake textDocument/completion called"
+  #   # ls.showMessage(fmt """Completion test.""", MessageType.Info)
+  #   newJObject()
+
+  # srv.rpc("textDocument/didOpen") do(params: JsonNode) -> JsonNode:
+  #   debug "fake textDocument/didOpen called"
+  #   # ls.showMessage(fmt """Notification test.""", MessageType.Info)
+  #   newJObject()
+  # srv.rpc("$/setTrace") do(params: JsonNode) -> JsonNode:
+  #   debug "fake setTrace called"
+  #   newJObject()
 
   let (rfd, wfd) = createAsyncPipe()
 
