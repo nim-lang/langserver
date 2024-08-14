@@ -78,6 +78,10 @@ type
   CommandLineParams* = object
     clientProcessId*: Option[int]
 
+  TransportMode* = enum
+    stdio = "stdio"
+    socket = "socket"
+
   LanguageServer* = ref object
     clientCapabilities*: ClientCapabilities
     initializeParams*: InitializeParams
@@ -98,6 +102,8 @@ type
     cmdLineClientProcessId*: Option[int]
     nimDumpCache*: Table[string, NimbleDumpInfo] #path to NimbleDumpInfo
     entryPoints*: seq[string]
+    transportMode*: TransportMode
+    
 
   Certainty* = enum
     None,
