@@ -576,7 +576,7 @@ proc shutdown*(ls: LanguageServer, input: JsonNode): Future[JsonNode] {.async, g
   trace "Shutdown complete"
 
 proc exit*(p: tuple[ls: LanguageServer, onExit: OnExitCallback], _: JsonNode):
-    Future[JsonNode] {.async, gcsafe, raises: [Defect, CatchableError, Exception].} =
+    Future[JsonNode] {.async, gcsafe .} =
   if not p.ls.isShutdown:
     debug "Received an exit request without prior shutdown request"
     await p.ls.stopNimsuggestProcesses()

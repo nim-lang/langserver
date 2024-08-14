@@ -191,9 +191,16 @@ proc main() =
   var srv = newRpcSocketServer()
   #Holds the responses from the client done via the callAction. Likely this is only needed for stdio
   let outStream = newFileStream(stdout)
+  let (rfd, wfd) = createAsyncPipe()
+  let
+    rTransp = fromPipe(rfd)
+    wTransp = fromPipe(wfd)
+
+
+
   let onExit: OnExitCallback = proc () {.async.} = 
-    #TODO
-    discard
+    rTransp.close()
+    wTransp.close()
 
   let notifyAction: NotifyAction = proc(name: string, params: JsonNode) =
     try:
@@ -267,7 +274,7 @@ proc main() =
   srv.register("extension/macroExpand", wrapRpc(partial(expand, ls)))
   srv.register("extension/status", wrapRpc(partial(status, ls)))
   srv.register("shutdown", wrapRpc(partial(shutdown, ls)))
-  # srv.register("exit", wrapRpc(partial(exit, (ls: ls, onExit: onExit))))
+  srv.register("exit", wrapRpc(partial(exit, (ls: ls, onExit: onExit))))
   
 
 
@@ -282,11 +289,6 @@ proc main() =
   srv.register("$/setTrace", wrapRpc(partial(setTrace, ls)))
 
 
-  let (rfd, wfd) = createAsyncPipe()
-
-  let
-    rTransp = fromPipe(rfd)
-    wTransp = fromPipe(wfd)
 
   var stdioThread: Thread[StreamTransport]
   createThread(stdioThread, readStdin, wTransp)
