@@ -2,6 +2,7 @@ import std/[unicode, uri, strformat, os, strutils, options, json, jsonutils]
 import chronos, chronicles
 import "$nim/compiler/pathutils"
 import json_rpc/private/jrpc_sys
+import protocol/types
 
 type
   FingerTable = seq[tuple[u16pos, offset: int]]
@@ -267,3 +268,7 @@ proc wrapRpc*[T](
       error "IdRequest not found in the request params"
     let res = await fn(val, idRequest)
     return JsonString($(%*res))
+  
+proc ensureStorageDir*: string =
+  result = getTempDir() / "nimlangserver"
+  discard existsOrCreateDir(result)

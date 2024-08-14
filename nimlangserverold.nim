@@ -92,9 +92,6 @@ proc registerHandlers*(connection: StreamConnection,
   connection.registerNotification("workspace/didChangeConfiguration", partial(didChangeConfiguration, ls))
   connection.registerNotification("$/setTrace", partial(setTrace, ls))
 
-proc ensureStorageDir*: string =
-  result = getTempDir() / "nimlangserver"
-  discard existsOrCreateDir(result)
 
 var
   # global var, only used in the signal handlers (for stopping the child nimsuggest

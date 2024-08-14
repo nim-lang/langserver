@@ -9,7 +9,6 @@ when defined(posix):
 
 type Callback* = proc() {.closure, gcsafe, raises: [].}
 
-
 when defined(windows):
   import winlean
 
@@ -19,7 +18,6 @@ when defined(windows):
 
 when defined(posix):
   proc hookAsyncProcMonitor*(pid: int, cb: Callback) =
-
     var processExitCallbackCalled = false
 
     proc checkProcCallback(arg: pointer) =
@@ -28,6 +26,5 @@ when defined(posix):
           sendSignal(Pid(pid), 0)
         except:
           processExitCallbackCalled = true
-         
-      
+
     addTimer(1000.int64, checkProcCallback)
