@@ -1,25 +1,16 @@
 import json_rpc/[servers/socketserver, private/jrpc_sys, jsonmarshal, rpcclient, router]
 import chronicles, chronos
-import std/[syncio, os, json, jsonutils, strutils, strformat, streams, sequtils, sets, tables, oids]
-import ls, routes, suggestapi, protocol/enums
-
+import
+  std/[
+    syncio, os, json, jsonutils, strutils, strformat, streams, sequtils, sets, tables,
+    oids,
+  ]
+import ls, routes, suggestapi, protocol/enums, utils
 
 import protocol/types
 
-
-proc partial*[A, B, C] (fn: proc(a: A, b: B): C {.gcsafe, raises: [], nimcall.}, a: A): proc (b: B) : C {.gcsafe, raises: [].} =
-  return
-    proc(b: B): C {.gcsafe, raises: [].} =
-      return fn(a, b)
-
-proc partial*[A, B, C] (fn: proc(a: A, b: B, id: int): C {.gcsafe, raises: [], nimcall.}, a: A): proc (b: B, id: int) : C {.gcsafe, raises: [].} =
-  return
-    proc(b: B, id: int): C {.gcsafe, raises: [].} =
-      debug "Partial with id inner called"
-      return fn(a, b, id)
-
-
-template flavorUsesAutomaticObjectSerialization(T: type JrpcSys): bool = true
+template flavorUsesAutomaticObjectSerialization(T: type JrpcSys): bool =
+  true
 
 proc readValue*(r: var JsonReader, val: var OptionalNode) =
   try:
@@ -28,22 +19,20 @@ proc readValue*(r: var JsonReader, val: var OptionalNode) =
   except CatchableError:
     discard #None
 
-type 
-  LspClientResponse* = object
-    jsonrpc*: JsonRPC2
-    id*: string   
-    result*: JsonNode
+type LspClientResponse* = object
+  jsonrpc*: JsonRPC2
+  id*: string
+  result*: JsonNode
 
 proc writeValue*(w: var JsonWriter, value: OptionalNode) {.gcsafe, raises: [IOError].} =
   #We ignore none values
   if value.isSome:
     if w.hasPrettyOutput:
       write w.stream, value.get.pretty()
-     
     else:
-      write w.stream, $(value.get)      
+      write w.stream, $(value.get)
 
-proc toJson*(params: RequestParamsRx): JsonNode = 
+proc toJson*(params: RequestParamsRx): JsonNode =
   if params.kind == rpNamed:
     result = newJObject()
     for np in params.named:
@@ -53,45 +42,11 @@ proc toJson*(params: RequestParamsRx): JsonNode =
     for p in params.positional:
       result.add parseJson($p)
 
-proc get[T](params: RequestParamsRx, key: string): T =
-  if params.kind == rpNamed:
-    for np in params.named:
-      if np.name == key:
-        return np.value.string.parseJson.to(T)
-  raise newException(KeyError, "Key not found")
-
-proc to*(params: RequestParamsRx, T: typedesc): T = 
-  let value = $params.toJson()
-  parseJson(value).to(T)
-  
-proc wrapRpc*[T](fn: proc(params: T): Future[auto] {.gcsafe, raises: [].}): proc(params: RequestParamsRx): Future[JsonString] {.gcsafe, raises: [].} =
-  return proc(params: RequestParamsRx): Future[JsonString] {.gcsafe, async.}  =     
-    var val = params.to(T)
-    when typeof(fn(val)) is Future[void]: #Notification
-      await fn(val)
-      return JsonString("{}")
-    else:
-      let res = await fn(val)
-      return JsonString($(%*res))
-
-proc wrapRpc*[T](fn: proc(params: T, id: int): Future[auto] {.gcsafe, raises: [].}): proc(params: RequestParamsRx): Future[JsonString] {.gcsafe, raises: [].} =
-  return proc(params: RequestParamsRx): Future[JsonString] {.gcsafe, async.}  =     
-    var val = params.to(T)
-    var idRequest = 0
-    try:
-      idRequest = params.get[:int]("idRequest")
-      debug "IdRequest is ", idRequest = idRequest
-    except KeyError:
-      error "IdRequest not found in the request params"
-    let res = await fn(val, idRequest)
-    return JsonString($(%*res))
-
 proc readStdin*(transport: StreamTransport) {.thread.} =
-  var
-    inputStream = newFileStream(stdin)  
-  var
-    value = inputStream.readLine()
-  if "Content-Length:" in value: # HTTP header. TODO check only in the start of the string
+  var inputStream = newFileStream(stdin)
+  var value = inputStream.readLine()
+  if "Content-Length:" in value:
+    # HTTP header. TODO check only in the start of the string
     let parts = value.split(" ")
     let length = parseInt(parts[1])
     #TODO make this more efficient
@@ -102,61 +57,69 @@ proc readStdin*(transport: StreamTransport) {.thread.} =
     stderr.write "No content length \n"
   readStdin(transport)
 
-
-
-proc startStdioLoop*(outStream: FileStream, rTransp: StreamTransport, srv: RpcSocketServer, responseMap: TableRef[string, Future[JsonNode]]): Future[void] {.async.} =
+proc startStdioLoop*(
+    outStream: FileStream,
+    rTransp: StreamTransport,
+    srv: RpcSocketServer,
+    responseMap: TableRef[string, Future[JsonNode]],
+): Future[void] {.async.} =
   #THIS IS BASICALLY A MOCKUP, has to be properly done
   #TODO outStream should be a StreamTransport
   {.cast(gcsafe).}:
     let content = await rTransp.readLine(sep = "!END")
     let contentJson: JsonNode = parseJson(content)
     let isReq = "method" in contentJson
-    try:     
+    try:
       if isReq:
         var fut = Future[JsonString]()
         var req = JrpcSys.decode(content, RequestRx)
-        if req.params.kind == rpNamed and req.id.kind == riNumber: #Some requests have no id
+        if req.params.kind == rpNamed and req.id.kind == riNumber:
+          #Some requests have no id
           #We need to pass the id to the wrapRpc as the id information is lost in the rpc proc
-          req.params.named.add ParamDescNamed(name: "idRequest", value: JsonString($(%req.id.num))) 
-        let routeResult =  srv.router.tryRoute(req, fut)        
+          req.params.named.add ParamDescNamed(
+            name: "idRequest", value: JsonString($(%req.id.num))
+          )
+        let routeResult = srv.router.tryRoute(req, fut)
         if routeResult.isOk:
-          proc writeRequestResponse(arg: pointer) = 
+          proc writeRequestResponse(arg: pointer) =
             try:
               let futur = cast[Future[JsonString]](arg)
               #TODO Refactor from here can be reused
-              let res: JsonString = futur.read            
-              var json =  newJObject()
+              let res: JsonString = futur.read
+              var json = newJObject()
               json["jsonrpc"] = %*"2.0"
               if req.id.kind == riNumber:
-                json["id"] = %* req.id.num              
-              
+                json["id"] = %*req.id.num
+
               json["result"] = parseJson(res.string)
               let jsonStr = $json
               let responseStr = jsonStr
-              let contentLenght = responseStr.len  + 1
+              let contentLenght = responseStr.len + 1
               let final = &"{CONTENT_LENGTH}{contentLenght}{CRLF}{CRLF}{responseStr}\n"
 
               outStream.write(final)
               outStream.flush()
             except CatchableError:
-              error "[startStdioLoop] Writting Request Response ", msg = getCurrentExceptionMsg(), trace = getStackTrace()
-          fut.addCallback(writeRequestResponse) #We dont await here to do not block the loop
+              error "[startStdioLoop] Writting Request Response ",
+                msg = getCurrentExceptionMsg(), trace = getStackTrace()
+
+          fut.addCallback(writeRequestResponse)
+            #We dont await here to do not block the loop
         else:
           error "[startStdioLoop] routing request ", msg = $routeResult
       else: #Response
-        let  response = JrpcSys.decode(content, LspClientResponse)
+        let response = JrpcSys.decode(content, LspClientResponse)
         let id = response.id
         if response.result == nil:
           responseMap[id].complete(newJObject())
-        else:                    
-          let r = response.result  
-          responseMap[id].complete(r)       
+        else:
+          let r = response.result
+          responseMap[id].complete(r)
     except CatchableError:
-      error "[startStdioLoop] ", msg = getCurrentExceptionMsg(), trace = getStackTrace()    
+      error "[startStdioLoop] ", msg = getCurrentExceptionMsg(), trace = getStackTrace()
     await startStdioLoop(outStream, rTransp, srv, responseMap)
 
-
-proc registerRoutes(srv: RpcSocketServer, ls: LanguageServer, onExit: OnExitCallback) = 
+proc registerRoutes(srv: RpcSocketServer, ls: LanguageServer, onExit: OnExitCallback) =
   srv.register("initialize", wrapRpc(partial(initialize, (ls: ls, onExit: onExit))))
   srv.register("textDocument/completion", wrapRpc(partial(completion, ls)))
   srv.register("textDocument/definition", wrapRpc(partial(definition, ls)))
@@ -172,7 +135,9 @@ proc registerRoutes(srv: RpcSocketServer, ls: LanguageServer, onExit: OnExitCall
   srv.register("textDocument/signatureHelp", wrapRpc(partial(signatureHelp, ls)))
   srv.register("workspace/executeCommand", wrapRpc(partial(executeCommand, ls)))
   srv.register("workspace/symbol", wrapRpc(partial(workspaceSymbol, ls)))
-  srv.register("textDocument/documentHighlight", wrapRpc(partial(documentHighlight, ls)))
+  srv.register(
+    "textDocument/documentHighlight", wrapRpc(partial(documentHighlight, ls))
+  )
   srv.register("extension/macroExpand", wrapRpc(partial(expand, ls)))
   srv.register("extension/status", wrapRpc(partial(status, ls)))
   srv.register("shutdown", wrapRpc(partial(shutdown, ls)))
@@ -184,21 +149,25 @@ proc registerRoutes(srv: RpcSocketServer, ls: LanguageServer, onExit: OnExitCall
   srv.register("textDocument/didOpen", wrapRpc(partial(didOpen, ls)))
   srv.register("textDocument/didSave", wrapRpc(partial(didSave, ls)))
   srv.register("textDocument/didClose", wrapRpc(partial(didClose, ls)))
-  srv.register("workspace/didChangeConfiguration", wrapRpc(partial(didChangeConfiguration, ls)))
+  srv.register(
+    "workspace/didChangeConfiguration", wrapRpc(partial(didChangeConfiguration, ls))
+  )
   srv.register("textDocument/didChange", wrapRpc(partial(didChange, ls)))
   srv.register("$/setTrace", wrapRpc(partial(setTrace, ls)))
 
-
-proc main() = 
+proc main() =
   debug "Starting nimlangserver", params = commandLineParams()
-  let transportMode = commandLineParams().filterIt("stdio" in it)[0].replace("--", "").parseEnum[:TransportMode]()
+  let transportMode = parseEnum[TransportMode](
+    commandLineParams().filterIt("stdio" in it)[0].replace("--", "")
+  )
   debug "Transport mode is ", transportMode = transportMode
   #[
   `nimlangserver` supports both transports: stdio and socket. By default it uses stdio transport. 
     But we do construct a RPC socket server even in stdio mode, so that we can reuse the same code for both transports.
     The server is not started when using stdio transport.
   ]#
-  var responseMap: TableRef[system.string, Future[json.JsonNode]] = newTable[string, Future[JsonNode]]()
+  var responseMap: TableRef[system.string, Future[json.JsonNode]] =
+    newTable[string, Future[JsonNode]]()
   var srv = newRpcSocketServer()
   #Holds the responses from the client done via the callAction. Likely this is only needed for stdio
   let outStream = newFileStream(stdout)
@@ -207,53 +176,50 @@ proc main() =
     rTransp = fromPipe(rfd)
     wTransp = fromPipe(wfd)
 
-  
-  let onExit: OnExitCallback = proc () {.async.} = 
+  let onExit: OnExitCallback = proc() {.async.} =
     rTransp.close()
     wTransp.close()
 
   let notifyAction: NotifyAction = proc(name: string, params: JsonNode) =
     try:
       stderr.write "notifyAction called\n"
-      var json =  newJObject()
+      var json = newJObject()
       json["jsonrpc"] = %*"2.0"
       json["method"] = %*name
       json["params"] = params
-      
+
       let jsonStr = $json
       let responseStr = jsonStr
-      let contentLenght = responseStr.len  + 1
+      let contentLenght = responseStr.len + 1
       let final = &"{CONTENT_LENGTH}{contentLenght}{CRLF}{CRLF}{responseStr}\n"
       outStream.write(final)
       outStream.flush()
-
     except CatchableError:
       discard
-    
+
   let callAction: CallAction = proc(name: string, params: JsonNode): Future[JsonNode] =
     try:
       #TODO Refactor to unify the construction of the request
       debug "callAction called with ", name = name
       let id = $genOid()
-      var json =  newJObject()
+      var json = newJObject()
       json["jsonrpc"] = %*"2.0"
       json["method"] = %*name
       json["id"] = %*id
       json["params"] = params
-      
+
       let jsonStr = $json
       let responseStr = jsonStr
-      let contentLenght = responseStr.len  + 1
+      let contentLenght = responseStr.len + 1
       let final = &"{CONTENT_LENGTH}{contentLenght}{CRLF}{CRLF}{responseStr}\n"
       outStream.write(final)
       outStream.flush()
 
       result = newFuture[JsonNode]()
       responseMap[id] = result
-
     except CatchableError:
       discard
-    
+
   let ls = LanguageServer(
     workspaceConfiguration: Future[JsonNode](),
     notify: notifyAction,
@@ -262,10 +228,10 @@ proc main() =
     cancelFutures: initTable[int, Future[void]](),
     filesWithDiags: initHashSet[string](),
     transportMode: transportMode,
-    openFiles: initTable[string, NlsFileInfo]())
+    openFiles: initTable[string, NlsFileInfo](),
+  )
     # storageDir: storageDir,
     # cmdLineClientProcessId: cmdLineParams.clientProcessId)
-
 
   srv.registerRoutes(ls, onExit)
   var stdioThread: Thread[StreamTransport]
