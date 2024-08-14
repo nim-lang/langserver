@@ -29,11 +29,12 @@ proc readValue*(r: var JsonReader, val: var OptionalNode) =
   except CatchableError:
     discard #None
 
-type LspClientResponse* = object
+type 
+  LspClientResponse* = object
     jsonrpc*: JsonRPC2
     id*: string   
     result*: JsonNode
-    
+
 proc writeValue*(w: var JsonWriter, value: OptionalNode) {.gcsafe, raises: [IOError].} =
   #We ignore none values
   if value.isSome:
@@ -52,7 +53,13 @@ proc toJson*(params: RequestParamsRx): JsonNode =
     result = newJArray() #TODO this may be wrong
     for p in params.positional:
       result.add parseJson($p)
-    
+
+proc get[T](params: RequestParamsRx, key: string): T =
+  if params.kind == rpNamed:
+    for np in params.named:
+      if np.name == key:
+        return np.value.string.parseJson.to(T)
+  raise newException(KeyError, "Key not found")
 
 proc to*(params: RequestParamsRx, T: typedesc): T = 
   let value = $params.toJson()
@@ -71,8 +78,13 @@ proc wrapRpc*[T](fn: proc(params: T): Future[auto] {.gcsafe, raises: [].}): proc
 proc wrapRpc*[T](fn: proc(params: T, id: int): Future[auto] {.gcsafe, raises: [].}): proc(params: RequestParamsRx): Future[JsonString] {.gcsafe, raises: [].} =
   return proc(params: RequestParamsRx): Future[JsonString] {.gcsafe, async.}  =     
     var val = params.to(T)
-    debug "Params are ", val = %*val
-    let res = await fn(val, 0)#TODO Pass the id over
+    var idRequest = 0
+    try:
+      idRequest = params.get[:int]("idRequest")
+      debug "IdRequest is ", idRequest = idRequest
+    except KeyError:
+      error "IdRequest not found in the request params"
+    let res = await fn(val, idRequest)
     return JsonString($(%*res))
 
 proc readStdin*(transport: StreamTransport) {.thread.} =
@@ -94,7 +106,6 @@ proc readStdin*(transport: StreamTransport) {.thread.} =
 
 
 proc startStdioLoop*(outStream: FileStream, rTransp: StreamTransport, srv: RpcSocketServer, responseMap: TableRef[string, Future[JsonNode]]): Future[void] {.async.} =
-  debug "Pass stdioloop"
   #THIS IS BASICALLY A MOCKUP, has to be properly done
   #TODO outStream should be a StreamTransport
   {.cast(gcsafe).}:
@@ -106,7 +117,10 @@ proc startStdioLoop*(outStream: FileStream, rTransp: StreamTransport, srv: RpcSo
     try:     
       if isReq:
         var fut = Future[JsonString]()
-        let req = JrpcSys.decode(content, RequestRx)
+        var req = JrpcSys.decode(content, RequestRx)
+        if req.params.kind == rpNamed and req.id.kind == riNumber: #Some requests have no id
+          #We need to pass the id to the wrapRpc as the id information is lost in the rpc proc
+          req.params.named.add ParamDescNamed(name: "idRequest", value: JsonString($(%req.id.num))) 
         let result2 =  srv.router.tryRoute(req, fut)
         debug "result2 for method: ", result2, meth = req.`method`
         if result2.isOk:
@@ -140,7 +154,7 @@ proc startStdioLoop*(outStream: FileStream, rTransp: StreamTransport, srv: RpcSo
             except CatchableError:
               error "Error in startStdioLoop ", msg = getCurrentExceptionMsg(), trace = getStackTrace()
           
-          fut.addCallback(cb)
+          fut.addCallback(cb) #We dont await here to do not block the loop
       else:
         let  response = JrpcSys.decode(content, LspClientResponse)
         let id = response.id
@@ -182,9 +196,20 @@ proc main() =
     discard
 
   let notifyAction: NotifyAction = proc(name: string, params: JsonNode) =
-    #TODO 
     try:
       stderr.write "notifyAction called\n"
+      var json =  newJObject()
+      json["jsonrpc"] = %*"2.0"
+      json["method"] = %*name
+      json["params"] = params
+      
+      let jsonStr = $json
+      let responseStr = jsonStr
+      let contentLenght = responseStr.len  + 1
+      let final = &"{CONTENT_LENGTH}{contentLenght}{CRLF}{CRLF}{responseStr}\n"
+      outStream.write(final)
+      outStream.flush()
+
     except CatchableError:
       discard
     
@@ -208,7 +233,6 @@ proc main() =
 
       result = newFuture[JsonNode]()
       responseMap[id] = result
-
 
     except CatchableError:
       discard
@@ -248,7 +272,6 @@ proc main() =
 
 
   #Notifications
-  
   srv.register("$/cancelRequest", wrapRpc(partial(cancelRequest, ls)))
   srv.register("initialized", wrapRpc(partial(initialized, ls)))
   srv.register("textDocument/didOpen", wrapRpc(partial(didOpen, ls)))
@@ -258,19 +281,6 @@ proc main() =
   srv.register("textDocument/didChange", wrapRpc(partial(didChange, ls)))
   srv.register("$/setTrace", wrapRpc(partial(setTrace, ls)))
 
-  # srv.register("textDocument/didOpen", wrapRpc(partial(didOpen, ls)))
-  # srv.rpc("textDocument/completion") do(params: JsonNode) -> JsonNode:
-  #   debug "fake textDocument/completion called"
-  #   # ls.showMessage(fmt """Completion test.""", MessageType.Info)
-  #   newJObject()
-
-  # srv.rpc("textDocument/didOpen") do(params: JsonNode) -> JsonNode:
-  #   debug "fake textDocument/didOpen called"
-  #   # ls.showMessage(fmt """Notification test.""", MessageType.Info)
-  #   newJObject()
-  # srv.rpc("$/setTrace") do(params: JsonNode) -> JsonNode:
-  #   debug "fake setTrace called"
-  #   newJObject()
 
   let (rfd, wfd) = createAsyncPipe()
 
