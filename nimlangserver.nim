@@ -89,9 +89,9 @@ proc processClientHook(server: StreamServer, transport: StreamTransport) {.async
         # value = (await transport.read(length)).mapIt($(it.char)).join()
         discard await transport.readLine() # skip the \r\n
         value = (await transport.read(length)).mapIt($(it.char)).join()
-        echo "************** REQUEST ******************* "
-        echo value
-        echo "************** END *******************"
+        # echo "************** REQUEST ******************* "
+        # echo value
+        # echo "************** END *******************"
         
 
       if value == "":
@@ -104,7 +104,6 @@ proc processClientHook(server: StreamServer, transport: StreamTransport) {.async
       let isReq = "method" in contentJson
       debug "Is request ", isReq = isReq
       if isReq:
-        var fut = Future[JsonString]()
         var req = JrpcSys.decode(value, RequestRx)
         if req.params.kind == rpNamed and req.id.kind == riNumber:
           #Some requests have no id
@@ -112,12 +111,13 @@ proc processClientHook(server: StreamServer, transport: StreamTransport) {.async
           req.params.named.add ParamDescNamed(
             name: "idRequest", value: JsonString($(%req.id.num))
           )
-        let routeResult = srv.router.tryRoute(req, fut)
-        if routeResult.isOk:
-          proc writeRequestResponse(arg: pointer) =
-            try:
-              let futur = cast[Future[JsonString]](arg)
-              #TODO Refactor from here can be reused
+        let rpc = srv.router.procs.getOrDefault(req.meth.get)
+        let resFut = rpc(req.params)
+        proc writeRequestResponse(arg: pointer) =
+          try:
+            let futur = cast[Future[JsonString]](arg)
+            #TODO Refactor from here can be reused
+            if futur.error == nil:              
               let res: JsonString = futur.read
               var json = newJObject()
               json["jsonrpc"] = %*"2.0"
@@ -129,25 +129,39 @@ proc processClientHook(server: StreamServer, transport: StreamTransport) {.async
               let responseStr = jsonStr
               let contentLenght = responseStr.len + 1
               let final = &"{CONTENT_LENGTH}{contentLenght}{CRLF}{CRLF}{responseStr}\n"
-
-              discard waitFor transport.write(final)
+              if transport != nil:                
+                discard waitFor transport.write(final)
+            else:
+              debug "Future is erroing!"
+              return
+          except CatchableError:
+            error "[processClient] Writting Request Response ",
+              msg = getCurrentExceptionMsg(), trace = getStackTrace()
+        resFut.addCallback(writeRequestResponse)
+              
+              
               # outStream.flush()
-            except CatchableError:
-              error "[startStdioLoop] Writting Request Response ",
-                msg = getCurrentExceptionMsg(), trace = getStackTrace()
+            # except CatchableError:
+            #   error "[startStdioLoop] Writting Request Response ",
+            #     msg = getCurrentExceptionMsg(), trace = getStackTrace()
 
-          fut.addCallback(writeRequestResponse)
+
+          # fut.addCallback(writeRequestResponse)
             #We dont await here to do not block the loop
-        else:
-          error "[startStdioLoop] routing request ", msg = $routeResult
+        # else:
+        #   error "[startStdioLoop] routing request ", msg = $routeResult
       else: #Response
         let response = JrpcSys.decode(value, LspClientResponse)
         let id = response.id
-        debug "*********** TODO PROCESS RESPONSE ************", id = id
+        debug "*********** TODO PROCESS RESPONSE ************", id = id  
         {.cast(gcsafe).}:
+          # debug "Keys in responseMap", keys = responseMap.keys.toSeq
           if response.result == nil:
+            debug "Content is nil"
             responseMap[id].complete(newJObject())
           else:
+            debug "Content is ", res = response.result          
+            
             let r = response.result
             responseMap[id].complete(r)
 
@@ -174,17 +188,20 @@ proc startSocketServer*(srv: RpcSocketServer, transport: StreamTransport): Langu
       let responseStr = jsonStr
       let contentLenght = responseStr.len + 1
       let final = &"{CONTENT_LENGTH}{contentLenght}{CRLF}{CRLF}{responseStr}\n"
-      if transport != nil:
-        discard waitFor transport.write(final)
-      else:
-        error "Transport is nil in notifyAction"
+      {.cast(gcsafe).}:
+
+        if socketTransport != nil:
+          debug "Writing to transport notification"
+          discard waitFor socketTransport.write(final)
+        else:
+          error "Transport is nil in notifyAction"
     except CatchableError:
       discard
    
   let callAction: CallAction = proc(name: string, params: JsonNode): Future[JsonNode]  =
     try:
       #TODO Refactor to unify the construction of the request
-      debug "callAction called with ", name = name
+      debug "!!!!!!!!!!!!!!callAction called with ", name = name
       
       let id = $genOid()
       var json = newJObject()
@@ -197,12 +214,12 @@ proc startSocketServer*(srv: RpcSocketServer, transport: StreamTransport): Langu
       let responseStr = jsonStr
       let contentLenght = responseStr.len + 1
       let final = &"{CONTENT_LENGTH}{contentLenght}{CRLF}{CRLF}{responseStr}\n"
-      # discard waitFor transport.write(final)
-      result = newFuture[JsonNode]()
       {.cast(gcsafe).}:
+        discard waitFor socketTransport.write(final)
+        result = newFuture[JsonNode]()
         responseMap[id] = result
 
-    except CatchableError:
+    except CatchableError:      
       discard
   
   result = LanguageServer(
