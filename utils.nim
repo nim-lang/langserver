@@ -230,6 +230,10 @@ proc to*(params: RequestParamsRx, T: typedesc): T =
   let value = $params.toJson()
   parseJson(value).to(T)
 
+proc head*[T](xs: seq[T]): Option[T] = 
+  if xs.len > 0: some(xs[0])
+  else: none(T)
+
 proc partial*[A, B, C](
     fn: proc(a: A, b: B): C {.gcsafe, raises: [], nimcall.}, a: A
 ): proc(b: B): C {.gcsafe, raises: [].} =

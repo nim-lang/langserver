@@ -117,3 +117,74 @@ proc startStdioLoop*(
     except CatchableError:
       error "[startStdioLoop] ", msg = getCurrentExceptionMsg(), trace = getStackTrace()
     await startStdioLoop(outStream, rTransp, srv, responseMap)
+
+proc startStdioServer*(srv: RpcSocketServer): LanguageServer =
+  #Holds the responses from the client done via the callAction. Likely this is only needed for stdio
+  var responseMap = newTable[string, Future[JsonNode]]()
+  let outStream = newFileStream(stdout)
+  let (rfd, wfd) = createAsyncPipe()
+  let
+    rTransp = fromPipe(rfd)
+    wTransp = fromPipe(wfd)
+
+  let onExit: OnExitCallback = proc() {.async.} =
+    rTransp.close()
+    wTransp.close()
+
+  let notifyAction: NotifyAction = proc(name: string, params: JsonNode) =
+    try:
+      stderr.write "notifyAction called\n"
+      var json = newJObject()
+      json["jsonrpc"] = %*"2.0"
+      json["method"] = %*name
+      json["params"] = params
+
+      let jsonStr = $json
+      let responseStr = jsonStr
+      let contentLenght = responseStr.len + 1
+      let final = &"{CONTENT_LENGTH}{contentLenght}{CRLF}{CRLF}{responseStr}\n"
+      outStream.write(final)
+      outStream.flush()
+    except CatchableError:
+      discard
+
+  let callAction: CallAction = proc(name: string, params: JsonNode): Future[JsonNode] =
+    try:
+      #TODO Refactor to unify the construction of the request
+      debug "callAction called with ", name = name
+      let id = $genOid()
+      var json = newJObject()
+      json["jsonrpc"] = %*"2.0"
+      json["method"] = %*name
+      json["id"] = %*id
+      json["params"] = params
+
+      let jsonStr = $json
+      let responseStr = jsonStr
+      let contentLenght = responseStr.len + 1
+      let final = &"{CONTENT_LENGTH}{contentLenght}{CRLF}{CRLF}{responseStr}\n"
+      outStream.write(final)
+      outStream.flush()
+
+      result = newFuture[JsonNode]()
+      responseMap[id] = result
+    except CatchableError:
+      discard
+
+  result = LanguageServer(
+    workspaceConfiguration: Future[JsonNode](),
+    notify: notifyAction,
+    call: callAction,
+    onExit: onExit,
+    projectFiles: initTable[string, Future[Nimsuggest]](),
+    cancelFutures: initTable[int, Future[void]](),
+    filesWithDiags: initHashSet[string](),
+    transportMode: stdio,
+    openFiles: initTable[string, NlsFileInfo]()    
+  )
+
+
+  var stdioThread: Thread[StreamTransport]
+  createThread(stdioThread, readStdin, wTransp)
+  asyncSpawn startStdioLoop(outStream, rTransp, srv, responseMap)
+  

@@ -87,6 +87,7 @@ type
     initializeParams*: InitializeParams
     notify*: NotifyAction
     call*: CallAction
+    onExit*: OnExitCallback
     projectFiles*: Table[string, Future[Nimsuggest]]
     openFiles*: Table[string, NlsFileInfo]
     cancelFutures*: Table[int, Future[void]]
