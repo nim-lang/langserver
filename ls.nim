@@ -128,6 +128,17 @@ macro `%*`*(t: untyped, inputStream: untyped): untyped =
   result = newCall(bindSym("to", brOpen),
                    newCall(bindSym("%*", brOpen), inputStream), t)
 
+proc initLs*(tm: TransportMode): LanguageServer =
+  LanguageServer(
+    workspaceConfiguration: Future[JsonNode](),
+    projectFiles: initTable[string, Future[Nimsuggest]](),
+    cancelFutures: initTable[int, Future[void]](),
+    filesWithDiags: initHashSet[string](),
+    transportMode: tm,
+    openFiles: initTable[string, NlsFileInfo](),
+    responseMap: newTable[string, Future[JsonNode]]()
+  )
+
 proc orCancelled*[T](fut: Future[T], ls: LanguageServer, id: int): Future[T] {.async.} =
   ls.cancelFutures[id] = newFuture[void]()
   await fut or ls.cancelFutures[id]

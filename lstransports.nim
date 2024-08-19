@@ -41,7 +41,7 @@ type LspClientResponse* = object
   id*: string
   result*: JsonNode
 
-proc readStdin*(transport: StreamTransport) {.thread.} =
+proc readStdin*(transport: StreamTransport) {.thread.} =  
   var inputStream = newFileStream(stdin)
   var value = inputStream.readLine()
   if "Content-Length:" in value:
@@ -57,15 +57,17 @@ proc readStdin*(transport: StreamTransport) {.thread.} =
   readStdin(transport)
 
 proc startStdioLoop*(
+    ls: LanguageServer,
     outStream: FileStream,
     rTransp: StreamTransport,
-    srv: RpcSocketServer,
-    responseMap: TableRef[string, Future[JsonNode]],
+    srv: RpcSocketServer
 ): Future[void] {.async.} =
+  debug "Starting stdio loop"
   #THIS IS BASICALLY A MOCKUP, has to be properly done
   #TODO outStream should be a StreamTransport
   {.cast(gcsafe).}:
     let content = await rTransp.readLine(sep = "!END")
+    debug "Content is ", content = content
     let contentJson: JsonNode = parseJson(content)
     let isReq = "method" in contentJson
     try:
@@ -110,23 +112,23 @@ proc startStdioLoop*(
         let response = JrpcSys.decode(content, LspClientResponse)
         let id = response.id
         if response.result == nil:
-          responseMap[id].complete(newJObject())
+          ls.responseMap[id].complete(newJObject())
         else:
           let r = response.result
-          responseMap[id].complete(r)
+          ls.responseMap[id].complete(r)
     except CatchableError:
       error "[startStdioLoop] ", msg = getCurrentExceptionMsg(), trace = getStackTrace()
-    await startStdioLoop(outStream, rTransp, srv, responseMap)
+    await startStdioLoop(ls, outStream, rTransp, srv)
 
-proc startStdioServer*(srv: RpcSocketServer): LanguageServer =
+proc startStdioServer*(ls: LanguageServer, srv: RpcSocketServer) =
   #Holds the responses from the client done via the callAction. Likely this is only needed for stdio
-  var responseMap = newTable[string, Future[JsonNode]]()
+  debug "Starting stdio server"
+
   let outStream = newFileStream(stdout)
   let (rfd, wfd) = createAsyncPipe()
   let
     rTransp = fromPipe(rfd)
     wTransp = fromPipe(wfd)
-
   let onExit: OnExitCallback = proc() {.async.} =
     rTransp.close()
     wTransp.close()
@@ -167,26 +169,20 @@ proc startStdioServer*(srv: RpcSocketServer): LanguageServer =
       outStream.flush()
 
       result = newFuture[JsonNode]()
-      responseMap[id] = result
+      ls.responseMap[id] = result
     except CatchableError:
       discard
 
-  result = LanguageServer(
-    workspaceConfiguration: Future[JsonNode](),
-    notify: notifyAction,
-    call: callAction,
-    onExit: onExit,
-    projectFiles: initTable[string, Future[Nimsuggest]](),
-    cancelFutures: initTable[int, Future[void]](),
-    filesWithDiags: initHashSet[string](),
-    transportMode: stdio,
-    openFiles: initTable[string, NlsFileInfo]()    
-  )
+  ls.call = callAction
+  ls.notify = notifyAction
+  ls.onExit = onExit
 
+  var stdioThread {.global.}: Thread[StreamTransport]
 
-  var stdioThread: Thread[StreamTransport]
   createThread(stdioThread, readStdin, wTransp)
-  asyncSpawn startStdioLoop(outStream, rTransp, srv, responseMap)
+  asyncSpawn startStdioLoop(ls, outStream, rTransp, srv)
+  debug "Stdio server started"
+
 
 #SOCKET
 proc processClientHook*(ls: LanguageServer, server: StreamServer, transport: StreamTransport) {.async: (raises: []), gcsafe.} =
@@ -271,11 +267,8 @@ proc processClientHook*(ls: LanguageServer, server: StreamServer, transport: Str
         debug "*********** TODO PROCESS RESPONSE ************", id = id  
         # debug "Keys in responseMap", keys = responseMap.keys.toSeq
         if response.result == nil:
-          debug "Content is nil"
           ls.responseMap[id].complete(newJObject())
-        else:
-          debug "Content is ", res = response.result          
-          
+        else:          
           let r = response.result
           ls.responseMap[id].complete(r)
 

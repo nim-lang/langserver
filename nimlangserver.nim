@@ -70,16 +70,7 @@ var
   # processes during an abnormal program termination)
   globalLS: ptr LanguageServer
 
-proc initLs(tm: TransportMode): LanguageServer =
-  LanguageServer(
-    workspaceConfiguration: Future[JsonNode](),
-    projectFiles: initTable[string, Future[Nimsuggest]](),
-    cancelFutures: initTable[int, Future[void]](),
-    filesWithDiags: initHashSet[string](),
-    transportMode: tm,
-    openFiles: initTable[string, NlsFileInfo](),
-    responseMap: newTable[string, Future[JsonNode]]()
-  )
+
 
 proc initActions*(ls: LanguageServer, srv: RpcSocketServer) = 
   let onExit: OnExitCallback = proc() {.async.} =
@@ -150,20 +141,18 @@ proc main() =
     The server is not started when using stdio transport.
   ]#
   var ls = initLs(transportMode)
+  ls.storageDir = storageDir
+  ls.cmdLineClientProcessId = cmdLineParams.clientProcessId  
   var srv: RpcSocketServer
-  
   case transportMode
   of stdio: 
     srv = newRpcSocketServer()
-    ls = srv.startStdioServer()
-    ls.storageDir = storageDir
-    ls.cmdLineClientProcessId = cmdLineParams.clientProcessId  
+    startStdioServer(ls, srv)
   of socket:
     initActions(ls, srv)
     srv = newRpcSocketServer(partial(processClientHook, ls)) 
     srv.addStreamServer("localhost", Port(8888)) #TODO Param
     srv.start()
-    
 
 
   globalLS = addr ls
@@ -197,5 +186,8 @@ proc main() =
       exitnow(1)
   
   runForever()
-
-main()
+try:
+  main()
+except Exception as e:
+  error "Error in main", msg = e.msg, trace = getStackTrace()
+  quit(1)
