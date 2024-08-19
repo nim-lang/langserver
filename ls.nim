@@ -104,7 +104,8 @@ type
     nimDumpCache*: Table[string, NimbleDumpInfo] #path to NimbleDumpInfo
     entryPoints*: seq[string]
     transportMode*: TransportMode
-    
+    responseMap*: TableRef[string, Future[JsonNode]] #id to future. Represents the pending requests as result of calling ls.call
+    socketTransport*: StreamTransport #TODO rename this but first we need to refactor fileStream to StreamTransport in the stdio transport
 
   Certainty* = enum
     None,

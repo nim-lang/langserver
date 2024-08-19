@@ -240,12 +240,11 @@ proc partial*[A, B, C](
   return proc(b: B): C {.gcsafe, raises: [].} =
     return fn(a, b)
 
-proc partial*[A, B, C](
-    fn: proc(a: A, b: B, id: int): C {.gcsafe, raises: [], nimcall.}, a: A
-): proc(b: B, id: int): C {.gcsafe, raises: [].} =
-  return proc(b: B, id: int): C {.gcsafe, raises: [].} =
-    debug "Partial with id inner called"
-    return fn(a, b, id)
+proc partial*[A, B, C, D](
+  fn: proc(a: A, b: B, c: C): D {.gcsafe, raises: [], nimcall.}, a: A
+): proc(b: B, c: C): D {.gcsafe, raises: [].} =
+  return proc(b: B, c: C): D {.gcsafe, raises: [].} =
+    return fn(a, b, c)
 
 proc wrapRpc*[T](
     fn: proc(params: T): Future[auto] {.gcsafe, raises: [].}

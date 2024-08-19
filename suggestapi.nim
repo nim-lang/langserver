@@ -379,7 +379,8 @@ proc createNimsuggest*(root: string): Future[Nimsuggest] {.gcsafe.} =
 
 proc toString(bytes: openarray[byte]): string =
   result = newString(bytes.len)
-  copyMem(result[0].addr, bytes[0].unsafeAddr, bytes.len)
+  if bytes.len > 0:
+    copyMem(result[0].addr, bytes[0].unsafeAddr, bytes.len)
 
 proc processQueue(self: Nimsuggest): Future[void] {.async.}=
   debug "processQueue", size = self.requestQueue.len
