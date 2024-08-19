@@ -3,7 +3,7 @@ import macros, strformat,
   os, sugar, sequtils, hashes, osproc,
   suggestapi, protocol/enums, protocol/types, with, tables, strutils, sets,
   ./utils, chronicles, std/re, uri, "$nim/compiler/pathutils",
-  json_serialization, std/json
+  json_serialization, std/json, streams
 
 
 proc getVersionFromNimble(): string =
@@ -105,7 +105,11 @@ type
     entryPoints*: seq[string]
     transportMode*: TransportMode
     responseMap*: TableRef[string, Future[JsonNode]] #id to future. Represents the pending requests as result of calling ls.call
-    socketTransport*: StreamTransport #TODO rename this but first we need to refactor fileStream to StreamTransport in the stdio transport
+    #TODO case object for these
+    socketTransport*: StreamTransport #Only socket
+    outStream*: FileStream #Only stdio (stdout)
+    rTranspStdin*: StreamTransport #Only stdio -> async read from stdin (uses wTranpStdin)
+    wTranspStdin*: StreamTransport #Only stdio -> readStdin writes in another thread from stdin
 
   Certainty* = enum
     None,

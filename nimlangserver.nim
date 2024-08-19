@@ -72,57 +72,7 @@ var
 
 
 
-proc initActions*(ls: LanguageServer, srv: RpcSocketServer) = 
-  let onExit: OnExitCallback = proc() {.async.} =
-    srv.stop() #TODO check if stop also close the transport, which it should
-    
-  let notifyAction: NotifyAction = proc(name: string, params: JsonNode) = #TODO notify action should be async
-    try:
-      stderr.write "notifyAction called\n"
-      var json = newJObject()
-      json["jsonrpc"] = %*"2.0"
-      json["method"] = %*name
-      json["params"] = params
 
-      let jsonStr = $json
-      let responseStr = jsonStr
-      let contentLenght = responseStr.len + 1
-      let final = &"{CONTENT_LENGTH}{contentLenght}{CRLF}{CRLF}{responseStr}\n"
-      if ls.socketTransport != nil:
-        debug "Writing to transport notification"
-        discard waitFor ls.socketTransport.write(final)
-      else:
-        error "Transport is nil in notifyAction"
-    except CatchableError:
-      discard
-
-  let callAction: CallAction = proc(name: string, params: JsonNode): Future[JsonNode]  =
-    try:
-      #TODO Refactor to unify the construction of the request
-      debug "!!!!!!!!!!!!!!callAction called with ", name = name
-      
-      let id = $genOid()
-      var json = newJObject()
-      json["jsonrpc"] = %*"2.0"
-      json["method"] = %*name
-      json["id"] = %*id
-      json["params"] = params
-
-      let jsonStr = $json
-      let responseStr = jsonStr
-      let contentLenght = responseStr.len + 1
-      let final = &"{CONTENT_LENGTH}{contentLenght}{CRLF}{CRLF}{responseStr}\n"
-      {.cast(gcsafe).}:
-        discard waitFor ls.socketTransport.write(final)
-        result = newFuture[JsonNode]()
-        ls.responseMap[id] = result
-
-    except CatchableError:      
-      discard
-  
-  ls.call = callAction
-  ls.notify = notifyAction
-  ls.onExit = onExit
   
 
 
@@ -147,7 +97,7 @@ proc main() =
   case transportMode
   of stdio: 
     srv = newRpcSocketServer()
-    startStdioServer(ls, srv)
+    ls.startStdioServer(srv)
   of socket:
     initActions(ls, srv)
     srv = newRpcSocketServer(partial(processClientHook, ls)) 

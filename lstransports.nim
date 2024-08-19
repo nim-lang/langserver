@@ -56,17 +56,23 @@ proc readStdin*(transport: StreamTransport) {.thread.} =
     stderr.write "No content length \n"
   readStdin(transport)
 
+proc writeOutput*(ls: LanguageServer, content: string) = 
+  case ls.transportMode:
+  of stdio:
+    ls.outStream.write(content)
+    ls.outStream.flush()
+  of socket:
+    discard waitFor ls.socketTransport.write(content)
+
 proc startStdioLoop*(
     ls: LanguageServer,
-    outStream: FileStream,
-    rTransp: StreamTransport,
     srv: RpcSocketServer
 ): Future[void] {.async.} =
   debug "Starting stdio loop"
   #THIS IS BASICALLY A MOCKUP, has to be properly done
   #TODO outStream should be a StreamTransport
   {.cast(gcsafe).}:
-    let content = await rTransp.readLine(sep = "!END")
+    let content = await ls.rTranspStdin.readLine(sep = "!END")
     debug "Content is ", content = content
     let contentJson: JsonNode = parseJson(content)
     let isReq = "method" in contentJson
@@ -97,9 +103,7 @@ proc startStdioLoop*(
               let responseStr = jsonStr
               let contentLenght = responseStr.len + 1
               let final = &"{CONTENT_LENGTH}{contentLenght}{CRLF}{CRLF}{responseStr}\n"
-
-              outStream.write(final)
-              outStream.flush()
+              ls.writeOutput(final)
             except CatchableError:
               error "[startStdioLoop] Writting Request Response ",
                 msg = getCurrentExceptionMsg(), trace = getStackTrace()
@@ -118,22 +122,19 @@ proc startStdioLoop*(
           ls.responseMap[id].complete(r)
     except CatchableError:
       error "[startStdioLoop] ", msg = getCurrentExceptionMsg(), trace = getStackTrace()
-    await startStdioLoop(ls, outStream, rTransp, srv)
+    await startStdioLoop(ls, srv)
 
-proc startStdioServer*(ls: LanguageServer, srv: RpcSocketServer) =
-  #Holds the responses from the client done via the callAction. Likely this is only needed for stdio
-  debug "Starting stdio server"
-
-  let outStream = newFileStream(stdout)
-  let (rfd, wfd) = createAsyncPipe()
-  let
-    rTransp = fromPipe(rfd)
-    wTransp = fromPipe(wfd)
+proc initActions*(ls: LanguageServer, srv: RpcSocketServer) = 
   let onExit: OnExitCallback = proc() {.async.} =
-    rTransp.close()
-    wTransp.close()
-
-  let notifyAction: NotifyAction = proc(name: string, params: JsonNode) =
+    case ls.transportMode:
+    of stdio:
+      ls.rTranspStdin.close()
+      ls.wTranspStdin.close()
+      ls.outStream.close()
+    of socket:
+      srv.stop() #TODO check if stop also close the transport, which it should
+    
+  let notifyAction: NotifyAction = proc(name: string, params: JsonNode) = #TODO notify action should be async
     try:
       stderr.write "notifyAction called\n"
       var json = newJObject()
@@ -145,15 +146,15 @@ proc startStdioServer*(ls: LanguageServer, srv: RpcSocketServer) =
       let responseStr = jsonStr
       let contentLenght = responseStr.len + 1
       let final = &"{CONTENT_LENGTH}{contentLenght}{CRLF}{CRLF}{responseStr}\n"
-      outStream.write(final)
-      outStream.flush()
+      ls.writeOutput(final)
     except CatchableError:
       discard
 
-  let callAction: CallAction = proc(name: string, params: JsonNode): Future[JsonNode] =
+  let callAction: CallAction = proc(name: string, params: JsonNode): Future[JsonNode]  =
     try:
       #TODO Refactor to unify the construction of the request
-      debug "callAction called with ", name = name
+      debug "!!!!!!!!!!!!!!callAction called with ", name = name
+      
       let id = $genOid()
       var json = newJObject()
       json["jsonrpc"] = %*"2.0"
@@ -165,26 +166,36 @@ proc startStdioServer*(ls: LanguageServer, srv: RpcSocketServer) =
       let responseStr = jsonStr
       let contentLenght = responseStr.len + 1
       let final = &"{CONTENT_LENGTH}{contentLenght}{CRLF}{CRLF}{responseStr}\n"
-      outStream.write(final)
-      outStream.flush()
-
+    
+      ls.writeOutput(final)
       result = newFuture[JsonNode]()
       ls.responseMap[id] = result
-    except CatchableError:
-      discard
 
+    except CatchableError:      
+      discard
+  
   ls.call = callAction
   ls.notify = notifyAction
   ls.onExit = onExit
 
+proc startStdioServer*(ls: LanguageServer, srv: RpcSocketServer) =
+  #Holds the responses from the client done via the callAction. Likely this is only needed for stdio
+  debug "Starting stdio server"
+  #sets io streams
+  let (rfd, wfd) = createAsyncPipe()
+  ls.outStream = newFileStream(stdout)
+  ls.rTranspStdin = fromPipe(rfd)
+  ls.wTranspStdin = fromPipe(wfd)
+
+  ls.initActions(srv)
   var stdioThread {.global.}: Thread[StreamTransport]
 
-  createThread(stdioThread, readStdin, wTransp)
-  asyncSpawn startStdioLoop(ls, outStream, rTransp, srv)
+  createThread(stdioThread, readStdin, ls.wTranspStdin)
+  asyncSpawn startStdioLoop(ls, srv)
   debug "Stdio server started"
 
 
-#SOCKET
+#SOCKET "loop"
 proc processClientHook*(ls: LanguageServer, server: StreamServer, transport: StreamTransport) {.async: (raises: []), gcsafe.} =
   try:
     var srv = getUserData[RpcSocketServer](server)
