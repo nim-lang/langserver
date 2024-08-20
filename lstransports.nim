@@ -53,17 +53,21 @@ proc processContentLength*(inputStream: FileStream): string =
   else:
     error "No content length \n"
 
-proc processContentLength*(transport: StreamTransport): Future[string] {.async.} = 
-  result = await transport.readLine()
-  if result.startsWith(CONTENT_LENGTH):
-    let parts = result.split(" ")
-    let length = parseInt(parts[1])
-    discard await transport.readLine() # skip the \r\n
-    result = (await transport.read(length)).mapIt($(it.char)).join()
+proc processContentLength*(transport: StreamTransport): Future[string] {.async:(raises:[]).} = 
+  try:
+    result = await transport.readLine()
+    if result.startsWith(CONTENT_LENGTH):
+      let parts = result.split(" ")
+      let length = parseInt(parts[1])
+      discard await transport.readLine() # skip the \r\n
+      result = (await transport.read(length)).mapIt($(it.char)).join()
 
-  else:
-    error "No content length \n"
-  
+    else:
+      error "No content length \n"
+  except TransportError as ex:
+    error "Error reading content length", msg = ex.msg
+  except CatchableError as ex:
+    error "Error reading content length", msg = ex.msg  
 
 
 proc readStdin*(transport: StreamTransport) {.thread.} =  
@@ -82,30 +86,26 @@ proc writeOutput*(ls: LanguageServer, content: string) =
   of socket:
     discard waitFor ls.socketTransport.write(content)
 
-proc startStdioLoop*(ls: LanguageServer, srv: RpcSocketServer): Future[void] {.async.} =
-  debug "Starting stdio loop"
-  #THIS IS BASICALLY A MOCKUP, has to be properly done
-  #TODO outStream should be a StreamTransport
-  {.cast(gcsafe).}:
-    let content = await ls.rTranspStdin.readLine(sep = CRLF)
-    let contentJson: JsonNode = parseJson(content)
+proc processMessage(ls: LanguageServer, srv: RpcSocketServer, message: string) {.raises:[].} = 
+  try:
+    let contentJson: JsonNode = parseJson(message)
     let isReq = "method" in contentJson
-    try:
-      if isReq:
-        var fut = Future[JsonString]()
-        var req = JrpcSys.decode(content, RequestRx)
-        if req.params.kind == rpNamed and req.id.kind == riNumber:
-          #Some requests have no id
-          #We need to pass the id to the wrapRpc as the id information is lost in the rpc proc
-          req.params.named.add ParamDescNamed(
-            name: "idRequest", value: JsonString($(%req.id.num))
-          )
-        let routeResult = srv.router.tryRoute(req, fut)
-        if routeResult.isOk:
-          proc writeRequestResponse(arg: pointer) =
-            try:
-              let futur = cast[Future[JsonString]](arg)
-              #TODO Refactor from here can be reused
+    if isReq:
+      var fut = Future[JsonString]()
+      var req = JrpcSys.decode(message, RequestRx)
+      if req.params.kind == rpNamed and req.id.kind == riNumber:
+        #Some requests have no id
+        #We need to pass the id to the wrapRpc as the id information is lost in the rpc proc
+        req.params.named.add ParamDescNamed(
+          name: "idRequest", value: JsonString($(%req.id.num))
+        )
+      let routeResult = srv.router.tryRoute(req, fut)
+      if routeResult.isOk:
+        proc writeRequestResponse(arg: pointer) =
+          try:
+            let futur = cast[Future[JsonString]](arg)
+            #TODO Refactor from here can be reused
+            if futur.error == nil:  
               let res: JsonString = futur.read
               var json = newJObject()
               json["jsonrpc"] = %*"2.0"
@@ -118,25 +118,33 @@ proc startStdioLoop*(ls: LanguageServer, srv: RpcSocketServer): Future[void] {.a
               let contentLenght = responseStr.len + 1
               let final = &"{CONTENT_LENGTH}{contentLenght}{CRLF}{CRLF}{responseStr}\n"
               ls.writeOutput(final)
-            except CatchableError:
-              error "[startStdioLoop] Writting Request Response ",
-                msg = getCurrentExceptionMsg(), trace = getStackTrace()
+            else:
+              debug "Future is erroing!" #TODO handle
+              return
+          except CatchableError:
+            error "[Processsing Message] Writting Request Response ",
+              msg = getCurrentExceptionMsg(), trace = getStackTrace()
 
-          fut.addCallback(writeRequestResponse)
-            #We dont await here to do not block the loop
-        else:
-          error "[startStdioLoop] routing request ", msg = $routeResult
-      else: #Response
-        let response = JrpcSys.decode(content, LspClientResponse)
-        let id = response.id
-        if response.result == nil:
-          ls.responseMap[id].complete(newJObject())
-        else:
-          let r = response.result
-          ls.responseMap[id].complete(r)
-    except CatchableError:
-      error "[startStdioLoop] ", msg = getCurrentExceptionMsg(), trace = getStackTrace()
-    await startStdioLoop(ls, srv)
+        fut.addCallback(writeRequestResponse)
+          #We dont await here to do not block the loop
+      else:
+        error "[Processsing Message] routing request ", msg = $routeResult
+    else: #Response
+      let response = JrpcSys.decode(message, LspClientResponse)
+      let id = response.id
+      if response.result == nil:
+        ls.responseMap[id].complete(newJObject())
+      else:
+        let r = response.result
+        ls.responseMap[id].complete(r)
+  except CatchableError:
+    error "[Processsing Message] ", msg = getCurrentExceptionMsg(), trace = getStackTrace()
+
+proc startStdioLoop*(ls: LanguageServer, srv: RpcSocketServer): Future[void] {.async.} =
+  debug "Starting stdio loop"
+  let content = await ls.rTranspStdin.readLine(sep = CRLF)
+  processMessage(ls, srv, content)
+  await startStdioLoop(ls, srv)
 
 proc initActions*(ls: LanguageServer, srv: RpcSocketServer) = 
   let onExit: OnExitCallback = proc() {.async.} =
@@ -211,82 +219,14 @@ proc startStdioServer*(ls: LanguageServer, srv: RpcSocketServer) =
 
 #SOCKET "loop"
 proc processClientHook*(ls: LanguageServer, server: StreamServer, transport: StreamTransport) {.async: (raises: []), gcsafe.} =
-  try:
-    var srv = getUserData[RpcSocketServer](server)
-    ls.socketTransport = transport
-    while true:
-      var
-        value = await processContentLength(transport)
-      if value == "":
-        error "Client disconnected"
-        await transport.closeWait()
-        break
-      
-      debug "Processing message ", address = transport.remoteAddress()#, line = value
-      let contentJson = parseJson(value)
-      let isReq = "method" in contentJson
-      debug "Is request ", isReq = isReq
-      if isReq:
-        var req = JrpcSys.decode(value, RequestRx)
-        if req.params.kind == rpNamed and req.id.kind == riNumber:
-          #Some requests have no id
-          #We need to pass the id to the wrapRpc as the id information is lost in the rpc proc
-          req.params.named.add ParamDescNamed(
-            name: "idRequest", value: JsonString($(%req.id.num))
-          )
-        let rpc = srv.router.procs.getOrDefault(req.meth.get)
-        let resFut = rpc(req.params)
-        proc writeRequestResponse(arg: pointer) =
-          try:
-            let futur = cast[Future[JsonString]](arg)
-            #TODO Refactor from here can be reused
-            if futur.error == nil:              
-              let res: JsonString = futur.read
-              var json = newJObject()
-              json["jsonrpc"] = %*"2.0"
-              if req.id.kind == riNumber:
-                json["id"] = %*req.id.num
-
-              json["result"] = parseJson(res.string)
-              let jsonStr = $json
-              let responseStr = jsonStr
-              let contentLenght = responseStr.len + 1
-              let final = &"{CONTENT_LENGTH}{contentLenght}{CRLF}{CRLF}{responseStr}\n"
-              if transport != nil:                
-                discard waitFor transport.write(final)
-            else:
-              debug "Future is erroing!"
-              return
-          except CatchableError:
-            error "[processClient] Writting Request Response ",
-              msg = getCurrentExceptionMsg(), trace = getStackTrace()
-        resFut.addCallback(writeRequestResponse)
-              
-              
-              # outStream.flush()
-            # except CatchableError:
-            #   error "[startStdioLoop] Writting Request Response ",
-            #     msg = getCurrentExceptionMsg(), trace = getStackTrace()
-
-
-          # fut.addCallback(writeRequestResponse)
-            #We dont await here to do not block the loop
-        # else:
-        #   error "[startStdioLoop] routing request ", msg = $routeResult
-      else: #Response
-        let response = JrpcSys.decode(value, LspClientResponse)
-        let id = response.id
-        debug "*********** TODO PROCESS RESPONSE ************", id = id  
-        # debug "Keys in responseMap", keys = responseMap.keys.toSeq
-        if response.result == nil:
-          ls.responseMap[id].complete(newJObject())
-        else:          
-          let r = response.result
-          ls.responseMap[id].complete(r)
-
-  except TransportError as ex:
-    error "Transport closed during processing client", msg=ex.msg
-  except CatchableError as ex:
-    error "Error occured during processing client", msg=ex.msg
-  except SerializationError as ex:
-    error "Error occured during processing client", msg=ex.msg
+  var srv = getUserData[RpcSocketServer](server)
+  ls.socketTransport = transport
+  while true:
+    let msg = await processContentLength(transport)
+    if msg == "":
+      error "Client disconnected"
+      await transport.closeWait()
+      break
+    debug "Processing message ", address = transport.remoteAddress()
+    processMessage(ls, srv, msg)
+  
