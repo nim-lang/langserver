@@ -77,20 +77,32 @@ proc readStdin*(transport: StreamTransport) {.thread.} =
   
   readStdin(transport)
 
+proc writeStackTrace*() = 
+  try:
+    stderr.write getStackTrace()
+  except IOError:
+    discard
 
-proc writeOutput*(ls: LanguageServer, content: string) = 
-  case ls.transportMode:
-  of stdio:
-    ls.outStream.write(content)
-    ls.outStream.flush()
-  of socket:
-    discard waitFor ls.socketTransport.write(content)
+proc writeOutput*(ls: LanguageServer, content: JsonNode) = 
+  let responseStr = $content
+  let contentLenght = responseStr.len + 1
+  let res = &"{CONTENT_LENGTH}{contentLenght}{CRLF}{CRLF}{responseStr}\n"
+  try:
+    case ls.transportMode:
+    of stdio:
+      ls.outStream.write(res)
+      ls.outStream.flush()
+    of socket:
+      discard waitFor ls.socketTransport.write(res)
+  except CatchableError as ex:
+    error "Error writing output", msg = ex.msg
 
 proc processMessage(ls: LanguageServer, srv: RpcSocketServer, message: string) {.raises:[].} = 
   try:
-    let contentJson: JsonNode = parseJson(message)
+    let contentJson: JsonNode = parseJson(message) #OPT oportunity reuse the same JSON already parsed
     let isReq = "method" in contentJson
     if isReq:
+      debug "[Processsing Message]", request = contentJson["method"]
       var fut = Future[JsonString]()
       var req = JrpcSys.decode(message, RequestRx)
       if req.params.kind == rpNamed and req.id.kind == riNumber:
@@ -101,29 +113,29 @@ proc processMessage(ls: LanguageServer, srv: RpcSocketServer, message: string) {
         )
       let routeResult = srv.router.tryRoute(req, fut)
       if routeResult.isOk:
-        proc writeRequestResponse(arg: pointer) =
+        proc writeRequestResponse(arg: pointer) {.raises:[].} =
           try:
             let futur = cast[Future[JsonString]](arg)
-            #TODO Refactor from here can be reused
             if futur.error == nil:  
               let res: JsonString = futur.read
               var json = newJObject()
               json["jsonrpc"] = %*"2.0"
               if req.id.kind == riNumber:
                 json["id"] = %*req.id.num
-
               json["result"] = parseJson(res.string)
-              let jsonStr = $json
-              let responseStr = jsonStr
-              let contentLenght = responseStr.len + 1
-              let final = &"{CONTENT_LENGTH}{contentLenght}{CRLF}{CRLF}{responseStr}\n"
-              ls.writeOutput(final)
+              if json["result"] == newJObject(): #Notification (see wrapRpc). The client doesnt expect a response
+                return
+              ls.writeOutput(json)
             else:
-              debug "Future is erroing!" #TODO handle
+              debug "++++++++++++++++++++++++Future is erroing!+++++++++++++++++++++++++++++++++" #TODO handle
+              if futur.error != nil:                
+                writeStackTrace()
+              #   debug "Msg ", msg = futur.error.msg
+              # error "Future is erroing! ", msg = futur.error.msg
               return
           except CatchableError:
-            error "[Processsing Message] Writting Request Response ",
-              msg = getCurrentExceptionMsg(), trace = getStackTrace()
+            error "[Processsing Message] Writting Request Response ", msg = getCurrentExceptionMsg()
+            writeStackTrace()
 
         fut.addCallback(writeRequestResponse)
           #We dont await here to do not block the loop
@@ -134,18 +146,21 @@ proc processMessage(ls: LanguageServer, srv: RpcSocketServer, message: string) {
       let id = response.id
       if response.result == nil:
         ls.responseMap[id].complete(newJObject())
+        ls.responseMap.del id
       else:
         let r = response.result
         ls.responseMap[id].complete(r)
+        ls.responseMap.del id
+
   except CatchableError:
     error "[Processsing Message] ", msg = getCurrentExceptionMsg(), trace = getStackTrace()
 
 proc startStdioLoop*(ls: LanguageServer, srv: RpcSocketServer): Future[void] {.async.} =
-  debug "Starting stdio loop"
-  let content = await ls.rTranspStdin.readLine(sep = CRLF)
-  processMessage(ls, srv, content)
-  await startStdioLoop(ls, srv)
-
+  while true:
+    let content = await ls.rTranspStdin.readLine(sep = CRLF)
+    debug "[Stdio Transport] Processing Message"
+    processMessage(ls, srv, content)
+    
 proc initActions*(ls: LanguageServer, srv: RpcSocketServer) = 
   let onExit: OnExitCallback = proc() {.async.} =
     case ls.transportMode:
@@ -155,46 +170,23 @@ proc initActions*(ls: LanguageServer, srv: RpcSocketServer) =
       ls.outStream.close()
     of socket:
       srv.stop() #TODO check if stop also close the transport, which it should
-    
+  
+  template genJsonAction() {.dirty.} = 
+    var json = newJObject()
+    json["jsonrpc"] = %*"2.0"
+    json["method"] = %*name
+    json["params"] = params
   let notifyAction: NotifyAction = proc(name: string, params: JsonNode) = #TODO notify action should be async
-    try:
-      stderr.write "notifyAction called\n"
-      var json = newJObject()
-      json["jsonrpc"] = %*"2.0"
-      json["method"] = %*name
-      json["params"] = params
-
-      let jsonStr = $json
-      let responseStr = jsonStr
-      let contentLenght = responseStr.len + 1
-      let final = &"{CONTENT_LENGTH}{contentLenght}{CRLF}{CRLF}{responseStr}\n"
-      ls.writeOutput(final)
-    except CatchableError:
-      discard
+      genJsonAction()
+      ls.writeOutput(json)
 
   let callAction: CallAction = proc(name: string, params: JsonNode): Future[JsonNode]  =
-    try:
-      #TODO Refactor to unify the construction of the request
-      debug "!!!!!!!!!!!!!!callAction called with ", name = name
-      
-      let id = $genOid()
-      var json = newJObject()
-      json["jsonrpc"] = %*"2.0"
-      json["method"] = %*name
-      json["id"] = %*id
-      json["params"] = params
-
-      let jsonStr = $json
-      let responseStr = jsonStr
-      let contentLenght = responseStr.len + 1
-      let final = &"{CONTENT_LENGTH}{contentLenght}{CRLF}{CRLF}{responseStr}\n"
-    
-      ls.writeOutput(final)
-      result = newFuture[JsonNode]()
-      ls.responseMap[id] = result
-
-    except CatchableError:      
-      discard
+    let id = $genOid()
+    genJsonAction()
+    json["id"] = %*id
+    ls.writeOutput(json)
+    result = newFuture[JsonNode]()
+    ls.responseMap[id] = result #We store the future in the responseMap so we can complete it in processMessage
   
   ls.call = callAction
   ls.notify = notifyAction
@@ -227,6 +219,6 @@ proc processClientHook*(ls: LanguageServer, server: StreamServer, transport: Str
       error "Client disconnected"
       await transport.closeWait()
       break
-    debug "Processing message ", address = transport.remoteAddress()
+    debug "[Socket Transport] Processing message ", address = transport.remoteAddress()
     processMessage(ls, srv, msg)
   

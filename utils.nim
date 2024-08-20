@@ -253,7 +253,7 @@ proc wrapRpc*[T](
     var val = params.to(T)
     when typeof(fn(val)) is Future[void]: #Notification
       await fn(val)
-      return JsonString("{}")
+      return JsonString("{}") #Client doesnt expect a response. Handled in processMessage
     else:
       let res = await fn(val)
       return JsonString($(%*res))

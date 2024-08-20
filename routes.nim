@@ -571,7 +571,7 @@ proc shutdown*(ls: LanguageServer, input: JsonNode): Future[JsonNode] {.async, g
   debug "Shutting down"
   await ls.stopNimsuggestProcesses()
   ls.isShutdown = true
-  let id = input{"id"}.extractId
+  # let id = input{"id"}.extractId
   result = newJNull()
   trace "Shutdown complete"
 
