@@ -41,20 +41,38 @@ type LspClientResponse* = object
   id*: string
   result*: JsonNode
 
+proc processContentLength*(inputStream: FileStream): string =
+  result = inputStream.readLine()
+  if result.startsWith(CONTENT_LENGTH):
+    let parts = result.split(" ")
+    let length = parseInt(parts[1])
+    discard inputStream.readLine() # skip the \r\n
+    result = newString(length)
+    for i in 0..<length:
+      result[i] = inputStream.readChar()
+  else:
+    error "No content length \n"
+
+proc processContentLength*(transport: StreamTransport): Future[string] {.async.} = 
+  result = await transport.readLine()
+  if result.startsWith(CONTENT_LENGTH):
+    let parts = result.split(" ")
+    let length = parseInt(parts[1])
+    discard await transport.readLine() # skip the \r\n
+    result = (await transport.read(length)).mapIt($(it.char)).join()
+
+  else:
+    error "No content length \n"
+  
+
+
 proc readStdin*(transport: StreamTransport) {.thread.} =  
   var inputStream = newFileStream(stdin)
-  var value = inputStream.readLine()
-  if "Content-Length:" in value:
-    # HTTP header. TODO check only in the start of the string
-    let parts = value.split(" ")
-    let length = parseInt(parts[1])
-    #TODO make this more efficient
-    discard inputStream.readLine() # skip the \r\n
-    value = (inputStream.readStr(length)).mapIt($(it.char)).join()
-    discard waitFor transport.write(value & "!END")
-  else:
-    stderr.write "No content length \n"
+  var value = processContentLength(inputStream)
+  discard waitFor transport.write(value & CRLF)
+  
   readStdin(transport)
+
 
 proc writeOutput*(ls: LanguageServer, content: string) = 
   case ls.transportMode:
@@ -64,16 +82,12 @@ proc writeOutput*(ls: LanguageServer, content: string) =
   of socket:
     discard waitFor ls.socketTransport.write(content)
 
-proc startStdioLoop*(
-    ls: LanguageServer,
-    srv: RpcSocketServer
-): Future[void] {.async.} =
+proc startStdioLoop*(ls: LanguageServer, srv: RpcSocketServer): Future[void] {.async.} =
   debug "Starting stdio loop"
   #THIS IS BASICALLY A MOCKUP, has to be properly done
   #TODO outStream should be a StreamTransport
   {.cast(gcsafe).}:
-    let content = await ls.rTranspStdin.readLine(sep = "!END")
-    debug "Content is ", content = content
+    let content = await ls.rTranspStdin.readLine(sep = CRLF)
     let contentJson: JsonNode = parseJson(content)
     let isReq = "method" in contentJson
     try:
@@ -202,22 +216,9 @@ proc processClientHook*(ls: LanguageServer, server: StreamServer, transport: Str
     ls.socketTransport = transport
     while true:
       var
-        value = await transport.readLine(router.defaultMaxRequestLength)
-
-      if "Content-Length:" in value: # HTTP header. TODO check only in the start of the string
-        let parts = value.split(" ")
-        let length = parseInt(parts[1])
-        #TODO make this more efficient
-        # value = (await transport.read(length)).mapIt($(it.char)).join()
-        discard await transport.readLine() # skip the \r\n
-        value = (await transport.read(length)).mapIt($(it.char)).join()
-        # echo "************** REQUEST ******************* "
-        # echo value
-        # echo "************** END *******************"
-        
-
+        value = await processContentLength(transport)
       if value == "":
-        echo "Client disconnected"
+        error "Client disconnected"
         await transport.closeWait()
         break
       
