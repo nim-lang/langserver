@@ -77,9 +77,9 @@ proc readStdin*(transport: StreamTransport) {.thread.} =
   
   readStdin(transport)
 
-proc writeStackTrace*() = 
+proc writeStackTrace*(ex = getCurrentException()) = 
   try:
-    stderr.write getStackTrace()
+    stderr.write ex.getStackTrace()
   except IOError:
     discard
 
@@ -97,6 +97,21 @@ proc writeOutput*(ls: LanguageServer, content: JsonNode) =
   except CatchableError as ex:
     error "Error writing output", msg = ex.msg
 
+proc runRpc(ls: LanguageServer, req: RequestRx, rpc: RpcProc): Future[void] {.async.} = 
+  try:
+    let res = await rpc(req.params)
+    if res.string in ["", "{}"]:
+      return  #Notification (see wrapRpc). The client doesnt expect a response
+    var json = newJObject()
+    json["jsonrpc"] = %*"2.0"
+    if req.id.kind == riNumber:
+      json["id"] = %*req.id.num
+    json["result"] = parseJson(res.string)
+    ls.writeOutput(json)
+  except CatchableError as ex:
+    error "[RunRPC] ", msg = ex.msg
+    writeStackTrace(ex = ex)
+
 proc processMessage(ls: LanguageServer, message: string) {.raises:[].} = 
   try:
     let contentJson = parseJson(message) #OPT oportunity reuse the same JSON already parsed
@@ -106,41 +121,13 @@ proc processMessage(ls: LanguageServer, message: string) {.raises:[].} =
       var fut = Future[JsonString]()
       var req = JrpcSys.decode(message, RequestRx)
       if req.params.kind == rpNamed and req.id.kind == riNumber:
-        #Some requests have no id
-        #We need to pass the id to the wrapRpc as the id information is lost in the rpc proc
-        req.params.named.add ParamDescNamed(
-          name: "idRequest", value: JsonString($(%req.id.num))
-        )
-      let routeResult = ls.srv.router.tryRoute(req, fut) #TODO use rpc directly
-      if routeResult.isOk:
-        proc writeRequestResponse(arg: pointer) {.raises:[].} =
-          try:
-            let futur = cast[Future[JsonString]](arg)
-            if futur.error == nil:  
-              let res: JsonString = futur.read
-              var json = newJObject()
-              json["jsonrpc"] = %*"2.0"
-              if req.id.kind == riNumber:
-                json["id"] = %*req.id.num
-              if res.string != "":
-                json["result"] = parseJson(res.string)
-              if "result" in json and json["result"] == newJObject(): #Notification (see wrapRpc). The client doesnt expect a response
-                return
-              ls.writeOutput(json)
-            else:
-              debug "++++++++++++++++++++++++Future is erroing!+++++++++++++++++++++++++++++++++" #TODO handle
-              # debug "Msg ", msg = futur.error.msg
-              # error "Future is erroing! ", msg = futur.error.msg
-              
-              return
-          except CatchableError:
-            error "[Processsing Message] Writting Request Response ", msg = getCurrentExceptionMsg()
-            writeStackTrace()
-
-        fut.addCallback(writeRequestResponse)
-          #We dont await here to do not block the loop
-      else:
-        error "[Processsing Message] routing request ", msg = $routeResult
+        #Some requests have no id but for others we need to pass the id to the wrapRpc as the id information is lost in the rpc proc
+        req.params.named.add ParamDescNamed(name: "idRequest", value: JsonString($(%req.id.num)))
+      let rpc = ls.srv.router.procs.getOrDefault(req.meth.get)
+      if rpc.isNil:
+        error "[Processsing Message] rpc method not found: ", msg = req.meth.get
+        return
+      asyncSpawn ls.runRpc(req, rpc)
     else: #Response
       let response = JrpcSys.decode(message, LspClientResponse)
       let id = response.id
@@ -191,9 +178,9 @@ proc initActions*(ls: LanguageServer,) =
 #start and loop functions belows are the only difference between transports
 proc startStdioLoop*(ls: LanguageServer): Future[void] {.async.} =
   while true:
-    let content = await ls.rTranspStdin.readLine(sep = CRLF)
-    debug "[Stdio Transport] Processing Message"
-    processMessage(ls, content)
+    let msg = await ls.rTranspStdin.readLine(sep = CRLF)
+    debug "[Stdio Transport] Processing Message", msg = msg
+    ls.processMessage(msg)
 
 proc startStdioServer*(ls: LanguageServer) =
   #Holds the responses from the client done via the callAction. Likely this is only needed for stdio
@@ -206,11 +193,8 @@ proc startStdioServer*(ls: LanguageServer) =
   ls.srv = newRpcSocketServer()
   ls.initActions()
   var stdioThread {.global.}: Thread[StreamTransport]
-
   createThread(stdioThread, readStdin, ls.wTranspStdin)
   asyncSpawn ls.startStdioLoop()
-  debug "Stdio server started"
-
 
 proc processClientLoop*(ls: LanguageServer, server: StreamServer, transport: StreamTransport) {.async: (raises: []), gcsafe.} =
   ls.socketTransport = transport
@@ -228,3 +212,4 @@ proc startSocketServer*(ls: LanguageServer, port: Port) =
     ls.initActions()
     ls.srv.addStreamServer("localhost", port) 
     ls.srv.start()
+    
