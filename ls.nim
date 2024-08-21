@@ -89,7 +89,6 @@ type
     onExit*: OnExitCallback
     projectFiles*: Table[string, Future[Nimsuggest]]
     openFiles*: Table[string, NlsFileInfo]
-    cancelFutures*: Table[int, Future[void]]
     workspaceConfiguration*: Future[JsonNode]
     prevWorkspaceConfiguration*: Future[JsonNode]
     inlayHintsRefreshRequest*: Future[JsonNode]
@@ -105,6 +104,7 @@ type
     transportMode*: TransportMode
     responseMap*: TableRef[string, Future[JsonNode]] #id to future. Represents the pending requests as result of calling ls.call
     srv*: RpcSocketServer#Both modes uses it to store the routes. Only actually started in socket mode
+    cancelableRequests*: Table[int, Future[JsonString]] #id to future. Each request is added here so we can cancel them later in the cancelRequest. Only requests, not notifications
     #TODO case object for these
     socketTransport*: StreamTransport #Only socket
     outStream*: FileStream #Only stdio (stdout)
@@ -135,29 +135,11 @@ macro `%*`*(t: untyped, inputStream: untyped): untyped =
 proc initLs*(tm: TransportMode): LanguageServer =
   LanguageServer(
     workspaceConfiguration: Future[JsonNode](),
-    projectFiles: initTable[string, Future[Nimsuggest]](),
-    cancelFutures: initTable[int, Future[void]](),
     filesWithDiags: initHashSet[string](),
     transportMode: tm,
     openFiles: initTable[string, NlsFileInfo](),
     responseMap: newTable[string, Future[JsonNode]]()
   )
-
-proc orCancelled*[T](fut: Future[T], ls: LanguageServer, id: int): Future[T] {.async.} =
-  ls.cancelFutures[id] = newFuture[void]()
-  await fut or ls.cancelFutures[id]
-  ls.cancelFutures.del id
-  if fut.finished:
-    if fut.error.isNil:
-      return fut.read
-    else:
-      raise fut.error
-  else:
-    debug "Future cancelled.", id = id
-    let ex = newException(CancelledError, fmt "Cancelled {id}")
-    fut.fail(ex)
-    debug "Future cancelled, throwing...", id = id
-    raise ex
 
 proc getNimbleEntryPoints*(dumpInfo: NimbleDumpInfo, nimbleProjectPath: string): seq[string] =
   if dumpInfo.entryPoints.len > 0:

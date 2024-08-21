@@ -219,7 +219,7 @@ proc tryRelativeTo*(path, base: string): Option[string] =
   except Exception:
     none(string)
 
-proc get[T](params: RequestParamsRx, key: string): T =
+proc get*[T](params: RequestParamsRx, key: string): T =
   if params.kind == rpNamed:
     for np in params.named:
       if np.name == key:
@@ -245,32 +245,6 @@ proc partial*[A, B, C, D](
 ): proc(b: B, c: C): D {.gcsafe, raises: [].} =
   return proc(b: B, c: C): D {.gcsafe, raises: [].} =
     return fn(a, b, c)
-
-proc wrapRpc*[T](
-    fn: proc(params: T): Future[auto] {.gcsafe, raises: [].}
-): proc(params: RequestParamsRx): Future[JsonString] {.gcsafe, raises: [].} =
-  return proc(params: RequestParamsRx): Future[JsonString] {.gcsafe, async.} =
-    var val = params.to(T)
-    when typeof(fn(val)) is Future[void]: #Notification
-      await fn(val)
-      return JsonString("{}") #Client doesnt expect a response. Handled in processMessage
-    else:
-      let res = await fn(val)
-      return JsonString($(%*res))
-
-proc wrapRpc*[T](
-    fn: proc(params: T, id: int): Future[auto] {.gcsafe, raises: [].}
-): proc(params: RequestParamsRx): Future[JsonString] {.gcsafe, raises: [].} =
-  return proc(params: RequestParamsRx): Future[JsonString] {.gcsafe, async.} =
-    var val = params.to(T)
-    var idRequest = 0
-    try:
-      idRequest = get[int](params, "idRequest")
-      debug "IdRequest is ", idRequest = idRequest
-    except KeyError:
-      error "IdRequest not found in the request params"
-    let res = await fn(val, idRequest)
-    return JsonString($(%*res))
   
 proc ensureStorageDir*: string =
   result = getTempDir() / "nimlangserver"

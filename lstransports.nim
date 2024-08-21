@@ -41,6 +41,47 @@ proc toJson*(params: RequestParamsRx): JsonNode =
     for p in params.positional:
       result.add parseJson($p)
 
+type Rpc* = proc(params: RequestParamsRx): Future[JsonString] {.gcsafe, raises: [].}
+
+proc wrapRpc*[T](
+    fn: proc(params: T): Future[auto] {.gcsafe, raises: [].}
+): Rpc =
+  return proc(params: RequestParamsRx): Future[JsonString] {.gcsafe, async.} =
+    var val = params.to(T)
+    when typeof(fn(val)) is Future[void]: #Notification
+      await fn(val)
+      return JsonString("{}") #Client doesnt expect a response. Handled in processMessage
+    else:
+      let res = await fn(val)
+      return JsonString($(%*res))
+
+proc wrapRpc*[T](
+    fn: proc(params: T, id: int): Future[auto] {.gcsafe, raises: [].}
+): Rpc =
+  return proc(params: RequestParamsRx): Future[JsonString] {.gcsafe, async.} =
+    var val = params.to(T)
+    var idRequest = 0
+    try:
+      idRequest = get[int](params, "idRequest")
+      debug "IdRequest is ", idRequest = idRequest
+    except KeyError:
+      error "IdRequest not found in the request params"
+    let res = await fn(val, idRequest)
+    return JsonString($(%*res))
+
+proc addRpcToCancellable*(ls: LanguageServer, rpc: Rpc): Rpc =
+  return proc(params: RequestParamsRx): Future[JsonString] {.gcsafe, raises:[].} =
+    try:
+      var fut = rpc(params)
+      let idRequest = get[int](params, "idRequest")
+      ls.cancelableRequests[idRequest] = fut
+      return fut
+    except KeyError:
+      error "IdRequest not found in the request params"
+    except Exception:
+      error "Error adding request to cancellable requests"
+
+
 proc processContentLength*(inputStream: FileStream): string =
   result = inputStream.readLine()
   if result.startsWith(CONTENT_LENGTH):

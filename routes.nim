@@ -107,7 +107,6 @@ proc completion*(ls: LanguageServer, params: CompletionParams, id: int):
                                  ls.uriToStash(uri),
                                  line + 1,
                                  ls.getCharacter(uri, line, character))
-                            .orCancelled(ls, id)
     result = completions.map(toCompletionItem)
 
     if ls.clientCapabilities.supportSignatureHelp() and nsCon in nimSuggest.capabilities:
@@ -133,7 +132,6 @@ proc definition*(ls: LanguageServer, params: TextDocumentPositionParams, id: int
            ls.uriToStash(uri),
            line + 1,
            ls.getCharacter(uri, line, character))
-      .orCancelled(ls, id)
       .await()
       .map(toLocation)
 
@@ -146,7 +144,6 @@ proc declaration*(ls: LanguageServer, params: TextDocumentPositionParams, id: in
            ls.uriToStash(uri),
            line + 1,
            ls.getCharacter(uri, line, character))
-      .orCancelled(ls, id)
       .await()
       .map(toLocation)
 
@@ -206,7 +203,6 @@ proc typeDefinition*(ls: LanguageServer, params: TextDocumentPositionParams, id:
               ls.uriToStash(uri),
               line + 1,
               ls.getCharacter(uri, line, character))
-      .orCancelled(ls, id)
       .await()
       .map(toLocation)
 
@@ -224,7 +220,6 @@ proc documentSymbols*(ls: LanguageServer, params: DocumentSymbolParams, id: int)
   result = ls.getNimsuggest(uri)
     .await()
     .outline(uriToPath(uri), ls.uriToStash(uri))
-    .orCancelled(ls, id)
     .await()
     .map(toSymbolInformation)
 
@@ -287,7 +282,6 @@ proc hover*(ls: LanguageServer, params: HoverParams, id: int):
             ls.uriToStash(uri),
             line + 1,
             ls.getCharacter(uri, line, character))
-       .orCancelled(ls, id)
     if suggestions.len == 0:
       return none[Hover]();
     else:
@@ -412,7 +406,6 @@ proc inlayHint*(ls: LanguageServer, params: InlayHintParams, id: int): Future[se
                     `end`.line + 1,
                     ls.getCharacter(uri, `end`.line, `end`.character),
                     " +exceptionHints +parameterHints")
-        .orCancelled(ls, id)
     result = suggestions
       .filter(x => ((x.inlayHintInfo.kind == sihkType) and configuration.typeHintsEnabled) or
                    ((x.inlayHintInfo.kind == sihkException) and configuration.exceptionHintsEnabled) or
@@ -522,7 +515,6 @@ proc signatureHelp*(ls: LanguageServer, params: SignatureHelpParams, id: int):
                                   ls.uriToStash(uri),
                                   line + 1,
                                   ls.getCharacter(uri, line, character))
-                              .orCancelled(ls, id)
       let signatures = completions.map(toSignatureInformation);
       if signatures.len() > 0:
         return some SignatureHelp(
@@ -540,7 +532,6 @@ proc workspaceSymbol*(ls: LanguageServer, params: WorkspaceSymbolParams, id: int
       nimsuggest = await ls.lastNimsuggest
       symbols = await nimsuggest
                         .globalSymbols(params.query, "-")
-                        .orCancelled(ls, id)
     return symbols.map(toSymbolInformation);
 
 proc toDocumentHighlight(suggest: Suggest): DocumentHighlight =
@@ -558,7 +549,6 @@ proc documentHighlight*(ls: LanguageServer, params: TextDocumentPositionParams, 
                                 ls.uriToStash(uri),
                                 line + 1,
                                 ls.getCharacter(uri, line, character))
-                             .orCancelled(ls, id)
     result = suggestLocations.map(toDocumentHighlight);
 
 proc extractId  (id: JsonNode): int =
@@ -596,11 +586,10 @@ proc cancelRequest*(ls: LanguageServer, params: CancelParams):
   if params.id.isSome:
     let
       id = params.id.get.getInt
-      cancelFuture = ls.cancelFutures.getOrDefault id
-
-    debug "Cancelling: ", id = id
-    if not cancelFuture.isNil:
-      cancelFuture.complete()
+      cancelRequest = ls.cancelableRequests.getOrDefault(id)
+    if cancelRequest != nil:
+      debug "Cancelling: ", id = id    
+      cancelRequest.cancelSoon() 
 
 proc setTrace*(ls: LanguageServer, params: SetTraceParams) {.async.} =
   debug "setTrace", value = params.value
