@@ -88,25 +88,18 @@ proc main() =
   #[
   `nimlangserver` supports both transports: stdio and socket. By default it uses stdio transport. 
     But we do construct a RPC socket server even in stdio mode, so that we can reuse the same code for both transports.
-    The server is not started when using stdio transport.
   ]#
   var ls = initLs(transportMode)
   ls.storageDir = storageDir
   ls.cmdLineClientProcessId = cmdLineParams.clientProcessId  
-  var srv: RpcSocketServer
   case transportMode
   of stdio: 
-    srv = newRpcSocketServer()
-    ls.startStdioServer(srv)
+    ls.startStdioServer()
   of socket:
-    initActions(ls, srv)
-    srv = newRpcSocketServer(partial(processClientHook, ls)) 
-    srv.addStreamServer("localhost", Port(8888)) #TODO Param
-    srv.start()
+    ls.startSocketServer(Port(8888))
 
-
-  globalLS = addr ls
-  srv.registerRoutes(ls, ls.onExit) #TODO use the onExit from the ls directly
+  globalLS = addr ls #TODO use partial instead
+  ls.srv.registerRoutes(ls, ls.onExit) #TODO use the onExit from the ls directly
 
   #TODO move to a function
   if cmdLineParams.clientProcessId.isSome:

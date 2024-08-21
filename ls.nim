@@ -3,8 +3,7 @@ import macros, strformat,
   os, sugar, sequtils, hashes, osproc,
   suggestapi, protocol/enums, protocol/types, with, tables, strutils, sets,
   ./utils, chronicles, std/re, uri, "$nim/compiler/pathutils",
-  json_serialization, std/json, streams
-
+  json_serialization, std/json, streams, json_rpc/[servers/socketserver]
 
 proc getVersionFromNimble(): string =
   #We should static run nimble dump instead
@@ -105,6 +104,7 @@ type
     entryPoints*: seq[string]
     transportMode*: TransportMode
     responseMap*: TableRef[string, Future[JsonNode]] #id to future. Represents the pending requests as result of calling ls.call
+    srv*: RpcSocketServer#Both modes uses it to store the routes. Only actually started in socket mode
     #TODO case object for these
     socketTransport*: StreamTransport #Only socket
     outStream*: FileStream #Only stdio (stdout)
