@@ -86,6 +86,21 @@ proc initialize*(p: tuple[ls: LanguageServer, onExit: OnExitCallback], params: I
         "prepareProvider": true
       }
   debug "Initialize completed. Trying to start nimsuggest instances"
+# nce we refactor the project to chronos, we may move this code into init. Right now it hangs for some odd reason
+  let ls = p.ls
+  let rootPath = ls.initializeParams.getRootPath
+  if rootPath != "":
+    let nimbleFiles = walkFiles(rootPath / "*.nimble").toSeq
+    if nimbleFiles.len > 0:
+      let nimbleFile = nimbleFiles[0]
+      let nimbleDumpInfo = ls.getNimbleDumpInfo(nimbleFile)
+      ls.entryPoints = nimbleDumpInfo.getNimbleEntryPoints(ls.initializeParams.getRootPath)
+      # ls.showMessage(fmt "Found entry point {ls.entryPoints}?", MessageType.Info)
+      for entryPoint in ls.entryPoints:
+        debug "Starting nimsuggest for entry point ", entry = entryPoint
+        if entryPoint notin ls.projectFiles:
+          ls.createOrRestartNimsuggest(entryPoint)
+
   #If we are in a nimble project here, we try to start the entry points
 
 proc toCompletionItem(suggest: Suggest): CompletionItem =
@@ -101,15 +116,18 @@ proc completion*(ls: LanguageServer, params: CompletionParams, id: int):
     Future[seq[CompletionItem]] {.async.} =
   with (params.position, params.textDocument):
     let
-      nimsuggest = await ls.getNimsuggest(uri)
-      completions = await nimsuggest
+      nimsuggest = await ls.tryGetNimsuggest(uri)
+    if nimsuggest.isNone():
+      return @[]
+    let
+      completions = await nimsuggest.get
                             .sug(uriToPath(uri),
                                  ls.uriToStash(uri),
                                  line + 1,
                                  ls.getCharacter(uri, line, character))
     result = completions.map(toCompletionItem)
 
-    if ls.clientCapabilities.supportSignatureHelp() and nsCon in nimSuggest.capabilities:
+    if ls.clientCapabilities.supportSignatureHelp() and nsCon in nimSuggest.get.capabilities:
       #show only unique overloads if we support signatureHelp
       var unique = initTable[string, CompletionItem]()
       for completion in result:
@@ -217,11 +235,14 @@ proc toSymbolInformation*(suggest: Suggest): SymbolInformation =
 proc documentSymbols*(ls: LanguageServer, params: DocumentSymbolParams, id: int):
     Future[seq[SymbolInformation]] {.async.} =
   let uri = params.textDocument.uri
-  result = ls.getNimsuggest(uri)
-    .await()
+  let ns = await ls.tryGetNimsuggest(uri)
+  if ns.isSome:
+    ns.get()
     .outline(uriToPath(uri), ls.uriToStash(uri))
     .await()
     .map(toSymbolInformation)
+  else:
+    @[]
 
 proc scheduleFileCheck(ls: LanguageServer, uri: string) {.gcsafe, raises: [].} =
   if not ls.getWorkspaceConfiguration().waitFor().autoCheckFile.get(true):
@@ -276,8 +297,11 @@ proc hover*(ls: LanguageServer, params: HoverParams, id: int):
     Future[Option[Hover]] {.async.} =
   with (params.position, params.textDocument):
     let
-      nimsuggest = await ls.getNimsuggest(uri)
-      suggestions = await nimsuggest
+      nimsuggest = await ls.tryGetNimsuggest(uri)
+    if nimsuggest.isNone: 
+      return none(Hover)
+    let
+      suggestions = await nimsuggest.get()
        .def(uriToPath(uri),
             ls.uriToStash(uri),
             line + 1,
@@ -394,11 +418,12 @@ proc inlayHint*(ls: LanguageServer, params: InlayHintParams, id: int): Future[se
   with (params.range, params.textDocument):
     let
       configuration = ls.getWorkspaceConfiguration.await()
-      nimsuggest = await ls.getNimsuggest(uri)
-    if nimsuggest.protocolVersion < 4 or not configuration.inlayHintsEnabled:
+      nimsuggest = await ls.tryGetNimsuggest(uri)
+
+    if nimsuggest.isNone or nimsuggest.get.protocolVersion < 4 or not configuration.inlayHintsEnabled:
       return @[]
     let
-      suggestions = await nimsuggest
+      suggestions = await nimsuggest.get
         .inlayHints(uriToPath(uri),
                     ls.uriToStash(uri),
                     start.line + 1,
@@ -617,9 +642,11 @@ proc didSave*(ls: LanguageServer, params: DidSaveTextDocumentParams):
     Future[void] {.async, gcsafe.} =
   let
     uri = params.textDocument.uri
-    nimsuggest = ls.getNimsuggest(uri).await()
+    nimsuggest = ls.tryGetNimsuggest(uri).await()
+  if nimsuggest.isNone: return
+  
   ls.openFiles[uri].changed = false
-  traceAsyncErrors nimsuggest.changed(uriToPath(uri))
+  traceAsyncErrors nimsuggest.get.changed(uriToPath(uri))
 
   if ls.getWorkspaceConfiguration().await().checkOnSave.get(true):
     debug "Checking project", uri = uri
@@ -666,7 +693,9 @@ proc didOpen*(ls: LanguageServer, params: DidOpenTextDocumentParams):
       changed: false,
       fingerTable: @[])
 
+    # debug "Waiting for ", uri
     let projectFile = await projectFileFuture
+    # debug "Wait ends"
 
     debug "Document associated with the following projectFile", uri = uri, projectFile = projectFile
     if not ls.projectFiles.hasKey(projectFile):

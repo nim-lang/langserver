@@ -228,7 +228,7 @@ proc readPort(param: tuple[ns: ptr NimSuggestImpl, process: Process]) {.thread.}
   try:
     var line = param.process.outputStream.readLine & "\n"
     param.ns.port = line.strip.parseInt
-  except IOError:
+  except CatchableError:
     error "Failed to read nimsuggest port"
     var msg = failedToken & "\n"
     param.ns.port = -1
@@ -237,6 +237,7 @@ proc logStderr(param: tuple[root: string, process: Process]) {.thread.} =
   try:
     var line = param.process.errorStream.readLine
     while line != "\0":
+      stderr.writeLine &"******NIM SUGGEST ERRROR***** {param.root} \n"
       stderr.writeLine fmt ">> {line}"
       line = param.process.errorStream.readLine
   except IOError:
@@ -391,7 +392,7 @@ proc processQueue(self: Nimsuggest): Future[void] {.async.}=
     if req.future.finished:
       debug "Call cancelled before executed", command = req.command
     elif self.failed:
-      debug "Nimsuggest is not working, returning empty result..."
+      debug "Nimsuggest is not working, returning empty result...", port = self.port
       req.future.complete @[]
     else:
       benchmark req.commandString:

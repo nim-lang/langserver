@@ -211,12 +211,19 @@ proc parseWorkspaceConfiguration*(conf: JsonNode): NlsConfig =
     debug "Failed to parse the configuration.", error = getCurrentExceptionMsg()
     result = NlsConfig()
 
+
 proc getWorkspaceConfiguration*(ls: LanguageServer): Future[NlsConfig] {.async: (raises:[]).} =
   try:
-    let conf = await ls.workspaceConfiguration
-    return parseWorkspaceConfiguration(conf)
-  except CatchableError:
-    discard 
+    #this is the root of a lot a problems as there are multiple race conditions here.
+    #since most request doenst really rely on the configuration, we can just go ahead and 
+    #return a default one until we have the right one. 
+    #TODO review and handle project specific confs when received instead of reliying in this func
+    if ls.workspaceConfiguration.finished:
+      return parseWorkspaceConfiguration(ls.workspaceConfiguration.read)
+    else: 
+      return NlsConfig()
+  except CatchableError as ex:
+    writeStackTrace(ex)
 
 proc showMessage*(ls: LanguageServer, message: string, typ: MessageType) {.raises: [].} =
   try:
@@ -605,12 +612,20 @@ proc createOrRestartNimsuggest*(ls: LanguageServer, projectFile: string, uri = "
     discard
 
 proc getNimsuggest*(ls: LanguageServer, uri: string): Future[Nimsuggest] {.async.} =
+  assert uri in ls.openFiles, "File not open"     
+
   let projectFile = await ls.openFiles[uri].projectFile
   if not ls.projectFiles.hasKey(projectFile):
     ls.createOrRestartNimsuggest(projectFile, uri)
 
   ls.lastNimsuggest = ls.projectFiles[projectFile]
   return await ls.projectFiles[projectFile]
+
+proc tryGetNimsuggest*(ls: LanguageServer, uri: string): Future[Option[Nimsuggest]] {.async.} =
+  if uri notin ls.openFiles:
+    none(NimSuggest)
+  else:
+    some await getNimsuggest(ls, uri)
 
 proc restartAllNimsuggestInstances(ls: LanguageServer) =
   debug "Restarting all nimsuggest instances"
@@ -698,19 +713,19 @@ proc getProjectFile*(fileUri: string, ls: LanguageServer): Future[string] {.asyn
     else:
       trace "getProjectFile does not match", uri = fileUri, matchedRegex = mapping.fileRegex
 
-  once: #once we refactor the project to chronos, we may move this code into init. Right now it hangs for some odd reason
-    let rootPath = ls.initializeParams.getRootPath
-    if rootPath != "":
-      let nimbleFiles = walkFiles(rootPath / "*.nimble").toSeq
-      if nimbleFiles.len > 0:
-        let nimbleFile = nimbleFiles[0]
-        let nimbleDumpInfo = ls.getNimbleDumpInfo(nimbleFile)
-        ls.entryPoints = nimbleDumpInfo.getNimbleEntryPoints(ls.initializeParams.getRootPath)
-        # ls.showMessage(fmt "Found entry point {ls.entryPoints}?", MessageType.Info)
-        for entryPoint in ls.entryPoints:
-          debug "Starting nimsuggest for entry point ", entry = entryPoint
-          if entryPoint notin ls.projectFiles:
-            ls.createOrRestartNimsuggest(entryPoint)
+  # once: #once we refactor the project to chronos, we may move this code into init. Right now it hangs for some odd reason
+  #   let rootPath = ls.initializeParams.getRootPath
+  #   if rootPath != "":
+  #     let nimbleFiles = walkFiles(rootPath / "*.nimble").toSeq
+  #     if nimbleFiles.len > 0:
+  #       let nimbleFile = nimbleFiles[0]
+  #       let nimbleDumpInfo = ls.getNimbleDumpInfo(nimbleFile)
+  #       ls.entryPoints = nimbleDumpInfo.getNimbleEntryPoints(ls.initializeParams.getRootPath)
+  #       # ls.showMessage(fmt "Found entry point {ls.entryPoints}?", MessageType.Info)
+  #       for entryPoint in ls.entryPoints:
+  #         debug "Starting nimsuggest for entry point ", entry = entryPoint
+  #         if entryPoint notin ls.projectFiles:
+  #           ls.createOrRestartNimsuggest(entryPoint)
 
   result = ls.getProjectFileAutoGuess(fileUri)
   if result in ls.projectFiles:

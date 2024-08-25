@@ -80,9 +80,9 @@ proc main() =
   let cmdLineParams = handleParams()
   let storageDir = ensureStorageDir()
   debug "Starting nimlangserver", params = commandLineParams()
-  #TODO handle transport in handleParams
+  #TODO properly handle transport in handleParams
   let transportMode = parseEnum[TransportMode](
-    commandLineParams().filterIt("stdio" in it).head.map(it => it.replace("--", "")).get("socket")
+    commandLineParams().filterIt("stdio" in it or "socket" in it).head.map(it => it.replace("--", "")).get("stdio")
   )
   debug "Transport mode is ", transportMode = transportMode
   #[
