@@ -136,6 +136,14 @@ proc catchOrQuit*(error: Exception) =
     fatal "Fatal exception reached", err = error.msg, stackTrace = getStackTrace()
     quit 1
 
+proc writeStackTrace*(ex = getCurrentException()) = 
+  try:
+    stderr.write "An exception occured \n"
+    stderr.write ex.msg & "\n"
+    stderr.write ex.getStackTrace()
+  except IOError:
+    discard
+
 proc traceAsyncErrors*(fut: Future) =
   fut.addCallback do(data: pointer):
     if not fut.error.isNil:

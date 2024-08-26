@@ -144,8 +144,10 @@ proc toLocation*(suggest: Suggest): Location =
 proc definition*(ls: LanguageServer, params: TextDocumentPositionParams, id: int):
     Future[seq[Location]] {.async.} =
   with (params.position, params.textDocument):
-    result = ls.getNimsuggest(uri)
-      .await()
+    let ns = await ls.tryGetNimsuggest(uri)
+    if ns.isNone: return @[]
+    result = 
+      ns.get
       .def(uriToPath(uri),
            ls.uriToStash(uri),
            line + 1,
@@ -156,8 +158,9 @@ proc definition*(ls: LanguageServer, params: TextDocumentPositionParams, id: int
 proc declaration*(ls: LanguageServer, params: TextDocumentPositionParams, id: int):
     Future[seq[Location]] {.async.} =
   with (params.position, params.textDocument):
-    result = ls.getNimsuggest(uri)
-      .await()
+    let ns = await ls.tryGetNimsuggest(uri)
+    if ns.isNone: return @[]
+    result = ns.get
       .declaration(uriToPath(uri),
            ls.uriToStash(uri),
            line + 1,
@@ -168,8 +171,10 @@ proc declaration*(ls: LanguageServer, params: TextDocumentPositionParams, id: in
 proc expandAll*(ls: LanguageServer, params: TextDocumentPositionParams):
     Future[ExpandResult] {.async.} =
   with (params.position, params.textDocument):
-    let expand = ls.getNimsuggest(uri)
-      .await()
+    let ns = await ls.tryGetNimsuggest(uri)
+    if ns.isNone: return ExpandResult() #TODO make it optional
+    
+    let expand = ns.get
       .expand(uriToPath(uri),
            ls.uriToStash(uri),
            line + 1,
@@ -196,8 +201,10 @@ proc expand*(ls: LanguageServer, params: ExpandTextDocumentPositionParams):
     let
       lvl = level.get(-1)
       tag = if lvl == -1: "all" else: $lvl
-      expand = ls.getNimsuggest(uri)
-        .await()
+      ns = await ls.tryGetNimsuggest(uri)
+    if ns.isNone: return ExpandResult()
+    let      
+      expand = ns.get        
         .expand(uriToPath(uri),
              ls.uriToStash(uri),
              line + 1,
@@ -215,8 +222,9 @@ proc status*(ls: LanguageServer, params: NimLangServerStatusParams): Future[NimL
 proc typeDefinition*(ls: LanguageServer, params: TextDocumentPositionParams, id: int):
     Future[seq[Location]] {.async.} =
   with (params.position, params.textDocument):
-    result = ls.getNimsuggest(uri)
-      .await()
+    let ns = await ls.tryGetNimSuggest(uri)
+    if ns.isNone: return @[]
+    result = ns.get
       .`type`(uriToPath(uri),
               ls.uriToStash(uri),
               line + 1,
@@ -315,8 +323,10 @@ proc references*(ls: LanguageServer, params: ReferenceParams):
     Future[seq[Location]] {.async.} =
   with (params.position, params.textDocument, params.context):
     let
-      nimsuggest = await ls.getNimsuggest(uri)
-      refs = await nimsuggest
+      nimsuggest = await ls.tryGetNimsuggest(uri)
+    if nimsuggest.isNone: return @[]
+    let 
+      refs = await nimsuggest.get
       .use(uriToPath(uri),
            ls.uriToStash(uri),
            line + 1,
@@ -329,8 +339,10 @@ proc prepareRename*(ls: LanguageServer, params: PrepareRenameParams,
                    id: int): Future[JsonNode] {.async.} =
   with (params.position, params.textDocument):
     let
-      nimsuggest = await ls.getNimsuggest(uri)
-      def = await nimsuggest.def(
+      nimsuggest = await ls.tryGetNimsuggest(uri)
+    if nimsuggest.isNone: return newJNull()
+    let    
+      def = await nimsuggest.get.def(
         uriToPath(uri),
         ls.uriToStash(uri),
         line + 1,
@@ -529,13 +541,14 @@ proc signatureHelp*(ls: LanguageServer, params: SignatureHelpParams, id: int):
     if not ls.clientCapabilities.supportSignatureHelp():
     #Some clients doesnt support signatureHelp
       return none[SignatureHelp]()
-    with (params.position, params.textDocument):
-      let nimsuggest = await ls.getNimsuggest(uri)
-      if nsCon notin nimSuggest.capabilities:
+    with (params.position, params.textDocument):      
+      let nimsuggest = await ls.tryGetNimsuggest(uri)
+      if nimsuggest.isNone: return none[SignatureHelp]()
+      if nsCon notin nimSuggest.get.capabilities:
         #support signatureHelp only if the current version of NimSuggest supports it.
         return none[SignatureHelp]()
 
-      let completions = await nimsuggest
+      let completions = await nimsuggest.get
                               .con(uriToPath(uri),
                                   ls.uriToStash(uri),
                                   line + 1,
@@ -569,8 +582,10 @@ proc documentHighlight*(ls: LanguageServer, params: TextDocumentPositionParams, 
 
   with (params.position, params.textDocument):
     let
-      nimsuggest = await ls.getNimsuggest(uri)
-      suggestLocations = await nimsuggest.highlight(uriToPath(uri),
+      nimsuggest = await ls.tryGetNimsuggest(uri)
+    if nimsuggest.isNone: return @[]
+    let
+      suggestLocations = await nimsuggest.get.highlight(uriToPath(uri),
                                 ls.uriToStash(uri),
                                 line + 1,
                                 ls.getCharacter(uri, line, character))
@@ -622,8 +637,10 @@ proc setTrace*(ls: LanguageServer, params: SetTraceParams) {.async.} =
 proc didChange*(ls: LanguageServer, params: DidChangeTextDocumentParams):
     Future[void] {.async, gcsafe.} =
    with params:
+      let uri = textDocument.uri
+      if uri notin ls.openFiles:
+        return
       let
-        uri = textDocument.uri
         file = open(ls.uriStorageLocation(uri), fmWrite)
 
       ls.openFiles[uri].fingerTable = @[]
@@ -699,16 +716,16 @@ proc didOpen*(ls: LanguageServer, params: DidOpenTextDocumentParams):
 
     debug "Document associated with the following projectFile", uri = uri, projectFile = projectFile
     if not ls.projectFiles.hasKey(projectFile):
+      debug "******Will create nimsuggest for this file", uri = uri
       ls.createOrRestartNimsuggest(projectFile, uri)
 
     for line in text.splitLines:
       ls.openFiles[uri].fingerTable.add line.createUTFMapping()
       file.writeLine line
     file.close()
-
-    ls.getNimsuggest(uri).addCallback() do (fut: Future[Nimsuggest]) -> void:
-      if not fut.failed:
-        discard ls.warnIfUnknown(fut.read, uri, projectFile)
+    ls.tryGetNimSuggest(uri).addCallback() do (fut: Future[Option[Nimsuggest]]) -> void:
+      if not fut.failed and fut.read.isSome:
+        discard ls.warnIfUnknown(fut.read.get(), uri, projectFile)
 
     let projectFileUri = projectFile.pathToUri
     if projectFileUri notin ls.openFiles:

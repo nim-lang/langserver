@@ -1,5 +1,5 @@
 import macros, strformat,
-  chronos,
+  chronos, chronos/threadsync,
   os, sugar, sequtils, hashes, osproc,
   suggestapi, protocol/enums, protocol/types, with, tables, strutils, sets,
   ./utils, chronicles, std/re, uri, "$nim/compiler/pathutils",
@@ -81,6 +81,11 @@ type
     stdio = "stdio"
     socket = "socket"
 
+  ReadStdinContext* = object
+    onStdReadSignal*: ThreadSignalPtr #used by the thread to notify it read from the std
+    onMainReadSignal*: ThreadSignalPtr #used by the main thread to notify it read the value from the signal
+    value*: string
+
   LanguageServer* = ref object
     clientCapabilities*: ClientCapabilities
     initializeParams*: InitializeParams
@@ -108,8 +113,7 @@ type
     #TODO case object for these
     socketTransport*: StreamTransport #Only socket
     outStream*: FileStream #Only stdio (stdout)
-    rTranspStdin*: StreamTransport #Only stdio -> async read from stdin (uses wTranpStdin)
-    wTranspStdin*: StreamTransport #Only stdio -> readStdin writes in another thread from stdin
+    stdinContext*: ptr ReadStdinContext
 
   Certainty* = enum
     None,
@@ -449,7 +453,7 @@ proc cancelPendingFileChecks*(ls: LanguageServer, nimsuggest: Nimsuggest) =
         cancelFileCheck.complete()
       fileData.needsChecking = false
 
-proc getNimsuggest*(ls: LanguageServer, uri: string): Future[Nimsuggest] {.async, gcsafe.}
+
 
 proc uriStorageLocation*(ls: LanguageServer, uri: string): string =
   ls.storageDir / (hash(uri).toHex & ".nim")
@@ -508,12 +512,15 @@ proc sendDiagnostics*(ls: LanguageServer, diagnostics: seq[Suggest], path: strin
   else:
     ls.filesWithDiags.excl path
 
+proc tryGetNimsuggest*(ls: LanguageServer, uri: string): Future[Option[Nimsuggest]] {.async.} 
+
 proc checkProject*(ls: LanguageServer, uri: string): Future[void] {.async, gcsafe.} =
   if not ls.getWorkspaceConfiguration.await().autoCheckProject.get(true):
     return
   debug "Running diagnostics", uri = uri
-  let nimsuggest = ls.getNimsuggest(uri).await
-
+  let ns = ls.tryGetNimsuggest(uri).await
+  if ns.isNone: return
+  let nimsuggest = ns.get
   if nimsuggest.checkProjectInProgress:
     debug "Check project is already running", uri = uri
     nimsuggest.needsCheckProject = true
@@ -611,7 +618,7 @@ proc createOrRestartNimsuggest*(ls: LanguageServer, projectFile: string, uri = "
   except CatchableError:
     discard
 
-proc getNimsuggest*(ls: LanguageServer, uri: string): Future[Nimsuggest] {.async.} =
+proc getNimsuggestInner(ls: LanguageServer, uri: string): Future[Nimsuggest] {.async.} =
   assert uri in ls.openFiles, "File not open"     
 
   let projectFile = await ls.openFiles[uri].projectFile
@@ -625,7 +632,7 @@ proc tryGetNimsuggest*(ls: LanguageServer, uri: string): Future[Option[Nimsugges
   if uri notin ls.openFiles:
     none(NimSuggest)
   else:
-    some await getNimsuggest(ls, uri)
+    some await getNimsuggestInner(ls, uri)
 
 proc restartAllNimsuggestInstances(ls: LanguageServer) =
   debug "Restarting all nimsuggest instances"
@@ -708,7 +715,7 @@ proc getProjectFile*(fileUri: string, ls: LanguageServer): Future[string] {.asyn
     if pathRelativeToRoot.isSome and find(pathRelativeToRoot.get(), re(mapping.fileRegex), 0, pathRelativeToRoot.get().len) != -1:
       result = string(rootPath) / mapping.projectFile
       if fileExists(result):
-        trace "getProjectFile", project = result, uri = fileUri, matchedRegex = mapping.fileRegex
+        trace "getProjectFile?", project = result, uri = fileUri, matchedRegex = mapping.fileRegex
         return result
     else:
       trace "getProjectFile does not match", uri = fileUri, matchedRegex = mapping.fileRegex
@@ -738,7 +745,8 @@ proc getProjectFile*(fileUri: string, ls: LanguageServer): Future[string] {.asyn
   if result == "":
     result = fileUri
 
-  debug "getProjectFile", project = result, fileUri = fileUri
+  debug "getProjectFile ", project = result, fileUri = fileUri
+  
 
 
 proc warnIfUnknown*(ls: LanguageServer, ns: Nimsuggest, uri: string, projectFile: string):
@@ -758,11 +766,13 @@ proc checkFile*(ls: LanguageServer, uri: string): Future[void] {.async.} =
 
   let
     path = uriToPath(uri)
-    diagnostics = ls.getNimsuggest(uri)
-      .await()
-      .chkFile(path, ls.uriToStash(uri))
-      .await()
+    ns = await ls.tryGetNimsuggest(uri)
+    
+  let diagnostics = ns.get()    
+    .chkFile(path, ls.uriToStash(uri))
+    .await()
 
   ls.progress(token, "end")
 
   ls.sendDiagnostics(diagnostics, path)
+  

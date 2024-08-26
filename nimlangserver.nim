@@ -132,5 +132,6 @@ proc main() =
 try:
   main()
 except Exception as e:
-  error "Error in main", msg = e.msg, trace = getStackTrace()
+  error "Error in main"
+  writeStackTrace e
   quit(1)

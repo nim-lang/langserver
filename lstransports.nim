@@ -18,6 +18,7 @@ template flavorUsesAutomaticObjectSerialization(T: type JrpcSys): bool =
 
 proc readValue*(r: var JsonReader, val: var OptionalNode) =
   try:
+    
     discard r.tokKind()
     val = some r.parseJsonNode()
   except CatchableError:
@@ -122,16 +123,14 @@ proc readStdin*(transport: StreamTransport) {.thread.} =
     except TransportError as ex:
       error "Error reading stdin", msg = ex.msg
 
-type
-  ReadStdinContext = object
-    signal: ThreadSignalPtr
-    value: string
 
 proc readStdin2*(ctx: ptr ReadStdinContext) {.thread.} =
   let inputStream = newFileStream(stdin)
   while true:
     ctx.value = processContentLength(inputStream) & CRLF
-    discard ctx.signal.fireSync()
+    discard ctx.onStdReadSignal.fireSync()
+    discard ctx.onMainReadSignal.waitSync()
+   
 
 proc writeOutput*(ls: LanguageServer, content: JsonNode) =
   let responseStr = $content
@@ -161,7 +160,7 @@ proc runRpc(ls: LanguageServer, req: RequestRx, rpc: RpcProc): Future[void] {.as
   except CancelledError as ex:
     debug "[RunRPC]Request cancelled", meth = req.meth
   except CatchableError as ex:
-    error "[RunRPC] ", msg = ex.msg
+    error "[RunRPC] ", msg = ex.msg, req = req.`method`
     writeStackTrace(ex = ex)
 
 proc processMessage(ls: LanguageServer, message: string) {.raises:[].} =
@@ -204,8 +203,7 @@ proc initActions*(ls: LanguageServer,) =
   let onExit: OnExitCallback = proc() {.async.} =
     case ls.transportMode:
     of stdio:
-      ls.rTranspStdin.close()
-      ls.wTranspStdin.close()
+      #TODO dispose the context
       ls.outStream.close()
     of socket:
       ls.srv.stop() #TODO check if stop also close the transport, which it should
@@ -234,33 +232,28 @@ proc initActions*(ls: LanguageServer,) =
   ls.onExit = onExit
 
 
-var context {.global.} = createShared(ReadStdinContext)
-
 #start and loop functions belows are the only difference between transports
 proc startStdioLoop*(ls: LanguageServer): Future[void] {.async.} =
   while true:
-    # let msg = await ls.rTranspStdin.readLine(sep = CRLF)
-    await context.signal.wait()
-    let msg = context.value
-    debug "[Stdio Transport] Processing Message", msg = msg
+    await ls.stdinContext.onStdReadSignal.wait()
+    let msg = ls.stdinContext.value
+    await ls.stdinContext.onMainReadSignal.fire()
+    if msg == "":
+      error "Client discconected"
+      break    
     ls.processMessage(msg)
 
 proc startStdioServer*(ls: LanguageServer) =
   #Holds the responses from the client done via the callAction. Likely this is only needed for stdio
   debug "Starting stdio server"
-  #sets io streams
-  let (rfd, wfd) = createAsyncPipe()
-  ls.outStream = newFileStream(stdout)
-  ls.rTranspStdin = fromPipe(rfd)
-  ls.wTranspStdin = fromPipe(wfd)
   ls.srv = newRpcSocketServer()
-  ls.initActions()
-  # var stdioThread {.global.}: Thread[StreamTransport]
+  ls.initActions()      
+  ls.outStream = newFileStream(stdout)
   var stdinThread {.global.}: Thread[ptr ReadStdinContext]
-  var signal = ThreadSignalPtr.new().expect("asas")
-  context.signal = signal
-  # createThread(stdioThread, readStdin, ls.wTranspStdin)
-  createThread(stdinThread, readStdin2, context)
+  ls.stdinContext = createShared(ReadStdinContext)
+  ls.stdinContext.onMainReadSignal = ThreadSignalPtr.new().expect("")
+  ls.stdinContext.onStdReadSignal = ThreadSignalPtr.new().expect("")
+  createThread(stdinThread, readStdin2, ls.stdinContext)
   asyncSpawn ls.startStdioLoop()
 
 
@@ -280,4 +273,5 @@ proc startSocketServer*(ls: LanguageServer, port: Port) =
     ls.initActions()
     ls.srv.addStreamServer("localhost", port)
     ls.srv.start
+    
     

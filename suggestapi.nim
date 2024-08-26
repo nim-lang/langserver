@@ -248,8 +248,8 @@ proc stop*(self: Nimsuggest) =
   try:
     self.process.kill()
     self.process.close()
-  except Exception:
-    discard
+  except Exception as ex:
+    writeStackTrace(ex)
 
 proc doWithTimeout*[T](fut: Future[T], timeout: int, s: string): owned(Future[bool]) =
   var retFuture = newFuture[bool]("asyncdispatch.`doWithTimeout`")
@@ -361,7 +361,7 @@ proc createNimsuggest*(root: string,
                                   workingDir = workingDir,
                                   args = args,
                                   options = {poUsePath})
-
+    #TODO better use startProcess from chronos so we dont need to spawn a thread
     # all this is needed to avoid the need to block on the main thread.
     createThread(thread, readPort, (ns: cast[ptr NimSuggestImpl](result), process: result.process))
 
