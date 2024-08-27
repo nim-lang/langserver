@@ -76,6 +76,8 @@ type
 
   CommandLineParams* = object
     clientProcessId*: Option[int]
+    transport*: Option[TransportMode]
+    port*: Port #only for sockets
 
   TransportMode* = enum
     stdio = "stdio"
@@ -84,7 +86,7 @@ type
   ReadStdinContext* = object
     onStdReadSignal*: ThreadSignalPtr #used by the thread to notify it read from the std
     onMainReadSignal*: ThreadSignalPtr #used by the main thread to notify it read the value from the signal
-    value*: string
+    value*: cstring
 
   LanguageServer* = ref object
     clientCapabilities*: ClientCapabilities
@@ -113,7 +115,7 @@ type
     #TODO case object for these
     socketTransport*: StreamTransport #Only socket
     outStream*: FileStream #Only stdio (stdout)
-    stdinContext*: ptr ReadStdinContext
+    stdinContext*: ptr ReadStdinContext #TODO deallocate, first see what's going on with ORC not working
 
   Certainty* = enum
     None,
@@ -136,13 +138,15 @@ macro `%*`*(t: untyped, inputStream: untyped): untyped =
   result = newCall(bindSym("to", brOpen),
                    newCall(bindSym("%*", brOpen), inputStream), t)
 
-proc initLs*(tm: TransportMode): LanguageServer =
+proc initLs*(params: CommandLineParams, storageDir: string): LanguageServer =
   LanguageServer(
     workspaceConfiguration: Future[JsonNode](),
     filesWithDiags: initHashSet[string](),
-    transportMode: tm,
+    transportMode: params.transport.get(),
     openFiles: initTable[string, NlsFileInfo](),
-    responseMap: newTable[string, Future[JsonNode]]()
+    responseMap: newTable[string, Future[JsonNode]](),
+    storageDir: storageDir,
+    cmdLineClientProcessId: params.clientProcessId,
   )
 
 proc getNimbleEntryPoints*(dumpInfo: NimbleDumpInfo, nimbleProjectPath: string): seq[string] =

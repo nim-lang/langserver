@@ -236,7 +236,7 @@ proc initActions*(ls: LanguageServer,) =
 proc startStdioLoop*(ls: LanguageServer): Future[void] {.async.} =
   while true:
     await ls.stdinContext.onStdReadSignal.wait()
-    let msg = ls.stdinContext.value
+    let msg = $ls.stdinContext.value
     await ls.stdinContext.onMainReadSignal.fire()
     if msg == "":
       error "Client discconected"
