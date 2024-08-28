@@ -3,7 +3,7 @@ import chronicles, chronos
 import
   std/[
     syncio, os, json, jsonutils, strutils, strformat, streams, sequtils, sets, tables,
-    oids, sugar
+    oids, sugar, net
   ]
 import ls, routes, suggestapi, protocol/enums, utils, lstransports, asyncprocmonitor
 
@@ -47,6 +47,14 @@ proc registerRoutes(srv: RpcSocketServer, ls: LanguageServer) =
   srv.register("textDocument/didChange", wrapRpc(partial(didChange, ls)))
   srv.register("$/setTrace", wrapRpc(partial(setTrace, ls)))
   
+
+proc getNextFreePort(): Port= 
+  let s = newSocket()
+  s.bindAddr(Port(0), "localhost")
+  let (_, port) = s.getLocalAddr
+  s.close()
+  port
+
 proc handleParams(): CommandLineParams =
   if paramCount() > 0 and paramStr(1) in ["-v", "--version"]:
     echo LSPVersion
@@ -54,7 +62,6 @@ proc handleParams(): CommandLineParams =
   var i = 1
   while i <= paramCount():
     var param = paramStr(i)
-    echo "processing param ", param
     if param.startsWith("--clientProcessId="):
       var pidStr = param.substr(18)
       try:
@@ -73,9 +80,12 @@ proc handleParams(): CommandLineParams =
         result.port = Port(parseInt(port))
       except ValueError:
         error "Invalid port ", port = port
+        quit(1)
     inc i
-  if result.transport.isSome and result.transport.get == socket and result.port == default(Port):
-    result.port = Port(8888) #TODO find a free port instead
+  if result.transport.isSome and result.transport.get == socket:
+    if result.port == default(Port):      
+      result.port = getNextFreePort() 
+    echo &"port={result.port}"
   if result.transport.isNone:
     result.transport = some stdio
 
