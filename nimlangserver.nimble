@@ -9,7 +9,7 @@ bin           = @["nimlangserver"]
 skipDirs      = @["tests"]
 
 requires "nim == 2.0.8", 
-         "chronos",        
+         "chronos > 4",        
          "json_rpc#head",
          "with",
          "chronicles",
