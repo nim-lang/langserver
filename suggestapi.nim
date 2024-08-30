@@ -182,12 +182,12 @@ proc parseQualifiedPath*(input: string): seq[string] =
   if item != "":
     result.add item
 
-proc parseSuggestDef*(line: string): Suggest =
+proc parseSuggestDef*(line: string): Option[Suggest] =
   let tokens = line.split('\t');
   if tokens.len < 8:
     error "Failed to parse: ", line = line
-    raise newException(ValueError, fmt "Failed to parse line {line}")
-  result = Suggest(
+    return none(Suggest)
+  var sug = Suggest(
     qualifiedPath: tokens[2].parseQualifiedPath,
     filePath: tokens[4],
     line: parseInt(tokens[5]),
@@ -197,8 +197,9 @@ proc parseSuggestDef*(line: string): Suggest =
     symKind: tokens[1],
     section: parseEnum[IdeCmd]("ide" & capitalizeAscii(tokens[0])))
   if tokens.len == 11:
-    result.endLine = parseInt(tokens[9])
-    result.endCol = parseInt(tokens[10])
+    sug.endLine = parseInt(tokens[9])
+    sug.endCol = parseInt(tokens[10])
+  some sug
 
 proc parseSuggestInlayHint*(line: string): SuggestInlayHint =
   let tokens = line.split('\t');
@@ -438,7 +439,9 @@ proc processQueue(self: Nimsuggest): Future[void] {.async.}=
             of "inlayHints":
               res.add Suggest( inlayHintInfo: parseSuggestInlayHint(lineStr) )
             else:
-              res.add parseSuggestDef(lineStr)
+              let sug = parseSuggestDef(lineStr)
+              if sug.isSome:
+                res.add sug.get
 
         if (content == ""):
           self.markFailed "Server crashed/socket closed."
