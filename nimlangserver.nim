@@ -48,7 +48,7 @@ proc registerRoutes(srv: RpcSocketServer, ls: LanguageServer) =
   srv.register("$/setTrace", wrapRpc(partial(setTrace, ls)))
   
 
-proc getNextFreePort(): Port= 
+proc getNextFreePort*(): Port= 
   let s = newSocket()
   s.bindAddr(Port(0), "localhost")
   let (_, port) = s.getLocalAddr
@@ -122,10 +122,8 @@ proc registerProcMonitor(ls: LanguageServer) =
       globalLS.stopNimsuggestProcessesP()
       exitnow(1)
 
-proc main() =
-  let cmdLineParams = handleParams()
+proc main*(cmdLineParams: CommandLineParams) =
   debug "Starting nimlangserver", params = cmdLineParams
-  
   #[
   `nimlangserver` supports both transports: stdio and socket. By default it uses stdio transport. 
     But we do construct a RPC socket server even in stdio mode, so that we can reuse the same code for both transports.
@@ -140,11 +138,13 @@ proc main() =
   globalLS = addr ls #TODO use partial instead inside the func
   ls.srv.registerRoutes(ls)
   ls.registerProcMonitor()
-  
-  runForever()
-try:
-  main()
-except Exception as e:
-  error "Error in main"
-  writeStackTrace e
-  quit(1)
+
+when isMainModule: 
+  try:
+    main(handleParams())
+    runForever()
+
+  except Exception as e:
+    error "Error in main"
+    writeStackTrace e
+    quit(1)

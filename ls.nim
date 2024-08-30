@@ -581,6 +581,7 @@ proc createOrRestartNimsuggest*(ls: LanguageServer, projectFile: string, uri = "
         ls.createOrRestartNimsuggest(projectFile, uri)
         ls.sendStatusChanged()
       errorCallback = proc (ns: Nimsuggest) {.gcsafe, raises: [].} =
+        debug "NimSuggest needed to be restarted due to an error "
         warn "Server stopped.", projectFile = projectFile
         if configuration.autoRestart.get(true) and ns.successfullCall:
           ls.createOrRestartNimsuggest(projectFile, uri)
