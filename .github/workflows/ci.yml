@@ -34,7 +34,7 @@ jobs:
       - name: Nimble Install
         shell: bash
         run: |
-          nimble -y install
+          nimble -y install -l
       
       - name: Nimble Test
         shell: bash
