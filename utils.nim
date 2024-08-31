@@ -1,4 +1,4 @@
-import std/[unicode, uri, strformat, os, strutils, options, json, jsonutils]
+import std/[unicode, uri, strformat, os, strutils, options, json, jsonutils, sugar]
 import chronos, chronicles
 import "$nim/compiler/pathutils"
 import json_rpc/private/jrpc_sys
@@ -257,3 +257,25 @@ proc partial*[A, B, C, D](
 proc ensureStorageDir*: string =
   result = getTempDir() / "nimlangserver"
   discard existsOrCreateDir(result)
+
+proc either*[T](fut1, fut2: Future[T]): Future[T] {.async.} =
+  let res =  await race(fut1, fut2)
+  if fut1.finished:
+    result = fut1.read
+    cancelSoon fut2
+  else:
+    result = fut2.read
+    cancelSoon fut1
+  
+proc map*[T, U](f: Future[T], fn: proc(t:T): U {.raises:[], gcsafe.}): Future[U] {.async.} =
+  fn(await f)
+
+proc map*[U](f: Future[void], fn: proc(): U {.raises:[], gcsafe.}): Future[U] {.async.} =
+  await f
+  fn()
+
+proc withTimeout*[T](fut: Future[T], timeout: int = 500): Future[Option[T]] {.async.} = 
+  #Returns None when the timeout is reached and cancels the fut. Otherwise returns the Fut
+  let timeoutFut = sleepAsync(timeout).map(() => none(T))
+  let optFut = fut.map((r: T) => some r)
+  await either(optFut, timeoutFut)
