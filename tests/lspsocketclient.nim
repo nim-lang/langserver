@@ -13,13 +13,18 @@ proc fixtureUri*(path: string): string =
 
 type 
   NotificationRpc* = proc (params: JsonNode): Future[void] {.gcsafe, raises:[].}
+  Rpc* = proc (params: JsonNode): Future[JsonNode] {.gcsafe, raises:[].}
   LspSocketClient* = ref object of RpcSocketClient
-    routes*: TableRef[string, NotificationRpc]
+    notifications*: TableRef[string, NotificationRpc]
+    routes*: TableRef[string, Rpc]
+    calls*: TableRef[string, seq[JsonNode]] #Stores all requests here from the server so we can test on them
 
 
 proc newLspSocketClient*(): LspSocketClient = 
   result = LspSocketClient.new()
-  result.routes = newTable[string, NotificationRpc]()
+  result.routes = newTable[string, Rpc]()
+  result.notifications = newTable[string, NotificationRpc]()
+  result.calls = newTable[string, seq[JsonNode]]()
 
 method call*(client: LspSocketClient, name: string,
              params: JsonNode): Future[JsonString] {.async, gcsafe.} =
@@ -115,9 +120,21 @@ proc processClientLoop*(client: LspSocketClient) {.async: (raises: []), gcsafe.}
       let serverReq = msg.parseJson()      
       let meth = serverReq["method"].jsonTo(string)
       debug "[Process client loop ]", meth = meth
-      if meth in client.routes:
-        echo msg
-        await client.routes[meth](serverReq["params"])
+      if meth in client.notifications:
+        await client.notifications[meth](serverReq["params"])
+      elif meth in client.routes:
+        #TODO extract
+        let res = await client.routes[meth](serverReq["params"])
+        let id = serverReq["id"].jsonTo(string)
+        let reqJson = newJObject()
+        reqJson["jsonrpc"] = %"2.0"
+        reqJson["id"] = %id
+        reqJson["result"] = res
+        let reqContent = wrapContentWithContentLenght($reqJson)
+        discard await client.transport.write(reqContent.string)
+
+        debug "***********Response in ", res = $res, req = serverReq
+
       else:
         error "Method not found in client", meth = meth
        
@@ -139,10 +156,13 @@ proc notify*(client: LspSocketClient, name: string, params: JsonNode) =
   asyncSpawn wrap()
 
 
-proc register*(client: LspSocketClient, name: string, rpc: NotificationRpc) = 
+proc register*(client: LspSocketClient, name: string, notRpc: NotificationRpc ) = 
+  client.notifications[name] = notRpc
+  client.calls[name] = newSeq[JsonNode]()
+
+proc register*(client: LspSocketClient, name: string, rpc: Rpc) = 
   client.routes[name] = rpc
-
-
+  
 #Calls
 proc initialize*(client: LspSocketClient): Future[InitializeResult] {.async.} = 
   let initParams = InitializeParams %* {
