@@ -1,17 +1,25 @@
 import ../[
-  ls, lstransports
+  ls, lstransports, utils
 ]
 
 import ../protocol/types
-import std/[options, unittest, json, os, jsonutils]
+import std/[options, unittest, json, os, jsonutils, tables, strutils, sequtils]
 import json_rpc/[rpcclient]
 import chronicles
 
+#Utils
+proc fixtureUri*(path: string): string =
+  result = pathToUri(getCurrentDir() / "tests" / path)
+
 type 
+  NotificationRpc* = proc (params: JsonNode): Future[void] {.gcsafe, raises:[].}
   LspSocketClient* = ref object of RpcSocketClient
+    routes*: TableRef[string, NotificationRpc]
 
 
-proc newLspSocketClient*(): LspSocketClient = LspSocketClient.new()
+proc newLspSocketClient*(): LspSocketClient = 
+  result = LspSocketClient.new()
+  result.routes = newTable[string, NotificationRpc]()
 
 method call*(client: LspSocketClient, name: string,
              params: JsonNode): Future[JsonString] {.async, gcsafe.} =
@@ -38,6 +46,23 @@ method call*(client: LspSocketClient, name: string,
 
   return await newFut
 
+# proc processMessage*(client: LspSocketClient, msg: string): Future[void] {.async: (raises: []).} =
+#   try:
+#     echo "process message ", msg
+#     let msg = msg.parseJson()
+#     if "id" in msg and msg["id"].kind == JInt: #TODO this is just a response from the server
+#       echo "Response from Server"
+#       await sleepAsync(1)
+      
+
+#       # let res = newJObject()
+#       # res["rpc"]
+#       #Here we should write in the transport the request i.e. 
+#       # discard await client.transport.write()
+    
+#   except CatchableError as ex: 
+#     error "Processing message error ", ex = ex.msg
+
 proc processData(client: LspSocketClient) {.async: (raises: []).} =
   while true:
     var localException: ref JsonRpcError
@@ -51,10 +76,7 @@ proc processData(client: LspSocketClient) {.async: (raises: []).} =
           break
         
         let res = client.processMessage(value)
-        if res.isErr:
-          error "Error when processing RPC message", msg=res.error
-          localException = newException(JsonRpcError, res.error)
-          break
+       
       except TransportError as exc:
         localException = newException(JsonRpcError, exc.msg)
         await client.transport.closeWait()
@@ -70,7 +92,7 @@ proc processData(client: LspSocketClient) {.async: (raises: []).} =
       if client.batchFut.isNil.not and not client.batchFut.completed():
         client.batchFut.fail(localException)
 
-    # async loop reconnection and waiting
+    # async loop reconnection and waiting 
     try:
       info "Reconnect to server", address=`$`(client.address)
       client.transport = await connect(client.address)
@@ -81,13 +103,81 @@ proc processData(client: LspSocketClient) {.async: (raises: []).} =
       error "Error when reconnecting to server", msg=exc.msg
       break
 
-proc onProcessMessage(client: RpcClient, line: string): Result[bool, string] {.gcsafe, raises: [].} = 
-  # echo "onProcessmessage ", line #line contains the json response from the server. From here one could implement an actual client
-  return ok(true)
+
+proc processClientLoop*(client: LspSocketClient) {.async: (raises: []), gcsafe.} =
+  while true:
+    # if not client.transport.isOpen:
+    try:
+      await sleepAsync(100)
+      
+      let msg = await processContentLength(client.transport, error = false)
+      if msg == "": continue
+      let serverReq = msg.parseJson()      
+      let meth = serverReq["method"].jsonTo(string)
+      debug "[Process client loop ]", meth = meth
+      if meth in client.routes:
+        echo msg
+        await client.routes[meth](serverReq["params"])
+      else:
+        error "Method not found in client", meth = meth
+       
+    except CatchableError as ex:
+      error "[ProcessClientLoop ]", ex = ex.msg
+      discard 
 
 proc connect*(client: LspSocketClient, address: string, port: Port) {.async.} =
   let addresses = resolveTAddress(address, port)
   client.transport = await connect(addresses[0])
   client.address = addresses[0]
   client.loop = processData(client)
-  client.onProcessMessage = onProcessMessage
+  asyncSpawn client.processClientLoop()
+  
+
+proc notify*(client: LspSocketClient, name: string, params: JsonNode) =
+  proc wrap(): Future[void] {.async.} = 
+    discard await client.call(name, params)
+  asyncSpawn wrap()
+
+
+proc register*(client: LspSocketClient, name: string, rpc: NotificationRpc) = 
+  client.routes[name] = rpc
+
+
+#Calls
+proc initialize*(client: LspSocketClient): Future[InitializeResult] {.async.} = 
+  let initParams = InitializeParams %* {
+        "processId": %getCurrentProcessId(),
+        "rootUri": fixtureUri("projects/hw/"),
+        "capabilities": {
+          "window": {
+            "workDoneProgress": true
+          },
+          "workspace": {"configuration": true}
+        }
+    }
+  client.call("initialize", %initParams).await.string.parseJson.jsonTo(InitializeResult)
+  #Should we await here for the response to come back?
+
+
+
+
+proc createDidOpenParams*(file: string): DidOpenTextDocumentParams =
+  return DidOpenTextDocumentParams %* {
+    "textDocument": {
+      "uri": fixtureUri(file),
+      "languageId": "nim",
+      "version": 0,
+      "text": readFile("tests" / file)
+     }
+  }
+
+proc positionParams*(uri: string, line, character: int): TextDocumentPositionParams =
+  return TextDocumentPositionParams %* {
+      "position": {
+         "line": line,
+         "character": character
+      },
+      "textDocument": {
+         "uri": uri
+       }
+    }

@@ -716,12 +716,14 @@ proc didOpen*(ls: LanguageServer, params: DidOpenTextDocumentParams):
 
     debug "Document associated with the following projectFile", uri = uri, projectFile = projectFile
     if not ls.projectFiles.hasKey(projectFile):
-      debug "******Will create nimsuggest for this file", uri = uri
+      debug "Will create nimsuggest for this file", uri = uri
       ls.createOrRestartNimsuggest(projectFile, uri)
-
+        
+  
     for line in text.splitLines:
-      ls.openFiles[uri].fingerTable.add line.createUTFMapping()
-      file.writeLine line
+      if uri in ls.openFiles:
+        ls.openFiles[uri].fingerTable.add line.createUTFMapping()
+        file.writeLine line
     file.close()
     ls.tryGetNimSuggest(uri).addCallback() do (fut: Future[Option[Nimsuggest]]) -> void:
       if not fut.failed and fut.read.isSome:

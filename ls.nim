@@ -267,7 +267,7 @@ proc getLspStatus*(ls: LanguageServer): NimLangServerStatus {.raises: [].} =
     let futNs = ls.projectFiles.getOrDefault(projectFile, nil)
     if futNs.finished:
       try:
-        var ns: NimSuggest = futNs.read
+        var ns = futNs.read
         var nsStatus = NimSuggestStatus(
           projectFile: projectFile,
           capabilities: ns.capabilities.toSeq,
@@ -275,6 +275,8 @@ proc getLspStatus*(ls: LanguageServer): NimLangServerStatus {.raises: [].} =
           path: ns.nimsuggestPath,
           port: ns.port,
         )
+        for open in ns.openFiles:
+          nsStatus.openFiles.add open
         result.nimsuggestInstances.add nsStatus
       except CatchableError:
         discard
@@ -285,7 +287,7 @@ proc getLspStatus*(ls: LanguageServer): NimLangServerStatus {.raises: [].} =
 
 
 proc sendStatusChanged*(ls: LanguageServer) {.raises: [].}  =
-  let status = ls.getLspStatus()
+  let status: NimLangServerStatus = ls.getLspStatus()
   ls.notify("extension/statusUpdate", %* status)
 
 

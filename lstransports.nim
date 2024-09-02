@@ -97,7 +97,7 @@ proc processContentLength*(inputStream: FileStream): string =
   else:
     error "No content length \n"
 
-proc processContentLength*(transport: StreamTransport): Future[string] {.async:(raises:[]).} =
+proc processContentLength*(transport: StreamTransport, error: bool = true): Future[string] {.async:(raises:[]).} =
   try:
     result = await transport.readLine()
     if result.startsWith(CONTENT_LENGTH):
@@ -107,11 +107,14 @@ proc processContentLength*(transport: StreamTransport): Future[string] {.async:(
       result = (await transport.read(length)).mapIt($(it.char)).join()
 
     else:
-      error "No content length \n"
+      if error:
+        error "No content length \n"
   except TransportError as ex:
-    error "Error reading content length", msg = ex.msg
+    if error:
+      error "Error reading content length", msg = ex.msg
   except CatchableError as ex:
-    error "Error reading content length", msg = ex.msg
+    if error: 
+      error "Error reading content length", msg = ex.msg
 
 
 proc readStdin*(transport: StreamTransport) {.thread.} =

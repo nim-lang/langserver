@@ -122,28 +122,28 @@ proc registerProcMonitor(ls: LanguageServer) =
       globalLS.stopNimsuggestProcessesP()
       exitnow(1)
 
-proc main*(cmdLineParams: CommandLineParams) =
+proc main*(cmdLineParams: CommandLineParams): LanguageServer =
   debug "Starting nimlangserver", params = cmdLineParams
   #[
   `nimlangserver` supports both transports: stdio and socket. By default it uses stdio transport. 
     But we do construct a RPC socket server even in stdio mode, so that we can reuse the same code for both transports.
   ]#
-  var ls = initLs(cmdLineParams, ensureStorageDir())   
-  case ls.transportMode:
+  result = initLs(cmdLineParams, ensureStorageDir())   
+  case result.transportMode:
   of stdio: 
-    ls.startStdioServer()
+    result.startStdioServer()
   of socket:
-    ls.startSocketServer(cmdLineParams.port)
+    result.startSocketServer(cmdLineParams.port)
 
-  globalLS = addr ls #TODO use partial instead inside the func
-  ls.srv.registerRoutes(ls)
-  ls.registerProcMonitor()
+  globalLS = addr result #TODO use partial instead inside the func
+  result.srv.registerRoutes(result)
+  result.registerProcMonitor()
 
 when isMainModule: 
   try:
-    main(handleParams())
+    discard main(handleParams())
     runForever()
-
+  
   except Exception as e:
     error "Error in main"
     writeStackTrace e
