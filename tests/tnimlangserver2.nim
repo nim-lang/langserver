@@ -2,7 +2,7 @@ import ../[
   nimlangserver, ls, lstransports, utils
 ]
 import ../protocol/[enums, types]
-import std/[options, unittest, json, os, jsonutils, sequtils]
+import std/[options, unittest, json, os, jsonutils, sequtils, strutils, sugar, strformat]
 import json_rpc/[rpcclient]
 import chronicles
 import lspsocketclient
@@ -28,15 +28,21 @@ suite "Nimlangserver":
     ls.onExit()
 
 #TODO once we have a few more of these do proper helpers
-proc showMessage(client: LspSocketClient, params: JsonNode): Future[void] = 
+proc notificationHandle(args: (LspSocketClient, string), params: JsonNode): Future[void] = 
   try:
-    let notification = params.jsonTo(tuple[`type`: MessageType, msg: string])
-    debug "showMessage Called with ", params = params
-    var calls = client.calls.getOrDefault("window/showMessage", newSeq[JsonNode]())
-    calls.add params
-  except CatchableError:
-    discard
-  result = newFuture[void]("showMessage")
+    let client = args[0]
+    let name = args[1]
+    if name in [
+      "textDocument/publishDiagnostics", 
+      "$/progress"
+    ]: #Too much noise. They are split so we can toggle to debug the tests
+      debug "[NotificationHandled ] Called for ", name = name
+    else:
+      debug "[NotificationHandled ] Called for ", name = name, params = params
+    client.calls[name].add params   
+  except CatchableError: discard
+
+  result = newFuture[void]("notificationHandle")
 
 proc suggestInit(params: JsonNode): Future[void] = 
   try:
@@ -70,26 +76,52 @@ proc configuration(params: JsonNode): Future[JsonNode] =
   }]
   result.complete(workspaceConfiguration)
 
-import strutils
+proc waitForNotification(client: LspSocketClient, name: string, predicate: proc(json: JsonNode): bool , accTime = 0): Future[bool] {.async.}=
+  let timeout = 10000
+  if accTime > timeout: return false
+  try:    
+    {.cast(gcsafe).}:
+      for call in client.calls[name]: 
+        if predicate(call):
+          debug "[WaitForNotification Predicate Matches] ", name = name, call = call
+          return true      
+  except Exception as ex: 
+    error "[WaitForNotification]", ex = ex.msg
+  await sleepAsync(100)
+  await waitForNotification(client, name, predicate, accTime + 100)
+  
+  
 suite "Suggest API selection":
   let cmdParams = CommandLineParams(transport: some socket, port: getNextFreePort())
   let ls = main(cmdParams) #we could accesss to the ls here to test against its state
   let client = newLspSocketClient()
+  template registerNotification(name: string) = 
+    client.register(name, partial(notificationHandle, (client, name)))
   
-  client.register("window/showMessage", partial(showMessage, client))
-  # client.register("window/workDoneProgress/create", suggestInit)
-  # client.register("workspace/configuration", configuration)
+  registerNotification("window/showMessage")
+  registerNotification("window/workDoneProgress/create")
+  registerNotification("workspace/configuration")
+  registerNotification("extension/statusUpdate")
+  registerNotification("textDocument/publishDiagnostics")
+  registerNotification("$/progress")
   
-
-
+  
   waitFor client.connect("localhost", cmdParams.port)
   discard waitFor client.initialize()
   client.notify("initialized", newJObject())
 
 
   test "Suggest api":
+    #The client adds the notifications into the call table and we wait until they arrived.     
     client.notify("textDocument/didOpen", %createDidOpenParams("projects/hw/hw.nim"))
-    # check client.calls["window/showMessage"].mapIt(it["message"].jsonTo(string)).anyIt("Nimsuggest initialized for " in it)
+    #TODO change with the actual file name it should open (but first get all tests done)
+    check waitFor client.waitForNotification("window/showMessage", (json: JsonNode) => "Nimsuggest initialized for " in json["message"].jsonTo(string))
+    # let helloWorldUri = 
+    # let progressParam = %ProgressParams(token: fmt "Creating nimsuggest for {uriToPath(helloWorldUri)}")
+    #TODO test the types instead.
+    #TODO same as above. Is picking the wrong entry point
+    let str = &"""Creating nimsuggest for """ 
+    check waitFor client.waitForNotification("$/progress", (json: JsonNode) => str in json["token"].jsonTo(string))
     # waitFor sleepAsync(100000)
     check true
   

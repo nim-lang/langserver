@@ -18,18 +18,19 @@ type
     notifications*: TableRef[string, NotificationRpc]
     routes*: TableRef[string, Rpc]
     calls*: TableRef[string, seq[JsonNode]] #Stores all requests here from the server so we can test on them
-
+    responses*: TableRef[int, Future[JsonNode]] #id -> response. Stores the responses to the calls 
 
 proc newLspSocketClient*(): LspSocketClient = 
   result = LspSocketClient.new()
   result.routes = newTable[string, Rpc]()
   result.notifications = newTable[string, NotificationRpc]()
   result.calls = newTable[string, seq[JsonNode]]()
+  result.responses = newTable[int, Future[JsonNode]]()
 
 method call*(client: LspSocketClient, name: string,
-             params: JsonNode): Future[JsonString] {.async, gcsafe.} =
+             params: JsonNode): Future[JsonNode] {.async, gcsafe.} =
   ## Remotely calls the specified RPC method.
-  let id = client.getNextId()
+  let id = client.getNextId() 
   let reqJson = newJObject()
   reqJson["jsonrpc"] = %"2.0"
   reqJson["id"] = %id.num
@@ -40,33 +41,43 @@ method call*(client: LspSocketClient, name: string,
   if client.transport.isNil:
     raise newException(JsonRpcError,
                     "Transport is not initialised (missing a call to connect?)")
-  # completed by processMessage.
-  var newFut = newFuture[JsonString]()
+  # completed by processData.
+  var newFut = newFuture[JsonNode]()
   # add to awaiting responses
-  client.awaiting[id] = newFut
-
+  client.responses[id.num] = newFut
   let res = await client.transport.write(jsonBytes)
-  # TODO: Add actions when not full packet was send, e.g. disconnect peer.
-  doAssert(res == jsonBytes.len)
-
   return await newFut
 
-# proc processMessage*(client: LspSocketClient, msg: string): Future[void] {.async: (raises: []).} =
-#   try:
-#     echo "process message ", msg
-#     let msg = msg.parseJson()
-#     if "id" in msg and msg["id"].kind == JInt: #TODO this is just a response from the server
-#       echo "Response from Server"
-#       await sleepAsync(1)
-      
+proc runRpc(client: LspSocketClient, rpc: Rpc, serverReq: JsonNode) {.async.} = 
+  let res = await rpc(serverReq["params"])
+  let id = serverReq["id"].jsonTo(string)
+  let reqJson = newJObject()
+  reqJson["jsonrpc"] = %"2.0"
+  reqJson["id"] = %id
+  reqJson["result"] = res
+  let reqContent = wrapContentWithContentLenght($reqJson)
+  discard await client.transport.write(reqContent.string)
 
-#       # let res = newJObject()
-#       # res["rpc"]
-#       #Here we should write in the transport the request i.e. 
-#       # discard await client.transport.write()
+proc processMessage(client: LspSocketClient, msg: string) {.raises:[].} = 
+  try:
+    let serverReq = msg.parseJson()   
+    if "method" in serverReq:   
+      let meth = serverReq["method"].jsonTo(string)
+      debug "[Process Data Loop ]", meth = meth
+      if meth in client.notifications:       
+        asyncSpawn client.notifications[meth](serverReq["params"])
+      elif meth in client.routes:        
+        asyncSpawn runRpc(client, client.routes[meth], serverReq)
+      else:
+        error "Method not implemented ", meth = meth
+    elif "id" in serverReq: #Response here
+      let id = serverReq["id"].jsonTo(int)
+      client.responses[id].complete(serverReq["result"])
+    else:
+      error "Unknown msg", msg = msg
     
-#   except CatchableError as ex: 
-#     error "Processing message error ", ex = ex.msg
+  except CatchableError as exc:
+    error "ProcessData Error ", msg = exc.msg
 
 proc processData(client: LspSocketClient) {.async: (raises: []).} =
   while true:
@@ -79,8 +90,11 @@ proc processData(client: LspSocketClient) {.async: (raises: []).} =
           # transmission ends
           await client.transport.closeWait()
           break
-        
-        let res = client.processMessage(value)
+        # echo "----------------------------ProcessData----------------------"
+        # echo value
+        # echo "----------------------------EndProcessData-------------------"        
+        client.processMessage(value)
+          
        
       except TransportError as exc:
         localException = newException(JsonRpcError, exc.msg)
@@ -89,7 +103,7 @@ proc processData(client: LspSocketClient) {.async: (raises: []).} =
       except CancelledError as exc:
         localException = newException(JsonRpcError, exc.msg)
         await client.transport.closeWait()
-        break
+        break     
 
     if localException.isNil.not:
       for _,fut in client.awaiting:
@@ -108,46 +122,11 @@ proc processData(client: LspSocketClient) {.async: (raises: []).} =
       error "Error when reconnecting to server", msg=exc.msg
       break
 
-
-proc processClientLoop*(client: LspSocketClient) {.async: (raises: []), gcsafe.} =
-  while true:
-    # if not client.transport.isOpen:
-    try:
-      await sleepAsync(100)
-      
-      let msg = await processContentLength(client.transport, error = false)
-      if msg == "": continue
-      let serverReq = msg.parseJson()      
-      let meth = serverReq["method"].jsonTo(string)
-      debug "[Process client loop ]", meth = meth
-      if meth in client.notifications:
-        await client.notifications[meth](serverReq["params"])
-      elif meth in client.routes:
-        #TODO extract
-        let res = await client.routes[meth](serverReq["params"])
-        let id = serverReq["id"].jsonTo(string)
-        let reqJson = newJObject()
-        reqJson["jsonrpc"] = %"2.0"
-        reqJson["id"] = %id
-        reqJson["result"] = res
-        let reqContent = wrapContentWithContentLenght($reqJson)
-        discard await client.transport.write(reqContent.string)
-
-        debug "***********Response in ", res = $res, req = serverReq
-
-      else:
-        error "Method not found in client", meth = meth
-       
-    except CatchableError as ex:
-      error "[ProcessClientLoop ]", ex = ex.msg
-      discard 
-
 proc connect*(client: LspSocketClient, address: string, port: Port) {.async.} =
   let addresses = resolveTAddress(address, port)
   client.transport = await connect(addresses[0])
   client.address = addresses[0]
   client.loop = processData(client)
-  asyncSpawn client.processClientLoop()
   
 
 proc notify*(client: LspSocketClient, name: string, params: JsonNode) =
@@ -175,7 +154,7 @@ proc initialize*(client: LspSocketClient): Future[InitializeResult] {.async.} =
           "workspace": {"configuration": true}
         }
     }
-  client.call("initialize", %initParams).await.string.parseJson.jsonTo(InitializeResult)
+  client.call("initialize", %initParams).await.jsonTo(InitializeResult)
   #Should we await here for the response to come back?
 
 
