@@ -143,21 +143,8 @@ proc register*(client: LspSocketClient, name: string, rpc: Rpc) =
   client.routes[name] = rpc
   
 #Calls
-proc initialize*(client: LspSocketClient): Future[InitializeResult] {.async.} = 
-  let initParams = InitializeParams %* {
-        "processId": %getCurrentProcessId(),
-        "rootUri": fixtureUri("projects/hw/"),
-        "capabilities": {
-          "window": {
-            "workDoneProgress": true
-          },
-          "workspace": {"configuration": true}
-        }
-    }
+proc initialize*(client: LspSocketClient, initParams: InitializeParams): Future[InitializeResult] {.async.} = 
   client.call("initialize", %initParams).await.jsonTo(InitializeResult)
-  #Should we await here for the response to come back?
-
-
 
 
 proc createDidOpenParams*(file: string): DidOpenTextDocumentParams =
