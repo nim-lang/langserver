@@ -78,7 +78,9 @@ proc configuration(params: JsonNode): Future[JsonNode] =
 
 proc waitForNotification(client: LspSocketClient, name: string, predicate: proc(json: JsonNode): bool , accTime = 0): Future[bool] {.async.}=
   let timeout = 10000
-  if accTime > timeout: return false
+  if accTime > timeout: 
+    error "Coudlnt mathc predicate ", calls = client.calls[name]
+    return false
   try:    
     {.cast(gcsafe).}:
       for call in client.calls[name]: 
@@ -112,18 +114,22 @@ suite "Suggest API selection":
 
 
   test "Suggest api":
-    #The client adds the notifications into the call table and we wait until they arrived.     
-    client.notify("textDocument/didOpen", %createDidOpenParams("projects/hw/hw.nim"))
-    #TODO change with the actual file name it should open (but first get all tests done)
-    check waitFor client.waitForNotification("window/showMessage", (json: JsonNode) => "Nimsuggest initialized for " in json["message"].jsonTo(string))
-    # let helloWorldUri = 
-    # let progressParam = %ProgressParams(token: fmt "Creating nimsuggest for {uriToPath(helloWorldUri)}")
-    #TODO test the types instead.
-    #TODO same as above. Is picking the wrong entry point
-    let str = &"""Creating nimsuggest for """ 
-    check waitFor client.waitForNotification("$/progress", (json: JsonNode) => str in json["token"].jsonTo(string))
-    # waitFor sleepAsync(100000)
-    check true
+    #The client adds the notifications into the call table and we wait until they arrived.   
+    let helloWorldFile = "projects/hw/hw.nim"    
+    client.notify("textDocument/didOpen", %createDidOpenParams(helloWorldFile))
+
+    let progressParam = %ProgressParams(token: fmt "Creating nimsuggest for {uriToPath(helloWorldFile.fixtureUri())}")
+    check waitFor client.waitForNotification("$/progress", (json: JsonNode) => progressParam["token"] == json["token"])
+    check waitFor client.waitForNotification("$/progress", (json: JsonNode) => json["value"]["kind"].getStr == "begin")
+    check waitFor client.waitForNotification("$/progress", (json: JsonNode) => json["value"]["kind"].getStr == "end")
+
+    client.notify("textDocument/didOpen",
+                  %createDidOpenParams("projects/hw/useRoot.nim"))
+    let
+      hoverParams = positionParams("projects/hw/hw.nim".fixtureUri, 2, 0)
+      hover = client.call("textDocument/hover", %hoverParams).waitFor
+    check hover.kind == JNull
+
   
 
 

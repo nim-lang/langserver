@@ -375,7 +375,8 @@ proc getProjectFileAutoGuess*(ls: LanguageServer, fileUri: string): string =
   var
     path = dir
     certainty = Certainty.None
-  while path.len > 0 and path != "/":
+    up = 0 #Limit the times it goes up through the directories. Ideally nimble dump should do this job
+  while path.len > 0 and path != "/" and up < 2:
     let
       (dir, fname, ext) = path.splitFile()
       current = fname & ext
@@ -401,6 +402,7 @@ proc getProjectFileAutoGuess*(ls: LanguageServer, fileUri: string): string =
           return
     if path == dir: break
     path = dir
+    inc up
 
 proc getRootPath*(ip: InitializeParams): string =
   if ip.rootUri.isNone or ip.rootUri.get == "":
