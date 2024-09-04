@@ -1,170 +1,125 @@
-import
-  ../[ls, routes, nimlangserver],
-  ../protocol/types,
-  ../utils,
-  faststreams/async_backend,
-  faststreams/asynctools_adapters,
-  json_rpc/jsonmarshal,
-  json_rpc/streamconnection,
-  chronicles,
-  os,
-  sequtils,
-  strutils,
-  std/json,
-  strformat,
-  sugar,
-  unittest
+import ../[
+  nimlangserver, ls, lstransports, utils
+]
+import ../protocol/[enums, types]
+import std/[options, unittest, json, os, jsonutils, sequtils, strutils, sugar, strformat]
+import json_rpc/[rpcclient]
+import chronicles
+import lspsocketclient
 
-proc registerHandlers*(connection: StreamConnection,
-                       pipeInput: AsyncInputStream,
-                       storageDir: string): LanguageServer =
-  registerHandlers(connection, pipeInput, storageDir, CommandLineParams())
 
-proc fixtureUri(path: string): string =
-  result = pathToUri(getCurrentDir() / "tests" / path)
+suite "Nimlangserver":
+  let cmdParams = CommandLineParams(transport: some socket, port: getNextFreePort())
+  let ls = main(cmdParams) #we could accesss to the ls here to test against its state
+  let client = newLspSocketClient()
+  waitFor client.connect("localhost", cmdParams.port)
+  
+  test "initialize from the client should call initialized on the server":
+    let initParams = InitializeParams %* {
+        "processId": %getCurrentProcessId(),
+        "rootUri": fixtureUri("projects/hw/"),
+        "capabilities": {
+          "window": {
+            "workDoneProgress": true
+          },
+          "workspace": {"configuration": true}
+        }
+    }
+    let initializeResult = waitFor client.initialize(initParams)
+    
+    check initializeResult.capabilities.textDocumentSync.isSome
+   
+   
+  teardown:
+    #TODO properly stop the server
+    echo "Teardown"
+    client.close()
+    ls.onExit()
 
-let storageDir = ensureStorageDir()
+#TODO once we have a few more of these do proper helpers
+proc notificationHandle(args: (LspSocketClient, string), params: JsonNode): Future[void] = 
+  try:
+    let client = args[0]
+    let name = args[1]
+    if name in [
+      "textDocument/publishDiagnostics", 
+      "$/progress"
+    ]: #Too much noise. They are split so we can toggle to debug the tests
+      debug "[NotificationHandled ] Called for ", name = name
+    else:
+      debug "[NotificationHandled ] Called for ", name = name, params = params
+    client.calls[name].add params   
+  except CatchableError: discard
 
-suite "Client/server initialization sequence":
-  let pipeServer = createPipe();
-  let pipeClient = createPipe();
+  result = newFuture[void]("notificationHandle")
 
-  let
-    server = StreamConnection.new(pipeServer)
-    inputPipe = asyncPipeInput(pipeClient)
-  discard registerHandlers(server, inputPipe, storageDir);
-  discard server.start(inputPipe);
+proc suggestInit(params: JsonNode): Future[void] = 
+  try:
+    let pp = params.jsonTo(ProgressParams)
+    debug "SuggestInit called ", pp = pp[]
+    result = newFuture[void]()
+  except CatchableError:
+    discard
 
-  let client = StreamConnection.new(pipeClient);
-  discard client.start(asyncPipeInput(pipeServer));
 
-  test "Sending initialize.":
-    let initParams = InitializeParams(
-        processId: some(%getCurrentProcessId()),
-        rootUri: some("file:///tmp/"),
-        capabilities: ClientCapabilities())
-
-    let initializeResult = waitFor client.call("initialize", %initParams)
-    doAssert initializeResult != nil;
-
-    client.notify("initialized", newJObject())
-
-  pipeClient.close()
-  pipeServer.close()
-
-proc testHandler[T, Q](input: tuple[fut: FutureStream[T], res: Q], arg: T):
-    Future[Q] {.async, gcsafe.} =
-  debug "Received call: ", arg = %arg
-  discard input.fut.write(arg)
-  return input.res
-
-proc testHandler[T](fut: FutureStream[T], arg: T): Future[void] {.async, gcsafe.} =
-  debug "Received notification: ", arg = %arg
-  discard fut.write(arg)
+proc waitForNotification(client: LspSocketClient, name: string, predicate: proc(json: JsonNode): bool , accTime = 0): Future[bool] {.async.}=
+  let timeout = 10000
+  if accTime > timeout: 
+    error "Coudlnt mathc predicate ", calls = client.calls[name]
+    return false
+  try:    
+    {.cast(gcsafe).}:
+      for call in client.calls[name]: 
+        if predicate(call):
+          debug "[WaitForNotification Predicate Matches] ", name = name, call = call
+          return true      
+  except Exception as ex: 
+    error "[WaitForNotification]", ex = ex.msg
+  await sleepAsync(100)
+  await waitForNotification(client, name, predicate, accTime + 100)
 
 let helloWorldUri = fixtureUri("projects/hw/hw.nim")
 
-proc createDidOpenParams(file: string): DidOpenTextDocumentParams =
-  return DidOpenTextDocumentParams %* {
-    "textDocument": {
-      "uri": fixtureUri(file),
-      "languageId": "nim",
-      "version": 0,
-      "text": readFile("tests" / file)
-     }
-  }
-
-proc positionParams(uri: string, line, character: int): TextDocumentPositionParams =
-  return TextDocumentPositionParams %* {
-      "position": {
-         "line": line,
-         "character": character
-      },
-      "textDocument": {
-         "uri": uri
-       }
-    }
-
-suite "Suggest API selection":
-  let pipeServer = createPipe();
-  let pipeClient = createPipe();
-
-  let
-    server = StreamConnection.new(pipeServer)
-    inputPipe = asyncPipeInput(pipeClient)
-  discard registerHandlers(server, inputPipe, storageDir);
-  discard server.start(inputPipe);
-
-  let client = StreamConnection.new(pipeClient);
-  discard client.start(asyncPipeInput(pipeServer));
-
-  let suggestInit = FutureStream[ProgressParams]()
-  client.register("window/workDoneProgress/create",
-                            partial(testHandler[ProgressParams, JsonNode],
-                                    (fut: suggestInit, res: newJNull())))
-  let workspaceConfiguration = %* [{
-      "projectMapping": [{
-        "projectFile": "missingRoot.nim",
-        "fileRegex": "willCrash\\.nim"
-      }, {
-        "projectFile": "hw.nim",
-        "fileRegex": "hw\\.nim"
-      }, {
-        "projectFile": "root.nim",
-        "fileRegex": "useRoot\\.nim"
-      }],
-      "autoCheckFile": false,
-      "autoCheckProject": false
-  }]
-
-  let configInit = FutureStream[ConfigurationParams]()
-  client.register(
-    "workspace/configuration",
-    partial(testHandler[ConfigurationParams, JsonNode],
-            (fut: configInit, res: workspaceConfiguration)))
-
-  let diagnostics = FutureStream[PublishDiagnosticsParams]()
-  client.registerNotification(
-    "textDocument/publishDiagnostics",
-    partial(testHandler[PublishDiagnosticsParams], diagnostics))
-
-  let progress = FutureStream[ProgressParams]()
-  client.registerNotification(
-    "$/progress",
-    partial(testHandler[ProgressParams], progress))
-
-  let showMessage = FutureStream[ShowMessageParams]()
-  client.registerNotification(
-    "window/showMessage",
-    partial(testHandler[ShowMessageParams], showMessage))
   
-  let statusUpdate = FutureStream[NimLangServerStatus]()
-  client.registerNotification(
-    "extension/statusUpdate",
-    partial(testHandler[NimLangServerStatus], statusUpdate))
-
+suite "Suggest API selection":
+  let cmdParams = CommandLineParams(transport: some socket, port: getNextFreePort())
+  let ls = main(cmdParams) #we could accesss to the ls here to test against its state
+  let client = newLspSocketClient()
+  template registerNotification(name: string) = 
+    client.register(name, partial(notificationHandle, (client, name)))
+  
+  registerNotification("window/showMessage")
+  registerNotification("window/workDoneProgress/create")
+  registerNotification("workspace/configuration")
+  registerNotification("extension/statusUpdate")
+  registerNotification("textDocument/publishDiagnostics")
+  registerNotification("$/progress")
+  
+  
+  waitFor client.connect("localhost", cmdParams.port)
   let initParams = InitializeParams %* {
-      "processId": %getCurrentProcessId(),
-      "rootUri": fixtureUri("projects/hw/"),
-      "capabilities": {
-        "window": {
-           "workDoneProgress": true
-         },
-        "workspace": {"configuration": true}
-      }
+        "processId": %getCurrentProcessId(),
+        "rootUri": fixtureUri("projects/hw/"),
+        "capabilities": {
+          "window": {
+            "workDoneProgress": true
+          },
+          "workspace": {"configuration": true}
+        }
   }
-
-  discard waitFor client.call("initialize", %initParams)
+  discard waitFor client.initialize(initParams)
   client.notify("initialized", newJObject())
 
   test "Suggest api":
-    client.notify("textDocument/didOpen", %createDidOpenParams("projects/hw/hw.nim"))
-    let (_, params) = suggestInit.read.waitFor
-    check %params ==
-      %ProgressParams(
-        token: fmt "Creating nimsuggest for {uriToPath(helloWorldUri)}")
-    check "begin" == progress.read.waitFor[1].value.get()["kind"].getStr
-    check "end" == progress.read.waitFor[1].value.get()["kind"].getStr
+    #The client adds the notifications into the call table and we wait until they arrived.   
+    let helloWorldFile = "projects/hw/hw.nim"    
+    client.notify("textDocument/didOpen", %createDidOpenParams(helloWorldFile))
+
+    let progressParam = %ProgressParams(token: fmt "Creating nimsuggest for {uriToPath(helloWorldFile.fixtureUri())}")
+    check waitFor client.waitForNotification("$/progress", (json: JsonNode) => progressParam["token"] == json["token"])
+    check waitFor client.waitForNotification("$/progress", (json: JsonNode) => json["value"]["kind"].getStr == "begin")
+    check waitFor client.waitForNotification("$/progress", (json: JsonNode) => json["value"]["kind"].getStr == "end")
+
     client.notify("textDocument/didOpen",
                   %createDidOpenParams("projects/hw/useRoot.nim"))
     let
@@ -172,50 +127,21 @@ suite "Suggest API selection":
       hover = client.call("textDocument/hover", %hoverParams).waitFor
     check hover.kind == JNull
 
-
 suite "LSP features":
-  let pipeServer = createPipe();
-  let pipeClient = createPipe();
-
-  let
-    server = StreamConnection.new(pipeServer)
-    inputPipe = asyncPipeInput(pipeClient)
-    ls = registerHandlers(server, inputPipe, storageDir);
-  discard server.start(inputPipe);
-
-  let client = StreamConnection.new(pipeClient);
-  discard client.start(asyncPipeInput(pipeServer));
-
-  let workspaceConfiguration = %* [{
-      "projectMapping": [{
-        "projectFile": "missingRoot.nim",
-        "fileRegex": "willCrash\\.nim"
-      }, {
-        "projectFile": "hw.nim",
-        "fileRegex": "hw\\.nim"
-      }, {
-        "projectFile": "root.nim",
-        "fileRegex": "useRoot\\.nim"
-      }],
-      "autoCheckFile": false,
-      "autoCheckProject": false
-  }]
-  let showMessage = FutureStream[ShowMessageParams]()
-  client.registerNotification(
-    "window/showMessage",
-    partial(testHandler[ShowMessageParams], showMessage))
+  let cmdParams = CommandLineParams(transport: some socket, port: getNextFreePort())
+  let ls = main(cmdParams) #we could accesss to the ls here to test against its state
+  let client = newLspSocketClient()
+  template registerNotification(name: string) = 
+    client.register(name, partial(notificationHandle, (client, name)))
   
-  let statusChanged = FutureStream[NimLangServerStatus]()
-  client.registerNotification(
-    "extension/statusUpdate",
-    partial(testHandler[NimLangServerStatus], statusChanged))
+  registerNotification("window/showMessage")
+  registerNotification("window/workDoneProgress/create")
+  registerNotification("workspace/configuration")
+  registerNotification("extension/statusUpdate")
+  registerNotification("textDocument/publishDiagnostics")
+  registerNotification("$/progress")
 
-
-  let configInit = FutureStream[ConfigurationParams]()
-  client.register(
-    "workspace/configuration",
-    partial(testHandler[ConfigurationParams, JsonNode],
-            (fut: configInit, res: workspaceConfiguration)))
+  waitFor client.connect("localhost", cmdParams.port)
 
   let initParams = InitializeParams %* {
       "processId": %getCurrentProcessId(),
@@ -228,9 +154,9 @@ suite "LSP features":
       }
   }
 
-  discard waitFor client.call("initialize", %initParams)
-  client.notify("initialized", newJObject())
+  discard waitFor client.initialize(initParams)
 
+  client.notify("initialized", newJObject())
   let didOpenParams = createDidOpenParams("projects/hw/hw.nim")
 
   client.notify("textDocument/didOpen", %didOpenParams)
@@ -243,7 +169,7 @@ suite "LSP features":
 
   test "Sending hover(no content)":
     let
-      hoverParams = positionParams( helloWorldUri, 2, 0)
+      hoverParams = positionParams(helloWorldUri, 2, 0)
       hover = client.call("textDocument/hover", %hoverParams).waitFor
     check hover.kind == JNull
 
@@ -419,36 +345,24 @@ suite "LSP features":
       nullResponse = waitFor client.call("shutdown", nullValue)
 
     doAssert nullResponse == nullValue
-    doAssert ls.isShutdown
-
-  pipeClient.close()
-  pipeServer.close()
-
-proc ignore(params: JsonNode): Future[void] {.async.} = return
+    doAssert ls.isShutdown    
 
 suite "Null configuration:":
-  let pipeServer = createPipe();
-  let pipeClient = createPipe();
-
-  let
-    server = StreamConnection.new(pipeServer)
-    inputPipe = asyncPipeInput(pipeClient)
-  discard registerHandlers(server, inputPipe, storageDir);
-  discard server.start(inputPipe);
-
-  let client = StreamConnection.new(pipeClient);
-  discard client.start(asyncPipeInput(pipeServer));
-  let workspaceConfiguration = %* [nil]
-
-  let configInit = FutureStream[ConfigurationParams]()
-  client.register(
-    "workspace/configuration",
-    partial(testHandler[ConfigurationParams, JsonNode],
-            (fut: configInit, res: workspaceConfiguration)))
-
-  client.registerNotification("textDocument/publishDiagnostics", ignore)
-  client.registerNotification("window/showMessage", ignore)
-  client.registerNotification("extension/statusUpdate", ignore)
+  let cmdParams = CommandLineParams(transport: some socket, port: getNextFreePort())
+  let ls = main(cmdParams) #we could accesss to the ls here to test against its state
+  let client = newLspSocketClient()
+  template registerNotification(name: string) = 
+    client.register(name, partial(notificationHandle, (client, name)))
+  
+  registerNotification("window/showMessage")
+  registerNotification("window/workDoneProgress/create")
+  registerNotification("workspace/configuration")
+  registerNotification("extension/statusUpdate")
+  registerNotification("textDocument/publishDiagnostics")
+  registerNotification("$/progress")
+  
+  
+  waitFor client.connect("localhost", cmdParams.port)
 
   let initParams = InitializeParams %* {
       "processId": %getCurrentProcessId(),
@@ -463,7 +377,7 @@ suite "Null configuration:":
       }
   }
 
-  discard waitFor client.call("initialize", %initParams)
+  discard waitFor client.initialize(initParams)
   client.notify("initialized", newJObject())
 
   test "Null configuration":
@@ -471,117 +385,3 @@ suite "Null configuration:":
     let hoverParams = positionParams("projects/hw/hw.nim".fixtureUri, 2, 0)
     let hover = client.call("textDocument/hover", %hoverParams).waitFor
     doAssert hover.kind == JNull
-
-suite "LSP expand":
-  let pipeServer = createPipe();
-  let pipeClient = createPipe();
-
-  let
-    server = StreamConnection.new(pipeServer)
-    inputPipe = asyncPipeInput(pipeClient)
-  discard registerHandlers(server, inputPipe, storageDir);
-  discard server.start(inputPipe);
-
-  let client = StreamConnection.new(pipeClient);
-  discard client.start(asyncPipeInput(pipeServer));
-
-  let workspaceConfiguration = %* [{
-      "projectMapping": [{
-        "projectFile": "missingRoot.nim",
-        "fileRegex": "willCrash\\.nim"
-      }, {
-        "projectFile": "hw.nim",
-        "fileRegex": "hw\\.nim"
-      }, {
-        "projectFile": "root.nim",
-        "fileRegex": "useRoot\\.nim"
-      }],
-      "autoCheckFile": false,
-      "autoCheckProject": false
-  }]
-  let showMessage = FutureStream[ShowMessageParams]()
-  client.registerNotification(
-    "window/showMessage",
-    partial(testHandler[ShowMessageParams], showMessage))
-  
-  let statusChanged = FutureStream[NimLangServerStatus]()
-  client.registerNotification(
-    "extension/statusUpdate",
-    partial(testHandler[NimLangServerStatus], statusChanged))
-
-
-  let configInit = FutureStream[ConfigurationParams]()
-  client.register(
-    "workspace/configuration",
-    partial(testHandler[ConfigurationParams, JsonNode],
-            (fut: configInit, res: workspaceConfiguration)))
-
-  let initParams = InitializeParams %* {
-      "processId": %getCurrentProcessId(),
-      "rootUri": fixtureUri("projects/hw/"),
-      "capabilities": {
-          "window": {
-            "workDoneProgress": false
-          },
-        "workspace": {"configuration": true}
-      }
-  }
-
-  discard waitFor client.call("initialize", %initParams)
-  client.notify("initialized", newJObject())
-
-  let didOpenParams = createDidOpenParams("projects/hw/hw.nim")
-
-  client.notify("textDocument/didOpen", %didOpenParams)
-
-  # test "Expand nested":
-  #   let expandParams2 = ExpandTextDocumentPositionParams %* {
-  #     "position": {
-  #        "line": 27,
-  #        "character": 2
-  #     },
-  #     "textDocument": {
-  #        "uri": helloWorldUri
-  #      },
-  #     "level": 1
-  #   }
-  #   let expandResult2 =
-  #     to(client.call("extension/macroExpand", %expandParams2).waitFor,
-  #        ExpandResult)
-  #   let expected2 = ExpandResult %* {
-  #     "range":{
-  #       "start":{"line":27,"character":0},
-  #       "end":{"line":28,"character":19}},
-  #     "content":"  block:\n    template field1(): untyped =\n      a.field1\n\n    template field2(): untyped =\n      a.field2\n\n    a.field1 = a.field2"
-  #   }
-
-  #   doAssert %expected2 == %expandResult2
-
-  # test "Expand":
-  #   let expandParams = ExpandTextDocumentPositionParams %* {
-  #     "position": {
-  #        "line": 16,
-  #        "character": 0
-  #     },
-  #     "textDocument": {
-  #        "uri": helloWorldUri
-  #      },
-  #     "level": 1
-  #   }
-  #   var expandResult =
-  #     to(client.call("extension/macroExpand", %expandParams).waitFor,
-  #        ExpandResult)
-  #   var expected = ExpandResult %*
-  #      {
-  #        "range": {
-  #          "start":{
-  #            "line":16,
-  #            "character":0
-  #          },
-  #          "end":{
-  #            "line":17,
-  #            "character":9
-  #          }},
-  #        "content":"proc helloProc(): string =\n  result = \"Hello\"\n"
-  #      }
-  #   doAssert %expected == %expandResult

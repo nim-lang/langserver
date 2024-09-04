@@ -1,5 +1,4 @@
 import
-  # tnimlangserver, #These tests need to be redone 
   tsuggestapi,
-  tnimlangserver2
+  tnimlangserver
   # tprojectsetup #these tests need to be redone
