@@ -113,7 +113,7 @@ proc toCompletionItem(suggest: Suggest): CompletionItem =
     }
 
 proc completion*(ls: LanguageServer, params: CompletionParams, id: int):
-    Future[seq[CompletionItem]] {.async.} =
+    Future[seq[CompletionItem]] {.async.} =    
   with (params.position, params.textDocument):
     let
       nimsuggest = await ls.tryGetNimsuggest(uri)
@@ -668,23 +668,24 @@ proc didSave*(ls: LanguageServer, params: DidSaveTextDocumentParams):
   if ls.getWorkspaceConfiguration().await().checkOnSave.get(true):
     debug "Checking project", uri = uri
     traceAsyncErrors ls.checkProject(uri)
+  
+  # var toStop = newTable[string, Nimsuggest]()
+  # #We first get the project file for the current file so we can test if this file recently imported another project
+  # let thisProjectFile = await getProjectFile(uri.uriToPath, ls)
 
-  var toStop = newTable[string, Nimsuggest]()
-  #We first get the project file for the current file so we can test if this file recently imported another project
-  let thisProjectFile = await getProjectFile(uri.uriToPath, ls)
-  let ns = await ls.projectFiles[thisProjectFile]
-  if ns.canHandleUnknown:
-    for projectFile in ls.projectFiles.keys:
-      if projectFile in ls.entryPoints: continue
-      let isKnown = await ns.isKnown(projectFile)
-      if isKnown:
-        toStop[projectFile] = await ls.projectFiles[projectFile]
+  # let ns: NimSuggest = await ls.projectFiles[thisProjectFile]
+  # if ns.canHandleUnknown:
+  #   for projectFile in ls.projectFiles.keys:
+  #     if projectFile in ls.entryPoints: continue
+  #     let isKnown = await ns.isKnown(projectFile)
+  #     if isKnown:
+  #       toStop[projectFile] = await ls.projectFiles[projectFile]
 
-    for projectFile, ns in toStop:
-      ns.stop()
-      ls.projectFiles.del projectFile
-    if toStop.len > 0:
-      ls.sendStatusChanged()
+  #   for projectFile, ns in toStop:
+  #     ns.stop()
+  #     ls.projectFiles.del projectFile
+  #   if toStop.len > 0:
+  #     ls.sendStatusChanged()
 
 proc didClose*(ls: LanguageServer, params: DidCloseTextDocumentParams):
     Future[void] {.async, gcsafe.} =
@@ -736,6 +737,8 @@ proc didOpen*(ls: LanguageServer, params: DidOpenTextDocumentParams):
       await didOpen(ls, params)
 
       debug "Opening project file", uri = projectFile, file = uri
+    ls.showMessage(fmt "Opening {uri}", MessageType.Info)
+
 
 proc didChangeConfiguration*(ls: LanguageServer, conf: JsonNode):
     Future[void] {.async, gcsafe.} =

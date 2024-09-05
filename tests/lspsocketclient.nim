@@ -167,3 +167,40 @@ proc positionParams*(uri: string, line, character: int): TextDocumentPositionPar
          "uri": uri
        }
     }
+
+#Helper to hook notifications so we can check against them in the tests
+proc notificationHandle*(args: (LspSocketClient, string), params: JsonNode): Future[void] = 
+  try:
+    let client = args[0]
+    let name = args[1]
+    if name in [
+      "textDocument/publishDiagnostics", 
+      "$/progress"
+    ]: #Too much noise. They are split so we can toggle to debug the tests
+      debug "[NotificationHandled ] Called for ", name = name
+    else:
+      debug "[NotificationHandled ] Called for ", name = name, params = params
+    client.calls[name].add params   
+  except CatchableError: discard
+
+  result = newFuture[void]("notificationHandle")
+
+proc registerNotification*(client: LspSocketClient, names: varargs[string]) = 
+  for name in names:
+    client.register(name, partial(notificationHandle, (client, name)))
+
+proc waitForNotification*(client: LspSocketClient, name: string, predicate: proc(json: JsonNode): bool , accTime = 0): Future[bool] {.async.}=
+  let timeout = 10000
+  if accTime > timeout: 
+    error "Coudlnt mathc predicate ", calls = client.calls[name]
+    return false
+  try:    
+    {.cast(gcsafe).}:
+      for call in client.calls[name]: 
+        if predicate(call):
+          debug "[WaitForNotification Predicate Matches] ", name = name, call = call
+          return true      
+  except Exception as ex: 
+    error "[WaitForNotification]", ex = ex.msg
+  await sleepAsync(100)
+  await waitForNotification(client, name, predicate, accTime + 100)
