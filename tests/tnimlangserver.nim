@@ -28,55 +28,7 @@ suite "Nimlangserver":
     let initializeResult = waitFor client.initialize(initParams)
     
     check initializeResult.capabilities.textDocumentSync.isSome
-   
-   
-  teardown:
-    #TODO properly stop the server
-    echo "Teardown"
-    client.close()
-    ls.onExit()
 
-#TODO once we have a few more of these do proper helpers
-proc notificationHandle(args: (LspSocketClient, string), params: JsonNode): Future[void] = 
-  try:
-    let client = args[0]
-    let name = args[1]
-    if name in [
-      "textDocument/publishDiagnostics", 
-      "$/progress"
-    ]: #Too much noise. They are split so we can toggle to debug the tests
-      debug "[NotificationHandled ] Called for ", name = name
-    else:
-      debug "[NotificationHandled ] Called for ", name = name, params = params
-    client.calls[name].add params   
-  except CatchableError: discard
-
-  result = newFuture[void]("notificationHandle")
-
-proc suggestInit(params: JsonNode): Future[void] = 
-  try:
-    let pp = params.jsonTo(ProgressParams)
-    debug "SuggestInit called ", pp = pp[]
-    result = newFuture[void]()
-  except CatchableError:
-    discard
-
-
-proc waitForNotification(client: LspSocketClient, name: string, predicate: proc(json: JsonNode): bool , accTime = 0): Future[bool] {.async.}=
-  let timeout = 10000
-  if accTime > timeout: 
-    error "Coudlnt mathc predicate ", calls = client.calls[name]
-    return false
-  try:    
-    {.cast(gcsafe).}:
-      for call in client.calls[name]: 
-        if predicate(call):
-          debug "[WaitForNotification Predicate Matches] ", name = name, call = call
-          return true      
-  except Exception as ex: 
-    error "[WaitForNotification]", ex = ex.msg
-  await sleepAsync(100)
-  await waitForNotification(client, name, predicate, accTime + 100)
 
 let helloWorldUri = fixtureUri("projects/hw/hw.nim")
 
@@ -85,16 +37,16 @@ suite "Suggest API selection":
   let cmdParams = CommandLineParams(transport: some socket, port: getNextFreePort())
   let ls = main(cmdParams) #we could accesss to the ls here to test against its state
   let client = newLspSocketClient()
-  template registerNotification(name: string) = 
-    client.register(name, partial(notificationHandle, (client, name)))
-  
-  registerNotification("window/showMessage")
-  registerNotification("window/workDoneProgress/create")
-  registerNotification("workspace/configuration")
-  registerNotification("extension/statusUpdate")
-  registerNotification("textDocument/publishDiagnostics")
-  registerNotification("$/progress")
-  
+  client.registerNotification(
+    "window/showMessage", 
+    "window/workDoneProgress/create",
+    "workspace/configuration",
+    "extension/statusUpdate",
+    "extension/statusUpdate",
+    "textDocument/publishDiagnostics",
+    "$/progress"
+    )
+
   
   waitFor client.connect("localhost", cmdParams.port)
   let initParams = InitializeParams %* {
@@ -131,15 +83,15 @@ suite "LSP features":
   let cmdParams = CommandLineParams(transport: some socket, port: getNextFreePort())
   let ls = main(cmdParams) #we could accesss to the ls here to test against its state
   let client = newLspSocketClient()
-  template registerNotification(name: string) = 
-    client.register(name, partial(notificationHandle, (client, name)))
-  
-  registerNotification("window/showMessage")
-  registerNotification("window/workDoneProgress/create")
-  registerNotification("workspace/configuration")
-  registerNotification("extension/statusUpdate")
-  registerNotification("textDocument/publishDiagnostics")
-  registerNotification("$/progress")
+  client.registerNotification(
+    "window/showMessage", 
+    "window/workDoneProgress/create",
+    "workspace/configuration",
+    "extension/statusUpdate",
+    "extension/statusUpdate",
+    "textDocument/publishDiagnostics",
+    "$/progress"
+    )
 
   waitFor client.connect("localhost", cmdParams.port)
 
@@ -349,18 +301,17 @@ suite "LSP features":
 
 suite "Null configuration:":
   let cmdParams = CommandLineParams(transport: some socket, port: getNextFreePort())
-  let ls = main(cmdParams) #we could accesss to the ls here to test against its state
+  let ls = main(cmdParams)
   let client = newLspSocketClient()
-  template registerNotification(name: string) = 
-    client.register(name, partial(notificationHandle, (client, name)))
-  
-  registerNotification("window/showMessage")
-  registerNotification("window/workDoneProgress/create")
-  registerNotification("workspace/configuration")
-  registerNotification("extension/statusUpdate")
-  registerNotification("textDocument/publishDiagnostics")
-  registerNotification("$/progress")
-  
+  client.registerNotification(
+    "window/showMessage", 
+    "window/workDoneProgress/create",
+    "workspace/configuration",
+    "extension/statusUpdate",
+    "extension/statusUpdate",
+    "textDocument/publishDiagnostics",
+    "$/progress"
+    )
   
   waitFor client.connect("localhost", cmdParams.port)
 
