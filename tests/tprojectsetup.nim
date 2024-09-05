@@ -81,9 +81,10 @@ suite "nimble setup":
     "textDocument/publishDiagnostics",
     "$/progress"
     )
-
+  let testProjectDir = absolutePath "tests" / "projects" / "testproject"
+  
   test "should pick `testproject.nim` as the main file and provide suggestions":
-    let testProjectDir = absolutePath "tests" / "projects" / "testproject"
+    
     let entryPoint = testProjectDir / "src" / "testproject.nim"
     createNimbleProject(testProjectDir)
     let initParams = InitializeParams %* {
@@ -109,117 +110,22 @@ suite "nimble setup":
          "uri": pathToUri(entryPoint)
        }
     }
-    echo pathToUri(entryPoint)
     let ns = waitFor ls.projectFiles[entryPoint]
     client.notify("textDocument/didOpen", %createDidOpenParams("projects/testproject/src/testproject.nim"))
     check waitFor client.waitForNotification("window/showMessage", 
-      (json: JsonNode) => json["message"].jsonTo(string) == &"Opening {pathToUri(entryPoint)}")
+      (json: JsonNode) => json["message"].to(string) == &"Opening {pathToUri(entryPoint)}")
 
     #We need to make two calls (ns issue)
     discard client.call("textDocument/completion", %completionParams).waitFor
     let completionList =  client.call("textDocument/completion", %completionParams)
       .waitFor.to(seq[CompletionItem]).mapIt(it.label)
     check completionList.len > 0
-    # echo res
-    
-    # client.notify("textDocument/didOpen", %createDidOpenParams(entryPoint))
-    
-    
-  # test "should pick `testproject.nim` as the main file and provide suggestions":
-  #   let testProjectDir = absolutePath "tests" / "projects" / "testproject"
-  #   let entryPoint = testProjectDir / "src" / "testproject.nim"
-  #   createNimbleProject(testProjectDir)
-  #   var nlsConfig = %* [{
-  #     "workingDirectoryMapping": [{ 
-  #         "directory": testProjectDir,
-  #         "file": entryPoint,
-  #         "projectFile": entryPoint
-  #     }],
-  #     "autoCheckFile": false,
-  #     "autoCheckProject": false
-  #   }]
-  #   initLangServerForTestProject(nlsConfig, testProjectDir)
-  #   # #At this point we should know the main file is `testproject.nim` but for now just test the case were we open it
-  #   client.notify("textDocument/didOpen", %createDidOpenParams(entryPoint))
-  #   let (_, params) = suggestInit.read.waitFor
-  #   let nimsuggestNot = notificationOutputs[^1]["value"]["title"].getStr
-  #   check nimsuggestNot == &"Creating nimsuggest for {entryPoint}"
-    
-  #   let completionParams = CompletionParams %* {
-  #     "position": {
-  #        "line": 7,
-  #        "character": 0
-  #     },
-  #     "textDocument": {
-  #        "uri": pathToUri(entryPoint)
-  #      }
-  #   }
-  #   #We need to call it twice, so we ignore the first call.
-  #   var res =  client.call("textDocument/completion", %completionParams).waitFor
-  #   res = client.call("textDocument/completion", %completionParams).waitFor
-  #   let completionList = res.to(seq[CompletionItem]).mapIt(it.label)
-  #   check completionList.len > 0
 
-  #   var resStatus =  client.call("extension/status", %()).waitFor
-  #   let status = resStatus.to(NimLangServerStatus)[]
-  #   # check status.nimsuggestInstances.len == 2
-  #   let nsInfo = status.nimsuggestInstances[0]
-  #   check nsInfo.projectFile == entryPoint
-  
+  test "`submodule.nim` should not be part of the nimble project file":
+    let submodule = testProjectDir / "src" / "testproject" / "submodule.nim"
+    client.notify("textDocument/didOpen", %createDidOpenParams("projects/testproject/src/testproject/submodule.nim"))
 
-  # test "`submodule.nim` should not be part of the nimble project file":
-  #   let testProjectDir = absolutePath "tests" / "projects" / "testproject"
-  #   let entryPoint = testProjectDir / "src" / "testproject.nim"
+    check waitFor client.waitForNotification("window/showMessage", 
+      (json: JsonNode) => json["message"].to(string) == &"Opening {pathToUri(submodule)}")
 
-  #   createNimbleProject(testProjectDir)
-  #   var nlsConfig = %* [{
-  #     "workingDirectoryMapping": [{ 
-  #         "directory": testProjectDir,
-  #         "file": entryPoint,
-  #         "projectFile": entryPoint
-  #     }],
-  #     "autoCheckFile": false,
-  #     "autoCheckProject": false
-  #   }]
-  #   initLangServerForTestProject(nlsConfig, testProjectDir)
-
-  #   let submodule = testProjectDir / "src" / "testproject" / "submodule.nim"
-  #   client.notify("textDocument/didOpen", %createDidOpenParams(submodule))
-  #   discard suggestInit.read.waitFor
-
-  #   # Entry point is still the same. 
-  #   let nimsuggestNot = notificationOutputs[^1]["value"]["title"].getStr
-  #   check nimsuggestNot == &"Creating nimsuggest for {entryPoint}"
-  #   #Nimsuggest should still be able to give suggestions for the submodule
-  #   let completionParams = CompletionParams %* {
-  #     "position": {
-  #        "line": 8,
-  #        "character": 2
-  #     },
-  #     "textDocument": {
-  #        "uri": pathToUri(submodule)
-  #      }
-  #   }
-    
-  #   #We need to call it twice, so we ignore the first call.
-  #   var res =  client.call("textDocument/completion", %completionParams).waitFor
-  #   res = client.call("textDocument/completion", %completionParams).waitFor
-  #   let completionList = res.to(seq[CompletionItem]).mapIt(it.label)
-  #   var resStatus =  client.call("extension/status", %()).waitFor
-  #   let status = resStatus.to(NimLangServerStatus)[]
-  #   if nsUnknownFile in status.nimsuggestInstances[0].capabilities:
-  #     #Only check when the current nimsuggest instance supports unknown files as this wont work in previous versions
-  #     check completionList.len > 0
-  #     echo status
-
-  #     check status.nimsuggestInstances.len == 1
-  #     let nsInfo = status.nimsuggestInstances[0]
-  #     check nsInfo.projectFile == entryPoint
-  #     check status.openFiles.len == 2
-  #     check entryPoint in status.openFiles
-  #     check submodule in status.openFiles 
-
-
-    
-
-
+    check ls.projectFiles.len == 2
