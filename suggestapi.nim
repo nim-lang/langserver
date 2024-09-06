@@ -5,7 +5,6 @@ import osproc,
   deques,
   sets,
   os,
-  asyncnet,
   sequtils,
   streams,
   protocol/enums,
@@ -379,7 +378,7 @@ proc createNimsuggest*(root: string): Future[Nimsuggest] {.gcsafe.} =
                             proc (ns: Nimsuggest) = discard,
                             proc (ns: Nimsuggest) = discard)
 
-proc toString(bytes: openarray[byte]): string =
+proc toString*(bytes: openarray[byte]): string =
   result = newString(bytes.len)
   if bytes.len > 0:
     copyMem(result[0].addr, bytes[0].unsafeAddr, bytes.len)
@@ -397,7 +396,6 @@ proc processQueue(self: Nimsuggest): Future[void] {.async.}=
       req.future.complete @[]
     else:
       benchmark req.commandString:
-        # let socket = newAsyncSocket()
         var res: seq[Suggest] = @[]
 
         if not self.timeoutCallback.isNil:
@@ -409,24 +407,12 @@ proc processQueue(self: Nimsuggest): Future[void] {.async.}=
         let ta = initTAddress(&"127.0.0.1:{self.port}")
         let transport = await ta.connect()
         discard await transport.write(req.commandString & "\c\L")
-        # await socket.connect("127.0.0.1", Port(self.port))
-        # await socket.send(req.commandString & "\c\L")
 
         const bufferSize = 1024 * 1024 * 4
         var buffer:seq[byte] = newSeq[byte](bufferSize);
 
-        # var content = "";
-        # var received = await socket.recvInto(addr buffer[0], bufferSize)
         var data = await transport.read()
         let content = data.toString()
-
-        # while received != 0:
-        #   let chunk = newString(received)
-        #   copyMem(chunk[0].unsafeAddr, buffer[0].unsafeAddr, received)
-        #   content = content & chunk
-        #   # received = await socket.recvInto(addr buffer[0], bufferSize)
-        #   var received = await transport.readExactly(addr buffer[0], bufferSize)
-
 
         for lineStr  in content.splitLines:
           if lineStr != "":
@@ -453,7 +439,6 @@ proc processQueue(self: Nimsuggest): Future[void] {.async.}=
           debug "Sending result(s)", length = res.len
           req.future.complete res
           self.successfullCall = true
-          # socket.close()
           transport.close()
         else:
           debug "Call was cancelled before sending the result", command = req.command

@@ -1,11 +1,8 @@
 import json_rpc/[servers/socketserver, private/jrpc_sys, jsonmarshal, rpcclient, router]
 import chronicles, chronos
 import
-  std/[
-    syncio, os, json, jsonutils, strutils, strformat, streams, sequtils, sets, tables,
-    oids, sugar, net
-  ]
-import ls, routes, suggestapi, protocol/enums, utils, lstransports, asyncprocmonitor
+  std/[ syncio, os, json, strutils, strformat, net]
+import ls, routes, suggestapi, utils, lstransports, asyncprocmonitor
 
 import protocol/types
 when defined(posix):
@@ -54,7 +51,7 @@ proc getNextFreePort*(): Port=
   let (_, port) = s.getLocalAddr
   s.close()
   port
-
+  
 proc handleParams(): CommandLineParams =
   if paramCount() > 0 and paramStr(1) in ["-v", "--version"]:
     echo LSPVersion
@@ -89,12 +86,6 @@ proc handleParams(): CommandLineParams =
   if result.transport.isNone:
     result.transport = some stdio
 
-var
-  # global var, onl: CommandLineParamsy used in the signal handlers (for stopping the child nimsuggest
-  # processes during an abnormal program termination)
-  globalLS: ptr LanguageServer
-
-
 proc registerProcMonitor(ls: LanguageServer) = 
   if ls.cmdLineClientProcessId.isSome:
     debug "Registering monitor for process id, specified on command line",
@@ -116,12 +107,6 @@ proc registerProcMonitor(ls: LanguageServer) =
 
     hookAsyncProcMonitor(ls.cmdLineClientProcessId.get, onCmdLineClientProcessExit)
 
-  when defined(posix):
-    onSignal(SIGINT, SIGTERM, SIGHUP, SIGQUIT, SIGPIPE):
-      debug "Terminated via signal", sig
-      globalLS.stopNimsuggestProcessesP()
-      exitnow(1)
-
 proc main*(cmdLineParams: CommandLineParams): LanguageServer =
   debug "Starting nimlangserver", params = cmdLineParams
   #[
@@ -135,16 +120,21 @@ proc main*(cmdLineParams: CommandLineParams): LanguageServer =
   of socket:
     result.startSocketServer(cmdLineParams.port)
 
-  globalLS = addr result #TODO use partial instead inside the func
   result.srv.registerRoutes(result)
   result.registerProcMonitor()
 
 when isMainModule: 
   try:
-    discard main(handleParams())
+    let ls = main(handleParams())
+    when defined(posix):
+      onSignal(SIGINT, SIGTERM, SIGHUP, SIGQUIT, SIGPIPE):
+        debug "Terminated via signal", sig
+        ls.stopNimsuggestProcessesP()
+        exitnow(1)
     runForever()
   
   except Exception as e:
     error "Error in main"
     writeStackTrace e
     quit(1)
+  

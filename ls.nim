@@ -2,7 +2,7 @@ import macros, strformat,
   chronos, chronos/threadsync,
   os, sugar, sequtils, hashes, osproc,
   suggestapi, protocol/enums, protocol/types, with, tables, strutils, sets,
-  ./utils, chronicles, std/re, uri, "$nim/compiler/pathutils",
+  ./utils, chronicles, std/re, uri,
   json_serialization, std/json, streams, json_rpc/[servers/socketserver]
 
 proc getVersionFromNimble(): string =
@@ -107,15 +107,16 @@ type
     storageDir*: string
     cmdLineClientProcessId*: Option[int]
     nimDumpCache*: Table[string, NimbleDumpInfo] #path to NimbleDumpInfo
-    entryPoints*: seq[string]
-    transportMode*: TransportMode
+    entryPoints*: seq[string]    
     responseMap*: TableRef[string, Future[JsonNode]] #id to future. Represents the pending requests as result of calling ls.call
     srv*: RpcSocketServer#Both modes uses it to store the routes. Only actually started in socket mode
     cancelableRequests*: Table[int, Future[JsonString]] #id to future. Each request is added here so we can cancel them later in the cancelRequest. Only requests, not notifications
-    #TODO case object for these
-    socketTransport*: StreamTransport #Only socket
-    outStream*: FileStream #Only stdio (stdout)
-    stdinContext*: ptr ReadStdinContext #TODO deallocate, first see what's going on with ORC not working
+    case transportMode*: TransportMode
+    of socket:
+      socketTransport*: StreamTransport 
+    of stdio:
+      outStream*: FileStream 
+      stdinContext*: ptr ReadStdinContext
 
   Certainty* = enum
     None,
@@ -461,8 +462,6 @@ proc cancelPendingFileChecks*(ls: LanguageServer, nimsuggest: Nimsuggest) =
         cancelFileCheck.complete()
       fileData.needsChecking = false
 
-
-
 proc uriStorageLocation*(ls: LanguageServer, uri: string): string =
   ls.storageDir / (hash(uri).toHex & ".nim")
 
@@ -711,8 +710,8 @@ proc stopNimsuggestProcesses*(ls: LanguageServer) {.async.} =
   else:
     debug "child nimsuggest processes already stopped: CHECK!"
 
-proc stopNimsuggestProcessesP*(ls: ptr LanguageServer) =
-  waitFor stopNimsuggestProcesses(ls[])
+proc stopNimsuggestProcessesP*(ls: LanguageServer) =
+  waitFor stopNimsuggestProcesses(ls)
 
 proc getProjectFile*(fileUri: string, ls: LanguageServer): Future[string] {.async.} =
   let
@@ -729,20 +728,6 @@ proc getProjectFile*(fileUri: string, ls: LanguageServer): Future[string] {.asyn
     else:
       trace "getProjectFile does not match", uri = fileUri, matchedRegex = mapping.fileRegex
 
-  # once: #once we refactor the project to chronos, we may move this code into init. Right now it hangs for some odd reason
-  #   let rootPath = ls.initializeParams.getRootPath
-  #   if rootPath != "":
-  #     let nimbleFiles = walkFiles(rootPath / "*.nimble").toSeq
-  #     if nimbleFiles.len > 0:
-  #       let nimbleFile = nimbleFiles[0]
-  #       let nimbleDumpInfo = ls.getNimbleDumpInfo(nimbleFile)
-  #       ls.entryPoints = nimbleDumpInfo.getNimbleEntryPoints(ls.initializeParams.getRootPath)
-  #       # ls.showMessage(fmt "Found entry point {ls.entryPoints}?", MessageType.Info)
-  #       for entryPoint in ls.entryPoints:
-  #         debug "Starting nimsuggest for entry point ", entry = entryPoint
-  #         if entryPoint notin ls.projectFiles:
-  #           ls.createOrRestartNimsuggest(entryPoint)
-
   result = ls.getProjectFileAutoGuess(fileUri)
   if result in ls.projectFiles:
     let ns = await ls.projectFiles[result]
@@ -755,8 +740,6 @@ proc getProjectFile*(fileUri: string, ls: LanguageServer): Future[string] {.asyn
     result = fileUri
 
   debug "getProjectFile ", project = result, fileUri = fileUri
-  
-
 
 proc warnIfUnknown*(ls: LanguageServer, ns: Nimsuggest, uri: string, projectFile: string):
      Future[void] {.async, gcsafe.} =

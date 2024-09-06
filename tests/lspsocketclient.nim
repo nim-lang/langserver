@@ -204,3 +204,4 @@ proc waitForNotification*(client: LspSocketClient, name: string, predicate: proc
     error "[WaitForNotification]", ex = ex.msg
   await sleepAsync(100)
   await waitForNotification(client, name, predicate, accTime + 100)
+  

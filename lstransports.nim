@@ -1,11 +1,7 @@
 import json_rpc/[servers/socketserver, private/jrpc_sys, jsonmarshal, rpcclient, router]
 import chronicles, chronos
-import
-  std/[
-    syncio, os, json, jsonutils, strutils, strformat, streams, sequtils, sets, tables,
-    oids,
-  ]
-import ls, routes, suggestapi, protocol/enums, utils
+import std/[syncio, os, json, strutils, strformat, streams, oids, sequtils]
+import ls, utils
 import protocol/types, chronos/threadsync
 
 type LspClientResponse* = object
@@ -64,9 +60,8 @@ proc wrapRpc*[T](
     var idRequest = 0
     try:
       idRequest = get[int](params, "idRequest")
-      debug "IdRequest is ", idRequest = idRequest
     except KeyError:
-      error "IdRequest not found in the request params"
+      error "IdRequest not found in the request params", params = params
     let res = await fn(val, idRequest)
     return JsonString($(%*res))
 
@@ -116,21 +111,12 @@ proc processContentLength*(transport: StreamTransport, error: bool = true): Futu
     if error: 
       error "Error reading content length", msg = ex.msg
 
-
-proc readStdin*(transport: StreamTransport) {.thread.} =
-  while true:
-    let inputStream = newFileStream(stdin)
-    var value = processContentLength(inputStream)
-    try:
-      discard waitFor transport.write(value & CRLF)
-    except TransportError as ex:
-      error "Error reading stdin", msg = ex.msg
-
-
-proc readStdin2*(ctx: ptr ReadStdinContext) {.thread.} =
+proc readStdin*(ctx: ptr ReadStdinContext) {.thread.} =
   let inputStream = newFileStream(stdin)
   while true:
-    ctx.value = processContentLength(inputStream) & CRLF
+    let str = processContentLength(inputStream) & CRLF
+    ctx.value = cast[cstring](createShared(char, str.len + 1))
+    copymem(ctx.value[0].addr, str[0].addr, str.len)
     discard ctx.onStdReadSignal.fireSync()
     discard ctx.onMainReadSignal.waitSync()
 
@@ -203,14 +189,14 @@ proc processMessage(ls: LanguageServer, message: string) {.raises:[].} =
     error "[Processsing Message] "
     writeStackTrace(ex)
 
-proc initActions*(ls: LanguageServer,) =
+proc initActions*(ls: LanguageServer) =
   let onExit: OnExitCallback = proc() {.async.} =
     case ls.transportMode:
-    of stdio:
-      #TODO dispose the context
+    of stdio:      
       ls.outStream.close()
+      freeShared(ls.stdinContext)
     of socket:
-      ls.srv.stop() #TODO check if stop also close the transport, which it should
+      ls.srv.close()
 
   template genJsonAction() {.dirty.} =
     var json = newJObject()
@@ -241,6 +227,7 @@ proc startStdioLoop*(ls: LanguageServer): Future[void] {.async.} =
   while true:
     await ls.stdinContext.onStdReadSignal.wait()
     let msg = $ls.stdinContext.value
+    freeShared(ls.stdinContext.value[0].addr)
     await ls.stdinContext.onMainReadSignal.fire()
     if msg == "":
       error "Client discconected"
@@ -257,7 +244,7 @@ proc startStdioServer*(ls: LanguageServer) =
   ls.stdinContext = createShared(ReadStdinContext)
   ls.stdinContext.onMainReadSignal = ThreadSignalPtr.new().expect("")
   ls.stdinContext.onStdReadSignal = ThreadSignalPtr.new().expect("")
-  createThread(stdinThread, readStdin2, ls.stdinContext)
+  createThread(stdinThread, readStdin, ls.stdinContext)
   asyncSpawn ls.startStdioLoop()
 
 
@@ -277,5 +264,3 @@ proc startSocketServer*(ls: LanguageServer, port: Port) =
     ls.initActions()
     ls.srv.addStreamServer("localhost", port)
     ls.srv.start
-    
-    

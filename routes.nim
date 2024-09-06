@@ -5,7 +5,6 @@ import macros, strformat, chronos,
   asyncprocmonitor, std/strscans, json_serialization,
   std/json, std/parseutils, ls
 
-
 #routes
 proc initialize*(p: tuple[ls: LanguageServer, onExit: OnExitCallback], params: InitializeParams):
     Future[InitializeResult] {.async.} =
@@ -711,15 +710,11 @@ proc didOpen*(ls: LanguageServer, params: DidOpenTextDocumentParams):
       changed: false,
       fingerTable: @[])
 
-    # debug "Waiting for ", uri
     let projectFile = await projectFileFuture
-    # debug "Wait ends"
-
     debug "Document associated with the following projectFile", uri = uri, projectFile = projectFile
     if not ls.projectFiles.hasKey(projectFile):
       debug "Will create nimsuggest for this file", uri = uri
-      ls.createOrRestartNimsuggest(projectFile, uri)
-        
+      ls.createOrRestartNimsuggest(projectFile, uri)        
   
     for line in text.splitLines:
       if uri in ls.openFiles:
@@ -754,3 +749,4 @@ proc didChangeConfiguration*(ls: LanguageServer, conf: JsonNode):
       ls.workspaceConfiguration = newFuture[JsonNode]()
       ls.workspaceConfiguration.complete(conf)
       handleConfigurationChanges(ls, oldConfiguration, newConfiguration)
+  

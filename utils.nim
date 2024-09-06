@@ -2,7 +2,6 @@ import std/[unicode, uri, strformat, os, strutils, options, json, jsonutils, sug
 import chronos, chronicles
 import "$nim/compiler/pathutils"
 import json_rpc/private/jrpc_sys
-import protocol/types
 
 type
   FingerTable = seq[tuple[u16pos, offset: int]]
