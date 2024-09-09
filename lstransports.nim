@@ -4,17 +4,19 @@ import std/[syncio, os, json, strutils, strformat, streams, oids, sequtils]
 import ls, utils
 import protocol/types, chronos/threadsync
 
-type LspClientResponse* = object
-  jsonrpc*: JsonRPC2
-  id*: string
-  result*: JsonNode
+type 
+  LspClientResponse* = object
+    jsonrpc*: JsonRPC2
+    id*: string
+    result*: JsonNode
+    
+  Rpc* = proc(params: RequestParamsRx): Future[JsonString] {.gcsafe, raises: [].}
 
 template flavorUsesAutomaticObjectSerialization(T: type JrpcSys): bool =
   true
 
 proc readValue*(r: var JsonReader, val: var OptionalNode) =
   try:
-    
     discard r.tokKind()
     val = some r.parseJsonNode()
   except CatchableError:
@@ -34,11 +36,9 @@ proc toJson*(params: RequestParamsRx): JsonNode =
     for np in params.named:
       result[np.name] = parseJson($np.value)
   else:
-    result = newJArray() #TODO this may be wrong
+    result = newJArray()
     for p in params.positional:
       result.add parseJson($p)
-
-type Rpc* = proc(params: RequestParamsRx): Future[JsonString] {.gcsafe, raises: [].}
 
 proc wrapRpc*[T](
     fn: proc(params: T): Future[auto] {.gcsafe, raises: [].}
@@ -174,7 +174,6 @@ proc processMessage(ls: LanguageServer, message: string) {.raises:[].} =
       let id = response.id
       if id notin ls.responseMap:
         error "Id not found in responseMap", id = id #TODO we should store the call name we are trying to responde to here
-
       if response.result == nil:
         ls.responseMap[id].complete(newJObject())
         ls.responseMap.del id
@@ -182,6 +181,7 @@ proc processMessage(ls: LanguageServer, message: string) {.raises:[].} =
         let r = response.result
         ls.responseMap[id].complete(r)
         ls.responseMap.del id
+
   except JsonParsingError as ex:
     error "[Processsing Message] Error parsing message", message = message
     writeStackTrace(ex)
@@ -247,7 +247,6 @@ proc startStdioServer*(ls: LanguageServer) =
   createThread(stdinThread, readStdin, ls.stdinContext)
   asyncSpawn ls.startStdioLoop()
 
-
 proc processClientLoop*(ls: LanguageServer, server: StreamServer, transport: StreamTransport) {.async: (raises: []), gcsafe.} =
   ls.socketTransport = transport
   while true:
@@ -264,3 +263,4 @@ proc startSocketServer*(ls: LanguageServer, port: Port) =
     ls.initActions()
     ls.srv.addStreamServer("localhost", port)
     ls.srv.start
+    

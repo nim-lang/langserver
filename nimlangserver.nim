@@ -1,9 +1,7 @@
 import json_rpc/[servers/socketserver, private/jrpc_sys, jsonmarshal, rpcclient, router]
 import chronicles, chronos
-import
-  std/[ syncio, os, json, strutils, strformat, net]
+import std/[ syncio, os, json, strutils, strformat, net]
 import ls, routes, suggestapi, utils, lstransports, asyncprocmonitor
-
 import protocol/types
 when defined(posix):
   import posix
@@ -44,7 +42,6 @@ proc registerRoutes(srv: RpcSocketServer, ls: LanguageServer) =
   srv.register("textDocument/didChange", wrapRpc(partial(didChange, ls)))
   srv.register("$/setTrace", wrapRpc(partial(setTrace, ls)))
   
-
 proc getNextFreePort*(): Port= 
   let s = newSocket()
   s.bindAddr(Port(0), "localhost")
@@ -132,7 +129,7 @@ when isMainModule:
         ls.stopNimsuggestProcessesP()
         exitnow(1)
     runForever()
-  
+    
   except Exception as e:
     error "Error in main"
     writeStackTrace e

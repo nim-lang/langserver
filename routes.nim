@@ -738,7 +738,6 @@ proc didOpen*(ls: LanguageServer, params: DidOpenTextDocumentParams):
 proc didChangeConfiguration*(ls: LanguageServer, conf: JsonNode):
     Future[void] {.async, gcsafe.} =
   debug "Changed configuration: ", conf = conf
-
   if ls.usePullConfigurationModel:
     ls.maybeRequestConfigurationFromClient
   else:
@@ -749,4 +748,4 @@ proc didChangeConfiguration*(ls: LanguageServer, conf: JsonNode):
       ls.workspaceConfiguration = newFuture[JsonNode]()
       ls.workspaceConfiguration.complete(conf)
       handleConfigurationChanges(ls, oldConfiguration, newConfiguration)
-  
+      
