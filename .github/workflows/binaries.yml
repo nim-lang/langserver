@@ -106,7 +106,7 @@ jobs:
 
       - name: Restore nimble dependencies from cache
         id: nimble_deps
-        uses: actions/cache@v5
+        uses: actions/cache@v4
         with:
           path: ~/.nimble/
           key: ${{ matrix.target.os }}-${{ env.cache_nonce }}
