@@ -1,16 +1,16 @@
 mode = ScriptMode.Verbose
 
 packageName   = "nimlangserver"
-version       = "1.5.0"
+version       = "1.5.1"
 author        = "The core Nim team"
 description   = "Nim language server for IDEs"
 license       = "MIT"
 bin           = @["nimlangserver"]
 skipDirs      = @["tests"]
 
-requires "nim >= 2.0.0",
-         "https://github.com/nickysn/asynctools#fixes_for_nimlangserver",
-         "https://github.com/yyoncho/nim-json-rpc#notif-changes",
+requires "nim == 2.0.8", 
+         "chronos > 4",        
+         "json_rpc#head",
          "with",
          "chronicles",
          "serialization",

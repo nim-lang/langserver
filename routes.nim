@@ -1,25 +1,25 @@
-import macros, strformat,
-  faststreams/async_backend,
-  json_rpc/streamconnection, json_rpc/server, os, sugar, sequtils,
+import macros, strformat, chronos,
+  json_rpc/server, os, sugar, sequtils,
   suggestapi, protocol/enums, protocol/types, with, tables, strutils,
   ./utils, chronicles,
   asyncprocmonitor, std/strscans, json_serialization,
   std/json, std/parseutils, ls
 
-
 #routes
 proc initialize*(p: tuple[ls: LanguageServer, onExit: OnExitCallback], params: InitializeParams):
     Future[InitializeResult] {.async.} =
 
-  proc onClientProcessExitAsync(): Future[void] {.async.} =
-    debug "onClientProcessExitAsync"
-    await p.ls.stopNimsuggestProcesses
-    await p.onExit()
-
-  proc onClientProcessExit(fd: AsyncFD): bool =
-    debug "onClientProcessExit"
-    waitFor onClientProcessExitAsync()
-    result = true
+  proc onClientProcessExitAsync(): Future[void] {.async.} =    
+      debug "onClientProcessExitAsync"      
+      await p.ls.stopNimsuggestProcesses
+      await p.onExit()
+    
+  proc onClientProcessExit() {.closure, gcsafe.} =    
+      try:
+        debug "onClientProcessExit"
+        waitFor onClientProcessExitAsync()
+      except Exception:
+        error "Error in onClientProcessExit ", msg = getCurrentExceptionMsg()
 
   debug "Initialize received..."
   if params.processId.isSome:
@@ -85,6 +85,21 @@ proc initialize*(p: tuple[ls: LanguageServer, onExit: OnExitCallback], params: I
         "prepareProvider": true
       }
   debug "Initialize completed. Trying to start nimsuggest instances"
+# nce we refactor the project to chronos, we may move this code into init. Right now it hangs for some odd reason
+  let ls = p.ls
+  let rootPath = ls.initializeParams.getRootPath
+  if rootPath != "":
+    let nimbleFiles = walkFiles(rootPath / "*.nimble").toSeq
+    if nimbleFiles.len > 0:
+      let nimbleFile = nimbleFiles[0]
+      let nimbleDumpInfo = ls.getNimbleDumpInfo(nimbleFile)
+      ls.entryPoints = nimbleDumpInfo.getNimbleEntryPoints(ls.initializeParams.getRootPath)
+      # ls.showMessage(fmt "Found entry point {ls.entryPoints}?", MessageType.Info)
+      for entryPoint in ls.entryPoints:
+        debug "Starting nimsuggest for entry point ", entry = entryPoint
+        if entryPoint notin ls.projectFiles:
+          ls.createOrRestartNimsuggest(entryPoint)
+
   #If we are in a nimble project here, we try to start the entry points
 
 proc toCompletionItem(suggest: Suggest): CompletionItem =
@@ -97,19 +112,21 @@ proc toCompletionItem(suggest: Suggest): CompletionItem =
     }
 
 proc completion*(ls: LanguageServer, params: CompletionParams, id: int):
-    Future[seq[CompletionItem]] {.async.} =
+    Future[seq[CompletionItem]] {.async.} =    
   with (params.position, params.textDocument):
     let
-      nimsuggest = await ls.getNimsuggest(uri)
-      completions = await nimsuggest
+      nimsuggest = await ls.tryGetNimsuggest(uri)
+    if nimsuggest.isNone():
+      return @[]
+    let
+      completions = await nimsuggest.get
                             .sug(uriToPath(uri),
                                  ls.uriToStash(uri),
                                  line + 1,
                                  ls.getCharacter(uri, line, character))
-                            .orCancelled(ls, id)
     result = completions.map(toCompletionItem)
 
-    if ls.clientCapabilities.supportSignatureHelp() and nsCon in nimSuggest.capabilities:
+    if ls.clientCapabilities.supportSignatureHelp() and nsCon in nimSuggest.get.capabilities:
       #show only unique overloads if we support signatureHelp
       var unique = initTable[string, CompletionItem]()
       for completion in result:
@@ -126,34 +143,37 @@ proc toLocation*(suggest: Suggest): Location =
 proc definition*(ls: LanguageServer, params: TextDocumentPositionParams, id: int):
     Future[seq[Location]] {.async.} =
   with (params.position, params.textDocument):
-    result = ls.getNimsuggest(uri)
-      .await()
+    let ns = await ls.tryGetNimsuggest(uri)
+    if ns.isNone: return @[]
+    result = 
+      ns.get
       .def(uriToPath(uri),
            ls.uriToStash(uri),
            line + 1,
            ls.getCharacter(uri, line, character))
-      .orCancelled(ls, id)
       .await()
       .map(toLocation)
 
 proc declaration*(ls: LanguageServer, params: TextDocumentPositionParams, id: int):
     Future[seq[Location]] {.async.} =
   with (params.position, params.textDocument):
-    result = ls.getNimsuggest(uri)
-      .await()
+    let ns = await ls.tryGetNimsuggest(uri)
+    if ns.isNone: return @[]
+    result = ns.get
       .declaration(uriToPath(uri),
            ls.uriToStash(uri),
            line + 1,
            ls.getCharacter(uri, line, character))
-      .orCancelled(ls, id)
       .await()
       .map(toLocation)
 
 proc expandAll*(ls: LanguageServer, params: TextDocumentPositionParams):
     Future[ExpandResult] {.async.} =
   with (params.position, params.textDocument):
-    let expand = ls.getNimsuggest(uri)
-      .await()
+    let ns = await ls.tryGetNimsuggest(uri)
+    if ns.isNone: return ExpandResult() #TODO make it optional
+    
+    let expand = ns.get
       .expand(uriToPath(uri),
            ls.uriToStash(uri),
            line + 1,
@@ -180,8 +200,10 @@ proc expand*(ls: LanguageServer, params: ExpandTextDocumentPositionParams):
     let
       lvl = level.get(-1)
       tag = if lvl == -1: "all" else: $lvl
-      expand = ls.getNimsuggest(uri)
-        .await()
+      ns = await ls.tryGetNimsuggest(uri)
+    if ns.isNone: return ExpandResult()
+    let      
+      expand = ns.get        
         .expand(uriToPath(uri),
              ls.uriToStash(uri),
              line + 1,
@@ -199,13 +221,13 @@ proc status*(ls: LanguageServer, params: NimLangServerStatusParams): Future[NimL
 proc typeDefinition*(ls: LanguageServer, params: TextDocumentPositionParams, id: int):
     Future[seq[Location]] {.async.} =
   with (params.position, params.textDocument):
-    result = ls.getNimsuggest(uri)
-      .await()
+    let ns = await ls.tryGetNimSuggest(uri)
+    if ns.isNone: return @[]
+    result = ns.get
       .`type`(uriToPath(uri),
               ls.uriToStash(uri),
               line + 1,
               ls.getCharacter(uri, line, character))
-      .orCancelled(ls, id)
       .await()
       .map(toLocation)
 
@@ -220,19 +242,21 @@ proc toSymbolInformation*(suggest: Suggest): SymbolInformation =
 proc documentSymbols*(ls: LanguageServer, params: DocumentSymbolParams, id: int):
     Future[seq[SymbolInformation]] {.async.} =
   let uri = params.textDocument.uri
-  result = ls.getNimsuggest(uri)
-    .await()
+  let ns = await ls.tryGetNimsuggest(uri)
+  if ns.isSome:
+    ns.get()
     .outline(uriToPath(uri), ls.uriToStash(uri))
-    .orCancelled(ls, id)
     .await()
     .map(toSymbolInformation)
+  else:
+    @[]
 
-proc scheduleFileCheck(ls: LanguageServer, uri: string) {.gcsafe.} =
+proc scheduleFileCheck(ls: LanguageServer, uri: string) {.gcsafe, raises: [].} =
   if not ls.getWorkspaceConfiguration().waitFor().autoCheckFile.get(true):
     return
 
   # schedule file check after the file is modified
-  let fileData = ls.openFiles[uri]
+  let fileData = ls.openFiles.getOrDefault(uri)
   if fileData.cancelFileCheck != nil and not fileData.cancelFileCheck.finished:
     fileData.cancelFileCheck.complete()
 
@@ -246,12 +270,16 @@ proc scheduleFileCheck(ls: LanguageServer, uri: string) {.gcsafe.} =
   sleepAsync(FILE_CHECK_DELAY).addCallback() do ():
     if not cancelFuture.finished:
       fileData.checkInProgress = true
-      ls.checkFile(uri).addCallback() do() {.gcsafe.}:
-        ls.openFiles[uri].checkInProgress = false
-        if fileData.needsChecking:
-          fileData.needsChecking = false
-          ls.scheduleFileCheck(uri)
-
+      ls.checkFile(uri).addCallback() do() {.gcsafe, raises:[].}:
+        try:
+          ls.openFiles[uri].checkInProgress = false
+          if fileData.needsChecking:
+            fileData.needsChecking = false
+            ls.scheduleFileCheck(uri)
+        except KeyError:
+          discard 
+        # except Exception:
+        #   discard
 
 
 proc toMarkedStrings(suggest: Suggest): seq[MarkedStringOption] =
@@ -276,13 +304,15 @@ proc hover*(ls: LanguageServer, params: HoverParams, id: int):
     Future[Option[Hover]] {.async.} =
   with (params.position, params.textDocument):
     let
-      nimsuggest = await ls.getNimsuggest(uri)
-      suggestions = await nimsuggest
+      nimsuggest = await ls.tryGetNimsuggest(uri)
+    if nimsuggest.isNone: 
+      return none(Hover)
+    let
+      suggestions = await nimsuggest.get()
        .def(uriToPath(uri),
             ls.uriToStash(uri),
             line + 1,
             ls.getCharacter(uri, line, character))
-       .orCancelled(ls, id)
     if suggestions.len == 0:
       return none[Hover]();
     else:
@@ -292,8 +322,10 @@ proc references*(ls: LanguageServer, params: ReferenceParams):
     Future[seq[Location]] {.async.} =
   with (params.position, params.textDocument, params.context):
     let
-      nimsuggest = await ls.getNimsuggest(uri)
-      refs = await nimsuggest
+      nimsuggest = await ls.tryGetNimsuggest(uri)
+    if nimsuggest.isNone: return @[]
+    let 
+      refs = await nimsuggest.get
       .use(uriToPath(uri),
            ls.uriToStash(uri),
            line + 1,
@@ -306,8 +338,10 @@ proc prepareRename*(ls: LanguageServer, params: PrepareRenameParams,
                    id: int): Future[JsonNode] {.async.} =
   with (params.position, params.textDocument):
     let
-      nimsuggest = await ls.getNimsuggest(uri)
-      def = await nimsuggest.def(
+      nimsuggest = await ls.tryGetNimsuggest(uri)
+    if nimsuggest.isNone: return newJNull()
+    let    
+      def = await nimsuggest.get.def(
         uriToPath(uri),
         ls.uriToStash(uri),
         line + 1,
@@ -317,7 +351,7 @@ proc prepareRename*(ls: LanguageServer, params: PrepareRenameParams,
       return newJNull()
     # Check if the symbol belongs to the project
     let projectDir = ls.initializeParams.getRootPath
-    if def[0].filePath.isRelativeTo(projectDir):
+    if def[0].filePath.isRelTo(projectDir):
       return %def[0].toLocation().range
 
     return newJNull()
@@ -335,7 +369,7 @@ proc rename*(ls: LanguageServer, params: RenameParams, id: int): Future[Workspac
   for reference in references:
     # Only rename symbols in the project.
     # If client supports prepareRename then an error will already have been thrown
-    if reference.uri.uriToPath().isRelativeTo(projectDir):
+    if reference.uri.uriToPath().isRelTo(projectDir):
       if reference.uri notin edits:
         edits[reference.uri] = newJArray()
       edits[reference.uri] &= %TextEdit(range: reference.range, newText: params.newName)
@@ -395,11 +429,12 @@ proc inlayHint*(ls: LanguageServer, params: InlayHintParams, id: int): Future[se
   with (params.range, params.textDocument):
     let
       configuration = ls.getWorkspaceConfiguration.await()
-      nimsuggest = await ls.getNimsuggest(uri)
-    if nimsuggest.protocolVersion < 4 or not configuration.inlayHintsEnabled:
+      nimsuggest = await ls.tryGetNimsuggest(uri)
+
+    if nimsuggest.isNone or nimsuggest.get.protocolVersion < 4 or not configuration.inlayHintsEnabled:
       return @[]
     let
-      suggestions = await nimsuggest
+      suggestions = await nimsuggest.get
         .inlayHints(uriToPath(uri),
                     ls.uriToStash(uri),
                     start.line + 1,
@@ -407,7 +442,6 @@ proc inlayHint*(ls: LanguageServer, params: InlayHintParams, id: int): Future[se
                     `end`.line + 1,
                     ls.getCharacter(uri, `end`.line, `end`.character),
                     " +exceptionHints +parameterHints")
-        .orCancelled(ls, id)
     result = suggestions
       .filter(x => ((x.inlayHintInfo.kind == sihkType) and configuration.typeHintsEnabled) or
                    ((x.inlayHintInfo.kind == sihkException) and configuration.exceptionHintsEnabled) or
@@ -506,18 +540,18 @@ proc signatureHelp*(ls: LanguageServer, params: SignatureHelpParams, id: int):
     if not ls.clientCapabilities.supportSignatureHelp():
     #Some clients doesnt support signatureHelp
       return none[SignatureHelp]()
-    with (params.position, params.textDocument):
-      let nimsuggest = await ls.getNimsuggest(uri)
-      if nsCon notin nimSuggest.capabilities:
+    with (params.position, params.textDocument):      
+      let nimsuggest = await ls.tryGetNimsuggest(uri)
+      if nimsuggest.isNone: return none[SignatureHelp]()
+      if nsCon notin nimSuggest.get.capabilities:
         #support signatureHelp only if the current version of NimSuggest supports it.
         return none[SignatureHelp]()
 
-      let completions = await nimsuggest
+      let completions = await nimsuggest.get
                               .con(uriToPath(uri),
                                   ls.uriToStash(uri),
                                   line + 1,
                                   ls.getCharacter(uri, line, character))
-                              .orCancelled(ls, id)
       let signatures = completions.map(toSignatureInformation);
       if signatures.len() > 0:
         return some SignatureHelp(
@@ -535,7 +569,6 @@ proc workspaceSymbol*(ls: LanguageServer, params: WorkspaceSymbolParams, id: int
       nimsuggest = await ls.lastNimsuggest
       symbols = await nimsuggest
                         .globalSymbols(params.query, "-")
-                        .orCancelled(ls, id)
     return symbols.map(toSymbolInformation);
 
 proc toDocumentHighlight(suggest: Suggest): DocumentHighlight =
@@ -548,12 +581,13 @@ proc documentHighlight*(ls: LanguageServer, params: TextDocumentPositionParams, 
 
   with (params.position, params.textDocument):
     let
-      nimsuggest = await ls.getNimsuggest(uri)
-      suggestLocations = await nimsuggest.highlight(uriToPath(uri),
+      nimsuggest = await ls.tryGetNimsuggest(uri)
+    if nimsuggest.isNone: return @[]
+    let
+      suggestLocations = await nimsuggest.get.highlight(uriToPath(uri),
                                 ls.uriToStash(uri),
                                 line + 1,
                                 ls.getCharacter(uri, line, character))
-                             .orCancelled(ls, id)
     result = suggestLocations.map(toDocumentHighlight);
 
 proc extractId  (id: JsonNode): int =
@@ -562,21 +596,21 @@ proc extractId  (id: JsonNode): int =
   if id.kind == JString:
     discard parseInt(id.getStr, result)
 
-proc shutdown*(ls: LanguageServer, input: JsonNode): Future[RpcResult] {.async, gcsafe, raises: [Defect, CatchableError, Exception].} =
+proc shutdown*(ls: LanguageServer, input: JsonNode): Future[JsonNode] {.async, gcsafe.} =
   debug "Shutting down"
   await ls.stopNimsuggestProcesses()
   ls.isShutdown = true
-  let id = input{"id"}.extractId
-  result = some(StringOfJson("null"))
+  # let id = input{"id"}.extractId
+  result = newJNull()
   trace "Shutdown complete"
 
 proc exit*(p: tuple[ls: LanguageServer, onExit: OnExitCallback], _: JsonNode):
-    Future[RpcResult] {.async, gcsafe, raises: [Defect, CatchableError, Exception].} =
+    Future[JsonNode] {.async, gcsafe .} =
   if not p.ls.isShutdown:
     debug "Received an exit request without prior shutdown request"
     await p.ls.stopNimsuggestProcesses()
   debug "Quitting process"
-  result = none[StringOfJson]()
+  result = newJNull()
   await p.onExit()
 
 #Notifications
@@ -591,11 +625,10 @@ proc cancelRequest*(ls: LanguageServer, params: CancelParams):
   if params.id.isSome:
     let
       id = params.id.get.getInt
-      cancelFuture = ls.cancelFutures.getOrDefault id
-
-    debug "Cancelling: ", id = id
-    if not cancelFuture.isNil:
-      cancelFuture.complete()
+      cancelRequest = ls.cancelableRequests.getOrDefault(id)
+    if cancelRequest != nil:
+      debug "Cancelling: ", id = id    
+      cancelRequest.cancelSoon() 
 
 proc setTrace*(ls: LanguageServer, params: SetTraceParams) {.async.} =
   debug "setTrace", value = params.value
@@ -603,8 +636,10 @@ proc setTrace*(ls: LanguageServer, params: SetTraceParams) {.async.} =
 proc didChange*(ls: LanguageServer, params: DidChangeTextDocumentParams):
     Future[void] {.async, gcsafe.} =
    with params:
+      let uri = textDocument.uri
+      if uri notin ls.openFiles:
+        return
       let
-        uri = textDocument.uri
         file = open(ls.uriStorageLocation(uri), fmWrite)
 
       ls.openFiles[uri].fingerTable = @[]
@@ -623,30 +658,33 @@ proc didSave*(ls: LanguageServer, params: DidSaveTextDocumentParams):
     Future[void] {.async, gcsafe.} =
   let
     uri = params.textDocument.uri
-    nimsuggest = ls.getNimsuggest(uri).await()
+    nimsuggest = ls.tryGetNimsuggest(uri).await()
+  if nimsuggest.isNone: return
+  
   ls.openFiles[uri].changed = false
-  traceAsyncErrors nimsuggest.changed(uriToPath(uri))
+  traceAsyncErrors nimsuggest.get.changed(uriToPath(uri))
 
   if ls.getWorkspaceConfiguration().await().checkOnSave.get(true):
     debug "Checking project", uri = uri
     traceAsyncErrors ls.checkProject(uri)
+  
+  # var toStop = newTable[string, Nimsuggest]()
+  # #We first get the project file for the current file so we can test if this file recently imported another project
+  # let thisProjectFile = await getProjectFile(uri.uriToPath, ls)
 
-  var toStop = newTable[string, Nimsuggest]()
-  #We first get the project file for the current file so we can test if this file recently imported another project
-  let thisProjectFile = await getProjectFile(uri.uriToPath, ls)
-  let ns = await ls.projectFiles[thisProjectFile]
-  if ns.canHandleUnknown:
-    for projectFile in ls.projectFiles.keys:
-      if projectFile in ls.entryPoints: continue
-      let isKnown = await ns.isKnown(projectFile)
-      if isKnown:
-        toStop[projectFile] = await ls.projectFiles[projectFile]
+  # let ns: NimSuggest = await ls.projectFiles[thisProjectFile]
+  # if ns.canHandleUnknown:
+  #   for projectFile in ls.projectFiles.keys:
+  #     if projectFile in ls.entryPoints: continue
+  #     let isKnown = await ns.isKnown(projectFile)
+  #     if isKnown:
+  #       toStop[projectFile] = await ls.projectFiles[projectFile]
 
-    for projectFile, ns in toStop:
-      ns.stop()
-      ls.projectFiles.del projectFile
-    if toStop.len > 0:
-      ls.sendStatusChanged()
+  #   for projectFile, ns in toStop:
+  #     ns.stop()
+  #     ls.projectFiles.del projectFile
+  #   if toStop.len > 0:
+  #     ls.sendStatusChanged()
 
 proc didClose*(ls: LanguageServer, params: DidCloseTextDocumentParams):
     Future[void] {.async, gcsafe.} =
@@ -673,19 +711,19 @@ proc didOpen*(ls: LanguageServer, params: DidOpenTextDocumentParams):
       fingerTable: @[])
 
     let projectFile = await projectFileFuture
-
     debug "Document associated with the following projectFile", uri = uri, projectFile = projectFile
     if not ls.projectFiles.hasKey(projectFile):
-      ls.createOrRestartNimsuggest(projectFile, uri)
-
+      debug "Will create nimsuggest for this file", uri = uri
+      ls.createOrRestartNimsuggest(projectFile, uri)        
+  
     for line in text.splitLines:
-      ls.openFiles[uri].fingerTable.add line.createUTFMapping()
-      file.writeLine line
+      if uri in ls.openFiles:
+        ls.openFiles[uri].fingerTable.add line.createUTFMapping()
+        file.writeLine line
     file.close()
-
-    ls.getNimsuggest(uri).addCallback() do (fut: Future[Nimsuggest]) -> void:
-      if not fut.failed:
-        discard ls.warnIfUnknown(fut.read, uri, projectFile)
+    ls.tryGetNimSuggest(uri).addCallback() do (fut: Future[Option[Nimsuggest]]) -> void:
+      if not fut.failed and fut.read.isSome:
+        discard ls.warnIfUnknown(fut.read.get(), uri, projectFile)
 
     let projectFileUri = projectFile.pathToUri
     if projectFileUri notin ls.openFiles:
@@ -694,11 +732,12 @@ proc didOpen*(ls: LanguageServer, params: DidOpenTextDocumentParams):
       await didOpen(ls, params)
 
       debug "Opening project file", uri = projectFile, file = uri
+    ls.showMessage(fmt "Opening {uri}", MessageType.Info)
+
 
 proc didChangeConfiguration*(ls: LanguageServer, conf: JsonNode):
     Future[void] {.async, gcsafe.} =
   debug "Changed configuration: ", conf = conf
-
   if ls.usePullConfigurationModel:
     ls.maybeRequestConfigurationFromClient
   else:
@@ -709,3 +748,4 @@ proc didChangeConfiguration*(ls: LanguageServer, conf: JsonNode):
       ls.workspaceConfiguration = newFuture[JsonNode]()
       ls.workspaceConfiguration.complete(conf)
       handleConfigurationChanges(ls, oldConfiguration, newConfiguration)
+      

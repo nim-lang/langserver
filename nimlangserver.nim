@@ -1,173 +1,137 @@
-import macros, strformat, faststreams/async_backend,
-  faststreams/asynctools_adapters, faststreams/inputs, faststreams/outputs,
-  json_rpc/streamconnection, json_rpc/server, os, sugar, sequtils, hashes, osproc,
-  suggestapi, protocol/enums, protocol/types, with, tables, strutils, sets,
-  ./utils, ./pipes, chronicles, std/re, uri, "$nim/compiler/pathutils",
-  asyncprocmonitor, std/strscans, json_serialization, serialization/formats,
-  std/json, std/parseutils, ls, routes
-
+import json_rpc/[servers/socketserver, private/jrpc_sys, jsonmarshal, rpcclient, router]
+import chronicles, chronos
+import std/[ syncio, os, json, strutils, strformat, net]
+import ls, routes, suggestapi, utils, lstransports, asyncprocmonitor
+import protocol/types
 when defined(posix):
   import posix
 
+proc registerRoutes(srv: RpcSocketServer, ls: LanguageServer) =
+  srv.register("initialize", wrapRpc(partial(initialize, (ls: ls, onExit: ls.onExit)))) #use from ls
+  srv.register("textDocument/completion", ls.addRpcToCancellable(wrapRpc(partial(completion, ls))))
+  srv.register("textDocument/definition", ls.addRpcToCancellable(wrapRpc(partial(definition, ls))))
+  srv.register("textDocument/declaration", ls.addRpcToCancellable(wrapRpc(partial(declaration, ls))))
+  srv.register("textDocument/typeDefinition", ls.addRpcToCancellable(wrapRpc(partial(typeDefinition, ls))))
+  srv.register("textDocument/documentSymbol", ls.addRpcToCancellable(wrapRpc(partial(documentSymbols, ls))))
+  srv.register("textDocument/hover", ls.addRpcToCancellable(wrapRpc(partial(hover, ls))))
+  srv.register("textDocument/references", wrapRpc(partial(references, ls)))
+  srv.register("textDocument/codeAction", wrapRpc(partial(codeAction, ls)))
+  srv.register("textDocument/prepareRename", ls.addRpcToCancellable(wrapRpc(partial(prepareRename, ls))))
+  srv.register("textDocument/rename", ls.addRpcToCancellable(wrapRpc(partial(rename, ls))))
+  srv.register("textDocument/inlayHint", ls.addRpcToCancellable(wrapRpc(partial(inlayHint, ls))))
+  srv.register("textDocument/signatureHelp", ls.addRpcToCancellable(wrapRpc(partial(signatureHelp, ls))))
+  srv.register("workspace/executeCommand", wrapRpc(partial(executeCommand, ls)))
+  srv.register("workspace/symbol", ls.addRpcToCancellable(wrapRpc(partial(workspaceSymbol, ls))))
+  srv.register(
+    "textDocument/documentHighlight", ls.addRpcToCancellable(wrapRpc(partial(documentHighlight, ls)))
+  )
+  srv.register("extension/macroExpand", wrapRpc(partial(expand, ls)))
+  srv.register("extension/status", wrapRpc(partial(status, ls)))
+  srv.register("shutdown", wrapRpc(partial(shutdown, ls)))
+  srv.register("exit", wrapRpc(partial(exit, (ls: ls, onExit: ls.onExit))))
 
-createJsonFlavor(LSPFlavour, omitOptionalFields = true)
-Option.useDefaultSerializationIn LSPFlavour
-
-proc partial*[A, B, C] (fn: proc(a: A, b: B): C {.gcsafe.}, a: A):
-    proc (b: B) : C {.gcsafe, raises: [Defect, CatchableError, Exception].} =
-  return
-    proc(b: B): C {.gcsafe, raises: [Defect, CatchableError, Exception].} =
-      return fn(a, b)
-
-proc partial*[A, B, C] (fn: proc(a: A, b: B, id: int): C {.gcsafe.}, a: A):
-    proc (b: B, id: int) : C {.gcsafe, raises: [Defect, CatchableError, Exception].} =
-  return
-    proc(b: B, id: int): C {.gcsafe, raises: [Defect, CatchableError, Exception].} =
-      return fn(a, b, id)
+  #Notifications
+  srv.register("$/cancelRequest", wrapRpc(partial(cancelRequest, ls)))
+  srv.register("initialized", wrapRpc(partial(initialized, ls)))
+  srv.register("textDocument/didOpen", wrapRpc(partial(didOpen, ls)))
+  srv.register("textDocument/didSave", wrapRpc(partial(didSave, ls)))
+  srv.register("textDocument/didClose", wrapRpc(partial(didClose, ls)))
+  srv.register(
+    "workspace/didChangeConfiguration", wrapRpc(partial(didChangeConfiguration, ls))
+  )
+  srv.register("textDocument/didChange", wrapRpc(partial(didChange, ls)))
+  srv.register("$/setTrace", wrapRpc(partial(setTrace, ls)))
   
-# Fixes callback clobbering in core implementation
-proc `or`*[T, Y](fut1: Future[T], fut2: Future[Y]): Future[void] =
-  var retFuture = newFuture[void]("asyncdispatch.`or`")
-  proc cb[X](fut: Future[X]) =
-    if not retFuture.finished:
-      if fut.failed: retFuture.fail(fut.error)
-      else: retFuture.complete()
-  fut1.addCallback(cb[T])
-  fut2.addCallback(cb[Y])
-  return retFuture
-
-proc registerHandlers*(connection: StreamConnection,
-                       pipeInput: AsyncInputStream,
-                       storageDir: string,
-                       cmdLineParams: CommandLineParams): LanguageServer =
-  let onExit: OnExitCallback = proc () {.async.} = 
-    pipeInput.close()
+proc getNextFreePort*(): Port= 
+  let s = newSocket()
+  s.bindAddr(Port(0), "localhost")
+  let (_, port) = s.getLocalAddr
+  s.close()
+  port
   
-  let notifyAction: NotifyAction = proc(name: string, params: JsonNode) =
-    connection.notify(name, params)
+proc handleParams(): CommandLineParams =
+  if paramCount() > 0 and paramStr(1) in ["-v", "--version"]:
+    echo LSPVersion
+    quit()
+  var i = 1
+  while i <= paramCount():
+    var param = paramStr(i)
+    if param.startsWith("--clientProcessId="):
+      var pidStr = param.substr(18)
+      try:
+        var pid = pidStr.parseInt
+        result.clientProcessId = some(pid)
+      except ValueError:
+        stderr.writeLine("Invalid client process ID: ", pidStr)
+        quit 1
+    if param == "--stdio":
+      result.transport = some stdio
+    if param == "--socket":
+      result.transport = some socket
+    if param.startsWith "--port":
+      let port = param.substr(7)
+      try:
+        result.port = Port(parseInt(port))
+      except ValueError:
+        error "Invalid port ", port = port
+        quit(1)
+    inc i
+  if result.transport.isSome and result.transport.get == socket:
+    if result.port == default(Port):      
+      result.port = getNextFreePort() 
+    echo &"port={result.port}"
+  if result.transport.isNone:
+    result.transport = some stdio
 
-  let callAction: CallAction = proc(name: string, params: JsonNode): Future[JsonNode] =
-    connection.call(name, params)
+proc registerProcMonitor(ls: LanguageServer) = 
+  if ls.cmdLineClientProcessId.isSome:
+    debug "Registering monitor for process id, specified on command line",
+      clientProcessId = ls.cmdLineClientProcessId.get
 
-  let ls = LanguageServer(
-    workspaceConfiguration: Future[JsonNode](),
-    notify: notifyAction,
-    call: callAction,
-    projectFiles: initTable[string, Future[Nimsuggest]](),
-    cancelFutures: initTable[int, Future[void]](),
-    filesWithDiags: initHashSet[string](),
-    openFiles: initTable[string, NlsFileInfo](),
-    storageDir: storageDir,
-    cmdLineClientProcessId: cmdLineParams.clientProcessId)
-  result = ls
+    proc onCmdLineClientProcessExitAsync(): Future[void] {.async.} =
+      debug "onCmdLineClientProcessExitAsync"
 
+      await ls.stopNimsuggestProcesses
+      waitFor ls.onExit()
 
-  connection.register("initialize", partial(initialize, (ls: ls, onExit: onExit)))
-  connection.register("textDocument/completion", partial(completion, ls))
-  connection.register("textDocument/definition", partial(definition, ls))
-  connection.register("textDocument/declaration", partial(declaration, ls))
-  connection.register("textDocument/typeDefinition", partial(typeDefinition, ls))
-  connection.register("textDocument/documentSymbol", partial(documentSymbols, ls))
-  connection.register("textDocument/hover", partial(hover, ls))
-  connection.register("textDocument/references", partial(references, ls))
-  connection.register("textDocument/codeAction", partial(codeAction, ls))
-  connection.register("textDocument/prepareRename", partial(prepareRename, ls))
-  connection.register("textDocument/rename", partial(rename, ls))
-  connection.register("textDocument/inlayHint", partial(inlayHint, ls))
-  connection.register("textDocument/signatureHelp", partial(signatureHelp, ls))
-  connection.register("workspace/executeCommand", partial(executeCommand, ls))
-  connection.register("workspace/symbol", partial(workspaceSymbol, ls))
-  connection.register("textDocument/documentHighlight", partial(documentHighlight, ls))
-  connection.register("extension/macroExpand", partial(expand, ls))
-  connection.register("extension/status", partial(status, ls))
-  connection.register("shutdown", partial(shutdown, ls))
-  connection.register("exit", partial(exit, (ls: ls, onExit: onExit)))
+    proc onCmdLineClientProcessExit() {.closure.} =
+      debug "onCmdLineClientProcessExit"
+      try:
+        waitFor onCmdLineClientProcessExitAsync()
+      except CatchableError as ex:
+        error "Error in onCmdLineClientProcessExit"
+        writeStackTrace(ex)
 
-  connection.registerNotification("$/cancelRequest", partial(cancelRequest, ls))
-  connection.registerNotification("initialized", partial(initialized, ls))
-  connection.registerNotification("textDocument/didChange", partial(didChange, ls))
-  connection.registerNotification("textDocument/didOpen", partial(didOpen, ls))
-  connection.registerNotification("textDocument/didSave", partial(didSave, ls))
-  connection.registerNotification("textDocument/didClose", partial(didClose, ls))
-  connection.registerNotification("workspace/didChangeConfiguration", partial(didChangeConfiguration, ls))
-  connection.registerNotification("$/setTrace", partial(setTrace, ls))
+    hookAsyncProcMonitor(ls.cmdLineClientProcessId.get, onCmdLineClientProcessExit)
 
-proc ensureStorageDir*: string =
-  result = getTempDir() / "nimlangserver"
-  discard existsOrCreateDir(result)
+proc main*(cmdLineParams: CommandLineParams): LanguageServer =
+  debug "Starting nimlangserver", params = cmdLineParams
+  #[
+  `nimlangserver` supports both transports: stdio and socket. By default it uses stdio transport. 
+    But we do construct a RPC socket server even in stdio mode, so that we can reuse the same code for both transports.
+  ]#
+  result = initLs(cmdLineParams, ensureStorageDir())   
+  case result.transportMode:
+  of stdio: 
+    result.startStdioServer()
+  of socket:
+    result.startSocketServer(cmdLineParams.port)
 
-var
-  # global var, only used in the signal handlers (for stopping the child nimsuggest
-  # processes during an abnormal program termination)
-  globalLS: ptr LanguageServer
+  result.srv.registerRoutes(result)
+  result.registerProcMonitor()
 
-when isMainModule:
-
-  proc handleParams(): CommandLineParams =
-    if paramCount() > 0 and paramStr(1) in ["-v", "--version"]:
-      echo LSPVersion
-      quit()
-    var i = 1
-    while i <= paramCount():
-      var para = paramStr(i)
-      if para.startsWith("--clientProcessId="):
-        var pidStr = para.substr(18)
-        try:
-          var pid = pidStr.parseInt
-          result.clientProcessId = some(pid)
-        except ValueError:
-          stderr.writeLine("Invalid client process ID: ", pidStr)
-          quit 1
-      inc i
-
-  proc main =
-    try:
-      let cmdLineParams = handleParams() 
-      let storageDir = ensureStorageDir()
-      var
-        pipe = createPipe(register = true, nonBlockingWrite = false)
-        stdioThread: Thread[tuple[pipe: AsyncPipe, file: File]]
-
-      createThread(stdioThread, copyFileToPipe, (pipe: pipe, file: stdin))
-
-      let
-        connection = StreamConnection.new(Async(fileOutput(stdout, allowAsyncOps = true)))
-        pipeInput = asyncPipeInput(pipe)
-      var
-        ls = registerHandlers(connection, pipeInput, storageDir, cmdLineParams)
-
-      globalLS = addr ls
-
-      if cmdLineParams.clientProcessId.isSome:
-        debug "Registering monitor for process id, specified on command line", clientProcessId=cmdLineParams.clientProcessId.get
-
-        proc onCmdLineClientProcessExitAsync(): Future[void] {.async.} =
-          debug "onCmdLineClientProcessExitAsync"
-          
-          await ls.stopNimsuggestProcesses
-          pipeInput.close()
-
-        proc onCmdLineClientProcessExit(fd: AsyncFD): bool =
-          debug "onCmdLineClientProcessExit"
-          waitFor onCmdLineClientProcessExitAsync()
-          result = true
-
-        hookAsyncProcMonitor(cmdLineParams.clientProcessId.get, onCmdLineClientProcessExit)
-
-      when defined(posix):
-        onSignal(SIGINT, SIGTERM, SIGHUP, SIGQUIT, SIGPIPE):
-          debug "Terminated via signal", sig
-          globalLS.stopNimsuggestProcessesP()
-          exitnow(1)
-
-      waitFor connection.start(pipeInput)
-      debug "exiting main thread", isShutdown=ls.isShutdown
-      quit(if ls.isShutdown: 0 else: 1)
-    except Exception as ex:
-      debug "Shutting down due to an error: ", msg = ex.msg
-      debug "Stack trace: ", stack_trace = ex.getStackTrace()
-      stderr.writeLine("Shutting down due to an error: ", ex.msg)
-      stderr.writeLine(ex.getStackTrace())
-      quit 1
-
-  main()
+when isMainModule: 
+  try:
+    let ls = main(handleParams())
+    when defined(posix):
+      onSignal(SIGINT, SIGTERM, SIGHUP, SIGQUIT, SIGPIPE):
+        debug "Terminated via signal", sig
+        ls.stopNimsuggestProcessesP()
+        exitnow(1)
+    runForever()
+    
+  except Exception as e:
+    error "Error in main"
+    writeStackTrace e
+    quit(1)
+  

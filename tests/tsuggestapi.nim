@@ -1,5 +1,5 @@
 import
-  ../suggestapi, unittest, os, faststreams/async_backend, std/asyncnet, asyncdispatch, strutils
+  ../suggestapi, unittest, os, std/asyncnet, strutils, chronos, options
 
 const inputLine = "def	skProc	hw.a	proc (){.noSideEffect, gcsafe.}	hw/hw.nim	1	5	\"\"	100"
 const inputLineWithEndLine = "outline	skEnumField	system.bool.true	bool	basic_types.nim	46	15	\"\"	100	4	11"
@@ -14,7 +14,7 @@ suite "Nimsuggest tests":
     doAssert parseQualifiedPath("system.`..<`") == @["system", "`..<`"]
 
   test "Parsing suggest":
-    doAssert parseSuggestDef(inputLine)[] == Suggest(
+    doAssert parseSuggestDef(inputLine).get[] == Suggest(
       filePath: "hw/hw.nim",
       qualifiedPath: @["hw", "a"],
       symKind: "skProc",
@@ -25,8 +25,8 @@ suite "Nimsuggest tests":
       section: ideDef)[]
 
   test "Parsing suggest with endLine":
-    let res = parseSuggestDef(inputLineWithEndLine)[]
-    doAssert res == Suggest(
+    let res = parseSuggestDef(inputLineWithEndLine).get
+    doAssert res[] == Suggest(
       filePath: "basic_types.nim",
       qualifiedPath: @["system", "bool", "true"],
       symKind: "skEnumField",

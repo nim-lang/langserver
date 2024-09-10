@@ -5,15 +5,14 @@ import osproc,
   deques,
   sets,
   os,
-  asyncnet,
   sequtils,
   streams,
   protocol/enums,
-  asyncdispatch,
   ./utils,
   chronicles,
   protocol/types,
-  std/options
+  std/options,
+  chronos
 
 const REQUEST_TIMEOUT* = 120000
 const HighestSupportedNimSuggestProtocolVersion = 4
@@ -29,7 +28,7 @@ type
   IdeCmd* = enum
     ideNone, ideSug, ideCon, ideDef, ideUse, ideDus, ideChk, ideMod,
     ideHighlight, ideOutline, ideKnown, ideMsg, ideProject, ideType, ideExpand
-  NimsuggestCallback = proc(self: Nimsuggest): void {.gcsafe.}
+  NimsuggestCallback = proc(self: Nimsuggest): void {.gcsafe, raises: [].}
 
   Suggest* = ref object
     section*: IdeCmd
@@ -182,12 +181,12 @@ proc parseQualifiedPath*(input: string): seq[string] =
   if item != "":
     result.add item
 
-proc parseSuggestDef*(line: string): Suggest =
+proc parseSuggestDef*(line: string): Option[Suggest] =
   let tokens = line.split('\t');
   if tokens.len < 8:
     error "Failed to parse: ", line = line
-    raise newException(ValueError, fmt "Failed to parse line {line}")
-  result = Suggest(
+    return none(Suggest)
+  var sug = Suggest(
     qualifiedPath: tokens[2].parseQualifiedPath,
     filePath: tokens[4],
     line: parseInt(tokens[5]),
@@ -197,8 +196,9 @@ proc parseSuggestDef*(line: string): Suggest =
     symKind: tokens[1],
     section: parseEnum[IdeCmd]("ide" & capitalizeAscii(tokens[0])))
   if tokens.len == 11:
-    result.endLine = parseInt(tokens[9])
-    result.endCol = parseInt(tokens[10])
+    sug.endLine = parseInt(tokens[9])
+    sug.endCol = parseInt(tokens[10])
+  some sug
 
 proc parseSuggestInlayHint*(line: string): SuggestInlayHint =
   let tokens = line.split('\t');
@@ -218,7 +218,7 @@ proc parseSuggestInlayHint*(line: string): SuggestInlayHint =
 proc name*(sug: Suggest): string =
   return sug.qualifiedPath[^1]
 
-proc markFailed(self: Nimsuggest, errMessage: string) =
+proc markFailed(self: Nimsuggest, errMessage: string) {.raises: [].} =
   self.failed = true
   self.errorMessage = errMessage
   if self.errorCallback != nil:
@@ -228,7 +228,7 @@ proc readPort(param: tuple[ns: ptr NimSuggestImpl, process: Process]) {.thread.}
   try:
     var line = param.process.outputStream.readLine & "\n"
     param.ns.port = line.strip.parseInt
-  except IOError:
+  except CatchableError:
     error "Failed to read nimsuggest port"
     var msg = failedToken & "\n"
     param.ns.port = -1
@@ -237,6 +237,7 @@ proc logStderr(param: tuple[root: string, process: Process]) {.thread.} =
   try:
     var line = param.process.errorStream.readLine
     while line != "\0":
+      stderr.writeLine &"******NIM SUGGEST ERRROR***** {param.root} \n"
       stderr.writeLine fmt ">> {line}"
       line = param.process.errorStream.readLine
   except IOError:
@@ -247,8 +248,8 @@ proc stop*(self: Nimsuggest) =
   try:
     self.process.kill()
     self.process.close()
-  except Exception:
-    discard
+  except Exception as ex:
+    writeStackTrace(ex)
 
 proc doWithTimeout*[T](fut: Future[T], timeout: int, s: string): owned(Future[bool]) =
   var retFuture = newFuture[bool]("asyncdispatch.`doWithTimeout`")
@@ -360,7 +361,7 @@ proc createNimsuggest*(root: string,
                                   workingDir = workingDir,
                                   args = args,
                                   options = {poUsePath})
-
+    #TODO better use startProcess from chronos so we dont need to spawn a thread
     # all this is needed to avoid the need to block on the main thread.
     createThread(thread, readPort, (ns: cast[ptr NimSuggestImpl](result), process: result.process))
 
@@ -377,6 +378,10 @@ proc createNimsuggest*(root: string): Future[Nimsuggest] {.gcsafe.} =
                             proc (ns: Nimsuggest) = discard,
                             proc (ns: Nimsuggest) = discard)
 
+proc toString*(bytes: openarray[byte]): string =
+  result = newString(bytes.len)
+  if bytes.len > 0:
+    copyMem(result[0].addr, bytes[0].unsafeAddr, bytes.len)
 
 proc processQueue(self: Nimsuggest): Future[void] {.async.}=
   debug "processQueue", size = self.requestQueue.len
@@ -387,34 +392,27 @@ proc processQueue(self: Nimsuggest): Future[void] {.async.}=
     if req.future.finished:
       debug "Call cancelled before executed", command = req.command
     elif self.failed:
-      debug "Nimsuggest is not working, returning empty result..."
+      debug "Nimsuggest is not working, returning empty result...", port = self.port
       req.future.complete @[]
     else:
       benchmark req.commandString:
-        let socket = newAsyncSocket()
         var res: seq[Suggest] = @[]
 
         if not self.timeoutCallback.isNil:
           debug "timeoutCallback is set", timeout = self.timeout
           doWithTimeout(req.future, self.timeout, fmt "running {req.commandString}").addCallback do (f: Future[bool]):
             if not f.failed and not f.read():
-              debug "Calling restart"
-              self.timeoutCallback(self)
-
-        await socket.connect("127.0.0.1", Port(self.port))
-        await socket.send(req.commandString & "\c\L")
+                debug "Calling restart"
+                self.timeoutCallback(self)
+        let ta = initTAddress(&"127.0.0.1:{self.port}")
+        let transport = await ta.connect()
+        discard await transport.write(req.commandString & "\c\L")
 
         const bufferSize = 1024 * 1024 * 4
         var buffer:seq[byte] = newSeq[byte](bufferSize);
 
-        var content = "";
-        var received = await socket.recvInto(addr buffer[0], bufferSize)
-
-        while received != 0:
-          let chunk = newString(received)
-          copyMem(chunk[0].unsafeAddr, buffer[0].unsafeAddr, received)
-          content = content & chunk
-          received = await socket.recvInto(addr buffer[0], bufferSize)
+        var data = await transport.read()
+        let content = data.toString()
 
         for lineStr  in content.splitLines:
           if lineStr != "":
@@ -427,7 +425,9 @@ proc processQueue(self: Nimsuggest): Future[void] {.async.}=
             of "inlayHints":
               res.add Suggest( inlayHintInfo: parseSuggestInlayHint(lineStr) )
             else:
-              res.add parseSuggestDef(lineStr)
+              let sug = parseSuggestDef(lineStr)
+              if sug.isSome:
+                res.add sug.get
 
         if (content == ""):
           self.markFailed "Server crashed/socket closed."
@@ -439,10 +439,10 @@ proc processQueue(self: Nimsuggest): Future[void] {.async.}=
           debug "Sending result(s)", length = res.len
           req.future.complete res
           self.successfullCall = true
-          socket.close()
+          transport.close()
         else:
           debug "Call was cancelled before sending the result", command = req.command
-          socket.close()
+          transport.close()
   self.processing = false
 
 proc call*(self: Nimsuggest, command: string, file: string, dirtyFile: string,
@@ -500,7 +500,11 @@ proc `mod`*(nimsuggest: Nimsuggest, file: string, dirtyfile = ""): Future[seq[Su
   return nimsuggest.call("ideMod", file, dirtyfile, 0, 0)
 
 proc isKnown*(nimsuggest: Nimsuggest, filePath: string): Future[bool] {.async.} =
-  let sug = await nimsuggest.known(filePath)
+  let res = await withTimeout(nimsuggest.known(filePath))
+  if res.isNone:
+    debug "Timeout reached running [isKnown], assuming the file is not known", file = filePath
+    return
+  let sug = res.get()
   if sug.len == 0:
     return false
   debug "isKnown", filePath = filePath, sug = sug[0].forth

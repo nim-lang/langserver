@@ -1,32 +1,29 @@
 # Monitor a client process and shutdown the current process, if the client
 # process is found to be dead
 
-import os, asyncdispatch
+import os, chronos, utils, sugar
 
 when defined(posix):
   import posix_utils
   import posix
 
+type Callback* = proc() {.closure, gcsafe, raises: [].}
+
 when defined(windows):
   import winlean
 
-when defined(windows):
-  proc hookAsyncProcMonitor*(pid: int, cb: Callback) =
-    addProcess(pid, cb)
+  proc hookAsyncProcMonitor*(pid: int, cb: Callback) = discard
+    addProcess2(pid, (arg: pointer) => cb())
 
-when defined(posix):
+elif defined(posix):
   proc hookAsyncProcMonitor*(pid: int, cb: Callback) =
-
     var processExitCallbackCalled = false
 
-    proc checkProcCallback(fd: AsyncFD): bool =
+    proc checkProcCallback(arg: pointer) =
       if not processExitCallbackCalled:
         try:
           sendSignal(Pid(pid), 0)
         except:
           processExitCallbackCalled = true
-          result = cb(fd)
-      else:
-        result = true
 
-    addTimer(1000, false, checkProcCallback)
+    addTimer(1000.int64, checkProcCallback)
