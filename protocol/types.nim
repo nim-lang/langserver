@@ -992,4 +992,13 @@ type
     openFiles*: seq[string]
 
   NimLangServerStatusParams* = object
-    
+  
+  SuggestAction* = enum
+   saNone = "none", saRestart = "restart"
+  
+  SuggestParams* = object
+    action*: SuggestAction
+    projectFile*: string #Absolute path to file
+  
+  SuggestResult* = object
+    actionPerformed*: SuggestAction

@@ -25,10 +25,13 @@ proc registerRoutes(srv: RpcSocketServer, ls: LanguageServer) =
   srv.register(
     "textDocument/documentHighlight", ls.addRpcToCancellable(wrapRpc(partial(documentHighlight, ls)))
   )
-  srv.register("extension/macroExpand", wrapRpc(partial(expand, ls)))
-  srv.register("extension/status", wrapRpc(partial(status, ls)))
   srv.register("shutdown", wrapRpc(partial(shutdown, ls)))
   srv.register("exit", wrapRpc(partial(exit, (ls: ls, onExit: ls.onExit))))
+  #Extension
+  srv.register("extension/macroExpand", wrapRpc(partial(expand, ls)))
+  srv.register("extension/status", wrapRpc(partial(status, ls)))
+  srv.register("extension/capabilities", wrapRpc(partial(extensionCapabilities, ls)))
+  srv.register("extension/suggest", wrapRpc(partial(extensionSuggest, ls)))
 
   #Notifications
   srv.register("$/cancelRequest", wrapRpc(partial(cancelRequest, ls)))
@@ -65,9 +68,9 @@ proc handleParams(): CommandLineParams =
         stderr.writeLine("Invalid client process ID: ", pidStr)
         quit 1
     if param == "--stdio":
-      result.transport = some stdio
+      result.transport = some TransportMode.stdio
     if param == "--socket":
-      result.transport = some socket
+      result.transport = some TransportMode.socket
     if param.startsWith "--port":
       let port = param.substr(7)
       try:
@@ -105,7 +108,7 @@ proc registerProcMonitor(ls: LanguageServer) =
     hookAsyncProcMonitor(ls.cmdLineClientProcessId.get, onCmdLineClientProcessExit)
 
 proc main*(cmdLineParams: CommandLineParams): LanguageServer =
-  debug "Starting nimlangserver", params = cmdLineParams
+  debug "Starting nimlangserver", version = LSPVersion, params = cmdLineParams
   #[
   `nimlangserver` supports both transports: stdio and socket. By default it uses stdio transport. 
     But we do construct a RPC socket server even in stdio mode, so that we can reuse the same code for both transports.

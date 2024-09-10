@@ -2,7 +2,7 @@ import macros, strformat,
   chronos, chronos/threadsync,
   os, sugar, sequtils, hashes, osproc,
   suggestapi, protocol/enums, protocol/types, with, tables, strutils, sets,
-  ./utils, chronicles, std/re, uri,
+  ./utils, chronicles, std/re, uri, std/setutils,
   json_serialization, std/json, streams, json_rpc/[servers/socketserver]
 
 proc getVersionFromNimble(): string =
@@ -87,9 +87,13 @@ type
     onStdReadSignal*: ThreadSignalPtr #used by the thread to notify it read from the std
     onMainReadSignal*: ThreadSignalPtr #used by the main thread to notify it read the value from the signal
     value*: cstring
-
+  
+  LspExtensionCapability* = enum #List of extensions this server support. Useful for clients
+   excRestartSuggest = "RestartSuggest"
+   
   LanguageServer* = ref object
     clientCapabilities*: ClientCapabilities
+    extensionCapabilities*: set[LspExtensionCapability]
     initializeParams*: InitializeParams
     notify*: NotifyAction
     call*: CallAction
@@ -148,6 +152,7 @@ proc initLs*(params: CommandLineParams, storageDir: string): LanguageServer =
     responseMap: newTable[string, Future[JsonNode]](),
     storageDir: storageDir,
     cmdLineClientProcessId: params.clientProcessId,
+    extensionCapabilities: LspExtensionCapability.items.toSet
   )
 
 proc getNimbleEntryPoints*(dumpInfo: NimbleDumpInfo, nimbleProjectPath: string): seq[string] =

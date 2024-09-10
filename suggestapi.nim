@@ -78,7 +78,7 @@ type
     openFiles*: OrderedSet[string]
     successfullCall*: bool
     errorCallback: NimsuggestCallback
-    process: Process
+    process*: Process
     port*: int
     root: string
     requestQueue: Deque[SuggestCall]
