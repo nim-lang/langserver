@@ -986,10 +986,14 @@ type
     openFiles*: seq[string]
     unknownFiles*: seq[string]
   
+  LspExtensionCapability* = enum #List of extensions this server support. Useful for clients
+    excRestartSuggest = "RestartSuggest"
+   
   NimLangServerStatus* = object
     version*: string
     nimsuggestInstances*: seq[NimSuggestStatus]
     openFiles*: seq[string]
+    extensionCapabilities*: seq[LspExtensionCapability]
 
   NimLangServerStatusParams* = object
   

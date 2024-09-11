@@ -88,9 +88,6 @@ type
     onMainReadSignal*: ThreadSignalPtr #used by the main thread to notify it read the value from the signal
     value*: cstring
   
-  LspExtensionCapability* = enum #List of extensions this server support. Useful for clients
-   excRestartSuggest = "RestartSuggest"
-   
   LanguageServer* = ref object
     clientCapabilities*: ClientCapabilities
     extensionCapabilities*: set[LspExtensionCapability]
@@ -269,6 +266,7 @@ proc showMessage*(ls: LanguageServer, message: string, typ: MessageType) {.raise
 
 proc getLspStatus*(ls: LanguageServer): NimLangServerStatus {.raises: [].} =
   result.version = LSPVersion
+  result.extensionCapabilities = ls.extensionCapabilities.toSeq
   for projectFile, futNs in ls.projectFiles:
     let futNs = ls.projectFiles.getOrDefault(projectFile, nil)
     if futNs.finished:
@@ -279,7 +277,7 @@ proc getLspStatus*(ls: LanguageServer): NimLangServerStatus {.raises: [].} =
           capabilities: ns.capabilities.toSeq,
           version: ns.version,
           path: ns.nimsuggestPath,
-          port: ns.port,
+          port: ns.port
         )
         for open in ns.openFiles:
           nsStatus.openFiles.add open
@@ -764,12 +762,13 @@ proc checkFile*(ls: LanguageServer, uri: string): Future[void] {.async.} =
   let
     path = uriToPath(uri)
     ns = await ls.tryGetNimsuggest(uri)
-    
-  let diagnostics = ns.get()    
-    .chkFile(path, ls.uriToStash(uri))
-    .await()
-
-  ls.progress(token, "end")
-
-  ls.sendDiagnostics(diagnostics, path)
+  
+  if ns.isSome:
+    let diagnostics = ns.get()    
+      .chkFile(path, ls.uriToStash(uri))
+      .await()
+    ls.progress(token, "end")
+    ls.sendDiagnostics(diagnostics, path)
+  else:
+    ls.progress(token, "end")
   
