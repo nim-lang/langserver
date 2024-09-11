@@ -218,6 +218,36 @@ proc status*(ls: LanguageServer, params: NimLangServerStatusParams): Future[NimL
   debug "Received status request"
   ls.getLspStatus()
 
+proc extensionCapabilities*(ls: LanguageServer, _: JsonNode): Future[seq[string]] {.async.} = 
+  ls.extensionCapabilities.toSeq.mapIt($it)
+
+proc extensionSuggest*(ls: LanguageServer, params: SuggestParams): Future[SuggestResult] {.async.} = 
+  debug "Extension Suggest ", params = params  
+  let projectFile = params.projectFile
+  if projectFile != "*" and projectFile notin ls.projectFiles:
+    error "Project file must exists ", params = params
+    return SuggestResult()
+  template restart() = 
+    ls.showMessage(fmt "Restarting nimsuggest {projectFile}", MessageType.Info)
+    ns.stop()
+    ls.createOrRestartNimsuggest(projectFile, projectFile.pathToUri)
+    ls.sendStatusChanged()
+    
+  case params.action:
+  of saRestart:
+    if projectFile == "*":
+      for projectFile, nsFut in ls.projectFiles:   
+        let ns = await nsFut 
+        restart
+    else:      
+      let ns = await ls.projectFiles[projectFile]
+      restart
+   
+    SuggestResult(actionPerformed: saRestart)
+  of saNone:
+    error "An action must be specified", params = params
+    SuggestResult()  
+
 proc typeDefinition*(ls: LanguageServer, params: TextDocumentPositionParams, id: int):
     Future[seq[Location]] {.async.} =
   with (params.position, params.textDocument):
