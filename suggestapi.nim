@@ -12,7 +12,9 @@ import osproc,
   chronicles,
   protocol/types,
   std/options,
-  chronos
+  chronos,
+  chronos/asyncproc,
+  stew/[byteutils]
 
 const REQUEST_TIMEOUT* = 120000
 const HighestSupportedNimSuggestProtocolVersion = 4
@@ -78,7 +80,7 @@ type
     openFiles*: OrderedSet[string]
     successfullCall*: bool
     errorCallback: NimsuggestCallback
-    process*: Process
+    process*: AsyncProcessRef
     port*: int
     root: string
     requestQueue: Deque[SuggestCall]
@@ -224,30 +226,11 @@ proc markFailed(self: Nimsuggest, errMessage: string) {.raises: [].} =
   if self.errorCallback != nil:
     self.errorCallback(self)
 
-proc readPort(param: tuple[ns: ptr NimSuggestImpl, process: Process]) {.thread.} =
-  try:
-    var line = param.process.outputStream.readLine & "\n"
-    param.ns.port = line.strip.parseInt
-  except CatchableError:
-    error "Failed to read nimsuggest port"
-    var msg = failedToken & "\n"
-    param.ns.port = -1
-
-proc logStderr(param: tuple[root: string, process: Process]) {.thread.} =
-  try:
-    var line = param.process.errorStream.readLine
-    while line != "\0":
-      stderr.writeLine &"******NIM SUGGEST ERRROR***** {param.root} \n"
-      stderr.writeLine fmt ">> {line}"
-      line = param.process.errorStream.readLine
-  except IOError:
-    discard
-
 proc stop*(self: Nimsuggest) =
   debug "Stopping nimsuggest for ", root = self.root
   try:
-    self.process.kill()
-    self.process.close()
+    let res = self.process.kill()
+    debug "Stopped nimsuggest ", res = res
   except Exception as ex:
     writeStackTrace(ex)
 
@@ -306,14 +289,10 @@ proc getNimsuggestCapabilities*(nimsuggestPath: string):
       if cap.isSome:
         result.incl(cap.get)
 
-proc waitUntilPortIsRead(ns: NimSuggest): Future[void] {.async.} =
-  while ns.port == 0:
-    await sleepAsync(10)
-
-  if ns.port == -1:
-    ns.markFailed "Failed to start nimsuggest"
-  else:
-    debug "Started nimsuggest", port = ns.port, root = ns.root
+proc logNsError(ns: NimSuggest) {.async.} = 
+  let err = string.fromBytes(ns.process.stderrStream.read().await)
+  error "NimSuggest Error (stderr)", err = err
+  ns.markFailed(err)
 
 proc createNimsuggest*(root: string,
                        nimsuggestPath: string,
@@ -324,13 +303,6 @@ proc createNimsuggest*(root: string,
                        workingDir = getCurrentDir(),
                        enableLog: bool = false,
                        enableExceptionInlayHints: bool = false): Future[Nimsuggest] {.async, gcsafe.} =
-  var
-    thread: Thread[tuple[ns: ptr NimSuggestImpl, process: Process]]
-    stderrThread: Thread[tuple[root: string, process: Process]]
-
-  info "Starting nimsuggest", root = root, timeout = timeout, path = nimsuggestPath, 
-    workingDir = workingDir
-
   result = Nimsuggest()
   result.requestQueue = Deque[SuggestCall]()
   result.root = root
@@ -340,11 +312,14 @@ proc createNimsuggest*(root: string,
   result.nimSuggestPath = nimsuggestPath
   result.version = version
 
+  info "Starting nimsuggest", root = root, timeout = timeout, path = nimsuggestPath, 
+    workingDir = workingDir
+
   if nimsuggestPath != "":
     result.protocolVersion = detectNimsuggestVersion(root, nimsuggestPath, workingDir)
     if result.protocolVersion > HighestSupportedNimSuggestProtocolVersion:
       result.protocolVersion = HighestSupportedNimSuggestProtocolVersion
-    var
+    var      
       args = @[root, "--v" & $result.protocolVersion, "--autobind"]
     if result.protocolVersion >= 4:
       args.add("--clientProcessId:" & $getCurrentProcessId())
@@ -357,18 +332,13 @@ proc createNimsuggest*(root: string,
         args.add("--exceptionInlayHints:on")
       else:
         args.add("--exceptionInlayHints:off")
-    result.process = startProcess(command = nimsuggestPath,
-                                  workingDir = workingDir,
-                                  args = args,
-                                  options = {poUsePath})
-    #TODO better use startProcess from chronos so we dont need to spawn a thread
-    # all this is needed to avoid the need to block on the main thread.
-    createThread(thread, readPort, (ns: cast[ptr NimSuggestImpl](result), process: result.process))
-
-    # copy stderr of log
-    createThread(stderrThread, logStderr, (root: root, process: result.process))
-    await waitUntilPortIsRead(result)   
-
+    result.process =
+      await startProcess(nimsuggestPath, arguments = args, options = { UsePath }, 
+            stdoutHandle = AsyncProcess.Pipe,
+            stderrHandle = AsyncProcess.Pipe)
+            
+    asyncSpawn logNsError(result)
+    result.port = (await result.process.stdoutStream.readLine(sep="\n")).parseInt 
   else:
     error "Unable to start nimsuggest. Unable to find binary on the $PATH", nimsuggestPath = nimsuggestPath
     result.markFailed fmt "Unable to start nimsuggest. `{nimsuggestPath}` is not present on the PATH"

@@ -1,4 +1,4 @@
-import std/[unicode, uri, strformat, os, strutils, options, json, jsonutils, sugar]
+import std/[unicode, uri, strformat, os, strutils, options, json, jsonutils, sugar, net]
 import chronos, chronicles
 import "$nim/compiler/pathutils"
 import json_rpc/private/jrpc_sys
@@ -278,3 +278,11 @@ proc withTimeout*[T](fut: Future[T], timeout: int = 500): Future[Option[T]] {.as
   let timeoutFut = sleepAsync(timeout).map(() => none(T))
   let optFut = fut.map((r: T) => some r)
   await either(optFut, timeoutFut)
+
+proc getNextFreePort*(): Port= 
+  let s = newSocket()
+  s.bindAddr(Port(0), "localhost")
+  let (_, port) = s.getLocalAddr
+  s.close()
+  port
+  
