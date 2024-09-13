@@ -14,7 +14,8 @@ requires "nim == 2.0.8",
          "with",
          "chronicles",
          "serialization",
-         "json_serialization"
+         "json_serialization",
+         "stew"
 
 
 --path:"."

@@ -2,10 +2,11 @@ import ../[
   nimlangserver, ls, lstransports, utils
 ]
 import ../protocol/[enums, types]
-import std/[options, unittest, json, os, jsonutils, sequtils, strutils, sugar, strformat, osproc]
+import std/[options, unittest, json, os, jsonutils, sequtils, strutils, sugar, strformat]
 import json_rpc/[rpcclient]
 import chronicles
 import lspsocketclient
+import chronos/asyncproc
 
 
 suite "Nimlangserver":
@@ -50,10 +51,10 @@ suite "Nimlangserver":
     client.notify("textDocument/didOpen",
                   %createDidOpenParams("projects/hw/useRoot.nim"))
     
-    let prevSuggestPid = ls.projectFiles[hwAbsFile].waitFor.process.processID
+    let prevSuggestPid = ls.projectFiles[hwAbsFile].waitFor.process.pid
     let suggestParams = SuggestParams(action: saRestart, projectFile: hwAbsFile)
     let suggestRes = client.call("extension/suggest", %suggestParams).waitFor
-    let suggestPid = ls.projectFiles[hwAbsFile].waitFor.process.processID
+    let suggestPid = ls.projectFiles[hwAbsFile].waitFor.process.pid
 
     check prevSuggestPid != suggestPid
     
