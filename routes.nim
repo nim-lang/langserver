@@ -223,10 +223,17 @@ proc extensionCapabilities*(ls: LanguageServer, _: JsonNode): Future[seq[string]
 
 proc extensionSuggest*(ls: LanguageServer, params: SuggestParams): Future[SuggestResult] {.async.} = 
   debug "Extension Suggest ", params = params  
-  let projectFile = params.projectFile
-  if projectFile != "*" and projectFile notin ls.projectFiles:
-    error "Project file must exists ", params = params
-    return SuggestResult()
+  var projectFile = params.projectFile
+  if projectFile != "*" and projectFile notin ls.projectFiles:   
+    #test if just a regular file
+    let uri = projectFile.pathToUri     
+    if uri in ls.openFiles:
+      let openFile = ls.openFiles[uri]
+      projectFile = await openFile.projectFile
+      debug "[ExtensionSuggest] Found project file for ", file = params.projectFile, project = projectFile
+    else:
+      error "Project file must exists ", params = params
+      return SuggestResult()
   template restart() = 
     ls.showMessage(fmt "Restarting nimsuggest {projectFile}", MessageType.Info)
     ns.stop()
