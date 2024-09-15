@@ -998,7 +998,7 @@ type
   NimLangServerStatusParams* = object
   
   SuggestAction* = enum
-   saNone = "none", saRestart = "restart"
+   saNone = "none", saRestart = "restart", saRestartAll = "restartAll"
   
   SuggestParams* = object
     action*: SuggestAction

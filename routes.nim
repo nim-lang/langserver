@@ -222,9 +222,9 @@ proc extensionCapabilities*(ls: LanguageServer, _: JsonNode): Future[seq[string]
   ls.extensionCapabilities.toSeq.mapIt($it)
 
 proc extensionSuggest*(ls: LanguageServer, params: SuggestParams): Future[SuggestResult] {.async.} = 
-  debug "Extension Suggest ", params = params  
-  var projectFile = params.projectFile
-  if projectFile != "*" and projectFile notin ls.projectFiles:   
+  debug "[Extension Suggest]", params = params  
+  var projectFile = params.projectFile  
+  if projectFile != "" and projectFile notin ls.projectFiles:   
     #test if just a regular file
     let uri = projectFile.pathToUri     
     if uri in ls.openFiles:
@@ -234,23 +234,23 @@ proc extensionSuggest*(ls: LanguageServer, params: SuggestParams): Future[Sugges
     else:
       error "Project file must exists ", params = params
       return SuggestResult()
-  template restart() = 
+  template restart(ls: LanguageServer, ns: NimSuggest) = 
     ls.showMessage(fmt "Restarting nimsuggest {projectFile}", MessageType.Info)
     ns.stop()
     ls.createOrRestartNimsuggest(projectFile, projectFile.pathToUri)
     ls.sendStatusChanged()
     
   case params.action:
-  of saRestart:
-    if projectFile == "*":
-      for projectFile, nsFut in ls.projectFiles:   
-        let ns = await nsFut 
-        restart
-    else:      
-      let ns = await ls.projectFiles[projectFile]
-      restart
-   
+  of saRestart:   
+    let ns = await ls.projectFiles[projectFile]
+    ls.restart(ns)
     SuggestResult(actionPerformed: saRestart)
+  of saRestartAll:
+    let projectFiles = ls.projectFiles.keys.toSeq()
+    for projectFile in projectFiles:           
+      let ns = await ls.projectFiles[projectFile]
+      ls.restart(ns)
+    SuggestResult(actionPerformed: saRestartAll)
   of saNone:
     error "An action must be specified", params = params
     SuggestResult()  
