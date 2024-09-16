@@ -310,18 +310,13 @@ proc sendStatusChanged*(ls: LanguageServer) {.raises: [].}  =
 
 proc addProjectFileToPendingRequest*(ls: LanguageServer, id: uint, uri: string) {.async.}= 
   if id in ls.pendingRequests:
-    debug "[addProjectFileToPendingRequest] ", uri = uri, path = uriToPath(uri)
     var projectFile = uri.uriToPath()
     if projectFile notin ls.projectFiles:
       if uri in ls.openFiles:
-        debug "[addProjectFileToPendingRequest] uri in ls.openFiles", uri = uri, path = uriToPath(uri)
-
         projectFile = await ls.openFiles[uri].projectFile 
 
     ls.pendingRequests[id].projectFile = some projectFile 
     ls.sendStatusChanged
-  else:
-     debug "[addProjectFileToPendingRequest] id not in pendingRequests"
 
 proc requiresDynamicRegistrationForDidChangeConfiguration(ls: LanguageServer): bool =
   ls.clientCapabilities.workspace.isSome and
