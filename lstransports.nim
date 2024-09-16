@@ -1,6 +1,6 @@
 import json_rpc/[servers/socketserver, private/jrpc_sys, jsonmarshal, rpcclient, router]
 import chronicles, chronos
-import std/[syncio, os, json, strutils, strformat, streams, oids, sequtils]
+import std/[syncio, os, json, strutils, strformat, streams, oids, sequtils, times]
 import ls, utils
 import protocol/types, chronos/threadsync
 
@@ -68,9 +68,15 @@ proc wrapRpc*[T](
 proc addRpcToCancellable*(ls: LanguageServer, rpc: Rpc): Rpc =
   return proc(params: RequestParamsRx): Future[JsonString] {.gcsafe, raises:[].} =
     try:
+      let idRequest = get[uint](params, "idRequest")
+      let name = get[string](params, "method")
+      ls.pendingRequests[idRequest] = PendingRequest(id: idRequest, name: name, time: now())
+      ls.sendStatusChanged
       var fut = rpc(params)
-      let idRequest = get[int](params, "idRequest")
-      ls.cancelableRequests[idRequest] = fut
+      ls.pendingRequests[idRequest].request = fut #we need to add it before because the rpc may access to the pendingRequest to set the projectFile
+      fut.addCallback proc (d: pointer) = 
+        ls.pendingRequests.del idRequest
+        ls.sendStatusChanged
       return fut
     except KeyError as ex:
       error "IdRequest not found in the request params"
@@ -164,6 +170,7 @@ proc processMessage(ls: LanguageServer, message: string) {.raises:[].} =
       if req.params.kind == rpNamed and req.id.kind == riNumber:
         #Some requests have no id but for others we need to pass the id to the wrapRpc as the id information is lost in the rpc proc
         req.params.named.add ParamDescNamed(name: "idRequest", value: JsonString($(%req.id.num)))
+        req.params.named.add ParamDescNamed(name: "method", value: JsonString($(contentJson["method"])))
       let rpc = ls.srv.router.procs.getOrDefault(req.meth.get)
       if rpc.isNil:
         error "[Processsing Message] rpc method not found: ", msg = req.meth.get

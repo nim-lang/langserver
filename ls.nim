@@ -1,9 +1,9 @@
 import macros, strformat,
   chronos, chronos/threadsync,
-  os, sugar, sequtils, hashes, osproc,
+  os, sugar, hashes, osproc,
   suggestapi, protocol/enums, protocol/types, with, tables, strutils, sets,
-  ./utils, chronicles, std/re, uri, std/setutils,
-  json_serialization, std/json, streams, json_rpc/[servers/socketserver]
+  ./utils, chronicles, std/[re, json, streams, sequtils, setutils, times], uri,
+  json_serialization, json_rpc/[servers/socketserver]
 
 proc getVersionFromNimble(): string =
   #We should static run nimble dump instead
@@ -88,6 +88,13 @@ type
     onMainReadSignal*: ThreadSignalPtr #used by the main thread to notify it read the value from the signal
     value*: cstring
   
+  PendingRequest* = object
+    id*: uint
+    name*: string
+    request*: Future[JsonString]
+    projectFile*: Option[string]     
+    time*: DateTime
+
   LanguageServer* = ref object
     clientCapabilities*: ClientCapabilities
     extensionCapabilities*: set[LspExtensionCapability]
@@ -111,7 +118,7 @@ type
     entryPoints*: seq[string]    
     responseMap*: TableRef[string, Future[JsonNode]] #id to future. Represents the pending requests as result of calling ls.call
     srv*: RpcSocketServer#Both modes uses it to store the routes. Only actually started in socket mode
-    cancelableRequests*: Table[int, Future[JsonString]] #id to future. Each request is added here so we can cancel them later in the cancelRequest. Only requests, not notifications
+    pendingRequests*: Table[uint, PendingRequest] #id to future. Each request is added here so we can cancel them later in the cancelRequest. Only requests, not notifications
     case transportMode*: TransportMode
     of socket:
       socketTransport*: StreamTransport 
@@ -283,17 +290,38 @@ proc getLspStatus*(ls: LanguageServer): NimLangServerStatus {.raises: [].} =
           nsStatus.openFiles.add open
         result.nimsuggestInstances.add nsStatus
       except CatchableError:
-        discard
-
+        discard  
   for openFile in ls.openFiles.keys:
     let openFilePath = openFile.uriToPath
     result.openFiles.add openFilePath
 
+  result.pendingRequests = ls.pendingRequests.values.toSeq
+    .mapIt(
+      PendingRequestStatus(
+        name: it.name, 
+        projectFile: it.projectFile.get(""),
+        time: $(now() - it.time)
+        )
+    )
 
 proc sendStatusChanged*(ls: LanguageServer) {.raises: [].}  =
   let status: NimLangServerStatus = ls.getLspStatus()
   ls.notify("extension/statusUpdate", %* status)
 
+proc addProjectFileToPendingRequest*(ls: LanguageServer, id: uint, uri: string) {.async.}= 
+  if id in ls.pendingRequests:
+    debug "[addProjectFileToPendingRequest] ", uri = uri, path = uriToPath(uri)
+    var projectFile = uri.uriToPath()
+    if projectFile notin ls.projectFiles:
+      if uri in ls.openFiles:
+        debug "[addProjectFileToPendingRequest] uri in ls.openFiles", uri = uri, path = uriToPath(uri)
+
+        projectFile = await ls.openFiles[uri].projectFile 
+
+    ls.pendingRequests[id].projectFile = some projectFile 
+    ls.sendStatusChanged
+  else:
+     debug "[addProjectFileToPendingRequest] id not in pendingRequests"
 
 proc requiresDynamicRegistrationForDidChangeConfiguration(ls: LanguageServer): bool =
   ls.clientCapabilities.workspace.isSome and
