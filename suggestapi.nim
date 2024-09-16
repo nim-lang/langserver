@@ -79,7 +79,7 @@ type
     needsCheckProject*: bool
     openFiles*: OrderedSet[string]
     successfullCall*: bool
-    errorCallback: NimsuggestCallback
+    errorCallback*: NimsuggestCallback
     process*: AsyncProcessRef
     port*: int
     root: string
