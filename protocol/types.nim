@@ -976,6 +976,11 @@ type
     nsCon = "con",
     nsExceptionInlayHints = "exceptionInlayHints"
     nsUnknownFile = "unknownFile"
+  
+  PendingRequestStatus* = object
+    name*: string
+    projectFile*: string
+    time*: string 
 
   NimSuggestStatus* = object
     projectFile*: string
@@ -994,6 +999,7 @@ type
     nimsuggestInstances*: seq[NimSuggestStatus]
     openFiles*: seq[string]
     extensionCapabilities*: seq[LspExtensionCapability]
+    pendingRequests*: seq[PendingRequestStatus]
 
   NimLangServerStatusParams* = object
   
