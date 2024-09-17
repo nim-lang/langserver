@@ -114,8 +114,8 @@ proc toCompletionItem(suggest: Suggest): CompletionItem =
 proc completion*(ls: LanguageServer, params: CompletionParams, id: int):
     Future[seq[CompletionItem]] {.async.} =    
   with (params.position, params.textDocument):
-    let
-      nimsuggest = await ls.tryGetNimsuggest(uri)
+    asyncSpawn ls.addProjectFileToPendingRequest(id.uint, uri)
+    let nimsuggest = await ls.tryGetNimsuggest(uri)
     if nimsuggest.isNone():
       return @[]
     let
@@ -143,6 +143,7 @@ proc toLocation*(suggest: Suggest): Location =
 proc definition*(ls: LanguageServer, params: TextDocumentPositionParams, id: int):
     Future[seq[Location]] {.async.} =
   with (params.position, params.textDocument):
+    asyncSpawn ls.addProjectFileToPendingRequest(id.uint, uri)
     let ns = await ls.tryGetNimsuggest(uri)
     if ns.isNone: return @[]
     result = 
@@ -157,6 +158,7 @@ proc definition*(ls: LanguageServer, params: TextDocumentPositionParams, id: int
 proc declaration*(ls: LanguageServer, params: TextDocumentPositionParams, id: int):
     Future[seq[Location]] {.async.} =
   with (params.position, params.textDocument):
+    asyncSpawn ls.addProjectFileToPendingRequest(id.uint, uri)
     let ns = await ls.tryGetNimsuggest(uri)
     if ns.isNone: return @[]
     result = ns.get
@@ -259,6 +261,7 @@ proc extensionSuggest*(ls: LanguageServer, params: SuggestParams): Future[Sugges
 proc typeDefinition*(ls: LanguageServer, params: TextDocumentPositionParams, id: int):
     Future[seq[Location]] {.async.} =
   with (params.position, params.textDocument):
+    asyncSpawn ls.addProjectFileToPendingRequest(id.uint, uri)
     let ns = await ls.tryGetNimSuggest(uri)
     if ns.isNone: return @[]
     result = ns.get
@@ -280,6 +283,7 @@ proc toSymbolInformation*(suggest: Suggest): SymbolInformation =
 proc documentSymbols*(ls: LanguageServer, params: DocumentSymbolParams, id: int):
     Future[seq[SymbolInformation]] {.async.} =
   let uri = params.textDocument.uri
+  asyncSpawn ls.addProjectFileToPendingRequest(id.uint, uri)
   let ns = await ls.tryGetNimsuggest(uri)
   if ns.isSome:
     ns.get()
@@ -292,7 +296,6 @@ proc documentSymbols*(ls: LanguageServer, params: DocumentSymbolParams, id: int)
 proc scheduleFileCheck(ls: LanguageServer, uri: string) {.gcsafe, raises: [].} =
   if not ls.getWorkspaceConfiguration().waitFor().autoCheckFile.get(true):
     return
-
   # schedule file check after the file is modified
   let fileData = ls.openFiles.getOrDefault(uri)
   if fileData.cancelFileCheck != nil and not fileData.cancelFileCheck.finished:
@@ -341,6 +344,7 @@ proc toMarkedStrings(suggest: Suggest): seq[MarkedStringOption] =
 proc hover*(ls: LanguageServer, params: HoverParams, id: int):
     Future[Option[Hover]] {.async.} =
   with (params.position, params.textDocument):
+    asyncSpawn ls.addProjectFileToPendingRequest(id.uint, uri)
     let
       nimsuggest = await ls.tryGetNimsuggest(uri)
     if nimsuggest.isNone: 
@@ -375,6 +379,7 @@ proc references*(ls: LanguageServer, params: ReferenceParams):
 proc prepareRename*(ls: LanguageServer, params: PrepareRenameParams,
                    id: int): Future[JsonNode] {.async.} =
   with (params.position, params.textDocument):
+    asyncSpawn ls.addProjectFileToPendingRequest(id.uint, uri)
     let
       nimsuggest = await ls.tryGetNimsuggest(uri)
     if nimsuggest.isNone: return newJNull()
@@ -395,7 +400,7 @@ proc prepareRename*(ls: LanguageServer, params: PrepareRenameParams,
     return newJNull()
 
 proc rename*(ls: LanguageServer, params: RenameParams, id: int): Future[WorkspaceEdit] {.async.} =
-  # We reuse the references command as to not duplicate it
+  # We reuse the references command as to not duplicate it  
   let references = await ls.references(ReferenceParams(
     context: ReferenceContext(includeDeclaration: true),
     textDocument: params.textDocument,
@@ -465,6 +470,7 @@ proc toInlayHint(suggest: SuggestInlayHint; configuration: NlsConfig): InlayHint
 proc inlayHint*(ls: LanguageServer, params: InlayHintParams, id: int): Future[seq[InlayHint]] {.async.} =
   debug "inlayHint received..."
   with (params.range, params.textDocument):
+    asyncSpawn ls.addProjectFileToPendingRequest(id.uint, uri)
     let
       configuration = ls.getWorkspaceConfiguration.await()
       nimsuggest = await ls.tryGetNimsuggest(uri)
@@ -579,6 +585,7 @@ proc signatureHelp*(ls: LanguageServer, params: SignatureHelpParams, id: int):
     #Some clients doesnt support signatureHelp
       return none[SignatureHelp]()
     with (params.position, params.textDocument):      
+      asyncSpawn ls.addProjectFileToPendingRequest(id.uint, uri)
       let nimsuggest = await ls.tryGetNimsuggest(uri)
       if nimsuggest.isNone: return none[SignatureHelp]()
       if nsCon notin nimSuggest.get.capabilities:
@@ -618,6 +625,7 @@ proc documentHighlight*(ls: LanguageServer, params: TextDocumentPositionParams, 
     Future[seq[DocumentHighlight]] {.async.} =
 
   with (params.position, params.textDocument):
+    asyncSpawn ls.addProjectFileToPendingRequest(id.uint, uri)
     let
       nimsuggest = await ls.tryGetNimsuggest(uri)
     if nimsuggest.isNone: return @[]
@@ -661,12 +669,14 @@ proc initialized*(ls: LanguageServer, _: JsonNode):
 proc cancelRequest*(ls: LanguageServer, params: CancelParams):
     Future[void] {.async.} =
   if params.id.isSome:
-    let
-      id = params.id.get.getInt
-      cancelRequest = ls.cancelableRequests.getOrDefault(id)
-    if cancelRequest != nil:
+    let id = params.id.get.getInt.uint
+    if id notin ls.pendingRequests: return
+    let pendingRequest = ls.pendingRequests[id]
+    if pendingRequest.request != nil:
       debug "Cancelling: ", id = id    
-      cancelRequest.cancelSoon() 
+      await pendingRequest.request.cancelAndWait() 
+      ls.pendingRequests.del id
+      ls.sendStatusChanged
 
 proc setTrace*(ls: LanguageServer, params: SetTraceParams) {.async.} =
   debug "setTrace", value = params.value
