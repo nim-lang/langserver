@@ -121,11 +121,12 @@ proc main*(cmdLineParams: CommandLineParams): LanguageServer =
 
   result.srv.registerRoutes(result)
   result.registerProcMonitor()
-  asyncSpawn tickLs(result)
 
 when isMainModule: 
   try:
     let ls = main(handleParams())
+    asyncSpawn ls.tickLs()
+
     when defined(posix):
       onSignal(SIGINT, SIGTERM, SIGHUP, SIGQUIT, SIGPIPE):
         debug "Terminated via signal", sig
