@@ -100,6 +100,12 @@ proc registerProcMonitor(ls: LanguageServer) =
 
     hookAsyncProcMonitor(ls.cmdLineClientProcessId.get, onCmdLineClientProcessExit)
 
+
+proc tickLs(ls: LanguageServer, time = 1.seconds) {.async.} = 
+  await ls.tick()
+  await sleepAsync(time)
+  await ls.tickLs()
+
 proc main*(cmdLineParams: CommandLineParams): LanguageServer =
   debug "Starting nimlangserver", version = LSPVersion, params = cmdLineParams
   #[
@@ -119,6 +125,8 @@ proc main*(cmdLineParams: CommandLineParams): LanguageServer =
 when isMainModule: 
   try:
     let ls = main(handleParams())
+    asyncSpawn ls.tickLs()
+
     when defined(posix):
       onSignal(SIGINT, SIGTERM, SIGHUP, SIGQUIT, SIGPIPE):
         debug "Terminated via signal", sig

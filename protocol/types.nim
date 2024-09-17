@@ -981,6 +981,7 @@ type
     name*: string
     projectFile*: string
     time*: string 
+    state*: string
 
   NimSuggestStatus* = object
     projectFile*: string
