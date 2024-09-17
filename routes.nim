@@ -2,8 +2,8 @@ import macros, strformat, chronos,
   json_rpc/server, os, sugar, sequtils,
   suggestapi, protocol/enums, protocol/types, with, tables, strutils,
   ./utils, chronicles,
-  asyncprocmonitor, std/strscans, json_serialization,
-  std/json, std/parseutils, ls
+  asyncprocmonitor, json_serialization,
+  std/[strscans, times, json, parseutils], ls
 
 #routes
 proc initialize*(p: tuple[ls: LanguageServer, onExit: OnExitCallback], params: InitializeParams):
@@ -321,7 +321,6 @@ proc scheduleFileCheck(ls: LanguageServer, uri: string) {.gcsafe, raises: [].} =
           discard 
         # except Exception:
         #   discard
-
 
 proc toMarkedStrings(suggest: Suggest): seq[MarkedStringOption] =
   var label = suggest.qualifiedPath.join(".")
@@ -672,11 +671,11 @@ proc cancelRequest*(ls: LanguageServer, params: CancelParams):
     let id = params.id.get.getInt.uint
     if id notin ls.pendingRequests: return
     let pendingRequest = ls.pendingRequests[id]
-    if pendingRequest.request != nil:
+    if ls.pendingRequests[id].request != nil:
       debug "Cancelling: ", id = id    
-      await pendingRequest.request.cancelAndWait() 
-      ls.pendingRequests.del id
-      ls.sendStatusChanged
+      await ls.pendingRequests[id].request.cancelAndWait() 
+      ls.pendingRequests[id].state = prsCancelled
+      ls.pendingRequests[id].endTime = now()
 
 proc setTrace*(ls: LanguageServer, params: SetTraceParams) {.async.} =
   debug "setTrace", value = params.value

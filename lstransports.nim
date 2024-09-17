@@ -70,13 +70,17 @@ proc addRpcToCancellable*(ls: LanguageServer, rpc: Rpc): Rpc =
     try:
       let idRequest = get[uint](params, "idRequest")
       let name = get[string](params, "method")
-      ls.pendingRequests[idRequest] = PendingRequest(id: idRequest, name: name, time: now())
+      ls.pendingRequests[idRequest] = PendingRequest(id: idRequest, name: name, startTime: now(), state: prsOnGoing)
       ls.sendStatusChanged
       var fut = rpc(params)
       ls.pendingRequests[idRequest].request = fut #we need to add it before because the rpc may access to the pendingRequest to set the projectFile
       fut.addCallback proc (d: pointer) = 
-        ls.pendingRequests.del idRequest
-        ls.sendStatusChanged
+        try:
+          ls.pendingRequests[idRequest].state = prsComplete
+          ls.pendingRequests[idRequest].endTime = now()
+          ls.sendStatusChanged
+        except KeyError:
+          error "Error completing pending requests. Id not found in pending requests" 
       return fut
     except KeyError as ex:
       error "IdRequest not found in the request params"

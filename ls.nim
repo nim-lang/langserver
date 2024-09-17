@@ -88,12 +88,17 @@ type
     onMainReadSignal*: ThreadSignalPtr #used by the main thread to notify it read the value from the signal
     value*: cstring
   
+  PendingRequestState* = enum
+    prsOnGoing = "OnGoing", prsCancelled = "Cancelled", prsComplete = "Complete"
+
   PendingRequest* = object
     id*: uint
     name*: string
     request*: Future[JsonString]
     projectFile*: Option[string]     
-    time*: DateTime
+    startTime*: DateTime
+    endTime*: DateTime
+    state*: PendingRequestState
 
   LanguageServer* = ref object
     clientCapabilities*: ClientCapabilities
@@ -271,6 +276,16 @@ proc showMessage*(ls: LanguageServer, message: string, typ: MessageType) {.raise
   except CatchableError:
     discard
 
+proc toPendingRequestStatus(pr: PendingRequest): PendingRequestStatus = 
+  result.time = case pr.state:
+    of prsOnGoing:
+      $(now() - pr.startTime)
+    else:
+      $(pr.endTime - pr.startTime)
+  result.name = pr.name
+  result.projectFile = pr.projectFile.get("")
+  result.state = $pr.state
+
 proc getLspStatus*(ls: LanguageServer): NimLangServerStatus {.raises: [].} =
   result.version = LSPVersion
   result.extensionCapabilities = ls.extensionCapabilities.toSeq
@@ -295,14 +310,7 @@ proc getLspStatus*(ls: LanguageServer): NimLangServerStatus {.raises: [].} =
     let openFilePath = openFile.uriToPath
     result.openFiles.add openFilePath
 
-  result.pendingRequests = ls.pendingRequests.values.toSeq
-    .mapIt(
-      PendingRequestStatus(
-        name: it.name, 
-        projectFile: it.projectFile.get(""),
-        time: $(now() - it.time)
-        )
-    )
+  result.pendingRequests = ls.pendingRequests.values.toSeq.map(toPendingRequestStatus)
 
 proc sendStatusChanged*(ls: LanguageServer) {.raises: [].}  =
   let status: NimLangServerStatus = ls.getLspStatus()
@@ -795,3 +803,18 @@ proc checkFile*(ls: LanguageServer, uri: string): Future[void] {.async.} =
   else:
     ls.progress(token, "end")
   
+proc removeCompletedPendingRequests(ls: LanguageServer, maxTimeAfterRequestWasCompleted = initDuration(seconds = 10)) = 
+  var toRemove = newSeq[uint]()
+  for id, pr in ls.pendingRequests:
+    if pr.state != prsOnGoing:
+      let passedTime = now() - pr.endTime
+      if passedTime > maxTimeAfterRequestWasCompleted:
+        toRemove.add id
+  
+  for id in toRemove:
+    ls.pendingRequests.del id  
+  
+proc tick*(ls: LanguageServer): Future[void] {.async.} = 
+  # debug "Ticking at ", now = now(), prs = ls.pendingRequests.len
+  ls.removeCompletedPendingRequests()
+  ls.sendStatusChanged
