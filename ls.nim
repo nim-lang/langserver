@@ -107,7 +107,7 @@ type
     notify*: NotifyAction
     call*: CallAction
     onExit*: OnExitCallback
-    projectFiles*: Table[string, Future[Nimsuggest]]
+    projectFiles*: Table[string, Project]
     openFiles*: Table[string, NlsFileInfo]
     workspaceConfiguration*: Future[JsonNode]
     prevWorkspaceConfiguration*: Future[JsonNode]
@@ -289,13 +289,13 @@ proc toPendingRequestStatus(pr: PendingRequest): PendingRequestStatus =
 proc getLspStatus*(ls: LanguageServer): NimLangServerStatus {.raises: [].} =
   result.version = LSPVersion
   result.extensionCapabilities = ls.extensionCapabilities.toSeq
-  for projectFile, futNs in ls.projectFiles:
-    let futNs = ls.projectFiles.getOrDefault(projectFile, nil)
+  for project in ls.projectFiles.values:
+    let futNs = project.ns
     if futNs.finished:
       try:
         var ns = futNs.read
         var nsStatus = NimSuggestStatus(
-          projectFile: projectFile,
+          projectFile: project.file,
           capabilities: ns.capabilities.toSeq,
           version: ns.version,
           path: ns.nimsuggestPath,
@@ -628,7 +628,7 @@ proc createOrRestartNimsuggest*(ls: LanguageServer, projectFile: string, uri = "
         ls.sendStatusChanged()
 
 
-      nimsuggestFut = createNimsuggest(projectFile, nimsuggestPath, version,
+      projectNext = waitFor createNimsuggest(projectFile, nimsuggestPath, version,
                                       timeout, restartCallback, errorCallback, workingDir, configuration.logNimsuggest.get(false),
                                       configuration.exceptionHintsEnabled)
       token = fmt "Creating nimsuggest for {projectFile}"
@@ -636,16 +636,15 @@ proc createOrRestartNimsuggest*(ls: LanguageServer, projectFile: string, uri = "
     ls.workDoneProgressCreate(token)
 
     if ls.projectFiles.hasKey(projectFile):
-      var nimsuggestData = ls.projectFiles[projectFile]
-      nimSuggestData.addCallback() do (fut: Future[Nimsuggest]) -> void:
-        fut.read.stop()
-      ls.projectFiles[projectFile] = nimsuggestFut
+      var project = ls.projectFiles[projectFile]
+      project.stop()
+      ls.projectFiles[projectFile] = projectNext
       ls.progress(token, "begin", fmt "Restarting nimsuggest for {projectFile}")
     else:
       ls.progress(token, "begin", fmt "Creating nimsuggest for {projectFile}")
-      ls.projectFiles[projectFile] = nimsuggestFut
+      ls.projectFiles[projectFile] = projectNext
 
-    nimsuggestFut.addCallback do (fut: Future[Nimsuggest]):
+    projectNext.ns.addCallback do (fut: Future[Nimsuggest]):
       if fut.read.failed:
         let msg = fut.read.errorMessage
         ls.showMessage(fmt "Nimsuggest initialization for {projectFile} failed with: {msg}",
@@ -667,8 +666,8 @@ proc getNimsuggestInner(ls: LanguageServer, uri: string): Future[Nimsuggest] {.a
   if not ls.projectFiles.hasKey(projectFile):
     ls.createOrRestartNimsuggest(projectFile, uri)
 
-  ls.lastNimsuggest = ls.projectFiles[projectFile]
-  return await ls.projectFiles[projectFile]
+  ls.lastNimsuggest = ls.projectFiles[projectFile].ns
+  return await ls.projectFiles[projectFile].ns
 
 proc tryGetNimsuggest*(ls: LanguageServer, uri: string): Future[Option[Nimsuggest]] {.async.} =
   if uri notin ls.openFiles:
@@ -738,9 +737,8 @@ proc stopNimsuggestProcesses*(ls: LanguageServer) {.async.} =
   if not ls.childNimsuggestProcessesStopped:
     debug "stopping child nimsuggest processes"
     ls.childNimsuggestProcessesStopped = true
-    for ns in ls.projectFiles.values:
-      let ns = await ns
-      ns.stop()
+    for project in ls.projectFiles.values:
+      project.stop()
   else:
     debug "child nimsuggest processes already stopped: CHECK!"
 
@@ -764,7 +762,7 @@ proc getProjectFile*(fileUri: string, ls: LanguageServer): Future[string] {.asyn
 
   result = ls.getProjectFileAutoGuess(fileUri)
   if result in ls.projectFiles:
-    let ns = await ls.projectFiles[result]
+    let ns = await ls.projectFiles[result].ns
     let isKnown = await ns.isKnown(fileUri)
     if ns.canHandleUnknown and not isKnown:
       debug "File is not known by nimsuggest", uri = fileUri, projectFile = result

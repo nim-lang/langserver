@@ -12,6 +12,14 @@ suite "Nimlangserver":
   let cmdParams = CommandLineParams(transport: some socket, port: getNextFreePort())
   let ls = main(cmdParams) #we could accesss to the ls here to test against its state
   let client = newLspSocketClient()
+  client.registerNotification(
+  "window/showMessage", 
+  "window/workDoneProgress/create",
+  "workspace/configuration",
+  "extension/statusUpdate",
+  "textDocument/publishDiagnostics",
+  "$/progress"
+  )
   waitFor client.connect("localhost", cmdParams.port)
   
   test "initialize from the client should call initialized on the server":
@@ -41,7 +49,6 @@ suite "Suggest API selection":
     "window/showMessage", 
     "window/workDoneProgress/create",
     "workspace/configuration",
-    "extension/statusUpdate",
     "extension/statusUpdate",
     "textDocument/publishDiagnostics",
     "$/progress"
@@ -87,7 +94,6 @@ suite "LSP features":
     "window/showMessage", 
     "window/workDoneProgress/create",
     "workspace/configuration",
-    "extension/statusUpdate",
     "extension/statusUpdate",
     "textDocument/publishDiagnostics",
     "$/progress"
