@@ -51,10 +51,10 @@ suite "Nimlangserver":
     client.notify("textDocument/didOpen",
                   %createDidOpenParams("projects/hw/useRoot.nim"))
     
-    let prevSuggestPid = ls.projectFiles[hwAbsFile].process.pid
+    let prevSuggestPid = ls.projectFiles[hwAbsFile].ns.waitFor.process.pid
     let suggestParams = SuggestParams(action: saRestart, projectFile: hwAbsFile)
     let suggestRes = client.call("extension/suggest", %suggestParams).waitFor
-    let suggestPid = ls.projectFiles[hwAbsFile].process.pid
+    let suggestPid = ls.projectFiles[hwAbsFile].ns.waitFor.process.pid
 
     check prevSuggestPid != suggestPid
     
