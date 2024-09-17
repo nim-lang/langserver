@@ -627,7 +627,7 @@ proc createOrRestartNimsuggest*(ls: LanguageServer, projectFile: string, uri = "
                         MessageType.Error)
         ls.sendStatusChanged()
 
-
+      #TODO instead of waiting here, this whole function should be async. 
       projectNext = waitFor createNimsuggest(projectFile, nimsuggestPath, version,
                                       timeout, restartCallback, errorCallback, workingDir, configuration.logNimsuggest.get(false),
                                       configuration.exceptionHintsEnabled)
