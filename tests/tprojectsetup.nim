@@ -110,7 +110,7 @@ suite "nimble setup":
          "uri": pathToUri(entryPoint)
        }
     }
-    let ns = waitFor ls.projectFiles[entryPoint]
+    let ns = waitFor ls.projectFiles[entryPoint].ns
     client.notify("textDocument/didOpen", %createDidOpenParams("projects/testproject/src/testproject.nim"))
     check waitFor client.waitForNotification("window/showMessage", 
       (json: JsonNode) => json["message"].to(string) == &"Opening {pathToUri(entryPoint)}")

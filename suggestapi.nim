@@ -71,7 +71,7 @@ type
     paddingRight*: bool
     allowInsert*: bool
     tooltip*: string
-
+    
   NimsuggestImpl* = object
     failed*: bool
     errorMessage*: string
@@ -80,7 +80,6 @@ type
     openFiles*: OrderedSet[string]
     successfullCall*: bool
     errorCallback*: NimsuggestCallback
-    process*: AsyncProcessRef
     port*: int
     root: string
     requestQueue: Deque[SuggestCall]
@@ -93,6 +92,11 @@ type
     version*: string
   
   NimSuggest* = ref NimsuggestImpl
+
+  Project* = ref object 
+    ns*: Future[NimSuggest]
+    file*: string
+    process*: AsyncProcessRef
 
 func canHandleUnknown*(ns: Nimsuggest): bool =
   nsUnknownFile in ns.capabilities
@@ -226,8 +230,8 @@ proc markFailed(self: Nimsuggest, errMessage: string) {.raises: [].} =
   if self.errorCallback != nil:
     self.errorCallback(self)
 
-proc stop*(self: Nimsuggest) =
-  debug "Stopping nimsuggest for ", root = self.root
+proc stop*(self: Project) =
+  debug "Stopping nimsuggest for ", root = self.file
   try:
     let res = self.process.kill()
     debug "Stopped nimsuggest ", res = res
@@ -289,10 +293,10 @@ proc getNimsuggestCapabilities*(nimsuggestPath: string):
       if cap.isSome:
         result.incl(cap.get)
 
-proc logNsError(ns: NimSuggest) {.async.} = 
-  let err = string.fromBytes(ns.process.stderrStream.read().await)
+proc logNsError(project: Project) {.async.} = 
+  let err = string.fromBytes(project.process.stderrStream.read().await)
   error "NimSuggest Error (stderr)", err = err
-  ns.markFailed(err)
+  # ns.markFailed(err) #TODO Error handling should be at the project level
 
 proc createNimsuggest*(root: string,
                        nimsuggestPath: string,
@@ -302,32 +306,35 @@ proc createNimsuggest*(root: string,
                        errorCallback: NimsuggestCallback,
                        workingDir = getCurrentDir(),
                        enableLog: bool = false,
-                       enableExceptionInlayHints: bool = false): Future[Nimsuggest] {.async, gcsafe.} =
-  result = Nimsuggest()
-  result.requestQueue = Deque[SuggestCall]()
-  result.root = root
-  result.timeout = timeout
-  result.timeoutCallback = timeoutCallback
-  result.errorCallback = errorCallback
-  result.nimSuggestPath = nimsuggestPath
-  result.version = version
+                       enableExceptionInlayHints: bool = false): Future[Project] {.async, gcsafe.} =
+  result = Project(file: root)
+  result.ns = newFuture[NimSuggest]()
+
+  let ns = Nimsuggest()
+  ns.requestQueue = Deque[SuggestCall]()
+  ns.root = root
+  ns.timeout = timeout
+  ns.timeoutCallback = timeoutCallback
+  ns.errorCallback = errorCallback
+  ns.nimSuggestPath = nimsuggestPath
+  ns.version = version
 
   info "Starting nimsuggest", root = root, timeout = timeout, path = nimsuggestPath, 
     workingDir = workingDir
 
   if nimsuggestPath != "":
-    result.protocolVersion = detectNimsuggestVersion(root, nimsuggestPath, workingDir)
-    if result.protocolVersion > HighestSupportedNimSuggestProtocolVersion:
-      result.protocolVersion = HighestSupportedNimSuggestProtocolVersion
+    ns.protocolVersion = detectNimsuggestVersion(root, nimsuggestPath, workingDir)
+    if ns.protocolVersion > HighestSupportedNimSuggestProtocolVersion:
+      ns.protocolVersion = HighestSupportedNimSuggestProtocolVersion
     var      
-      args = @[root, "--v" & $result.protocolVersion, "--autobind"]
-    if result.protocolVersion >= 4:
+      args = @[root, "--v" & $ns.protocolVersion, "--autobind"]
+    if ns.protocolVersion >= 4:
       args.add("--clientProcessId:" & $getCurrentProcessId())
     if enableLog:
       args.add("--log")
-    result.capabilities = getNimsuggestCapabilities(nimsuggestPath)
-    debug "Nimsuggest Capabilities", capabilities = result.capabilities
-    if nsExceptionInlayHints in result.capabilities:
+    ns.capabilities = getNimsuggestCapabilities(nimsuggestPath)
+    debug "Nimsuggest Capabilities", capabilities = ns.capabilities
+    if nsExceptionInlayHints in ns.capabilities:
       if enableExceptionInlayHints:
         args.add("--exceptionInlayHints:on")
       else:
@@ -336,14 +343,14 @@ proc createNimsuggest*(root: string,
       await startProcess(nimsuggestPath, arguments = args, options = { UsePath }, 
             stdoutHandle = AsyncProcess.Pipe,
             stderrHandle = AsyncProcess.Pipe)
-            
     asyncSpawn logNsError(result)
-    result.port = (await result.process.stdoutStream.readLine(sep="\n")).parseInt 
+    ns.port = (await result.process.stdoutStream.readLine(sep="\n")).parseInt 
+    result.ns.complete(ns)
   else:
     error "Unable to start nimsuggest. Unable to find binary on the $PATH", nimsuggestPath = nimsuggestPath
-    result.markFailed fmt "Unable to start nimsuggest. `{nimsuggestPath}` is not present on the PATH"
+    ns.markFailed fmt "Unable to start nimsuggest. `{nimsuggestPath}` is not present on the PATH"
 
-proc createNimsuggest*(root: string): Future[Nimsuggest] {.gcsafe.} =
+proc createNimsuggest*(root: string): Future[Project] {.gcsafe.} =
   result = createNimsuggest(root, "nimsuggest", "", REQUEST_TIMEOUT,
                             proc (ns: Nimsuggest) = discard,
                             proc (ns: Nimsuggest) = discard)

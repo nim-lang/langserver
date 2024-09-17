@@ -236,23 +236,23 @@ proc extensionSuggest*(ls: LanguageServer, params: SuggestParams): Future[Sugges
     else:
       error "Project file must exists ", params = params
       return SuggestResult()
-  template restart(ls: LanguageServer, ns: NimSuggest) = 
+  template restart(ls: LanguageServer, project: Project) = 
     ls.showMessage(fmt "Restarting nimsuggest {projectFile}", MessageType.Info)
-    ns.errorCallback = nil
-    ns.stop()
+    # ns.errorCallback = nil TODO handle errors (they are going to be moved into Project)
+    project.stop()
     ls.createOrRestartNimsuggest(projectFile, projectFile.pathToUri)
     ls.sendStatusChanged()
     
   case params.action:
   of saRestart:   
-    let ns = await ls.projectFiles[projectFile]
-    ls.restart(ns)
+    let project = ls.projectFiles[projectFile]
+    ls.restart(project)
     SuggestResult(actionPerformed: saRestart)
   of saRestartAll:
     let projectFiles = ls.projectFiles.keys.toSeq()
     for projectFile in projectFiles:           
-      let ns = await ls.projectFiles[projectFile]
-      ls.restart(ns)
+      let project = ls.projectFiles[projectFile]
+      ls.restart(project)
     SuggestResult(actionPerformed: saRestartAll)
   of saNone:
     error "An action must be specified", params = params
@@ -535,7 +535,7 @@ proc executeCommand*(ls: LanguageServer, params: ExecuteCommandParams):
     debug "Clean build", projectFile = projectFile
     let
       token = fmt "Compiling {projectFile}"
-      ns = ls.projectFiles.getOrDefault(projectFile)
+      ns = ls.projectFiles.getOrDefault(projectFile).ns
     if ns != nil:
       ls.workDoneProgressCreate(token)
       ls.progress(token, "begin", fmt "Compiling project {projectFile}")

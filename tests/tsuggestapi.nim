@@ -7,7 +7,7 @@ const inputLineWithEndLine = "outline	skEnumField	system.bool.true	bool	basic_ty
 suite "Nimsuggest tests":
   let
     helloWorldFile = getCurrentDir() / "tests/projects/hw/hw.nim"
-    nimSuggest = createNimsuggest(helloWorldFile).waitFor
+    nimSuggest = createNimsuggest(helloWorldFile).waitFor.ns.waitFor
 
   test "Parsing qualified path":
     doAssert parseQualifiedPath("a.b.c") == @["a", "b", "c"]
