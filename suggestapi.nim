@@ -31,6 +31,7 @@ type
     ideNone, ideSug, ideCon, ideDef, ideUse, ideDus, ideChk, ideMod,
     ideHighlight, ideOutline, ideKnown, ideMsg, ideProject, ideType, ideExpand
   NimsuggestCallback = proc(self: Nimsuggest): void {.gcsafe, raises: [].}
+  ProjectCallback = proc(self: Project): void {.gcsafe, raises: [].}
 
   Suggest* = ref object
     section*: IdeCmd
@@ -73,13 +74,10 @@ type
     tooltip*: string
     
   NimsuggestImpl* = object
-    failed*: bool
-    errorMessage*: string
     checkProjectInProgress*: bool
     needsCheckProject*: bool
     openFiles*: OrderedSet[string]
     successfullCall*: bool
-    errorCallback*: NimsuggestCallback
     port*: int
     root: string
     requestQueue: Deque[SuggestCall]
@@ -90,6 +88,7 @@ type
     capabilities*: set[NimSuggestCapability]
     nimSuggestPath*: string
     version*: string
+    project*: Project
   
   NimSuggest* = ref NimsuggestImpl
 
@@ -97,6 +96,9 @@ type
     ns*: Future[NimSuggest]
     file*: string
     process*: AsyncProcessRef
+    errorCallback*: ProjectCallback
+    errorMessage*: string
+    failed*: bool
 
 func canHandleUnknown*(ns: Nimsuggest): bool =
   nsUnknownFile in ns.capabilities
@@ -224,7 +226,7 @@ proc parseSuggestInlayHint*(line: string): SuggestInlayHint =
 proc name*(sug: Suggest): string =
   return sug.qualifiedPath[^1]
 
-proc markFailed(self: Nimsuggest, errMessage: string) {.raises: [].} =
+proc markFailed(self: Project, errMessage: string) {.raises: [].} =
   self.failed = true
   self.errorMessage = errMessage
   if self.errorCallback != nil:
@@ -296,28 +298,29 @@ proc getNimsuggestCapabilities*(nimsuggestPath: string):
 proc logNsError(project: Project) {.async.} = 
   let err = string.fromBytes(project.process.stderrStream.read().await)
   error "NimSuggest Error (stderr)", err = err
-  # ns.markFailed(err) #TODO Error handling should be at the project level
+  project.markFailed(err) #TODO Error handling should be at the project level
 
 proc createNimsuggest*(root: string,
                        nimsuggestPath: string,
                        version: string,
                        timeout: int,
                        timeoutCallback: NimsuggestCallback,
-                       errorCallback: NimsuggestCallback,
+                       errorCallback: ProjectCallback,
                        workingDir = getCurrentDir(),
                        enableLog: bool = false,
                        enableExceptionInlayHints: bool = false): Future[Project] {.async, gcsafe.} =
   result = Project(file: root)
   result.ns = newFuture[NimSuggest]()
+  result.errorCallback = errorCallback
 
   let ns = Nimsuggest()
   ns.requestQueue = Deque[SuggestCall]()
   ns.root = root
   ns.timeout = timeout
   ns.timeoutCallback = timeoutCallback
-  ns.errorCallback = errorCallback
   ns.nimSuggestPath = nimsuggestPath
   ns.version = version
+  ns.project = result
 
   info "Starting nimsuggest", root = root, timeout = timeout, path = nimsuggestPath, 
     workingDir = workingDir
@@ -348,12 +351,12 @@ proc createNimsuggest*(root: string,
     result.ns.complete(ns)
   else:
     error "Unable to start nimsuggest. Unable to find binary on the $PATH", nimsuggestPath = nimsuggestPath
-    ns.markFailed fmt "Unable to start nimsuggest. `{nimsuggestPath}` is not present on the PATH"
+    result.markFailed fmt "Unable to start nimsuggest. `{nimsuggestPath}` is not present on the PATH"
 
 proc createNimsuggest*(root: string): Future[Project] {.gcsafe.} =
   result = createNimsuggest(root, "nimsuggest", "", REQUEST_TIMEOUT,
                             proc (ns: Nimsuggest) = discard,
-                            proc (ns: Nimsuggest) = discard)
+                            proc (pr: Project) = discard)
 
 proc toString*(bytes: openarray[byte]): string =
   result = newString(bytes.len)
@@ -368,7 +371,7 @@ proc processQueue(self: Nimsuggest): Future[void] {.async.}=
       command = req.commandString
     if req.future.finished:
       debug "Call cancelled before executed", command = req.command
-    elif self.failed:
+    elif self.project.failed:
       debug "Nimsuggest is not working, returning empty result...", port = self.port
       req.future.complete @[]
     else:
@@ -407,7 +410,7 @@ proc processQueue(self: Nimsuggest): Future[void] {.async.}=
                 res.add sug.get
 
         if (content == ""):
-          self.markFailed "Server crashed/socket closed."
+          self.project.markFailed "Server crashed/socket closed."
           debug "Server socket closed"
           if not req.future.finished:
             debug "Call cancelled before sending error", command = req.command

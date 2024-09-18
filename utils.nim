@@ -247,6 +247,12 @@ proc partial*[A, B, C](
   return proc(b: B): C {.gcsafe, raises: [].} =
     return fn(a, b)
 
+proc partial*[A, B](
+    fn: proc(a: A, b: B): void {.gcsafe, raises: [], nimcall.}, a: A
+): proc(b: B): void {.gcsafe, raises: [].} =
+  return proc(b: B): void {.gcsafe, raises: [].} =
+    fn(a, b)
+
 proc partial*[A, B, C, D](
   fn: proc(a: A, b: B, c: C): D {.gcsafe, raises: [], nimcall.}, a: A
 ): proc(b: B, c: C): D {.gcsafe, raises: [].} =

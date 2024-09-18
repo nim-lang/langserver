@@ -99,7 +99,7 @@ type
     startTime*: DateTime
     endTime*: DateTime
     state*: PendingRequestState
-
+    
   LanguageServer* = ref object
     clientCapabilities*: ClientCapabilities
     extensionCapabilities*: set[LspExtensionCapability]
@@ -129,7 +129,8 @@ type
       socketTransport*: StreamTransport 
     of stdio:
       outStream*: FileStream 
-      stdinContext*: ptr ReadStdinContext
+      stdinContext*: ptr ReadStdinContext    
+    projectErrors*: seq[ProjectError] #List of errors (crashes) nimsuggest has had since the lsp session started
 
   Certainty* = enum
     None,
@@ -311,6 +312,7 @@ proc getLspStatus*(ls: LanguageServer): NimLangServerStatus {.raises: [].} =
     result.openFiles.add openFilePath
 
   result.pendingRequests = ls.pendingRequests.values.toSeq.map(toPendingRequestStatus)
+  result.projectErrors = ls.projectErrors
 
 proc sendStatusChanged*(ls: LanguageServer) {.raises: [].}  =
   let status: NimLangServerStatus = ls.getLspStatus()
@@ -604,7 +606,30 @@ proc checkProject*(ls: LanguageServer, uri: string): Future[void] {.async, gcsaf
       debug "Running delayed check project...", uri = uri
       traceAsyncErrors ls.checkProject(uri)
 
-proc createOrRestartNimsuggest*(ls: LanguageServer, projectFile: string, uri = ""): void {.gcsafe, raises: [].} =
+proc createOrRestartNimsuggest*(ls: LanguageServer, projectFile: string, uri = "") {.gcsafe, raises: [].} 
+
+proc onErrorCallback(args: (LanguageServer, string), project: Project) = 
+  let 
+    ls = args[0]
+    uri = args[1]
+  debug "NimSuggest needed to be restarted due to an error "
+  let configuration = ls.getWorkspaceConfiguration().waitFor()
+  warn "Server stopped.", projectFile = project.file
+  try:
+    if configuration.autoRestart.get(true) and project.ns.completed and project.ns.read.successfullCall:
+      ls.createOrRestartNimsuggest(project.file, uri)
+    else:
+      ls.showMessage(fmt "Server failed with {project.errorMessage}.",
+                    MessageType.Error)
+  except CatchableError as ex:
+    error "An error has ocurred while handling nimsuggest err", msg = ex.msg
+    writeStacktrace(ex)
+  finally:
+    ls.projectErrors.add ProjectError(projectFile: project.file, errorMessage: project.errorMessage)
+    ls.sendStatusChanged()
+    
+
+proc createOrRestartNimsuggest*(ls: LanguageServer, projectFile: string, uri = "") {.gcsafe, raises: [].} =
   try:
     let
       configuration = ls.getWorkspaceConfiguration().waitFor()
@@ -617,16 +642,7 @@ proc createOrRestartNimsuggest*(ls: LanguageServer, projectFile: string, uri = "
                       MessageType.Warning)
         ls.createOrRestartNimsuggest(projectFile, uri)
         ls.sendStatusChanged()
-      errorCallback = proc (ns: Nimsuggest) {.gcsafe, raises: [].} =
-        debug "NimSuggest needed to be restarted due to an error "
-        warn "Server stopped.", projectFile = projectFile
-        if configuration.autoRestart.get(true) and ns.successfullCall:
-          ls.createOrRestartNimsuggest(projectFile, uri)
-        else:
-          ls.showMessage(fmt "Server failed with {ns.errorMessage}.",
-                        MessageType.Error)
-        ls.sendStatusChanged()
-
+      errorCallback = partial(onErrorCallback, (ls, uri))
       #TODO instead of waiting here, this whole function should be async. 
       projectNext = waitFor createNimsuggest(projectFile, nimsuggestPath, version,
                                       timeout, restartCallback, errorCallback, workingDir, configuration.logNimsuggest.get(false),
@@ -645,8 +661,8 @@ proc createOrRestartNimsuggest*(ls: LanguageServer, projectFile: string, uri = "
       ls.projectFiles[projectFile] = projectNext
 
     projectNext.ns.addCallback do (fut: Future[Nimsuggest]):
-      if fut.read.failed:
-        let msg = fut.read.errorMessage
+      if fut.read.project.failed:
+        let msg = fut.read.project.errorMessage
         ls.showMessage(fmt "Nimsuggest initialization for {projectFile} failed with: {msg}",
                       MessageType.Error)
       else:
