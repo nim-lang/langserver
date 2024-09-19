@@ -994,13 +994,19 @@ type
   
   LspExtensionCapability* = enum #List of extensions this server support. Useful for clients
     excRestartSuggest = "RestartSuggest"
-   
+
+  ProjectError* = object
+    projectFile*: string 
+    errorMessage*: string
+    #last known cmd? last know request? 
+
   NimLangServerStatus* = object
     version*: string
     nimsuggestInstances*: seq[NimSuggestStatus]
     openFiles*: seq[string]
     extensionCapabilities*: seq[LspExtensionCapability]
     pendingRequests*: seq[PendingRequestStatus]
+    projectErrors*: seq[ProjectError]
 
   NimLangServerStatusParams* = object
   
