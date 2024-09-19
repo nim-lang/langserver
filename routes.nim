@@ -1,9 +1,14 @@
-import macros, strformat, chronos,
+import macros, strformat, chronos, chronos/asyncproc,
   json_rpc/server, os, sugar, sequtils,
   suggestapi, protocol/enums, protocol/types, with, tables, strutils,
   ./utils, chronicles,
   asyncprocmonitor, json_serialization,
   std/[strscans, times, json, parseutils], ls
+
+proc getNphPath(): Option[string] = 
+  let path = findExe "nph"
+  if path == "": none(string)
+  else: some path
 
 #routes
 proc initialize*(p: tuple[ls: LanguageServer, onExit: OnExitCallback], params: InitializeParams):
@@ -71,7 +76,8 @@ proc initialize*(p: tuple[ls: LanguageServer, onExit: OnExitCallback], params: I
         resolveProvider: some(false)
       )),
       documentSymbolProvider: some(true),
-      codeActionProvider: some(true)
+      codeActionProvider: some(true),
+      documentFormattingProvider: some(getNphPath().isSome)
     )
   )
   # Support rename by default, but check if we can also support prepare
@@ -605,6 +611,36 @@ proc signatureHelp*(ls: LanguageServer, params: SignatureHelpParams, id: int):
         )
       else:
         return none[SignatureHelp]()
+
+
+proc format*(nphPath, filePath: string): Future[Option[TextEdit]] {.async.} =
+  debug "nph starts", nphPath = nphPath, filePath = filePath
+  let process = await startProcess(nphPath, arguments =  @[filePath], options = { UsePath })    
+  let res = await process.waitForExit(InfiniteDuration)
+  if res != 0:
+    error "There was an error trying to format the document. "
+    #TODO show notification to the user containing the error.
+    return none(TextEdit)
+  debug "nph completes ", res = res
+  let formattedText = readFile(filePath)
+  let fullRange = Range(
+      start: Position(line: 0, character: 0),
+      `end`: Position(line: int.high, character: int.high)
+    )
+  some TextEdit(range: fullRange, newText: formattedText)
+
+proc formatting*(ls: LanguageServer, params: DocumentFormattingParams, id: int):
+  Future[seq[TextEdit]] {.async.} = 
+  with (params.textDocument):      
+    asyncSpawn ls.addProjectFileToPendingRequest(id.uint, uri)
+    debug "Received Formatting request ", filePath = ls.uriStorageLocation(uri), params = params[]
+    let filePath = ls.uriStorageLocation(uri)
+    if not fileExists(filePath):
+      warn "File doenst exist ", filePath = filePath, uri = uri
+      return @[]
+    let formatTextEdit = await format(getNphPath().get(), filePath)         
+    if formatTextEdit.isSome:
+      return @[formatTextEdit.get]
 
 proc workspaceSymbol*(ls: LanguageServer, params: WorkspaceSymbolParams, id: int):
     Future[seq[SymbolInformation]] {.async.} =

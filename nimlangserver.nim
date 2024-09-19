@@ -20,6 +20,7 @@ proc registerRoutes(srv: RpcSocketServer, ls: LanguageServer) =
   srv.register("textDocument/rename", ls.addRpcToCancellable(wrapRpc(partial(rename, ls))))
   srv.register("textDocument/inlayHint", ls.addRpcToCancellable(wrapRpc(partial(inlayHint, ls))))
   srv.register("textDocument/signatureHelp", ls.addRpcToCancellable(wrapRpc(partial(signatureHelp, ls))))
+  srv.register("textDocument/formatting", ls.addRpcToCancellable(wrapRpc(partial(formatting, ls))))
   srv.register("workspace/executeCommand", wrapRpc(partial(executeCommand, ls)))
   srv.register("workspace/symbol", ls.addRpcToCancellable(wrapRpc(partial(workspaceSymbol, ls))))
   srv.register(
