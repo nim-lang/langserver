@@ -9,8 +9,8 @@ type
     id*: OptionalNode
 
   Position* = ref object of RootObj
-    line*: int  # uinteger
-    character*: int  # uinteger
+    line*: int # uinteger
+    character*: int # uinteger
 
   Range* = ref object of RootObj
     start*: Position
@@ -148,7 +148,8 @@ type
     resourceOperations*: OptionalSeq[ResourceOperationKind]
     failureHandling*: Option[FailureHandlingKind]
     normalizesLineEndings*: Option[bool]
-    changeAnnotationSupport*: Option[ChangeAnnotationSupportWorkspaceEditClientCapabilities]
+    changeAnnotationSupport*:
+      Option[ChangeAnnotationSupportWorkspaceEditClientCapabilities]
 
   DidChangeConfigurationClientCapabilities* = ref object of RootObj
     dynamicRegistration*: Option[bool]
@@ -246,7 +247,8 @@ type
     tagSupport*: Option[CompletionClientCapabilities_completionItem_tagSupport]
     insertReplaceSupport*: Option[bool]
     resolveSupport*: Option[CompletionClientCapabilities_completionItem_resolveSupport]
-    insertTextModeSupport*: Option[CompletionClientCapabilities_completionItem_insertTextModeSupport]
+    insertTextModeSupport*:
+      Option[CompletionClientCapabilities_completionItem_insertTextModeSupport]
     labelDetailsSupport*: Option[bool]
 
   CompletionItemKind_int = int
@@ -274,7 +276,8 @@ type
 
   SignatureHelpClientCapabilities_signatureInformation* = ref object of RootObj
     documentationFormat*: OptionalSeq[MarkupKind_str]
-    parameterInformation*: Option[SignatureHelpClientCapabilities_signatureInformation_parameterInformation]
+    parameterInformation*:
+      Option[SignatureHelpClientCapabilities_signatureInformation_parameterInformation]
     activeParameterSupport*: Option[bool]
 
   SignatureHelpClientCapabilities* = ref object of RootObj
@@ -332,14 +335,16 @@ type
     valueSet*: seq[CodeActionKind_str]
 
   CodeActionClientCapabilities_codeActionLiteralSupport* = ref object of RootObj
-    codeActionKind*: CodeActionClientCapabilities_codeActionLiteralSupport_codeActionKind
+    codeActionKind*:
+      CodeActionClientCapabilities_codeActionLiteralSupport_codeActionKind
 
   CodeActionClientCapabilities_resolveSupport* = ref object of RootObj
     properties*: seq[string]
 
   CodeActionClientCapabilities* = ref object of RootObj
     dynamicRegistration*: Option[bool]
-    codeActionLiteralSupport*: Option[CodeActionClientCapabilities_codeActionLiteralSupport]
+    codeActionLiteralSupport*:
+      Option[CodeActionClientCapabilities_codeActionLiteralSupport]
     isPreferredSupport*: Option[bool]
     disabledSupport*: Option[bool]
     dataSupport*: Option[bool]
@@ -391,7 +396,7 @@ type
 
   FoldingRangeClientCapabilities* = ref object of RootObj
     dynamicRegistration*: Option[bool]
-    rangeLimit*: Option[int]  # uinteger
+    rangeLimit*: Option[int] # uinteger
     lineFoldingOnly*: Option[bool]
     foldingRangeKind*: Option[FoldingRangeClientCapabilities_foldingRangeKind]
     foldingRange*: Option[FoldingRangeClientCapabilities_foldingRange]
@@ -406,8 +411,8 @@ type
     dynamicRegistration*: Option[bool]
 
   SemanticTokensClientCapabilities_requests* = ref object of RootObj
-    range*: OptionalNode  # boolean | { }
-    full*: OptionalNode   # boolean | { delta?: boolean; }
+    range*: OptionalNode # boolean | { }
+    full*: OptionalNode # boolean | { delta?: boolean; }
 
   # 'relative'
   TokenFormat_str = string
@@ -561,7 +566,7 @@ type
     resolveProvider*: Option[bool]
 
   ExecuteCommandOptions* = ref object of RootObj
-   commands*: OptionalSeq[string]
+    commands*: OptionalSeq[string]
 
   SaveOptions* = ref object of RootObj
     includeText*: Option[bool]
@@ -638,7 +643,8 @@ type
     declarationProvider*: Option[bool]
     definitionProvider*: Option[bool]
     typeDefinitionProvider*: Option[bool]
-    implementationProvider*: OptionalNode # bool or TextDocumentAndStaticRegistrationOptions
+    implementationProvider*: OptionalNode
+      # bool or TextDocumentAndStaticRegistrationOptions
     referencesProvider*: Option[bool]
     documentHighlightProvider*: Option[bool]
     documentSymbolProvider*: Option[bool]
@@ -647,7 +653,8 @@ type
     codeLensProvider*: CodeLensOptions
     documentLinkProvider*: Option[DocumentLinkOptions]
     # colorProvider?: boolean | DocumentColorOptions | DocumentColorRegistrationOptions;
-    colorProvider*: OptionalNode # bool or ColorProviderOptions or TextDocumentAndStaticRegistrationOptions
+    colorProvider*: OptionalNode
+      # bool or ColorProviderOptions or TextDocumentAndStaticRegistrationOptions
     documentFormattingProvider*: Option[bool]
     documentRangeFormattingProvider*: Option[bool]
     documentOnTypeFormattingProvider*: DocumentOnTypeFormattingOptions
@@ -661,7 +668,8 @@ type
     # monikerProvider?: boolean | MonikerOptions | MonikerRegistrationOptions;
     # typeHierarchyProvider?: boolean | TypeHierarchyOptions | TypeHierarchyRegistrationOptions;
     # inlineValueProvider?: boolean | InlineValueOptions | InlineValueRegistrationOptions;
-    inlayHintProvider*: Option[InlayHintOptions]  # boolean | InlayHintOptions | InlayHintRegistrationOptions;
+    inlayHintProvider*: Option[InlayHintOptions]
+      # boolean | InlayHintOptions | InlayHintRegistrationOptions;
     # diagnosticProvider?: DiagnosticOptions | DiagnosticRegistrationOptions;
     # workspaceSymbolProvider?: boolean | WorkspaceSymbolOptions;
     workspace*: Option[ServerCapabilities_workspace]
@@ -817,7 +825,8 @@ type
     value*: string
 
   Hover* = ref object of RootObj
-    contents*: OptionalNode # string or MarkedStringOption or [string] or [MarkedStringOption] or MarkupContent
+    contents*: OptionalNode
+      # string or MarkedStringOption or [string] or [MarkedStringOption] or MarkupContent
     range*: Option[Range]
 
   HoverParams* = ref object of TextDocumentPositionParams
@@ -833,8 +842,7 @@ type
     parameters*: seq[ParameterInformation]
 
   ParameterInformation* = ref object of RootObj
-    label*: string
-    # documentation*: Option[string]
+    label*: string # documentation*: Option[string]
 
   SignatureHelpRegistrationOptions* = ref object of TextDocumentRegistrationOptions
     triggerCharacters*: OptionalSeq[string]
@@ -956,7 +964,7 @@ type
     range*: Range
     content*: string
 
-  InlayHintParams* = ref object of RootObj  # TODO: extends WorkDoneProgressParams
+  InlayHintParams* = ref object of RootObj # TODO: extends WorkDoneProgressParams
     textDocument*: TextDocumentIdentifier
     range*: Range
 
@@ -964,23 +972,22 @@ type
 
   InlayHint* = ref object of RootObj
     position*: Position
-    label*: string  # string | InlayHintLabelPart[]
+    label*: string # string | InlayHintLabelPart[]
     kind*: Option[InlayHintKind_int]
     textEdits*: OptionalSeq[TextEdit]
-    tooltip*: Option[string]  # string | MarkupContent
+    tooltip*: Option[string] # string | MarkupContent
     paddingLeft*: Option[bool]
-    paddingRight*: Option[bool]
-    #data*: OptionalNode
-  
-  NimSuggestCapability* = enum 
-    nsCon = "con",
+    paddingRight*: Option[bool] #data*: OptionalNode
+
+  NimSuggestCapability* = enum
+    nsCon = "con"
     nsExceptionInlayHints = "exceptionInlayHints"
     nsUnknownFile = "unknownFile"
-  
+
   PendingRequestStatus* = object
     name*: string
     projectFile*: string
-    time*: string 
+    time*: string
     state*: string
 
   NimSuggestStatus* = object
@@ -991,14 +998,14 @@ type
     port*: int
     openFiles*: seq[string]
     unknownFiles*: seq[string]
-  
-  LspExtensionCapability* = enum #List of extensions this server support. Useful for clients
+
+  LspExtensionCapability* = enum
+    #List of extensions this server support. Useful for clients
     excRestartSuggest = "RestartSuggest"
 
   ProjectError* = object
-    projectFile*: string 
-    errorMessage*: string
-    #last known cmd? last know request? 
+    projectFile*: string
+    errorMessage*: string #last known cmd? last know request? 
 
   NimLangServerStatus* = object
     version*: string
@@ -1009,13 +1016,15 @@ type
     projectErrors*: seq[ProjectError]
 
   NimLangServerStatusParams* = object
-  
+
   SuggestAction* = enum
-   saNone = "none", saRestart = "restart", saRestartAll = "restartAll"
-  
+    saNone = "none"
+    saRestart = "restart"
+    saRestartAll = "restartAll"
+
   SuggestParams* = object
     action*: SuggestAction
     projectFile*: string #Absolute path to file
-  
+
   SuggestResult* = object
     actionPerformed*: SuggestAction

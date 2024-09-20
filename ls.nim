@@ -1,9 +1,25 @@
-import macros, strformat,
-  chronos, chronos/threadsync,
-  os, sugar, hashes, osproc,
-  suggestapi, protocol/enums, protocol/types, with, tables, strutils, sets,
-  ./utils, chronicles, std/[re, json, streams, sequtils, setutils, times], uri,
-  json_serialization, json_rpc/[servers/socketserver]
+import
+  macros,
+  strformat,
+  chronos,
+  chronos/threadsync,
+  os,
+  sugar,
+  hashes,
+  osproc,
+  suggestapi,
+  protocol/enums,
+  protocol/types,
+  with,
+  tables,
+  strutils,
+  sets,
+  ./utils,
+  chronicles,
+  std/[re, json, streams, sequtils, setutils, times],
+  uri,
+  json_serialization,
+  json_rpc/[servers/socketserver]
 
 proc getVersionFromNimble(): string =
   #We should static run nimble dump instead
@@ -29,7 +45,6 @@ type
   NlsWorkingDirectoryMaping* = ref object of RootObj
     projectFile*: string
     directory*: string
-
 
   NlsInlayTypeHintsConfig* = ref object of RootObj
     enable*: Option[bool]
@@ -65,6 +80,7 @@ type
     logNimsuggest*: Option[bool]
     inlayHints*: Option[NlsInlayHintsConfig]
     notificationVerbosity*: Option[NlsNotificationVerbosity]
+    formatOnSave*: Option[bool]
 
   NlsFileInfo* = ref object of RootObj
     projectFile*: Future[string]
@@ -85,23 +101,27 @@ type
 
   ReadStdinContext* = object
     onStdReadSignal*: ThreadSignalPtr #used by the thread to notify it read from the std
-    onMainReadSignal*: ThreadSignalPtr #used by the main thread to notify it read the value from the signal
+    onMainReadSignal*: ThreadSignalPtr
+      #used by the main thread to notify it read the value from the signal
     value*: cstring
-  
+
   PendingRequestState* = enum
-    prsOnGoing = "OnGoing", prsCancelled = "Cancelled", prsComplete = "Complete"
+    prsOnGoing = "OnGoing"
+    prsCancelled = "Cancelled"
+    prsComplete = "Complete"
 
   PendingRequest* = object
     id*: uint
     name*: string
     request*: Future[JsonString]
-    projectFile*: Option[string]     
+    projectFile*: Option[string]
     startTime*: DateTime
     endTime*: DateTime
     state*: PendingRequestState
-    
+
   LanguageServer* = ref object
     clientCapabilities*: ClientCapabilities
+    serverCapabilities*: ServerCapabilities
     extensionCapabilities*: set[LspExtensionCapability]
     initializeParams*: InitializeParams
     notify*: NotifyAction
@@ -120,22 +140,26 @@ type
     storageDir*: string
     cmdLineClientProcessId*: Option[int]
     nimDumpCache*: Table[string, NimbleDumpInfo] #path to NimbleDumpInfo
-    entryPoints*: seq[string]    
-    responseMap*: TableRef[string, Future[JsonNode]] #id to future. Represents the pending requests as result of calling ls.call
-    srv*: RpcSocketServer#Both modes uses it to store the routes. Only actually started in socket mode
-    pendingRequests*: Table[uint, PendingRequest] #id to future. Each request is added here so we can cancel them later in the cancelRequest. Only requests, not notifications
+    entryPoints*: seq[string]
+    responseMap*: TableRef[string, Future[JsonNode]]
+      #id to future. Represents the pending requests as result of calling ls.call
+    srv*: RpcSocketServer
+      #Both modes uses it to store the routes. Only actually started in socket mode
+    pendingRequests*: Table[uint, PendingRequest]
+      #id to future. Each request is added here so we can cancel them later in the cancelRequest. Only requests, not notifications
     case transportMode*: TransportMode
     of socket:
-      socketTransport*: StreamTransport 
+      socketTransport*: StreamTransport
     of stdio:
-      outStream*: FileStream 
-      stdinContext*: ptr ReadStdinContext    
-    projectErrors*: seq[ProjectError] #List of errors (crashes) nimsuggest has had since the lsp session started
+      outStream*: FileStream
+      stdinContext*: ptr ReadStdinContext
+    projectErrors*: seq[ProjectError]
+      #List of errors (crashes) nimsuggest has had since the lsp session started
 
   Certainty* = enum
-    None,
-    Folder,
-    Cfg,
+    None
+    Folder
+    Cfg
     Nimble
 
   NimbleDumpInfo* = object
@@ -145,13 +169,17 @@ type
     nimblePath*: Option[string]
     entryPoints*: seq[string] #when it's empty, means the nimble version doesnt dump it.
 
-  OnExitCallback* = proc (): Future[void] {.gcsafe, raises: [].} #To be called when the server is shutting down
-  NotifyAction* = proc (name: string, params: JsonNode) {. gcsafe, raises: [].} #Send a notification to the client
-  CallAction* = proc (name: string, params: JsonNode): Future[JsonNode] {. gcsafe, raises: [].} #Send a request to the client
+  OnExitCallback* = proc(): Future[void] {.gcsafe, raises: [].}
+    #To be called when the server is shutting down
+  NotifyAction* = proc(name: string, params: JsonNode) {.gcsafe, raises: [].}
+    #Send a notification to the client
+  CallAction* =
+    proc(name: string, params: JsonNode): Future[JsonNode] {.gcsafe, raises: [].}
+    #Send a request to the client
 
 macro `%*`*(t: untyped, inputStream: untyped): untyped =
-  result = newCall(bindSym("to", brOpen),
-                   newCall(bindSym("%*", brOpen), inputStream), t)
+  result =
+    newCall(bindSym("to", brOpen), newCall(bindSym("%*", brOpen), inputStream), t)
 
 proc initLs*(params: CommandLineParams, storageDir: string): LanguageServer =
   LanguageServer(
@@ -162,10 +190,12 @@ proc initLs*(params: CommandLineParams, storageDir: string): LanguageServer =
     responseMap: newTable[string, Future[JsonNode]](),
     storageDir: storageDir,
     cmdLineClientProcessId: params.clientProcessId,
-    extensionCapabilities: LspExtensionCapability.items.toSet
+    extensionCapabilities: LspExtensionCapability.items.toSet,
   )
 
-proc getNimbleEntryPoints*(dumpInfo: NimbleDumpInfo, nimbleProjectPath: string): seq[string] =
+proc getNimbleEntryPoints*(
+    dumpInfo: NimbleDumpInfo, nimbleProjectPath: string
+): seq[string] =
   if dumpInfo.entryPoints.len > 0:
     result = dumpInfo.entryPoints.mapIt(nimbleProjectPath / it)
   else:
@@ -176,24 +206,28 @@ proc getNimbleEntryPoints*(dumpInfo: NimbleDumpInfo, nimbleProjectPath: string):
 
 func typeHintsEnabled*(cnf: NlsConfig): bool =
   result = true
-  if cnf.inlayHints.isSome and cnf.inlayHints.get.typeHints.isSome and cnf.inlayHints.get.typeHints.get.enable.isSome:
+  if cnf.inlayHints.isSome and cnf.inlayHints.get.typeHints.isSome and
+      cnf.inlayHints.get.typeHints.get.enable.isSome:
     result = cnf.inlayHints.get.typeHints.get.enable.get
 
 func exceptionHintsEnabled*(cnf: NlsConfig): bool =
   result = true
-  if cnf.inlayHints.isSome and cnf.inlayHints.get.exceptionHints.isSome and cnf.inlayHints.get.exceptionHints.get.enable.isSome:
+  if cnf.inlayHints.isSome and cnf.inlayHints.get.exceptionHints.isSome and
+      cnf.inlayHints.get.exceptionHints.get.enable.isSome:
     result = cnf.inlayHints.get.exceptionHints.get.enable.get
 
 func parameterHintsEnabled*(cnf: NlsConfig): bool =
   result = true
-  if cnf.inlayHints.isSome and cnf.inlayHints.get.parameterHints.isSome and cnf.inlayHints.get.parameterHints.get.enable.isSome:
+  if cnf.inlayHints.isSome and cnf.inlayHints.get.parameterHints.isSome and
+      cnf.inlayHints.get.parameterHints.get.enable.isSome:
     result = cnf.inlayHints.get.parameterHints.get.enable.get
 
 func inlayHintsEnabled*(cnf: NlsConfig): bool =
   typeHintsEnabled(cnf) or exceptionHintsEnabled(cnf) or parameterHintsEnabled(cnf)
 
 proc supportSignatureHelp*(cc: ClientCapabilities): bool =
-  if cc.isNil: return false
+  if cc.isNil:
+    return false
   let caps = cc.textDocument
   caps.isSome and caps.get.signatureHelp.isSome
 
@@ -204,15 +238,16 @@ proc getNimbleDumpInfo*(ls: LanguageServer, nimbleFile: string): NimbleDumpInfo 
     let info = execProcess("nimble dump " & nimbleFile)
     for line in info.splitLines:
       if line.startsWith("srcDir"):
-        result.srcDir = line[(1 + line.find '"')..^2]
+        result.srcDir = line[(1 + line.find '"') ..^ 2]
       if line.startsWith("name"):
-        result.name = line[(1 + line.find '"')..^2]
+        result.name = line[(1 + line.find '"') ..^ 2]
       if line.startsWith("nimDir"):
-        result.nimDir = some line[(1 + line.find '"')..^2]
+        result.nimDir = some line[(1 + line.find '"') ..^ 2]
       if line.startsWith("nimblePath"):
-        result.nimblePath = some line[(1 + line.find '"')..^2]
+        result.nimblePath = some line[(1 + line.find '"') ..^ 2]
       if line.startsWith("entryPoints"):
-        result.entryPoints = line[(1 + line.find '"')..^2].split(',').mapIt(it.strip(chars = {' ', '"'}))
+        result.entryPoints =
+          line[(1 + line.find '"') ..^ 2].split(',').mapIt(it.strip(chars = {' ', '"'}))
 
     var nimbleFile = nimbleFile
     if nimbleFile == "" and result.nimblePath.isSome:
@@ -230,13 +265,18 @@ proc parseWorkspaceConfiguration*(conf: JsonNode): NlsConfig =
     discard
   try:
     let nlsConfig: seq[NlsConfig] = (%conf).to(seq[NlsConfig])
-    result = if nlsConfig.len > 0 and nlsConfig[0] != nil: nlsConfig[0] else: NlsConfig()
+    result =
+      if nlsConfig.len > 0 and nlsConfig[0] != nil:
+        nlsConfig[0]
+      else:
+        NlsConfig()
   except CatchableError:
     debug "Failed to parse the configuration.", error = getCurrentExceptionMsg()
     result = NlsConfig()
 
-
-proc getWorkspaceConfiguration*(ls: LanguageServer): Future[NlsConfig] {.async: (raises:[]).} =
+proc getWorkspaceConfiguration*(
+    ls: LanguageServer
+): Future[NlsConfig] {.async: (raises: []).} =
   try:
     #this is the root of a lot a problems as there are multiple race conditions here.
     #since most request doenst really rely on the configuration, we can just go ahead and 
@@ -244,41 +284,45 @@ proc getWorkspaceConfiguration*(ls: LanguageServer): Future[NlsConfig] {.async: 
     #TODO review and handle project specific confs when received instead of reliying in this func
     if ls.workspaceConfiguration.finished:
       return parseWorkspaceConfiguration(ls.workspaceConfiguration.read)
-    else: 
+    else:
       return NlsConfig()
   except CatchableError as ex:
     writeStackTrace(ex)
 
-proc showMessage*(ls: LanguageServer, message: string, typ: MessageType) {.raises: [].} =
+proc showMessage*(
+    ls: LanguageServer, message: string, typ: MessageType
+) {.raises: [].} =
   try:
     proc notify() =
-      ls.notify(
-        "window/showMessage",
-        %* {
-          "type": typ.int,
-          "message": message
-        })
-    let verbosity =
-      ls
-      .getWorkspaceConfiguration
-      .waitFor
-      .notificationVerbosity.get(NlsNotificationVerbosity.nvInfo)
+      ls.notify("window/showMessage", %*{"type": typ.int, "message": message})
+
+    let verbosity = ls.getWorkspaceConfiguration.waitFor.notificationVerbosity.get(
+      NlsNotificationVerbosity.nvInfo
+    )
     debug "ShowMessage ", message = message
-    case verbosity:
+    case verbosity
     of nvInfo:
       notify()
     of nvWarning:
-      if typ.int <= MessageType.Warning.int :
+      if typ.int <= MessageType.Warning.int:
         notify()
     of nvError:
       if typ == MessageType.Error:
         notify()
-    else: discard
+    else:
+      discard
   except CatchableError:
     discard
 
-proc toPendingRequestStatus(pr: PendingRequest): PendingRequestStatus = 
-  result.time = case pr.state:
+proc applyEdit*(
+    ls: LanguageServer, params: ApplyWorkspaceEditParams
+): Future[ApplyWorkspaceEditResponse] {.async.} =
+  let res = await ls.call("workspace/applyEdit", %params)
+  res.to(ApplyWorkspaceEditResponse)
+
+proc toPendingRequestStatus(pr: PendingRequest): PendingRequestStatus =
+  result.time =
+    case pr.state
     of prsOnGoing:
       $(now() - pr.startTime)
     else:
@@ -300,13 +344,13 @@ proc getLspStatus*(ls: LanguageServer): NimLangServerStatus {.raises: [].} =
           capabilities: ns.capabilities.toSeq,
           version: ns.version,
           path: ns.nimsuggestPath,
-          port: ns.port
+          port: ns.port,
         )
         for open in ns.openFiles:
           nsStatus.openFiles.add open
         result.nimsuggestInstances.add nsStatus
       except CatchableError:
-        discard  
+        discard
   for openFile in ls.openFiles.keys:
     let openFilePath = openFile.uriToPath
     result.openFiles.add openFilePath
@@ -314,41 +358,45 @@ proc getLspStatus*(ls: LanguageServer): NimLangServerStatus {.raises: [].} =
   result.pendingRequests = ls.pendingRequests.values.toSeq.map(toPendingRequestStatus)
   result.projectErrors = ls.projectErrors
 
-proc sendStatusChanged*(ls: LanguageServer) {.raises: [].}  =
+proc sendStatusChanged*(ls: LanguageServer) {.raises: [].} =
   let status: NimLangServerStatus = ls.getLspStatus()
-  ls.notify("extension/statusUpdate", %* status)
+  ls.notify("extension/statusUpdate", %*status)
 
-proc addProjectFileToPendingRequest*(ls: LanguageServer, id: uint, uri: string) {.async.}= 
+proc addProjectFileToPendingRequest*(
+    ls: LanguageServer, id: uint, uri: string
+) {.async.} =
   if id in ls.pendingRequests:
     var projectFile = uri.uriToPath()
     if projectFile notin ls.projectFiles:
       if uri in ls.openFiles:
-        projectFile = await ls.openFiles[uri].projectFile 
+        projectFile = await ls.openFiles[uri].projectFile
 
-    ls.pendingRequests[id].projectFile = some projectFile 
+    ls.pendingRequests[id].projectFile = some projectFile
     ls.sendStatusChanged
 
 proc requiresDynamicRegistrationForDidChangeConfiguration(ls: LanguageServer): bool =
   ls.clientCapabilities.workspace.isSome and
-  ls.clientCapabilities.workspace.get.didChangeConfiguration.isSome and
-  ls.clientCapabilities.workspace.get.didChangeConfiguration.get.dynamicRegistration.get(false)
+    ls.clientCapabilities.workspace.get.didChangeConfiguration.isSome and
+    ls.clientCapabilities.workspace.get.didChangeConfiguration.get.dynamicRegistration.get(
+      false
+    )
 
 proc supportsConfigurationRequest(ls: LanguageServer): bool =
   ls.clientCapabilities.workspace.isSome and
-  ls.clientCapabilities.workspace.get.configuration.get(false)
+    ls.clientCapabilities.workspace.get.configuration.get(false)
 
 proc usePullConfigurationModel*(ls: LanguageServer): bool =
   ls.requiresDynamicRegistrationForDidChangeConfiguration and
-  ls.supportsConfigurationRequest
+    ls.supportsConfigurationRequest
 
 proc inlayExceptionHintsConfigurationEquals*(a, b: NlsInlayHintsConfig): bool =
   if a.exceptionHints.isSome and b.exceptionHints.isSome:
     let
       ae = a.exceptionHints.get
       be = b.exceptionHints.get
-    result = (ae.enable == be.enable) and
-            (ae.hintStringLeft == be.hintStringLeft) and
-            (ae.hintStringRight == be.hintStringRight)
+    result =
+      (ae.enable == be.enable) and (ae.hintStringLeft == be.hintStringLeft) and
+      (ae.hintStringRight == be.hintStringRight)
   else:
     result = a.exceptionHints.isSome == b.exceptionHints.isSome
 
@@ -359,7 +407,6 @@ proc inlayExceptionHintsConfigurationEquals*(a, b: NlsConfig): bool =
     result = a.inlayHints.isSome == b.inlayHints.isSome
 
 proc inlayHintsConfigurationEquals*(a, b: NlsConfig): bool =
-
   proc inlayTypeHintsConfigurationEquals(a, b: NlsInlayHintsConfig): bool =
     if a.typeHints.isSome and b.typeHints.isSome:
       result = a.typeHints.get.enable == b.typeHints.get.enable
@@ -367,8 +414,9 @@ proc inlayHintsConfigurationEquals*(a, b: NlsConfig): bool =
       result = a.typeHints.isSome == b.typeHints.isSome
 
   proc inlayHintsConfigurationEquals(a, b: NlsInlayHintsConfig): bool =
-    result = inlayTypeHintsConfigurationEquals(a, b) and
-             inlayExceptionHintsConfigurationEquals(a, b)
+    result =
+      inlayTypeHintsConfigurationEquals(a, b) and
+      inlayExceptionHintsConfigurationEquals(a, b)
 
   if a.inlayHints.isSome and b.inlayHints.isSome:
     result = inlayHintsConfigurationEquals(a.inlayHints.get, b.inlayHints.get)
@@ -377,15 +425,19 @@ proc inlayHintsConfigurationEquals*(a, b: NlsConfig): bool =
 
 proc getNimVersion(nimDir: string): string =
   let cmd =
-    if nimDir == "": "nim --version"
-    else: nimDir / "nim --version"
+    if nimDir == "":
+      "nim --version"
+    else:
+      nimDir / "nim --version"
   let info = execProcess(cmd)
   const NimCompilerVersion = "Nim Compiler Version "
   for line in info.splitLines:
     if line.startsWith(NimCompilerVersion):
       return line
 
-proc getNimSuggestPathAndVersion(ls: LanguageServer, conf: NlsConfig, workingDir: string): (string, string) =
+proc getNimSuggestPathAndVersion(
+    ls: LanguageServer, conf: NlsConfig, workingDir: string
+): (string, string) =
   #Attempting to see if the project is using a custom Nim version, if it's the case this will be slower than usual
   let nimbleDumpInfo = ls.getNimbleDumpInfo("")
   let nimDir = nimbleDumpInfo.nimDir.get ""
@@ -412,7 +464,8 @@ proc getProjectFileAutoGuess*(ls: LanguageServer, fileUri: string): string =
   var
     path = dir
     certainty = Certainty.None
-    up = 0 #Limit the times it goes up through the directories. Ideally nimble dump should do this job
+    up = 0
+      #Limit the times it goes up through the directories. Ideally nimble dump should do this job
   while path.len > 0 and path != "/" and up < 2:
     let
       (dir, fname, ext) = path.splitFile()
@@ -420,9 +473,10 @@ proc getProjectFileAutoGuess*(ls: LanguageServer, fileUri: string): string =
     if fileExists(path / current.addFileExt(".nim")) and certainty <= Folder:
       result = path / current.addFileExt(".nim")
       certainty = Folder
-    if fileExists(path / current.addFileExt(".nim")) and
-      (fileExists(path / current.addFileExt(".nim.cfg")) or
-      fileExists(path / current.addFileExt(".nims"))) and certainty <= Cfg:
+    if fileExists(path / current.addFileExt(".nim")) and (
+      fileExists(path / current.addFileExt(".nim.cfg")) or
+      fileExists(path / current.addFileExt(".nims"))
+    ) and certainty <= Cfg:
       result = path / current.addFileExt(".nim")
       certainty = Cfg
     if certainty <= Nimble:
@@ -431,13 +485,14 @@ proc getProjectFileAutoGuess*(ls: LanguageServer, fileUri: string): string =
         let name = dumpInfo.name
         let sourceDir = path / dumpInfo.srcDir
         let projectFile = sourceDir / (name & ".nim")
-        if sourceDir.len != 0 and name.len != 0 and
-            file.isRelTo(sourceDir) and fileExists(projectFile):
+        if sourceDir.len != 0 and name.len != 0 and file.isRelTo(sourceDir) and
+            fileExists(projectFile):
           debug "Found nimble project", projectFile = projectFile
           result = projectFile
           certainty = Nimble
           return
-    if path == dir: break
+    if path == dir:
+      break
     path = dir
     inc up
 
@@ -460,32 +515,20 @@ proc getWorkingDir(ls: LanguageServer, path: string): Future[string] {.async.} =
   for m in mapping:
     if pathRelativeToRoot.isSome and m.projectFile == pathRelativeToRoot.get():
       result = rootPath.string / m.directory
-      break;
+      break
 
 proc progressSupported(ls: LanguageServer): bool =
-  result = ls.initializeParams
-    .capabilities
-    .window
-    .get(ClientCapabilities_window())
-    .workDoneProgress
+  result = ls.initializeParams.capabilities.window
+    .get(ClientCapabilities_window()).workDoneProgress
     .get(false)
 
-proc progress*(ls: LanguageServer; token, kind: string, title = "") =
+proc progress*(ls: LanguageServer, token, kind: string, title = "") =
   if ls.progressSupported:
-    ls.notify(
-      "$/progress",
-      %* {
-           "token": token,
-           "value": {
-             "kind": kind,
-             "title": title
-           }
-      })
+    ls.notify("$/progress", %*{"token": token, "value": {"kind": kind, "title": title}})
 
 proc workDoneProgressCreate*(ls: LanguageServer, token: string) =
   if ls.progressSupported:
-    discard ls.call("window/workDoneProgress/create",
-                              %ProgressParams(token: token))
+    discard ls.call("window/workDoneProgress/create", %ProgressParams(token: token))
 
 proc cancelPendingFileChecks*(ls: LanguageServer, nimsuggest: Nimsuggest) =
   # stop all checks on file level if we are going to run checks on project
@@ -508,16 +551,11 @@ proc uriToStash*(ls: LanguageServer, uri: string): string =
     ""
 
 proc range*(startLine, startCharacter, endLine, endCharacter: int): Range =
-  return Range %* {
-     "start": {
-        "line": startLine,
-        "character": startCharacter
-     },
-     "end": {
-        "line": endLine,
-        "character": endCharacter
-     }
-  }
+  return
+    Range %* {
+      "start": {"line": startLine, "character": startCharacter},
+      "end": {"line": endLine, "character": endCharacter},
+    }
 
 proc toLabelRange*(suggest: Suggest): Range =
   with suggest:
@@ -528,26 +566,28 @@ proc toDiagnostic(suggest: Suggest): Diagnostic =
   with suggest:
     let
       endColumn = column + doc.rfind('\'') - doc.find('\'') - 2
-      node = %* {
-        "uri": pathToUri(filepath) ,
-        "range": range(line - 1, column, line - 1, column + endColumn),
-        "severity": case forth:
-                      of "Error": DiagnosticSeverity.Error.int
-                      of "Hint": DiagnosticSeverity.Hint.int
-                      of "Warning": DiagnosticSeverity.Warning.int
-                      else: DiagnosticSeverity.Error.int,
-        "message": doc,
-        "source": "nim",
-        "code": "nimsuggest chk"
-      }
+      node =
+        %*{
+          "uri": pathToUri(filepath),
+          "range": range(line - 1, column, line - 1, column + endColumn),
+          "severity":
+            case forth
+            of "Error": DiagnosticSeverity.Error.int
+            of "Hint": DiagnosticSeverity.Hint.int
+            of "Warning": DiagnosticSeverity.Warning.int
+            else: DiagnosticSeverity.Error.int
+          ,
+          "message": doc,
+          "source": "nim",
+          "code": "nimsuggest chk",
+        }
     return node.to(Diagnostic)
 
 proc sendDiagnostics*(ls: LanguageServer, diagnostics: seq[Suggest], path: string) =
   debug "Sending diagnostics", count = diagnostics.len, path = path
-  let params = PublishDiagnosticsParams %* {
-    "uri": pathToUri(path),
-    "diagnostics": diagnostics.map(toDiagnostic)
-  }
+  let params =
+    PublishDiagnosticsParams %*
+    {"uri": pathToUri(path), "diagnostics": diagnostics.map(toDiagnostic)}
   ls.notify("textDocument/publishDiagnostics", %params)
 
   if diagnostics.len != 0:
@@ -555,14 +595,17 @@ proc sendDiagnostics*(ls: LanguageServer, diagnostics: seq[Suggest], path: strin
   else:
     ls.filesWithDiags.excl path
 
-proc tryGetNimsuggest*(ls: LanguageServer, uri: string): Future[Option[Nimsuggest]] {.async.} 
+proc tryGetNimsuggest*(
+  ls: LanguageServer, uri: string
+): Future[Option[Nimsuggest]] {.async.}
 
 proc checkProject*(ls: LanguageServer, uri: string): Future[void] {.async, gcsafe.} =
   if not ls.getWorkspaceConfiguration.await().autoCheckProject.get(true):
     return
   debug "Running diagnostics", uri = uri
   let ns = ls.tryGetNimsuggest(uri).await
-  if ns.isNone: return
+  if ns.isNone:
+    return
   let nimsuggest = ns.get
   if nimsuggest.checkProjectInProgress:
     debug "Check project is already running", uri = uri
@@ -575,11 +618,13 @@ proc checkProject*(ls: LanguageServer, uri: string): Future[void] {.async, gcsaf
   ls.workDoneProgressCreate(token)
   ls.progress(token, "begin", fmt "Checking project {uri.uriToPath}")
   nimsuggest.checkProjectInProgress = true
-  proc getFilepath(s: Suggest): string = s.filepath
+  proc getFilepath(s: Suggest): string =
+    s.filepath
+
   let
-    diagnostics = nimsuggest.chk(uriToPath(uri), ls.uriToStash(uri))
-      .await()
-      .filter(sug => sug.filepath != "???")
+    diagnostics = nimsuggest.chk(uriToPath(uri), ls.uriToStash(uri)).await().filter(
+        sug => sug.filepath != "???"
+      )
     filesWithDiags = diagnostics.map(s => s.filepath).toHashSet
 
   ls.progress(token, "end")
@@ -592,61 +637,78 @@ proc checkProject*(ls: LanguageServer, uri: string): Future[void] {.async, gcsaf
   for path in ls.filesWithDiags:
     if not filesWithDiags.contains path:
       debug "Sending zero diags", path = path
-      let params = PublishDiagnosticsParams %* {
-        "uri": pathToUri(path),
-        "diagnostics": @[]
-      }
+      let params =
+        PublishDiagnosticsParams %* {"uri": pathToUri(path), "diagnostics": @[]}
       ls.notify("textDocument/publishDiagnostics", %params)
   ls.filesWithDiags = filesWithDiags
   nimsuggest.checkProjectInProgress = false
 
   if nimsuggest.needsCheckProject:
     nimsuggest.needsCheckProject = false
-    callSoon() do () {.gcsafe.}:
+    callSoon do() {.gcsafe.}:
       debug "Running delayed check project...", uri = uri
       traceAsyncErrors ls.checkProject(uri)
 
-proc createOrRestartNimsuggest*(ls: LanguageServer, projectFile: string, uri = "") {.gcsafe, raises: [].} 
+proc createOrRestartNimsuggest*(
+  ls: LanguageServer, projectFile: string, uri = ""
+) {.gcsafe, raises: [].}
 
-proc onErrorCallback(args: (LanguageServer, string), project: Project) = 
-  let 
+proc onErrorCallback(args: (LanguageServer, string), project: Project) =
+  let
     ls = args[0]
     uri = args[1]
   debug "NimSuggest needed to be restarted due to an error "
   let configuration = ls.getWorkspaceConfiguration().waitFor()
   warn "Server stopped.", projectFile = project.file
   try:
-    if configuration.autoRestart.get(true) and project.ns.completed and project.ns.read.successfullCall:
+    if configuration.autoRestart.get(true) and project.ns.completed and
+        project.ns.read.successfullCall:
       ls.createOrRestartNimsuggest(project.file, uri)
     else:
-      ls.showMessage(fmt "Server failed with {project.errorMessage}.",
-                    MessageType.Error)
+      ls.showMessage(
+        fmt "Server failed with {project.errorMessage}.", MessageType.Error
+      )
   except CatchableError as ex:
     error "An error has ocurred while handling nimsuggest err", msg = ex.msg
     writeStacktrace(ex)
   finally:
-    ls.projectErrors.add ProjectError(projectFile: project.file, errorMessage: project.errorMessage)
+    ls.projectErrors.add ProjectError(
+      projectFile: project.file, errorMessage: project.errorMessage
+    )
     ls.sendStatusChanged()
-    
 
-proc createOrRestartNimsuggest*(ls: LanguageServer, projectFile: string, uri = "") {.gcsafe, raises: [].} =
+proc createOrRestartNimsuggest*(
+    ls: LanguageServer, projectFile: string, uri = ""
+) {.gcsafe, raises: [].} =
   try:
     let
       configuration = ls.getWorkspaceConfiguration().waitFor()
       workingDir = ls.getWorkingDir(projectFile).waitFor()
-      (nimsuggestPath, version) = ls.getNimSuggestPathAndVersion(configuration, workingDir)
+      (nimsuggestPath, version) =
+        ls.getNimSuggestPathAndVersion(configuration, workingDir)
       timeout = configuration.timeout.get(REQUEST_TIMEOUT)
-      restartCallback = proc (ns: Nimsuggest) {.gcsafe, raises: [].} =
-        warn "Restarting the server due to requests being to slow", projectFile = projectFile
-        ls.showMessage(fmt "Restarting nimsuggest for file {projectFile} due to timeout.",
-                      MessageType.Warning)
+      restartCallback = proc(ns: Nimsuggest) {.gcsafe, raises: [].} =
+        warn "Restarting the server due to requests being to slow",
+          projectFile = projectFile
+        ls.showMessage(
+          fmt "Restarting nimsuggest for file {projectFile} due to timeout.",
+          MessageType.Warning,
+        )
         ls.createOrRestartNimsuggest(projectFile, uri)
         ls.sendStatusChanged()
       errorCallback = partial(onErrorCallback, (ls, uri))
       #TODO instead of waiting here, this whole function should be async. 
-      projectNext = waitFor createNimsuggest(projectFile, nimsuggestPath, version,
-                                      timeout, restartCallback, errorCallback, workingDir, configuration.logNimsuggest.get(false),
-                                      configuration.exceptionHintsEnabled)
+      projectNext = waitFor createNimsuggest(
+        projectFile,
+        nimsuggestPath,
+        version,
+        timeout,
+        restartCallback,
+        errorCallback,
+        workingDir,
+        configuration.logNimsuggest.get(false),
+        configuration.exceptionHintsEnabled,
+      )
       token = fmt "Creating nimsuggest for {projectFile}"
 
     ls.workDoneProgressCreate(token)
@@ -660,14 +722,15 @@ proc createOrRestartNimsuggest*(ls: LanguageServer, projectFile: string, uri = "
       ls.progress(token, "begin", fmt "Creating nimsuggest for {projectFile}")
       ls.projectFiles[projectFile] = projectNext
 
-    projectNext.ns.addCallback do (fut: Future[Nimsuggest]):
+    projectNext.ns.addCallback do(fut: Future[Nimsuggest]):
       if fut.read.project.failed:
         let msg = fut.read.project.errorMessage
-        ls.showMessage(fmt "Nimsuggest initialization for {projectFile} failed with: {msg}",
-                      MessageType.Error)
+        ls.showMessage(
+          fmt "Nimsuggest initialization for {projectFile} failed with: {msg}",
+          MessageType.Error,
+        )
       else:
-        ls.showMessage(fmt "Nimsuggest initialized for {projectFile}",
-                      MessageType.Info)
+        ls.showMessage(fmt "Nimsuggest initialized for {projectFile}", MessageType.Info)
         traceAsyncErrors ls.checkProject(uri)
         fut.read().openFiles.incl uri
       ls.progress(token, "end")
@@ -676,7 +739,7 @@ proc createOrRestartNimsuggest*(ls: LanguageServer, projectFile: string, uri = "
     discard
 
 proc getNimsuggestInner(ls: LanguageServer, uri: string): Future[Nimsuggest] {.async.} =
-  assert uri in ls.openFiles, "File not open"     
+  assert uri in ls.openFiles, "File not open"
 
   let projectFile = await ls.openFiles[uri].projectFile
   if not ls.projectFiles.hasKey(projectFile):
@@ -685,7 +748,9 @@ proc getNimsuggestInner(ls: LanguageServer, uri: string): Future[Nimsuggest] {.a
   ls.lastNimsuggest = ls.projectFiles[projectFile].ns
   return await ls.projectFiles[projectFile].ns
 
-proc tryGetNimsuggest*(ls: LanguageServer, uri: string): Future[Option[Nimsuggest]] {.async.} =
+proc tryGetNimsuggest*(
+    ls: LanguageServer, uri: string
+): Future[Option[Nimsuggest]] {.async.} =
   if uri notin ls.openFiles:
     none(NimSuggest)
   else:
@@ -699,18 +764,24 @@ proc restartAllNimsuggestInstances(ls: LanguageServer) =
 proc maybeRegisterCapabilityDidChangeConfiguration*(ls: LanguageServer) =
   if ls.requiresDynamicRegistrationForDidChangeConfiguration:
     let registrationParams = RegistrationParams(
-      registrations: some(@[Registration(
-        id: "a4606617-82c1-4e22-83db-0095fecb1093",
-        `method`: "workspace/didChangeConfiguration"
-      )])
+      registrations: some(
+        @[
+          Registration(
+            id: "a4606617-82c1-4e22-83db-0095fecb1093",
+            `method`: "workspace/didChangeConfiguration",
+          )
+        ]
+      )
     )
-    ls.didChangeConfigurationRegistrationRequest = ls.call(
-      "client/registerCapability",
-      %registrationParams)
-    ls.didChangeConfigurationRegistrationRequest.addCallback() do (res: Future[JsonNode]):
-      debug "Got response for the didChangeConfiguration registration:", res = res.read()
+    ls.didChangeConfigurationRegistrationRequest =
+      ls.call("client/registerCapability", %registrationParams)
+    ls.didChangeConfigurationRegistrationRequest.addCallback do(res: Future[JsonNode]):
+      debug "Got response for the didChangeConfiguration registration:",
+        res = res.read()
 
-proc handleConfigurationChanges*(ls: LanguageServer, oldConfiguration, newConfiguration: NlsConfig) =
+proc handleConfigurationChanges*(
+    ls: LanguageServer, oldConfiguration, newConfiguration: NlsConfig
+) =
   if ls.clientCapabilities.workspace.isSome and
       ls.clientCapabilities.workspace.get.inlayHint.isSome and
       ls.clientCapabilities.workspace.get.inlayHint.get.refreshSupport.get(false) and
@@ -720,8 +791,7 @@ proc handleConfigurationChanges*(ls: LanguageServer, oldConfiguration, newConfig
     if not inlayExceptionHintsConfigurationEquals(oldConfiguration, newConfiguration):
       ls.restartAllNimsuggestInstances
     debug "Sending inlayHint refresh"
-    ls.inlayHintsRefreshRequest = ls.call("workspace/inlayHint/refresh",
-                                                          newJNull())
+    ls.inlayHintsRefreshRequest = ls.call("workspace/inlayHint/refresh", newJNull())
 
 proc maybeRequestConfigurationFromClient*(ls: LanguageServer) =
   if ls.supportsConfigurationRequest:
@@ -730,18 +800,18 @@ proc maybeRequestConfigurationFromClient*(ls: LanguageServer) =
 
     ls.prevWorkspaceConfiguration = ls.workspaceConfiguration
 
-    ls.workspaceConfiguration =
-      ls.call("workspace/configuration",
-                         %configurationParams)
-    ls.workspaceConfiguration.addCallback() do (futConfiguration: Future[JsonNode]):
+    ls.workspaceConfiguration = ls.call("workspace/configuration", %configurationParams)
+    ls.workspaceConfiguration.addCallback do(futConfiguration: Future[JsonNode]):
       if futConfiguration.error.isNil:
-        debug "Received the following configuration", configuration = futConfiguration.read()
-        if not isNil(ls.prevWorkspaceConfiguration) and ls.prevWorkspaceConfiguration.finished:
+        debug "Received the following configuration",
+          configuration = futConfiguration.read()
+        if not isNil(ls.prevWorkspaceConfiguration) and
+            ls.prevWorkspaceConfiguration.finished:
           let
-            oldConfiguration = parseWorkspaceConfiguration(ls.prevWorkspaceConfiguration.read)
+            oldConfiguration =
+              parseWorkspaceConfiguration(ls.prevWorkspaceConfiguration.read)
             newConfiguration = parseWorkspaceConfiguration(futConfiguration.read)
           handleConfigurationChanges(ls, oldConfiguration, newConfiguration)
-
   else:
     debug "Client does not support workspace/configuration"
     ls.workspaceConfiguration.complete(newJArray())
@@ -768,13 +838,21 @@ proc getProjectFile*(fileUri: string, ls: LanguageServer): Future[string] {.asyn
     mappings = ls.getWorkspaceConfiguration.await().projectMapping.get(@[])
 
   for mapping in mappings:
-    if pathRelativeToRoot.isSome and find(pathRelativeToRoot.get(), re(mapping.fileRegex), 0, pathRelativeToRoot.get().len) != -1:
+    if pathRelativeToRoot.isSome and
+        find(
+          pathRelativeToRoot.get(),
+          re(mapping.fileRegex),
+          0,
+          pathRelativeToRoot.get().len,
+        ) != -1:
       result = string(rootPath) / mapping.projectFile
       if fileExists(result):
-        trace "getProjectFile?", project = result, uri = fileUri, matchedRegex = mapping.fileRegex
+        trace "getProjectFile?",
+          project = result, uri = fileUri, matchedRegex = mapping.fileRegex
         return result
     else:
-      trace "getProjectFile does not match", uri = fileUri, matchedRegex = mapping.fileRegex
+      trace "getProjectFile does not match",
+        uri = fileUri, matchedRegex = mapping.fileRegex
 
   result = ls.getProjectFileAutoGuess(fileUri)
   if result in ls.projectFiles:
@@ -789,14 +867,17 @@ proc getProjectFile*(fileUri: string, ls: LanguageServer): Future[string] {.asyn
 
   debug "getProjectFile ", project = result, fileUri = fileUri
 
-proc warnIfUnknown*(ls: LanguageServer, ns: Nimsuggest, uri: string, projectFile: string):
-     Future[void] {.async, gcsafe.} =
+proc warnIfUnknown*(
+    ls: LanguageServer, ns: Nimsuggest, uri: string, projectFile: string
+): Future[void] {.async, gcsafe.} =
   let path = uri.uriToPath
   let isFileKnown = await ns.isKnown(path)
   if not isFileKnown and not ns.canHandleUnknown:
-      ls.showMessage(fmt """{path} is not compiled as part of project {projectFile}.
+    ls.showMessage(
+      fmt """{path} is not compiled as part of project {projectFile}.
   In orde to get the IDE features working you must either configure nim.projectMapping or import the module.""",
-                    MessageType.Warning)
+      MessageType.Warning,
+    )
 
 proc checkFile*(ls: LanguageServer, uri: string): Future[void] {.async.} =
   debug "Checking", uri = uri
@@ -807,28 +888,28 @@ proc checkFile*(ls: LanguageServer, uri: string): Future[void] {.async.} =
   let
     path = uriToPath(uri)
     ns = await ls.tryGetNimsuggest(uri)
-  
+
   if ns.isSome:
-    let diagnostics = ns.get()    
-      .chkFile(path, ls.uriToStash(uri))
-      .await()
+    let diagnostics = ns.get().chkFile(path, ls.uriToStash(uri)).await()
     ls.progress(token, "end")
     ls.sendDiagnostics(diagnostics, path)
   else:
     ls.progress(token, "end")
-  
-proc removeCompletedPendingRequests(ls: LanguageServer, maxTimeAfterRequestWasCompleted = initDuration(seconds = 10)) = 
+
+proc removeCompletedPendingRequests(
+    ls: LanguageServer, maxTimeAfterRequestWasCompleted = initDuration(seconds = 10)
+) =
   var toRemove = newSeq[uint]()
   for id, pr in ls.pendingRequests:
     if pr.state != prsOnGoing:
       let passedTime = now() - pr.endTime
       if passedTime > maxTimeAfterRequestWasCompleted:
         toRemove.add id
-  
+
   for id in toRemove:
-    ls.pendingRequests.del id  
-  
-proc tick*(ls: LanguageServer): Future[void] {.async.} = 
+    ls.pendingRequests.del id
+
+proc tick*(ls: LanguageServer): Future[void] {.async.} =
   # debug "Ticking at ", now = now(), prs = ls.pendingRequests.len
   ls.removeCompletedPendingRequests()
   ls.sendStatusChanged
