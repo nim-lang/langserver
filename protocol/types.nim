@@ -1005,9 +1005,11 @@ type
 
   ProjectError* = object
     projectFile*: string
-    errorMessage*: string #last known cmd? last know request? 
+    errorMessage*: string 
+    lastKnownCmd*: string
 
   NimLangServerStatus* = object
+    lspPath*: string
     version*: string
     nimsuggestInstances*: seq[NimSuggestStatus]
     openFiles*: seq[string]
