@@ -71,21 +71,7 @@ nimble build
 
 ## Configuration Options
 
-- `nim.projectMapping` - configure how `nimsuggest` should be started. Here it is sample configuration for `VScode`. We don't want `nimlangserver` to start `nimsuggest` for each file and this configuration will allow configuring pair `projectFile`/`fileRegex` so when one of the regexp in the list matches current file
-  then `nimls` will use `root` to start `nimsuggest`. In case there are no matches `nimlangserver` will try to guess the most suitable project root.
-- `nim.timeout` - the request timeout in ms after which `nimlangserver` will restart the language server. If not specified the default is 2 minutes.
-- `nim.nimsuggestPath` - the path to the `nimsuggest`. The default is `"nimsuggest"`.
-- `nim.autoCheckFile` - check the file on the fly
-- `nim.autoCheckProject` - check the project after saving the file
-- `nim.autoRestart` - auto restart once in case of `nimsuggest` crash. Note that
-  the server won't restart if there weren't any successful calls after the last
-  restart.
-- `nim.workingDirectoryMapping` - configure the working directory for specific projects.
-- `nim.checkOnSave` - check the file on save.
-- `nim.logNimsuggest` - enable logging for `nimsuggest`.
-- `nim.inlayHints` - configure inlay hints.
-- `nim.notificationVerbosity` - configure the verbosity of notifications. Can be set to `"none"`, `"error"`, `"warning"`, or `"info"`.
-- `nim.formatOnSave` - format the file on save.
+- `nim.projectMapping` - configure how `nimsuggest` should be started. Here it is sample configuration for `VScode`. We don't want `nimlangserver` to start `nimsuggest` for each file and this configuration will allow configuring pair `projectFile`/`fileRegex` so when one of the regexp in the list matches current file then `nimls` will use `root` to start `nimsuggest`. In case there are no matches `nimlangserver` will try to guess the most suitable project root.
 
 ``` json
 {
@@ -100,6 +86,21 @@ nimble build
     }]
 }
 ```
+Note when in a nimble project, `nimble` will drive the entry points for `nimsuggest`. 
+
+- `nim.timeout` - the request timeout in ms after which `nimlangserver` will restart the language server. If not specified the default is 2 minutes.
+- `nim.nimsuggestPath` - the path to the `nimsuggest`. The default is `"nimsuggest"`.
+- `nim.autoCheckFile` - check the file on the fly
+- `nim.autoCheckProject` - check the project after saving the file
+- `nim.autoRestart` - auto restart once in case of `nimsuggest` crash. Note that
+  the server won't restart if there weren't any successful calls after the last
+  restart.
+- `nim.workingDirectoryMapping` - configure the working directory for specific projects.
+- `nim.checkOnSave` - check the file on save.
+- `nim.logNimsuggest` - enable logging for `nimsuggest`.
+- `nim.inlayHints` - configure inlay hints.
+- `nim.notificationVerbosity` - configure the verbosity of notifications. Can be set to `"none"`, `"error"`, `"warning"`, or `"info"`.
+- `nim.formatOnSave` - format the file on save.
 
 ## Features
 
