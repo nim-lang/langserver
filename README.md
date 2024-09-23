@@ -80,6 +80,12 @@ nimble build
 - `nim.autoRestart` - auto restart once in case of `nimsuggest` crash. Note that
   the server won't restart if there weren't any successful calls after the last
   restart.
+- `nim.workingDirectoryMapping` - configure the working directory for specific projects.
+- `nim.checkOnSave` - check the file on save.
+- `nim.logNimsuggest` - enable logging for `nimsuggest`.
+- `nim.inlayHints` - configure inlay hints.
+- `nim.notificationVerbosity` - configure the verbosity of notifications. Can be set to `"none"`, `"error"`, `"warning"`, or `"info"`.
+- `nim.formatOnSave` - format the file on save.
 
 ``` json
 {
@@ -99,14 +105,25 @@ nimble build
 
 `nimlangserver` supports the following LSP features:
 
+- Initialize
 - Completions
 - Hover
 - Goto definition
+- Goto declaration
+- Goto type definition
 - Document symbols
 - Find references
-- Workspace symbols
+- Code actions
+- Prepare rename
 - Rename symbols
 - Inlay hints
+- Signature help
+- Document formatting
+- Execute command
+- Workspace symbols
+- Document highlight
+- Shutdown
+- Exit
 
 You can install `nimlangserver` using the instructions for your text editor below:
 
@@ -184,6 +201,14 @@ Install the `vscode-nim` extension from [here](https://github.com/nim-lang/vscod
 ``` elisp
 (add-hook 'nim-mode-hook #'lsp)
 ```
+
+## Transport
+
+`nimlangserver` supports two transport modes:
+- stdio
+- socket
+
+To use socket mode, start `nimlangserver` with the `--socket` flag. You can set the port using the `--port` flag. If you don't specify the port, `nimlangserver` will automatically find an open port and print it in the console.
 
 ## Related Projects
 
