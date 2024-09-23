@@ -332,6 +332,7 @@ proc toPendingRequestStatus(pr: PendingRequest): PendingRequestStatus =
   result.state = $pr.state
 
 proc getLspStatus*(ls: LanguageServer): NimLangServerStatus {.raises: [].} =
+  result.lspPath = getAppFilename()
   result.version = LSPVersion
   result.extensionCapabilities = ls.extensionCapabilities.toSeq
   for project in ls.projectFiles.values:
@@ -672,10 +673,13 @@ proc onErrorCallback(args: (LanguageServer, string), project: Project) =
     error "An error has ocurred while handling nimsuggest err", msg = ex.msg
     writeStacktrace(ex)
   finally:
-    ls.projectErrors.add ProjectError(
-      projectFile: project.file, errorMessage: project.errorMessage
-    )
-    ls.sendStatusChanged()
+    if project.file != "":
+      ls.projectErrors.add ProjectError(
+        projectFile: project.file, 
+        errorMessage: project.errorMessage,
+        lastKnownCmd: project.lastCmd 
+      )
+      ls.sendStatusChanged()
 
 proc createOrRestartNimsuggest*(
     ls: LanguageServer, projectFile: string, uri = ""
