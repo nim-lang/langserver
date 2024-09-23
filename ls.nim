@@ -820,8 +820,11 @@ proc maybeRequestConfigurationFromClient*(ls: LanguageServer) =
     debug "Client does not support workspace/configuration"
     ls.workspaceConfiguration.complete(newJArray())
 
-proc getCharacter*(ls: LanguageServer, uri: string, line: int, character: int): int =
-  return ls.openFiles[uri].fingerTable[line].utf16to8(character)
+proc getCharacter*(ls: LanguageServer, uri: string, line: int, character: int): Option[int] =
+  if uri in ls.openFiles and line < ls.openFiles[uri].fingerTable.len:
+    return some ls.openFiles[uri].fingerTable[line].utf16to8(character)
+  else:
+    return none(int)
 
 proc stopNimsuggestProcesses*(ls: LanguageServer) {.async.} =
   if not ls.childNimsuggestProcessesStopped:
