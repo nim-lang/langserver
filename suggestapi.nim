@@ -99,6 +99,7 @@ type
     errorCallback*: ProjectCallback
     errorMessage*: string
     failed*: bool
+    lastCmd*: string
 
 func canHandleUnknown*(ns: Nimsuggest): bool =
   nsUnknownFile in ns.capabilities
@@ -298,7 +299,7 @@ proc getNimsuggestCapabilities*(nimsuggestPath: string):
 proc logNsError(project: Project) {.async.} = 
   let err = string.fromBytes(project.process.stderrStream.read().await)
   error "NimSuggest Error (stderr)", err = err
-  project.markFailed(err) #TODO Error handling should be at the project level
+  project.markFailed(err)
 
 proc createNimsuggest*(root: string,
                        nimsuggestPath: string,
@@ -367,6 +368,7 @@ proc processQueue(self: Nimsuggest): Future[void] {.async.}=
   debug "processQueue", size = self.requestQueue.len
   while self.requestQueue.len != 0:
     let req = self.requestQueue.popFirst
+    self.project.lastCmd = req.commandString
     logScope:
       command = req.commandString
     if req.future.finished:
