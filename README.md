@@ -100,7 +100,7 @@ Note when in a nimble project, `nimble` will drive the entry points for `nimsugg
 - `nim.logNimsuggest` - enable logging for `nimsuggest`.
 - `nim.inlayHints` - configure inlay hints.
 - `nim.notificationVerbosity` - configure the verbosity of notifications. Can be set to `"none"`, `"error"`, `"warning"`, or `"info"`.
-- `nim.formatOnSave` - format the file on save.
+- `nim.formatOnSave` - format the file on save. Requires `nph` to be available in the PATH.
 
 ## Features
 
@@ -119,7 +119,7 @@ Note when in a nimble project, `nimble` will drive the entry points for `nimsugg
 - Rename symbols
 - Inlay hints
 - Signature help
-- Document formatting
+- Document formatting (Requires `nph` to be available in the PATH.)
 - Execute command
 - Workspace symbols
 - Document highlight
