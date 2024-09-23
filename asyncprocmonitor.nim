@@ -12,8 +12,8 @@ type Callback* = proc() {.closure, gcsafe, raises: [].}
 when defined(windows):
   import winlean
 
-  proc hookAsyncProcMonitor*(pid: int, cb: Callback) = discard
-    addProcess2(pid, (arg: pointer) => cb())
+  proc hookAsyncProcMonitor*(pid: int, cb: Callback) =
+    discard addProcess2(pid, (arg: pointer) => cb())
 
 elif defined(posix):
   proc hookAsyncProcMonitor*(pid: int, cb: Callback) =

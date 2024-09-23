@@ -1,30 +1,61 @@
 import json_rpc/[servers/socketserver, private/jrpc_sys, jsonmarshal, rpcclient, router]
 import chronicles, chronos
-import std/[ syncio, os, json, strutils, strformat]
+import std/[syncio, os, json, strutils, strformat]
 import ls, routes, suggestapi, utils, lstransports, asyncprocmonitor
 import protocol/types
 when defined(posix):
   import posix
 
 proc registerRoutes(srv: RpcSocketServer, ls: LanguageServer) =
-  srv.register("initialize", wrapRpc(partial(initialize, (ls: ls, onExit: ls.onExit)))) #use from ls
-  srv.register("textDocument/completion", ls.addRpcToCancellable(wrapRpc(partial(completion, ls))))
-  srv.register("textDocument/definition", ls.addRpcToCancellable(wrapRpc(partial(definition, ls))))
-  srv.register("textDocument/declaration", ls.addRpcToCancellable(wrapRpc(partial(declaration, ls))))
-  srv.register("textDocument/typeDefinition", ls.addRpcToCancellable(wrapRpc(partial(typeDefinition, ls))))
-  srv.register("textDocument/documentSymbol", ls.addRpcToCancellable(wrapRpc(partial(documentSymbols, ls))))
-  srv.register("textDocument/hover", ls.addRpcToCancellable(wrapRpc(partial(hover, ls))))
+  srv.register("initialize", wrapRpc(partial(initialize, (ls: ls, onExit: ls.onExit))))
+    #use from ls
+  srv.register(
+    "textDocument/completion", ls.addRpcToCancellable(wrapRpc(partial(completion, ls)))
+  )
+  srv.register(
+    "textDocument/definition", ls.addRpcToCancellable(wrapRpc(partial(definition, ls)))
+  )
+  srv.register(
+    "textDocument/declaration",
+    ls.addRpcToCancellable(wrapRpc(partial(declaration, ls))),
+  )
+  srv.register(
+    "textDocument/typeDefinition",
+    ls.addRpcToCancellable(wrapRpc(partial(typeDefinition, ls))),
+  )
+  srv.register(
+    "textDocument/documentSymbol",
+    ls.addRpcToCancellable(wrapRpc(partial(documentSymbols, ls))),
+  )
+  srv.register(
+    "textDocument/hover", ls.addRpcToCancellable(wrapRpc(partial(hover, ls)))
+  )
   srv.register("textDocument/references", wrapRpc(partial(references, ls)))
   srv.register("textDocument/codeAction", wrapRpc(partial(codeAction, ls)))
-  srv.register("textDocument/prepareRename", ls.addRpcToCancellable(wrapRpc(partial(prepareRename, ls))))
-  srv.register("textDocument/rename", ls.addRpcToCancellable(wrapRpc(partial(rename, ls))))
-  srv.register("textDocument/inlayHint", ls.addRpcToCancellable(wrapRpc(partial(inlayHint, ls))))
-  srv.register("textDocument/signatureHelp", ls.addRpcToCancellable(wrapRpc(partial(signatureHelp, ls))))
-  srv.register("textDocument/formatting", ls.addRpcToCancellable(wrapRpc(partial(formatting, ls))))
-  srv.register("workspace/executeCommand", wrapRpc(partial(executeCommand, ls)))
-  srv.register("workspace/symbol", ls.addRpcToCancellable(wrapRpc(partial(workspaceSymbol, ls))))
   srv.register(
-    "textDocument/documentHighlight", ls.addRpcToCancellable(wrapRpc(partial(documentHighlight, ls)))
+    "textDocument/prepareRename",
+    ls.addRpcToCancellable(wrapRpc(partial(prepareRename, ls))),
+  )
+  srv.register(
+    "textDocument/rename", ls.addRpcToCancellable(wrapRpc(partial(rename, ls)))
+  )
+  srv.register(
+    "textDocument/inlayHint", ls.addRpcToCancellable(wrapRpc(partial(inlayHint, ls)))
+  )
+  srv.register(
+    "textDocument/signatureHelp",
+    ls.addRpcToCancellable(wrapRpc(partial(signatureHelp, ls))),
+  )
+  srv.register(
+    "textDocument/formatting", ls.addRpcToCancellable(wrapRpc(partial(formatting, ls)))
+  )
+  srv.register("workspace/executeCommand", wrapRpc(partial(executeCommand, ls)))
+  srv.register(
+    "workspace/symbol", ls.addRpcToCancellable(wrapRpc(partial(workspaceSymbol, ls)))
+  )
+  srv.register(
+    "textDocument/documentHighlight",
+    ls.addRpcToCancellable(wrapRpc(partial(documentHighlight, ls))),
   )
   srv.register("shutdown", wrapRpc(partial(shutdown, ls)))
   srv.register("exit", wrapRpc(partial(exit, (ls: ls, onExit: ls.onExit))))
@@ -45,7 +76,7 @@ proc registerRoutes(srv: RpcSocketServer, ls: LanguageServer) =
   )
   srv.register("textDocument/didChange", wrapRpc(partial(didChange, ls)))
   srv.register("$/setTrace", wrapRpc(partial(setTrace, ls)))
-  
+
 proc handleParams(): CommandLineParams =
   if paramCount() > 0 and paramStr(1) in ["-v", "--version"]:
     echo LSPVersion
@@ -74,13 +105,13 @@ proc handleParams(): CommandLineParams =
         quit(1)
     inc i
   if result.transport.isSome and result.transport.get == socket:
-    if result.port == default(Port):      
-      result.port = getNextFreePort() 
+    if result.port == default(Port):
+      result.port = getNextFreePort()
     echo &"port={result.port}"
   if result.transport.isNone:
     result.transport = some stdio
 
-proc registerProcMonitor(ls: LanguageServer) = 
+proc registerProcMonitor(ls: LanguageServer) =
   if ls.cmdLineClientProcessId.isSome:
     debug "Registering monitor for process id, specified on command line",
       clientProcessId = ls.cmdLineClientProcessId.get
@@ -101,8 +132,7 @@ proc registerProcMonitor(ls: LanguageServer) =
 
     hookAsyncProcMonitor(ls.cmdLineClientProcessId.get, onCmdLineClientProcessExit)
 
-
-proc tickLs(ls: LanguageServer, time = 1.seconds) {.async.} = 
+proc tickLs(ls: LanguageServer, time = 1.seconds) {.async.} =
   await ls.tick()
   await sleepAsync(time)
   await ls.tickLs()
@@ -113,9 +143,9 @@ proc main*(cmdLineParams: CommandLineParams): LanguageServer =
   `nimlangserver` supports both transports: stdio and socket. By default it uses stdio transport. 
     But we do construct a RPC socket server even in stdio mode, so that we can reuse the same code for both transports.
   ]#
-  result = initLs(cmdLineParams, ensureStorageDir())   
-  case result.transportMode:
-  of stdio: 
+  result = initLs(cmdLineParams, ensureStorageDir())
+  case result.transportMode
+  of stdio:
     result.startStdioServer()
   of socket:
     result.startSocketServer(cmdLineParams.port)
@@ -123,7 +153,7 @@ proc main*(cmdLineParams: CommandLineParams): LanguageServer =
   result.srv.registerRoutes(result)
   result.registerProcMonitor()
 
-when isMainModule: 
+when isMainModule:
   try:
     let ls = main(handleParams())
     asyncSpawn ls.tickLs()
@@ -134,9 +164,7 @@ when isMainModule:
         ls.stopNimsuggestProcessesP()
         exitnow(1)
     runForever()
-    
   except Exception as e:
     error "Error in main"
     writeStackTrace e
     quit(1)
-  
