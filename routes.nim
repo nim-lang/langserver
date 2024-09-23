@@ -145,12 +145,8 @@ proc completion*(
     let ch = ls.getCharacter(uri, line, character)
     if ch.isNone:
       return @[]
-    let completions = await nimsuggest.get.sug(
-      uriToPath(uri),
-      ls.uriToStash(uri),
-      line + 1,
-      ch.get,
-    )
+    let completions =
+      await nimsuggest.get.sug(uriToPath(uri), ls.uriToStash(uri), line + 1, ch.get)
     result = completions.map(toCompletionItem)
 
     if ls.clientCapabilities.supportSignatureHelp() and
@@ -178,12 +174,7 @@ proc definition*(
     if ch.isNone:
       return @[]
     result = ns.get
-      .def(
-        uriToPath(uri),
-        ls.uriToStash(uri),
-        line + 1,
-        ch.get,
-      )
+      .def(uriToPath(uri), ls.uriToStash(uri), line + 1, ch.get)
       .await()
       .map(toLocation)
 
@@ -199,12 +190,7 @@ proc declaration*(
     if ch.isNone:
       return @[]
     result = ns.get
-      .declaration(
-        uriToPath(uri),
-        ls.uriToStash(uri),
-        line + 1,
-        ch.get,
-      )
+      .declaration(uriToPath(uri), ls.uriToStash(uri), line + 1, ch.get)
       .await()
       .map(toLocation)
 
@@ -218,14 +204,8 @@ proc expandAll*(
     let ch = ls.getCharacter(uri, line, character)
     if ch.isNone:
       return ExpandResult()
-    let expand = ns.get
-      .expand(
-        uriToPath(uri),
-        ls.uriToStash(uri),
-        line + 1,
-        ch.get,
-      )
-      .await()
+    let expand =
+      ns.get.expand(uriToPath(uri), ls.uriToStash(uri), line + 1, ch.get).await()
 
 proc createRangeFromSuggest(suggest: Suggest): Range =
   result = range(suggest.line - 1, 0, suggest.endLine - 1, suggest.endCol)
@@ -259,13 +239,7 @@ proc expand*(
     if ch.isNone:
       return ExpandResult()
     let expand = ns.get
-      .expand(
-        uriToPath(uri),
-        ls.uriToStash(uri),
-        line + 1,
-        ch.get,
-        fmt "  {tag}",
-      )
+      .expand(uriToPath(uri), ls.uriToStash(uri), line + 1, ch.get, fmt "  {tag}")
       .await()
     if expand.len != 0:
       result = ExpandResult(
@@ -334,12 +308,7 @@ proc typeDefinition*(
     if ch.isNone:
       return @[]
     result = ns.get
-      .`type`(
-        uriToPath(uri),
-        ls.uriToStash(uri),
-        line + 1,
-        ch.get,
-      )
+      .`type`(uriToPath(uri), ls.uriToStash(uri), line + 1, ch.get)
       .await()
       .map(toLocation)
 
@@ -415,12 +384,8 @@ proc hover*(
     let ch = ls.getCharacter(uri, line, character)
     if ch.isNone:
       return none(Hover)
-    let suggestions = await nimsuggest.get().def(
-      uriToPath(uri),
-      ls.uriToStash(uri),
-      line + 1,
-      ch.get,
-    )
+    let suggestions =
+      await nimsuggest.get().def(uriToPath(uri), ls.uriToStash(uri), line + 1, ch.get)
     if suggestions.len == 0:
       return none[Hover]()
     else:
@@ -435,13 +400,9 @@ proc references*(
       return @[]
     let ch = ls.getCharacter(uri, line, character)
     if ch.isNone:
-      return @[]  
-    let refs = await nimsuggest.get.use(
-      uriToPath(uri),
-      ls.uriToStash(uri),
-      line + 1,
-      ch.get,
-    )
+      return @[]
+    let refs =
+      await nimsuggest.get.use(uriToPath(uri), ls.uriToStash(uri), line + 1, ch.get)
     result = refs.filter(suggest => suggest.section != ideDef or includeDeclaration).map(
         toLocation
       )
@@ -453,16 +414,12 @@ proc prepareRename*(
     asyncSpawn ls.addProjectFileToPendingRequest(id.uint, uri)
     let nimsuggest = await ls.tryGetNimsuggest(uri)
     if nimsuggest.isNone:
-      return newJNull() 
+      return newJNull()
     let ch = ls.getCharacter(uri, line, character)
     if ch.isNone:
       return newJNull()
-    let def = await nimsuggest.get.def(
-      uriToPath(uri),
-      ls.uriToStash(uri),
-      line + 1,
-      ch.get,
-    )
+    let def =
+      await nimsuggest.get.def(uriToPath(uri), ls.uriToStash(uri), line + 1, ch.get)
     if def.len == 0:
       return newJNull()
     # Check if the symbol belongs to the project
@@ -692,12 +649,8 @@ proc signatureHelp*(
     let ch = ls.getCharacter(uri, line, character)
     if ch.isNone:
       return none[SignatureHelp]()
-    let completions = await nimsuggest.get.con(
-      uriToPath(uri),
-      ls.uriToStash(uri),
-      line + 1,
-      ch.get,
-    )
+    let completions =
+      await nimsuggest.get.con(uriToPath(uri), ls.uriToStash(uri), line + 1, ch.get)
     let signatures = completions.map(toSignatureInformation)
     if signatures.len() > 0:
       return some SignatureHelp(
@@ -770,10 +723,7 @@ proc documentHighlight*(
     if ch.isNone:
       return @[]
     let suggestLocations = await nimsuggest.get.highlight(
-      uriToPath(uri),
-      ls.uriToStash(uri),
-      line + 1,
-      ch.get,
+      uriToPath(uri), ls.uriToStash(uri), line + 1, ch.get
     )
     result = suggestLocations.map(toDocumentHighlight)
 

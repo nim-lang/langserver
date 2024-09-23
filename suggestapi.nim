@@ -1,4 +1,5 @@
-import osproc,
+import
+  osproc,
   strutils,
   strformat,
   times,
@@ -22,14 +23,28 @@ const HighestSupportedNimSuggestProtocolVersion = 4
 # coppied from Nim repo
 type
   PrefixMatch* {.pure.} = enum
-    None,   ## no prefix detected
-    Abbrev  ## prefix is an abbreviation of the symbol
-    Substr, ## prefix is a substring of the symbol
-    Prefix, ## prefix does match the symbol
+    None ## no prefix detected
+    Abbrev ## prefix is an abbreviation of the symbol
+    Substr ## prefix is a substring of the symbol
+    Prefix ## prefix does match the symbol
 
   IdeCmd* = enum
-    ideNone, ideSug, ideCon, ideDef, ideUse, ideDus, ideChk, ideMod,
-    ideHighlight, ideOutline, ideKnown, ideMsg, ideProject, ideType, ideExpand
+    ideNone
+    ideSug
+    ideCon
+    ideDef
+    ideUse
+    ideDus
+    ideChk
+    ideMod
+    ideHighlight
+    ideOutline
+    ideKnown
+    ideMsg
+    ideProject
+    ideType
+    ideExpand
+
   NimsuggestCallback = proc(self: Nimsuggest): void {.gcsafe, raises: [].}
   ProjectCallback = proc(self: Project): void {.gcsafe, raises: [].}
 
@@ -37,11 +52,11 @@ type
     section*: IdeCmd
     qualifiedPath*: seq[string] # part of 'qualifiedPath'
     filePath*: string
-    line*: int                # Starts at 1
-    column*: int              # Starts at 0
-    doc*: string           # Not escaped (yet)
-    forth*: string               # type
-    quality*: range[0..100]   # matching quality
+    line*: int # Starts at 1
+    column*: int # Starts at 0
+    doc*: string # Not escaped (yet)
+    forth*: string # type
+    quality*: range[0 .. 100] # matching quality
     isGlobal*: bool # is a global variable
     contextFits*: bool # type/non-type context matches
     prefix*: PrefixMatch
@@ -59,20 +74,20 @@ type
     command: string
 
   SuggestInlayHintKind* = enum
-    sihkType = "Type",
+    sihkType = "Type"
     sihkParameter = "Parameter"
     sihkException = "Exception"
 
   SuggestInlayHint* = ref object
     kind*: SuggestInlayHintKind
-    line*: int                   # Starts at 1
-    column*: int                 # Starts at 0
+    line*: int # Starts at 1
+    column*: int # Starts at 0
     label*: string
     paddingLeft*: bool
     paddingRight*: bool
     allowInsert*: bool
     tooltip*: string
-    
+
   NimsuggestImpl* = object
     checkProjectInProgress*: bool
     needsCheckProject*: bool
@@ -89,10 +104,10 @@ type
     nimSuggestPath*: string
     version*: string
     project*: Project
-  
+
   NimSuggest* = ref NimsuggestImpl
 
-  Project* = ref object 
+  Project* = ref object
     ns*: Future[NimSuggest]
     file*: string
     process*: AsyncProcessRef
@@ -114,7 +129,7 @@ template benchmark(benchmarkName: string, code: untyped) =
     debug "CPU Time", benchmark = benchmarkName, time = elapsedStr
 
 func nimSymToLSPKind*(suggest: Suggest): CompletionItemKind =
-  case suggest.symKind:
+  case suggest.symKind
   of "skConst": CompletionItemKind.Value
   of "skEnumField": CompletionItemKind.Enum
   of "skForVar": CompletionItemKind.Variable
@@ -133,7 +148,7 @@ func nimSymToLSPKind*(suggest: Suggest): CompletionItemKind =
   else: CompletionItemKind.Property
 
 func nimSymToLSPSymbolKind*(suggest: string): SymbolKind =
-  case suggest:
+  case suggest
   of "skConst": SymbolKind.Constant
   of "skEnumField": SymbolKind.EnumMember
   of "skField": SymbolKind.Field
@@ -150,22 +165,37 @@ func nimSymToLSPSymbolKind*(suggest: string): SymbolKind =
   else: SymbolKind.Function
 
 func nimSymDetails*(suggest: Suggest): string =
-  case suggest.symKind:
-  of "skConst": "const " & suggest.qualifiedPath.join(".") & ": " & suggest.forth
-  of "skEnumField": "enum " & suggest.forth
-  of "skForVar": "for var of " & suggest.forth
-  of "skIterator": suggest.forth
-  of "skLabel": "label"
-  of "skLet": "let of " & suggest.forth
-  of "skMacro": "macro"
-  of "skMethod": suggest.forth
-  of "skParam": "param"
-  of "skProc": suggest.forth
-  of "skResult": "result"
-  of "skTemplate": suggest.forth
-  of "skType": "type " & suggest.qualifiedPath.join(".")
-  of "skVar": "var of " & suggest.forth
-  else: suggest.forth
+  case suggest.symKind
+  of "skConst":
+    "const " & suggest.qualifiedPath.join(".") & ": " & suggest.forth
+  of "skEnumField":
+    "enum " & suggest.forth
+  of "skForVar":
+    "for var of " & suggest.forth
+  of "skIterator":
+    suggest.forth
+  of "skLabel":
+    "label"
+  of "skLet":
+    "let of " & suggest.forth
+  of "skMacro":
+    "macro"
+  of "skMethod":
+    suggest.forth
+  of "skParam":
+    "param"
+  of "skProc":
+    suggest.forth
+  of "skResult":
+    "result"
+  of "skTemplate":
+    suggest.forth
+  of "skType":
+    "type " & suggest.qualifiedPath.join(".")
+  of "skVar":
+    "var of " & suggest.forth
+  else:
+    suggest.forth
 
 const failedToken = "::Failed::"
 
@@ -191,7 +221,7 @@ proc parseQualifiedPath*(input: string): seq[string] =
     result.add item
 
 proc parseSuggestDef*(line: string): Option[Suggest] =
-  let tokens = line.split('\t');
+  let tokens = line.split('\t')
   if tokens.len < 8:
     error "Failed to parse: ", line = line
     return none(Suggest)
@@ -203,14 +233,15 @@ proc parseSuggestDef*(line: string): Option[Suggest] =
     doc: tokens[7].unescape(),
     forth: tokens[3],
     symKind: tokens[1],
-    section: parseEnum[IdeCmd]("ide" & capitalizeAscii(tokens[0])))
+    section: parseEnum[IdeCmd]("ide" & capitalizeAscii(tokens[0])),
+  )
   if tokens.len == 11:
     sug.endLine = parseInt(tokens[9])
     sug.endCol = parseInt(tokens[10])
   some sug
 
 proc parseSuggestInlayHint*(line: string): SuggestInlayHint =
-  let tokens = line.split('\t');
+  let tokens = line.split('\t')
   if tokens.len < 8:
     error "Failed to parse: ", line = line
     raise newException(ValueError, fmt "Failed to parse line {line}")
@@ -222,7 +253,8 @@ proc parseSuggestInlayHint*(line: string): SuggestInlayHint =
     paddingLeft: parseBool(tokens[4]),
     paddingRight: parseBool(tokens[5]),
     allowInsert: parseBool(tokens[6]),
-    tooltip: tokens[7])
+    tooltip: tokens[7],
+  )
 
 proc name*(sug: Suggest): string =
   return sug.qualifiedPath[^1]
@@ -244,23 +276,25 @@ proc stop*(self: Project) =
 proc doWithTimeout*[T](fut: Future[T], timeout: int, s: string): owned(Future[bool]) =
   var retFuture = newFuture[bool]("asyncdispatch.`doWithTimeout`")
   var timeoutFuture = sleepAsync(timeout)
-  fut.addCallback do ():
+  fut.addCallback do():
     if not retFuture.finished:
       retFuture.complete(true)
 
-  timeoutFuture.addCallback do ():
+  timeoutFuture.addCallback do():
     if not retFuture.finished:
       retFuture.complete(false)
 
   return retFuture
 
-proc detectNimsuggestVersion(root: string,
-                             nimsuggestPath: string,
-                             workingDir: string): int {.gcsafe.} =
-  var process = startProcess(command = nimsuggestPath,
-                             workingDir = workingDir,
-                             args = @[root, "--info:protocolVer"],
-                             options = {poUsePath})
+proc detectNimsuggestVersion(
+    root: string, nimsuggestPath: string, workingDir: string
+): int {.gcsafe.} =
+  var process = startProcess(
+    command = nimsuggestPath,
+    workingDir = workingDir,
+    args = @[root, "--info:protocolVer"],
+    options = {poUsePath},
+  )
   var l: string
   if not process.outputStream.readLine(l):
     l = ""
@@ -272,44 +306,46 @@ proc detectNimsuggestVersion(root: string,
   else:
     return parseInt(l)
 
-proc getNimsuggestCapabilities*(nimsuggestPath: string): 
-  set[NimSuggestCapability] {.gcsafe.} =
-
+proc getNimsuggestCapabilities*(
+    nimsuggestPath: string
+): set[NimSuggestCapability] {.gcsafe.} =
   proc parseCapability(c: string): Option[NimSuggestCapability] =
-    debug "Parsing nimsuggest capability", capability=c
+    debug "Parsing nimsuggest capability", capability = c
     try:
       result = some(parseEnum[NimSuggestCapability](c))
     except:
-      debug "Capability not supported. Ignoring.", capability=c
+      debug "Capability not supported. Ignoring.", capability = c
       result = none(NimSuggestCapability)
 
-  var process = startProcess(command = nimsuggestPath,
-                             args = @["--info:capabilities"],
-                             options = {poUsePath})
+  var process = startProcess(
+    command = nimsuggestPath, args = @["--info:capabilities"], options = {poUsePath}
+  )
   var l: string
   if not process.outputStream.readLine(l):
     l = ""
   var exitCode = process.waitForExit()
-  if exitCode == 0: 
+  if exitCode == 0:
     # older versions of NimSuggest don't support the --info:capabilities option
     for cap in l.split(" ").mapIt(parseCapability(it)):
       if cap.isSome:
         result.incl(cap.get)
 
-proc logNsError(project: Project) {.async.} = 
+proc logNsError(project: Project) {.async.} =
   let err = string.fromBytes(project.process.stderrStream.read().await)
   error "NimSuggest Error (stderr)", err = err
   project.markFailed(err)
 
-proc createNimsuggest*(root: string,
-                       nimsuggestPath: string,
-                       version: string,
-                       timeout: int,
-                       timeoutCallback: NimsuggestCallback,
-                       errorCallback: ProjectCallback,
-                       workingDir = getCurrentDir(),
-                       enableLog: bool = false,
-                       enableExceptionInlayHints: bool = false): Future[Project] {.async, gcsafe.} =
+proc createNimsuggest*(
+    root: string,
+    nimsuggestPath: string,
+    version: string,
+    timeout: int,
+    timeoutCallback: NimsuggestCallback,
+    errorCallback: ProjectCallback,
+    workingDir = getCurrentDir(),
+    enableLog: bool = false,
+    enableExceptionInlayHints: bool = false,
+): Future[Project] {.async, gcsafe.} =
   result = Project(file: root)
   result.ns = newFuture[NimSuggest]()
   result.errorCallback = errorCallback
@@ -323,15 +359,14 @@ proc createNimsuggest*(root: string,
   ns.version = version
   ns.project = result
 
-  info "Starting nimsuggest", root = root, timeout = timeout, path = nimsuggestPath, 
-    workingDir = workingDir
+  info "Starting nimsuggest",
+    root = root, timeout = timeout, path = nimsuggestPath, workingDir = workingDir
 
   if nimsuggestPath != "":
     ns.protocolVersion = detectNimsuggestVersion(root, nimsuggestPath, workingDir)
     if ns.protocolVersion > HighestSupportedNimSuggestProtocolVersion:
       ns.protocolVersion = HighestSupportedNimSuggestProtocolVersion
-    var      
-      args = @[root, "--v" & $ns.protocolVersion, "--autobind"]
+    var args = @[root, "--v" & $ns.protocolVersion, "--autobind"]
     if ns.protocolVersion >= 4:
       args.add("--clientProcessId:" & $getCurrentProcessId())
     if enableLog:
@@ -343,28 +378,39 @@ proc createNimsuggest*(root: string,
         args.add("--exceptionInlayHints:on")
       else:
         args.add("--exceptionInlayHints:off")
-    result.process =
-      await startProcess(nimsuggestPath, arguments = args, options = { UsePath }, 
-            stdoutHandle = AsyncProcess.Pipe,
-            stderrHandle = AsyncProcess.Pipe)
+    result.process = await startProcess(
+      nimsuggestPath,
+      arguments = args,
+      options = {UsePath},
+      stdoutHandle = AsyncProcess.Pipe,
+      stderrHandle = AsyncProcess.Pipe,
+    )
     asyncSpawn logNsError(result)
-    ns.port = (await result.process.stdoutStream.readLine(sep="\n")).parseInt 
+    ns.port = (await result.process.stdoutStream.readLine(sep = "\n")).parseInt
     result.ns.complete(ns)
   else:
-    error "Unable to start nimsuggest. Unable to find binary on the $PATH", nimsuggestPath = nimsuggestPath
+    error "Unable to start nimsuggest. Unable to find binary on the $PATH",
+      nimsuggestPath = nimsuggestPath
     result.markFailed fmt "Unable to start nimsuggest. `{nimsuggestPath}` is not present on the PATH"
 
 proc createNimsuggest*(root: string): Future[Project] {.gcsafe.} =
-  result = createNimsuggest(root, "nimsuggest", "", REQUEST_TIMEOUT,
-                            proc (ns: Nimsuggest) = discard,
-                            proc (pr: Project) = discard)
+  result = createNimsuggest(
+    root,
+    "nimsuggest",
+    "",
+    REQUEST_TIMEOUT,
+    proc(ns: Nimsuggest) =
+      discard,
+    proc(pr: Project) =
+      discard,
+  )
 
 proc toString*(bytes: openarray[byte]): string =
   result = newString(bytes.len)
   if bytes.len > 0:
     copyMem(result[0].addr, bytes[0].unsafeAddr, bytes.len)
 
-proc processQueue(self: Nimsuggest): Future[void] {.async.}=
+proc processQueue(self: Nimsuggest): Future[void] {.async.} =
   debug "processQueue", size = self.requestQueue.len
   while self.requestQueue.len != 0:
     let req = self.requestQueue.popFirst
@@ -382,21 +428,23 @@ proc processQueue(self: Nimsuggest): Future[void] {.async.}=
 
         if not self.timeoutCallback.isNil:
           debug "timeoutCallback is set", timeout = self.timeout
-          doWithTimeout(req.future, self.timeout, fmt "running {req.commandString}").addCallback do (f: Future[bool]):
+          doWithTimeout(req.future, self.timeout, fmt "running {req.commandString}").addCallback do(
+            f: Future[bool]
+          ):
             if not f.failed and not f.read():
-                debug "Calling restart"
-                self.timeoutCallback(self)
+              debug "Calling restart"
+              self.timeoutCallback(self)
         let ta = initTAddress(&"127.0.0.1:{self.port}")
         let transport = await ta.connect()
         discard await transport.write(req.commandString & "\c\L")
 
         const bufferSize = 1024 * 1024 * 4
-        var buffer:seq[byte] = newSeq[byte](bufferSize);
+        var buffer: seq[byte] = newSeq[byte](bufferSize)
 
         var data = await transport.read()
         let content = data.toString()
 
-        for lineStr  in content.splitLines:
+        for lineStr in content.splitLines:
           if lineStr != "":
             case req.command
             of "known":
@@ -405,7 +453,7 @@ proc processQueue(self: Nimsuggest): Future[void] {.async.}=
               sug.forth = lineStr
               res.add sug
             of "inlayHints":
-              res.add Suggest( inlayHintInfo: parseSuggestInlayHint(lineStr) )
+              res.add Suggest(inlayHintInfo: parseSuggestInlayHint(lineStr))
             else:
               let sug = parseSuggestDef(lineStr)
               if sug.isSome:
@@ -416,7 +464,9 @@ proc processQueue(self: Nimsuggest): Future[void] {.async.}=
           debug "Server socket closed"
           if not req.future.finished:
             debug "Call cancelled before sending error", command = req.command
-            req.future.fail newException(CatchableError, "Server crashed/socket closed.")
+            req.future.fail newException(
+              CatchableError, "Server crashed/socket closed."
+            )
         if not req.future.finished:
           debug "Sending result(s)", length = res.len
           req.future.complete res
@@ -427,23 +477,33 @@ proc processQueue(self: Nimsuggest): Future[void] {.async.}=
           transport.close()
   self.processing = false
 
-proc call*(self: Nimsuggest, command: string, file: string, dirtyFile: string,
-    line: int, column: int, tag = ""): Future[seq[Suggest]] =
+proc call*(
+    self: Nimsuggest,
+    command: string,
+    file: string,
+    dirtyFile: string,
+    line: int,
+    column: int,
+    tag = "",
+): Future[seq[Suggest]] =
   result = Future[seq[Suggest]]()
-  let commandString = if dirtyFile != "":
-                        fmt "{command} \"{file}\";\"{dirtyFile}\":{line}:{column}{tag}"
-                      else:
-                        fmt "{command} \"{file}\":{line}:{column}{tag}"
+  let commandString =
+    if dirtyFile != "":
+      fmt "{command} \"{file}\";\"{dirtyFile}\":{line}:{column}{tag}"
+    else:
+      fmt "{command} \"{file}\":{line}:{column}{tag}"
   self.requestQueue.addLast(
-    SuggestCall(commandString: commandString, future: result, command: command))
+    SuggestCall(commandString: commandString, future: result, command: command)
+  )
 
   if not self.processing:
     self.processing = true
     traceAsyncErrors processQueue(self)
 
 template createFullCommand(command: untyped) {.dirty.} =
-  proc command*(self: Nimsuggest, file: string, dirtyfile = "",
-                line: int, col: int, tag = ""): Future[seq[Suggest]] =
+  proc command*(
+      self: Nimsuggest, file: string, dirtyfile = "", line: int, col: int, tag = ""
+  ): Future[seq[Suggest]] =
     return self.call(astToStr(command), file, dirtyfile, line, col, tag)
 
 template createFileOnlyCommand(command: untyped) {.dirty.} =
@@ -455,10 +515,21 @@ template createGlobalCommand(command: untyped) {.dirty.} =
     return self.call(astToStr(command), "-", "", 0, 0)
 
 template createRangeCommand(command: untyped) {.dirty.} =
-  proc command*(self: Nimsuggest, file: string, dirtyfile = "",
-                startLine, startCol, endLine, endCol: int,
-                extra: string): Future[seq[Suggest]] =
-    return self.call(astToStr(command), file, dirtyfile, startLine, startCol, fmt ":{endLine}:{endCol}{extra}")
+  proc command*(
+      self: Nimsuggest,
+      file: string,
+      dirtyfile = "",
+      startLine, startCol, endLine, endCol: int,
+      extra: string,
+  ): Future[seq[Suggest]] =
+    return self.call(
+      astToStr(command),
+      file,
+      dirtyfile,
+      startLine,
+      startCol,
+      fmt ":{endLine}:{endCol}{extra}",
+    )
 
 # create commands
 createFullCommand(sug)
@@ -478,13 +549,16 @@ createFileOnlyCommand(globalSymbols)
 createGlobalCommand(recompile)
 createRangeCommand(inlayHints)
 
-proc `mod`*(nimsuggest: Nimsuggest, file: string, dirtyfile = ""): Future[seq[Suggest]] =
+proc `mod`*(
+    nimsuggest: Nimsuggest, file: string, dirtyfile = ""
+): Future[seq[Suggest]] =
   return nimsuggest.call("ideMod", file, dirtyfile, 0, 0)
 
 proc isKnown*(nimsuggest: Nimsuggest, filePath: string): Future[bool] {.async.} =
   let res = await withTimeout(nimsuggest.known(filePath))
   if res.isNone:
-    debug "Timeout reached running [isKnown], assuming the file is not known", file = filePath
+    debug "Timeout reached running [isKnown], assuming the file is not known",
+      file = filePath
     return
   let sug = res.get()
   if sug.len == 0:

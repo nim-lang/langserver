@@ -4,12 +4,12 @@ import std/[syncio, os, json, strutils, strformat, streams, oids, sequtils, time
 import ls, utils
 import protocol/types, chronos/threadsync
 
-type 
+type
   LspClientResponse* = object
     jsonrpc*: JsonRPC2
     id*: string
     result*: JsonNode
-    
+
   Rpc* = proc(params: RequestParamsRx): Future[JsonString] {.gcsafe, raises: [].}
 
 template flavorUsesAutomaticObjectSerialization(T: type JrpcSys): bool =
@@ -40,14 +40,13 @@ proc toJson*(params: RequestParamsRx): JsonNode =
     for p in params.positional:
       result.add parseJson($p)
 
-proc wrapRpc*[T](
-    fn: proc(params: T): Future[auto] {.gcsafe, raises: [].}
-): Rpc =
+proc wrapRpc*[T](fn: proc(params: T): Future[auto] {.gcsafe, raises: [].}): Rpc =
   return proc(params: RequestParamsRx): Future[JsonString] {.gcsafe, async.} =
     var val = params.to(T)
     when typeof(fn(val)) is Future[void]: #Notification
       await fn(val)
-      return JsonString("{}") #Client doesnt expect a response. Handled in processMessage
+      return
+        JsonString("{}") #Client doesnt expect a response. Handled in processMessage
     else:
       let res = await fn(val)
       return JsonString($(%*res))
@@ -66,21 +65,23 @@ proc wrapRpc*[T](
     return JsonString($(%*res))
 
 proc addRpcToCancellable*(ls: LanguageServer, rpc: Rpc): Rpc =
-  return proc(params: RequestParamsRx): Future[JsonString] {.gcsafe, raises:[].} =
+  return proc(params: RequestParamsRx): Future[JsonString] {.gcsafe, raises: [].} =
     try:
       let idRequest = get[uint](params, "idRequest")
       let name = get[string](params, "method")
-      ls.pendingRequests[idRequest] = PendingRequest(id: idRequest, name: name, startTime: now(), state: prsOnGoing)
+      ls.pendingRequests[idRequest] =
+        PendingRequest(id: idRequest, name: name, startTime: now(), state: prsOnGoing)
       ls.sendStatusChanged
       var fut = rpc(params)
-      ls.pendingRequests[idRequest].request = fut #we need to add it before because the rpc may access to the pendingRequest to set the projectFile
-      fut.addCallback proc (d: pointer) = 
+      ls.pendingRequests[idRequest].request = fut
+        #we need to add it before because the rpc may access to the pendingRequest to set the projectFile
+      fut.addCallback proc(d: pointer) =
         try:
           ls.pendingRequests[idRequest].state = prsComplete
           ls.pendingRequests[idRequest].endTime = now()
           ls.sendStatusChanged
         except KeyError:
-          error "Error completing pending requests. Id not found in pending requests" 
+          error "Error completing pending requests. Id not found in pending requests"
       return fut
     except KeyError as ex:
       error "IdRequest not found in the request params"
@@ -89,7 +90,6 @@ proc addRpcToCancellable*(ls: LanguageServer, rpc: Rpc): Rpc =
       error "Error adding request to cancellable requests"
       writeStackTrace(ex)
 
-
 proc processContentLength*(inputStream: FileStream): string =
   result = inputStream.readLine()
   if result.startsWith(CONTENT_LENGTH):
@@ -97,12 +97,14 @@ proc processContentLength*(inputStream: FileStream): string =
     let length = parseInt(parts[1])
     discard inputStream.readLine() # skip the \r\n
     result = newString(length)
-    for i in 0..<length:
+    for i in 0 ..< length:
       result[i] = inputStream.readChar()
   else:
     error "No content length \n"
 
-proc processContentLength*(transport: StreamTransport, error: bool = true): Future[string] {.async:(raises:[]).} =
+proc processContentLength*(
+    transport: StreamTransport, error: bool = true
+): Future[string] {.async: (raises: []).} =
   try:
     result = await transport.readLine()
     if result.startsWith(CONTENT_LENGTH):
@@ -110,7 +112,6 @@ proc processContentLength*(transport: StreamTransport, error: bool = true): Futu
       let length = parseInt(parts[1])
       discard await transport.readLine() # skip the \r\n
       result = (await transport.read(length)).mapIt($(it.char)).join()
-
     else:
       if error:
         error "No content length \n"
@@ -118,7 +119,7 @@ proc processContentLength*(transport: StreamTransport, error: bool = true): Futu
     if error:
       error "Error reading content length", msg = ex.msg
   except CatchableError as ex:
-    if error: 
+    if error:
       error "Error reading content length", msg = ex.msg
 
 proc readStdin*(ctx: ptr ReadStdinContext) {.thread.} =
@@ -130,14 +131,14 @@ proc readStdin*(ctx: ptr ReadStdinContext) {.thread.} =
     discard ctx.onStdReadSignal.fireSync()
     discard ctx.onMainReadSignal.waitSync()
 
-proc wrapContentWithContentLenght*(content: string): string = 
+proc wrapContentWithContentLenght*(content: string): string =
   let contentLenght = content.len + 1
-  &"{CONTENT_LENGTH}{contentLenght}{CRLF}{CRLF}{content}\n"  
+  &"{CONTENT_LENGTH}{contentLenght}{CRLF}{CRLF}{content}\n"
 
 proc writeOutput*(ls: LanguageServer, content: JsonNode) =
   let res = wrapContentWithContentLenght($content)
   try:
-    case ls.transportMode:
+    case ls.transportMode
     of stdio:
       ls.outStream.write(res)
       ls.outStream.flush()
@@ -150,7 +151,7 @@ proc runRpc(ls: LanguageServer, req: RequestRx, rpc: RpcProc): Future[void] {.as
   try:
     let res = await rpc(req.params)
     if res.string in ["", "{}"]:
-      return  #Notification (see wrapRpc). The client doesnt expect a response
+      return #Notification (see wrapRpc). The client doesnt expect a response
     var json = newJObject()
     json["jsonrpc"] = %*"2.0"
     if req.id.kind == riNumber:
@@ -163,9 +164,10 @@ proc runRpc(ls: LanguageServer, req: RequestRx, rpc: RpcProc): Future[void] {.as
     error "[RunRPC] ", msg = ex.msg, req = req.`method`
     writeStackTrace(ex = ex)
 
-proc processMessage(ls: LanguageServer, message: string) {.raises:[].} =
+proc processMessage(ls: LanguageServer, message: string) {.raises: [].} =
   try:
-    let contentJson = parseJson(message) #OPT oportunity reuse the same JSON already parsed
+    let contentJson = parseJson(message)
+      #OPT oportunity reuse the same JSON already parsed
     let isReq = "method" in contentJson
     if isReq:
       debug "[Processsing Message]", request = contentJson["method"]
@@ -173,8 +175,12 @@ proc processMessage(ls: LanguageServer, message: string) {.raises:[].} =
       var req = JrpcSys.decode(message, RequestRx)
       if req.params.kind == rpNamed and req.id.kind == riNumber:
         #Some requests have no id but for others we need to pass the id to the wrapRpc as the id information is lost in the rpc proc
-        req.params.named.add ParamDescNamed(name: "idRequest", value: JsonString($(%req.id.num)))
-        req.params.named.add ParamDescNamed(name: "method", value: JsonString($(contentJson["method"])))
+        req.params.named.add ParamDescNamed(
+          name: "idRequest", value: JsonString($(%req.id.num))
+        )
+        req.params.named.add ParamDescNamed(
+          name: "method", value: JsonString($(contentJson["method"]))
+        )
       let rpc = ls.srv.router.procs.getOrDefault(req.meth.get)
       if rpc.isNil:
         error "[Processsing Message] rpc method not found: ", msg = req.meth.get
@@ -184,7 +190,8 @@ proc processMessage(ls: LanguageServer, message: string) {.raises:[].} =
       let response = JrpcSys.decode(message, LspClientResponse)
       let id = response.id
       if id notin ls.responseMap:
-        error "Id not found in responseMap", id = id #TODO we should store the call name we are trying to responde to here
+        error "Id not found in responseMap", id = id
+          #TODO we should store the call name we are trying to responde to here
       if response.result == nil:
         ls.responseMap[id].complete(newJObject())
         ls.responseMap.del id
@@ -192,7 +199,6 @@ proc processMessage(ls: LanguageServer, message: string) {.raises:[].} =
         let r = response.result
         ls.responseMap[id].complete(r)
         ls.responseMap.del id
-
   except JsonParsingError as ex:
     error "[Processsing Message] Error parsing message", message = message
     writeStackTrace(ex)
@@ -202,8 +208,8 @@ proc processMessage(ls: LanguageServer, message: string) {.raises:[].} =
 
 proc initActions*(ls: LanguageServer) =
   let onExit: OnExitCallback = proc() {.async.} =
-    case ls.transportMode:
-    of stdio:      
+    case ls.transportMode
+    of stdio:
       ls.outStream.close()
       freeShared(ls.stdinContext)
     of socket:
@@ -216,10 +222,10 @@ proc initActions*(ls: LanguageServer) =
     json["params"] = params
 
   let notifyAction: NotifyAction = proc(name: string, params: JsonNode) =
-      genJsonAction()
-      ls.writeOutput(json)
+    genJsonAction()
+    ls.writeOutput(json)
 
-  let callAction: CallAction = proc(name: string, params: JsonNode): Future[JsonNode]  =
+  let callAction: CallAction = proc(name: string, params: JsonNode): Future[JsonNode] =
     let id = $genOid()
     genJsonAction()
     json["id"] = %*id
@@ -232,7 +238,6 @@ proc initActions*(ls: LanguageServer) =
   ls.notify = notifyAction
   ls.onExit = onExit
 
-
 #start and loop functions belows are the only difference between transports
 proc startStdioLoop*(ls: LanguageServer): Future[void] {.async.} =
   while true:
@@ -242,14 +247,14 @@ proc startStdioLoop*(ls: LanguageServer): Future[void] {.async.} =
     await ls.stdinContext.onMainReadSignal.fire()
     if msg == "":
       error "Client discconected"
-      break    
+      break
     ls.processMessage(msg)
 
 proc startStdioServer*(ls: LanguageServer) =
   #Holds the responses from the client done via the callAction. Likely this is only needed for stdio
   debug "Starting stdio server"
   ls.srv = newRpcSocketServer()
-  ls.initActions()      
+  ls.initActions()
   ls.outStream = newFileStream(stdout)
   var stdinThread {.global.}: Thread[ptr ReadStdinContext]
   ls.stdinContext = createShared(ReadStdinContext)
@@ -258,7 +263,9 @@ proc startStdioServer*(ls: LanguageServer) =
   createThread(stdinThread, readStdin, ls.stdinContext)
   asyncSpawn ls.startStdioLoop()
 
-proc processClientLoop*(ls: LanguageServer, server: StreamServer, transport: StreamTransport) {.async: (raises: []), gcsafe.} =
+proc processClientLoop*(
+    ls: LanguageServer, server: StreamServer, transport: StreamTransport
+) {.async: (raises: []), gcsafe.} =
   ls.socketTransport = transport
   while true:
     let msg = await processContentLength(transport)
@@ -270,8 +277,7 @@ proc processClientLoop*(ls: LanguageServer, server: StreamServer, transport: Str
     ls.processMessage(msg)
 
 proc startSocketServer*(ls: LanguageServer, port: Port) =
-    ls.srv = newRpcSocketServer(partial(processClientLoop, ls))
-    ls.initActions()
-    ls.srv.addStreamServer("localhost", port)
-    ls.srv.start
-    
+  ls.srv = newRpcSocketServer(partial(processClientLoop, ls))
+  ls.initActions()
+  ls.srv.addStreamServer("localhost", port)
+  ls.srv.start

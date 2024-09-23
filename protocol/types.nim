@@ -1005,7 +1005,7 @@ type
 
   ProjectError* = object
     projectFile*: string
-    errorMessage*: string 
+    errorMessage*: string
     lastKnownCmd*: string
 
   NimLangServerStatus* = object

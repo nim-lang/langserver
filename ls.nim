@@ -675,9 +675,9 @@ proc onErrorCallback(args: (LanguageServer, string), project: Project) =
   finally:
     if project.file != "":
       ls.projectErrors.add ProjectError(
-        projectFile: project.file, 
+        projectFile: project.file,
         errorMessage: project.errorMessage,
-        lastKnownCmd: project.lastCmd 
+        lastKnownCmd: project.lastCmd,
       )
       ls.sendStatusChanged()
 
@@ -820,7 +820,9 @@ proc maybeRequestConfigurationFromClient*(ls: LanguageServer) =
     debug "Client does not support workspace/configuration"
     ls.workspaceConfiguration.complete(newJArray())
 
-proc getCharacter*(ls: LanguageServer, uri: string, line: int, character: int): Option[int] =
+proc getCharacter*(
+    ls: LanguageServer, uri: string, line: int, character: int
+): Option[int] =
   if uri in ls.openFiles and line < ls.openFiles[uri].fingerTable.len:
     return some ls.openFiles[uri].fingerTable[line].utf16to8(character)
   else:

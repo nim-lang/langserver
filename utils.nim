@@ -135,7 +135,7 @@ proc catchOrQuit*(error: Exception) =
     fatal "Fatal exception reached", err = error.msg, stackTrace = getStackTrace()
     quit 1
 
-proc writeStackTrace*(ex = getCurrentException()) = 
+proc writeStackTrace*(ex = getCurrentException()) =
   try:
     stderr.write "An exception occured \n"
     stderr.write ex.msg & "\n"
@@ -237,9 +237,11 @@ proc to*(params: RequestParamsRx, T: typedesc): T =
   let value = $params.toJson()
   parseJson(value).to(T)
 
-proc head*[T](xs: seq[T]): Option[T] = 
-  if xs.len > 0: some(xs[0])
-  else: none(T)
+proc head*[T](xs: seq[T]): Option[T] =
+  if xs.len > 0:
+    some(xs[0])
+  else:
+    none(T)
 
 proc partial*[A, B, C](
     fn: proc(a: A, b: B): C {.gcsafe, raises: [], nimcall.}, a: A
@@ -254,41 +256,44 @@ proc partial*[A, B](
     fn(a, b)
 
 proc partial*[A, B, C, D](
-  fn: proc(a: A, b: B, c: C): D {.gcsafe, raises: [], nimcall.}, a: A
+    fn: proc(a: A, b: B, c: C): D {.gcsafe, raises: [], nimcall.}, a: A
 ): proc(b: B, c: C): D {.gcsafe, raises: [].} =
   return proc(b: B, c: C): D {.gcsafe, raises: [].} =
     return fn(a, b, c)
-  
-proc ensureStorageDir*: string =
+
+proc ensureStorageDir*(): string =
   result = getTempDir() / "nimlangserver"
   discard existsOrCreateDir(result)
 
 proc either*[T](fut1, fut2: Future[T]): Future[T] {.async.} =
-  let res =  await race(fut1, fut2)
+  let res = await race(fut1, fut2)
   if fut1.finished:
     result = fut1.read
     cancelSoon fut2
   else:
     result = fut2.read
     cancelSoon fut1
-  
-proc map*[T, U](f: Future[T], fn: proc(t:T): U {.raises:[], gcsafe.}): Future[U] {.async.} =
+
+proc map*[T, U](
+    f: Future[T], fn: proc(t: T): U {.raises: [], gcsafe.}
+): Future[U] {.async.} =
   fn(await f)
 
-proc map*[U](f: Future[void], fn: proc(): U {.raises:[], gcsafe.}): Future[U] {.async.} =
+proc map*[U](
+    f: Future[void], fn: proc(): U {.raises: [], gcsafe.}
+): Future[U] {.async.} =
   await f
   fn()
 
-proc withTimeout*[T](fut: Future[T], timeout: int = 500): Future[Option[T]] {.async.} = 
+proc withTimeout*[T](fut: Future[T], timeout: int = 500): Future[Option[T]] {.async.} =
   #Returns None when the timeout is reached and cancels the fut. Otherwise returns the Fut
   let timeoutFut = sleepAsync(timeout).map(() => none(T))
   let optFut = fut.map((r: T) => some r)
   await either(optFut, timeoutFut)
 
-proc getNextFreePort*(): Port= 
+proc getNextFreePort*(): Port =
   let s = newSocket()
   s.bindAddr(Port(0), "localhost")
   let (_, port) = s.getLocalAddr
   s.close()
   port
-  
