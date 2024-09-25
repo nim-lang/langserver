@@ -3,6 +3,29 @@
 Nim Language Server, or `nimlangserver`, is a language server for Nim.
 
 ## Installation
+
+**IMPORTANT** you might want to use latest build of the `nimlangserver` and/or build it from source.
+
+`nimlangserver` requires `nimble >= 0.16.1`
+
+### Installing binaries
+
+_NB:_ `nimlangserver` requires `nimsuggest` version that supports `--v3`:
+- `devel` containing [19826](https://github.com/nim-lang/Nim/pull/19826)
+- 1.6+ containing [19892](https://github.com/nim-lang/Nim/pull/19892)
+
+You can install the latest release into `$HOME/.nimble/bin` using e.g.:
+
+```sh
+nimble install nimlangserver
+```
+
+### From Source
+
+```bash
+nimble build
+```
+
 ### VSCode
 - [vscode-nim](https://github.com/nim-lang/vscode-nim) has support for `nimlangserver`. Follow the instructions at:
 https://github.com/nim-lang/vscode-nim#using
@@ -49,25 +72,6 @@ Change configuration to your liking (most probably you don't need to provide any
 ```
 Of course, change the configuration to your liking. You might also want to read `coc.nvim` documentation to setup key bindings, autocompletion and so on.
 
-**IMPORTANT** you might want to use latest build of the `nimlangserver` and/or build it from source.
-
-### Installing binaries
-
-_NB:_ `nimlangserver` requires `nimsuggest` version that supports `--v3`:
-- `devel` containing [19826](https://github.com/nim-lang/Nim/pull/19826)
-- 1.6+ containing [19892](https://github.com/nim-lang/Nim/pull/19892)
-
-You can install the latest release into `$HOME/.nimble/bin` using e.g.:
-
-```sh
-nimble install nimlangserver
-```
-
-### From Source
-
-```bash
-nimble build
-```
 
 ## Configuration Options
 
