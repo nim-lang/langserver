@@ -81,6 +81,7 @@ type
     inlayHints*: Option[NlsInlayHintsConfig]
     notificationVerbosity*: Option[NlsNotificationVerbosity]
     formatOnSave*: Option[bool]
+    nimsuggestIdleTimeout*: Option[int] #idle timeout in ms
 
   NlsFileInfo* = ref object of RootObj
     projectFile*: Future[string]
@@ -918,7 +919,27 @@ proc removeCompletedPendingRequests(
   for id in toRemove:
     ls.pendingRequests.del id
 
+proc removeIdleNimsuggests*(ls: LanguageServer) {.async.} =
+  const DefaultNimsuggestIdleTimeout = 120000
+  let timeout = ls.getWorkspaceConfiguration().await().nimsuggestIdleTimeout.get(DefaultNimsuggestIdleTimeout)
+  var toStop = newSeq[Project]()
+  for project in ls.projectFiles.values:
+    if project.file in ls.entryPoints: #we only remove non entry point nimsuggests
+      continue
+    if project.lastCmdDate.isSome:
+      let passedTime = now() - project.lastCmdDate.get()
+      if passedTime.inMilliseconds > timeout:       
+        toStop.add(project)
+
+  for project in toStop:
+    debug "Removing idle nimsuggest", project = project.file
+    project.errorCallback = none(ProjectCallback)
+    project.stop()
+    ls.projectFiles.del(project.file)
+    ls.showMessage(fmt"Nimsuggest for {project.file} was stopped because it was idle for too long",MessageType.Info)
+
 proc tick*(ls: LanguageServer): Future[void] {.async.} =
   # debug "Ticking at ", now = now(), prs = ls.pendingRequests.len
   ls.removeCompletedPendingRequests()
+  await ls.removeIdleNimsuggests()
   ls.sendStatusChanged

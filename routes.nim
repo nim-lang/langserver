@@ -276,7 +276,7 @@ proc extensionSuggest*(
       return SuggestResult()
   template restart(ls: LanguageServer, project: Project) =
     ls.showMessage(fmt "Restarting nimsuggest {projectFile}", MessageType.Info)
-    project.errorCallback = nil
+    project.errorCallback = none(ProjectCallback)
     project.stop()
     ls.createOrRestartNimsuggest(projectFile, projectFile.pathToUri)
     ls.sendStatusChanged()
