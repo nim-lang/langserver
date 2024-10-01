@@ -137,9 +137,12 @@ proc catchOrQuit*(error: Exception) =
 
 proc writeStackTrace*(ex = getCurrentException()) =
   try:
-    stderr.write "An exception occured \n"
-    stderr.write ex.msg & "\n"
-    stderr.write ex.getStackTrace()
+    if ex != nil:
+      stderr.write "An exception occured \n"
+      stderr.write ex.msg & "\n"
+      stderr.write ex.getStackTrace()
+    else:
+      stderr.write getStackTrace()
   except IOError:
     discard
 

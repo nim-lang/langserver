@@ -45,8 +45,8 @@ type
     ideType
     ideExpand
 
-  NimsuggestCallback = proc(self: Nimsuggest): void {.gcsafe, raises: [].}
-  ProjectCallback = proc(self: Project): void {.gcsafe, raises: [].}
+  NimsuggestCallback* = proc(self: Nimsuggest): void {.gcsafe, raises: [].}
+  ProjectCallback* = proc(self: Project): void {.gcsafe, raises: [].}
 
   Suggest* = ref object
     section*: IdeCmd
@@ -111,10 +111,11 @@ type
     ns*: Future[NimSuggest]
     file*: string
     process*: AsyncProcessRef
-    errorCallback*: ProjectCallback
+    errorCallback*: Option[ProjectCallback]
     errorMessage*: string
     failed*: bool
     lastCmd*: string
+    lastCmdDate*: Option[DateTime]
 
 func canHandleUnknown*(ns: Nimsuggest): bool =
   nsUnknownFile in ns.capabilities
@@ -262,8 +263,8 @@ proc name*(sug: Suggest): string =
 proc markFailed(self: Project, errMessage: string) {.raises: [].} =
   self.failed = true
   self.errorMessage = errMessage
-  if self.errorCallback != nil:
-    self.errorCallback(self)
+  if self.errorCallback.isSome:
+    self.errorCallback.get()(self)
 
 proc stop*(self: Project) =
   debug "Stopping nimsuggest for ", root = self.file
@@ -348,7 +349,7 @@ proc createNimsuggest*(
 ): Future[Project] {.async, gcsafe.} =
   result = Project(file: root)
   result.ns = newFuture[NimSuggest]()
-  result.errorCallback = errorCallback
+  result.errorCallback = some errorCallback
 
   let ns = Nimsuggest()
   ns.requestQueue = Deque[SuggestCall]()
@@ -415,6 +416,7 @@ proc processQueue(self: Nimsuggest): Future[void] {.async.} =
   while self.requestQueue.len != 0:
     let req = self.requestQueue.popFirst
     self.project.lastCmd = req.commandString
+    self.project.lastCmdDate = some(now())
     logScope:
       command = req.commandString
     if req.future.finished:
