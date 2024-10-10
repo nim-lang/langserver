@@ -753,6 +753,31 @@ proc exit*(
   result = newJNull()
   await p.onExit()
 
+proc tasks*(
+    ls: LanguageServer, conf: JsonNode
+): Future[seq[NimbleTask]] {.async, gcsafe.} =
+  let rootPath: string = ls.initializeParams.getRootPath
+
+  debug "Received tasks ", rootPath = rootPath
+  delEnv "NIMBLE_DIR"
+  let process = await startProcess(
+    "nimble",
+    arguments = @["tasks"],
+    options = {UsePath},
+    workingDir = rootPath,
+    stdoutHandle = AsyncProcess.Pipe,
+    stderrHandle = AsyncProcess.Pipe,
+  )
+  #can you see this?
+  let res =
+    await process.waitForExit(InfiniteDuration) #TODO handle error (i.e. no nimble file)
+  let output = await process.stdoutStream.readLine()
+  echo output.splitLines.toSeq
+  var name, desc: string
+  for line in output.splitLines:
+    if scanf(line, "$+  $*", name, desc):
+      result.add NimbleTask(name: name.strip(), description: desc.strip())
+
 #Notifications
 proc initialized*(ls: LanguageServer, _: JsonNode): Future[void] {.async.} =
   debug "Client initialized."

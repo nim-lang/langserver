@@ -1030,3 +1030,7 @@ type
 
   SuggestResult* = object
     actionPerformed*: SuggestAction
+
+  NimbleTask* = object
+    name*: string 
+    description*: string
