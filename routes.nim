@@ -768,7 +768,6 @@ proc tasks*(
     stdoutHandle = AsyncProcess.Pipe,
     stderrHandle = AsyncProcess.Pipe,
   )
-  #can you see this?
   let res =
     await process.waitForExit(InfiniteDuration) #TODO handle error (i.e. no nimble file)
   let output = await process.stdoutStream.readLine()
