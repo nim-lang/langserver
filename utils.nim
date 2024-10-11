@@ -300,3 +300,10 @@ proc getNextFreePort*(): Port =
   let (_, port) = s.getLocalAddr
   s.close()
   port
+
+func isWord*(str: string): bool =
+  var str = str.toLower()
+  for c in str:
+    if c.int notin 97 .. 122:
+      return false
+  return true

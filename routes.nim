@@ -771,11 +771,11 @@ proc tasks*(
   let res =
     await process.waitForExit(InfiniteDuration) #TODO handle error (i.e. no nimble file)
   let output = await process.stdoutStream.readLine()
-  echo output.splitLines.toSeq
   var name, desc: string
   for line in output.splitLines:
     if scanf(line, "$+  $*", name, desc):
-      if line.substr(name.len)[0 .. 1] == "  " and line.substr(name.len + 2) == desc:
+      #first run of nimble tasks can compile nim and output the result of the compilation
+      if name.isWord:
         result.add NimbleTask(name: name.strip(), description: desc.strip())
 
 #Notifications
