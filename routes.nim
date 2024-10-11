@@ -775,7 +775,8 @@ proc tasks*(
   var name, desc: string
   for line in output.splitLines:
     if scanf(line, "$+  $*", name, desc):
-      result.add NimbleTask(name: name.strip(), description: desc.strip())
+      if line.substr(name.len)[0 .. 1] == "  " and line.substr(name.len + 2) == desc:
+        result.add NimbleTask(name: name.strip(), description: desc.strip())
 
 #Notifications
 proc initialized*(ls: LanguageServer, _: JsonNode): Future[void] {.async.} =
