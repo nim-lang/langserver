@@ -855,6 +855,7 @@ proc getProjectFile*(fileUri: string, ls: LanguageServer): Future[string] {.asyn
           0,
           pathRelativeToRoot.get().len,
         ) != -1:
+      ls.showMessage(fmt"RegEx matched `{mapping.fileRegex}` for file `{fileUri}`", MessageType.Info)
       result = string(rootPath) / mapping.projectFile
       if fileExists(result):
         trace "getProjectFile?",

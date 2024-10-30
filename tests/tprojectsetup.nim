@@ -1,8 +1,11 @@
-import ../[
-  nimlangserver, ls, lstransports, utils
-]
+import ../[nimlangserver, ls, lstransports, utils]
 import ../protocol/[enums, types]
-import std/[options, unittest, json, os, jsonutils, sequtils, strutils, sugar, strformat, osproc]
+import
+  std/
+    [
+      options, unittest, json, os, jsonutils, sequtils, strutils, sugar, strformat,
+      osproc,
+    ]
 import json_rpc/[rpcclient]
 import chronicles
 import lspsocketclient
@@ -13,7 +16,8 @@ template cd*(dir: string, body: untyped) =
   let lastDir = getCurrentDir()
   setCurrentDir(dir)
   block:
-    defer: setCurrentDir(lastDir)
+    defer:
+      setCurrentDir(lastDir)
     body
 
 template createNewDir*(dir: string) =
@@ -25,19 +29,16 @@ template cdNewDir*(dir: string, body: untyped) =
   cd dir:
     body
 
-
 let
   rootDir = getCurrentDir()
   nimblePath* = findExe "nimble"
   installDir* = rootDir / "tests" / "nimbleDir"
 
-type
-  ProcessOutput* = tuple[output: string, exitCode: int]
-
+type ProcessOutput* = tuple[output: string, exitCode: int]
 
 proc execNimble*(args: varargs[string]): ProcessOutput =
   var quotedArgs = @args
-  if not args.anyIt("--nimbleDir:" in it or "-l"  == it or "--local" == it):
+  if not args.anyIt("--nimbleDir:" in it or "-l" == it or "--local" == it):
     quotedArgs.insert("--nimbleDir:" & installDir)
   quotedArgs.insert(nimblePath)
   quotedArgs = quotedArgs.map((x: string) => x.quoteShell)
@@ -60,12 +61,10 @@ proc execNimble*(args: varargs[string]): ProcessOutput =
 proc execNimbleYes*(args: varargs[string]): ProcessOutput =
   execNimble(@args & "-y")
 
-
-proc createNimbleProject(projectDir: string) = 
-  cdNewDir projectDir:     
+proc createNimbleProject(projectDir: string) =
+  cdNewDir projectDir:
     let (output, exitCode) = execNimbleYes("init")
     check exitCode == 0
-
 
 suite "nimble setup":
   let cmdParams = CommandLineParams(transport: some socket, port: getNextFreePort())
@@ -73,59 +72,102 @@ suite "nimble setup":
   let client = newLspSocketClient()
   waitFor client.connect("localhost", cmdParams.port)
   client.registerNotification(
-    "window/showMessage", 
-    "window/workDoneProgress/create",
-    "workspace/configuration",
-    "extension/statusUpdate",
-    "extension/statusUpdate",
-    "textDocument/publishDiagnostics",
-    "$/progress"
-    )
+    "window/showMessage", "window/workDoneProgress/create", "workspace/configuration",
+    "extension/statusUpdate", "extension/statusUpdate",
+    "textDocument/publishDiagnostics", "$/progress",
+  )
   let testProjectDir = absolutePath "tests" / "projects" / "testproject"
-  
+
   test "should pick `testproject.nim` as the main file and provide suggestions":
-    
     let entryPoint = testProjectDir / "src" / "testproject.nim"
     createNimbleProject(testProjectDir)
-    let initParams = InitializeParams %* {
+    let initParams =
+      InitializeParams %* {
         "processId": %getCurrentProcessId(),
         "rootUri": fixtureUri("projects/testproject"),
-        "capabilities": {
-          "window": {
-            "workDoneProgress": true
-          },
-          "workspace": {"configuration": true}
-        }
-    }
+        "capabilities":
+          {"window": {"workDoneProgress": true}, "workspace": {"configuration": true}},
+      }
     discard waitFor client.initialize(initParams)
-    let progressParam = %ProgressParams(token: fmt "Creating nimsuggest for {entryPoint}")
-    check waitFor client.waitForNotification("$/progress", (json: JsonNode) => progressParam["token"] == json["token"])
-    
-    let completionParams = CompletionParams %* {
-      "position": {
-         "line": 7,
-         "character": 0
-      },
-      "textDocument": {
-         "uri": pathToUri(entryPoint)
-       }
-    }
+    let progressParam =
+      %ProgressParams(token: fmt "Creating nimsuggest for {entryPoint}")
+    check waitFor client.waitForNotification(
+      "$/progress", (json: JsonNode) => progressParam["token"] == json["token"]
+    )
+
+    let completionParams =
+      CompletionParams %* {
+        "position": {"line": 7, "character": 0},
+        "textDocument": {"uri": pathToUri(entryPoint)},
+      }
     let ns = waitFor ls.projectFiles[entryPoint].ns
-    client.notify("textDocument/didOpen", %createDidOpenParams("projects/testproject/src/testproject.nim"))
-    check waitFor client.waitForNotification("window/showMessage", 
-      (json: JsonNode) => json["message"].to(string) == &"Opening {pathToUri(entryPoint)}")
+    client.notify(
+      "textDocument/didOpen",
+      %createDidOpenParams("projects/testproject/src/testproject.nim"),
+    )
+    check waitFor client.waitForNotification(
+      "window/showMessage",
+      (json: JsonNode) =>
+        json["message"].to(string) == &"Opening {pathToUri(entryPoint)}",
+    )
 
     #We need to make two calls (ns issue)
     discard client.call("textDocument/completion", %completionParams).waitFor
-    let completionList =  client.call("textDocument/completion", %completionParams)
-      .waitFor.to(seq[CompletionItem]).mapIt(it.label)
+    let completionList = client
+      .call("textDocument/completion", %completionParams).waitFor
+      .to(seq[CompletionItem])
+      .mapIt(it.label)
     check completionList.len > 0
 
   test "`submodule.nim` should not be part of the nimble project file":
     let submodule = testProjectDir / "src" / "testproject" / "submodule.nim"
-    client.notify("textDocument/didOpen", %createDidOpenParams("projects/testproject/src/testproject/submodule.nim"))
+    client.notify(
+      "textDocument/didOpen",
+      %createDidOpenParams("projects/testproject/src/testproject/submodule.nim"),
+    )
 
-    check waitFor client.waitForNotification("window/showMessage", 
-      (json: JsonNode) => json["message"].to(string) == &"Opening {pathToUri(submodule)}")
+    check waitFor client.waitForNotification(
+      "window/showMessage",
+      (json: JsonNode) => json["message"].to(string) == &"Opening {pathToUri(submodule)}",
+    )
 
     check ls.projectFiles.len == 2
+
+suite "Project Mapping":
+  let cmdParams = CommandLineParams(transport: some socket, port: getNextFreePort())
+  let ls = main(cmdParams) #we could accesss to the ls here to test against its state
+  let client = newLspSocketClient()
+  waitFor client.connect("localhost", cmdParams.port)
+  client.registerNotification(
+    "window/showMessage", "window/workDoneProgress/create", "workspace/configuration",
+    "extension/statusUpdate", "extension/statusUpdate",
+    "textDocument/publishDiagnostics", "$/progress",
+  )
+  let projectsDir = absolutePath "tests" / "projects"
+
+  test "should use projectMapping fileRegex to find project file":
+    let initParams =
+      InitializeParams %* {
+        "processId": %getCurrentProcessId(),
+        "rootUri": fixtureUri("projects"),
+        "capabilities":
+          {"window": {"workDoneProgress": true}, "workspace": {"configuration": true}},
+      }
+    discard waitFor client.initialize(initParams)
+    let configurationParams =
+      @[NlsConfig(projectMapping: some @[NlsNimsuggestConfig(fileRegex: ".nonimble*")])]
+    let nonimbleProject = projectsDir / "nonimbleproject.nim"
+    ls.workspaceConfiguration.complete(%configurationParams)
+
+    let projectFile = waitFor getProjectFile(pathToUri(nonimbleProject), ls)
+    let matchingMsg =
+      fmt"RegEx matched `.nonimble*` for file `{nonimbleProject.pathToUri}`"
+
+    check waitFor client.waitForNotification(
+      "window/showMessage",
+      proc(json: JsonNode): bool =
+        json["message"].getStr == matchingMsg,
+    )
+    let expectedProjectFile = nonimbleProject.pathToUri
+
+    check projectFile == expectedProjectFile
