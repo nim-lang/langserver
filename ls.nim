@@ -16,10 +16,11 @@ import
   sets,
   ./utils,
   chronicles,
-  std/[re, json, streams, sequtils, setutils, times],
+  std/[json, streams, sequtils, setutils, times],
   uri,
   json_serialization,
-  json_rpc/[servers/socketserver]
+  json_rpc/[servers/socketserver],
+  regex
 
 proc getVersionFromNimble(): string =
   #We should static run nimble dump instead
@@ -848,14 +849,12 @@ proc getProjectFile*(fileUri: string, ls: LanguageServer): Future[string] {.asyn
     mappings = ls.getWorkspaceConfiguration.await().projectMapping.get(@[])
 
   for mapping in mappings:
+    var m: RegexMatch2
     if pathRelativeToRoot.isSome and
-        find(
-          pathRelativeToRoot.get(),
-          re(mapping.fileRegex),
-          0,
-          pathRelativeToRoot.get().len,
-        ) != -1:
-      ls.showMessage(fmt"RegEx matched `{mapping.fileRegex}` for file `{fileUri}`", MessageType.Info)
+        find(pathRelativeToRoot.get(), re2(mapping.fileRegex), m):
+      ls.showMessage(
+        fmt"RegEx matched `{mapping.fileRegex}` for file `{fileUri}`", MessageType.Info
+      )
       result = string(rootPath) / mapping.projectFile
       if fileExists(result):
         trace "getProjectFile?",
@@ -922,14 +921,16 @@ proc removeCompletedPendingRequests(
 
 proc removeIdleNimsuggests*(ls: LanguageServer) {.async.} =
   const DefaultNimsuggestIdleTimeout = 120000
-  let timeout = ls.getWorkspaceConfiguration().await().nimsuggestIdleTimeout.get(DefaultNimsuggestIdleTimeout)
+  let timeout = ls.getWorkspaceConfiguration().await().nimsuggestIdleTimeout.get(
+      DefaultNimsuggestIdleTimeout
+    )
   var toStop = newSeq[Project]()
   for project in ls.projectFiles.values:
     if project.file in ls.entryPoints: #we only remove non entry point nimsuggests
       continue
     if project.lastCmdDate.isSome:
       let passedTime = now() - project.lastCmdDate.get()
-      if passedTime.inMilliseconds > timeout:       
+      if passedTime.inMilliseconds > timeout:
         toStop.add(project)
 
   for project in toStop:
@@ -937,7 +938,10 @@ proc removeIdleNimsuggests*(ls: LanguageServer) {.async.} =
     project.errorCallback = none(ProjectCallback)
     project.stop()
     ls.projectFiles.del(project.file)
-    ls.showMessage(fmt"Nimsuggest for {project.file} was stopped because it was idle for too long",MessageType.Info)
+    ls.showMessage(
+      fmt"Nimsuggest for {project.file} was stopped because it was idle for too long",
+      MessageType.Info,
+    )
 
 proc tick*(ls: LanguageServer): Future[void] {.async.} =
   # debug "Ticking at ", now = now(), prs = ls.pendingRequests.len
