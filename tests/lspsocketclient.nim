@@ -192,7 +192,7 @@ proc registerNotification*(client: LspSocketClient, names: varargs[string]) =
 proc waitForNotification*(client: LspSocketClient, name: string, predicate: proc(json: JsonNode): bool , accTime = 0): Future[bool] {.async.}=
   let timeout = 10000
   if accTime > timeout: 
-    error "Coudlnt mathc predicate ", calls = client.calls[name]
+    error "Coudlnt match predicate ", calls = client.calls[name]
     return false
   try:    
     {.cast(gcsafe).}:
