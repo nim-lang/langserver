@@ -14,7 +14,7 @@ bin           = @["tasks"]
 requires "nim >= 2.1.99"
 
 task helloWorld, "hello world":
-  echo "helo world"
+  echo "hello world"
 
 task anotherTask, "Another task":
   echo "another task"

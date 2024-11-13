@@ -1034,3 +1034,10 @@ type
   NimbleTask* = object
     name*: string 
     description*: string
+
+  RunTaskParams* = object
+    command*: seq[string] #command and args
+  
+  RunTaskResult* = object
+    command*: seq[string] #command and args
+    output*: seq[string] #output lines
