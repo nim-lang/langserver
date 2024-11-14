@@ -17,7 +17,7 @@ import
   chronicles,
   asyncprocmonitor,
   json_serialization,
-  std/[strscans, times, json, parseutils],
+  std/[strscans, times, json, parseutils, strutils],
   ls,
   stew/[byteutils]
 
@@ -753,21 +753,23 @@ proc exit*(
   result = newJNull()
   await p.onExit()
 
-proc tasks*(
-    ls: LanguageServer, conf: JsonNode
-): Future[seq[NimbleTask]] {.async, gcsafe.} =
-  let rootPath: string = ls.initializeParams.getRootPath
-
-  debug "Received tasks ", rootPath = rootPath
-  delEnv "NIMBLE_DIR"
-  let process = await startProcess(
+proc startNimbleProcess(ls: LanguageServer, args: seq[string]): Future[AsyncProcessRef] {.async.} =
+  await startProcess(
     "nimble",
-    arguments = @["tasks"],
+    arguments = args,
     options = {UsePath},
-    workingDir = rootPath,
+    workingDir = ls.initializeParams.getRootPath,
     stdoutHandle = AsyncProcess.Pipe,
     stderrHandle = AsyncProcess.Pipe,
   )
+
+proc tasks*(
+    ls: LanguageServer, conf: JsonNode
+): Future[seq[NimbleTask]] {.async.} =
+  let rootPath: string = ls.initializeParams.getRootPath
+  debug "Received tasks ", rootPath = rootPath
+  delEnv "NIMBLE_DIR"
+  let process = await ls.startNimbleProcess(@["tasks"])
   let res =
     await process.waitForExit(InfiniteDuration) #TODO handle error (i.e. no nimble file)
   let output = await process.stdoutStream.readLine()
@@ -777,6 +779,23 @@ proc tasks*(
       #first run of nimble tasks can compile nim and output the result of the compilation
       if name.isWord:
         result.add NimbleTask(name: name.strip(), description: desc.strip())
+
+proc runTask*(
+    ls: LanguageServer, params: RunTaskParams
+): Future[RunTaskResult] {.async.} =
+  let process = await ls.startNimbleProcess(params.command) 
+  let res = await process.waitForExit(InfiniteDuration)
+  result.command = params.command
+  let prefix = "\""
+  while not process.stdoutStream.atEof():
+    var lines = process.stdoutStream.readLine().await.splitLines
+    for line in lines.mitems:
+      if line.startsWith(prefix):
+        line = line.unescape(prefix)
+      if line != "":  
+        result.output.add line  
+        
+  debug "Ran nimble cmd/task", command = $params.command, output = $result.output
 
 #Notifications
 proc initialized*(ls: LanguageServer, _: JsonNode): Future[void] {.async.} =
