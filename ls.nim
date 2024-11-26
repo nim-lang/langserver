@@ -156,6 +156,7 @@ type
       outStream*: FileStream
       stdinContext*: ptr ReadStdinContext
     projectErrors*: seq[ProjectError]
+    lastStatusSent: JsonNode
       #List of errors (crashes) nimsuggest has had since the lsp session started
 
   Certainty* = enum
@@ -362,9 +363,11 @@ proc getLspStatus*(ls: LanguageServer): NimLangServerStatus {.raises: [].} =
   result.projectErrors = ls.projectErrors
 
 proc sendStatusChanged*(ls: LanguageServer) {.raises: [].} =
-  let status: NimLangServerStatus = ls.getLspStatus()
-  ls.notify("extension/statusUpdate", %*status)
-
+  let status = %*ls.getLspStatus() 
+  if status != ls.lastStatusSent:
+    ls.notify("extension/statusUpdate", status)
+    ls.lastStatusSent = status
+  
 proc addProjectFileToPendingRequest*(
     ls: LanguageServer, id: uint, uri: string
 ) {.async.} =
