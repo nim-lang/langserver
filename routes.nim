@@ -385,11 +385,23 @@ proc hover*(
     if ch.isNone:
       return none(Hover)
     let suggestions =
-      await nimsuggest.get().def(uriToPath(uri), ls.uriToStash(uri), line + 1, ch.get)
+      await nimsuggest.get().highlight(uriToPath(uri), ls.uriToStash(uri), line + 1, ch.get)
     if suggestions.len == 0:
-      return none[Hover]()
+      return none(Hover)
+    var suggest = suggestions[0]
+    if suggest.symkind == "skModule": # NOTE: skMoudle always return position (1, 0)
+      return some(Hover(contents: some(%toMarkedStrings(suggest))))
     else:
-      return some(Hover(contents: some(%toMarkedStrings(suggestions[0]))))
+      for s in suggestions:
+        if s.line == line + 1:
+          if s.column <= ch.get:
+            suggest = s
+          else:
+            break
+      return some(Hover(
+        contents: some(%toMarkedStrings(suggest)),
+        range: some(toLabelRange(suggest.toUtf16Pos(ls))),
+      ))
 
 proc references*(
     ls: LanguageServer, params: ReferenceParams
