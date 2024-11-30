@@ -121,19 +121,41 @@ suite "LSP features":
 
   test "Sending hover.":
     let
-      hoverParams = positionParams(fixtureUri("projects/hw/hw.nim"), 1, 0)
+      hoverParams = positionParams(helloWorldUri, 1, 6)
       hover = client.call("textDocument/hover", %hoverParams).waitFor
-    doAssert contains($hover, "hw.a: proc ()")
+      expected = %*{
+        "contents": [{
+          "language": "nim",
+          "value": "hw.a안녕: proc (){.noSideEffect, gcsafe, raises: <inferred> [].}"
+        }],
+        "range": {
+          "start": {
+            "line": 1,
+            "character": 6
+          },
+          "end": {
+            "line": 1,
+            "character": 9
+          }
+        }
+      }
+    check hover == expected
 
   test "Sending hover(no content)":
-    let
-      hoverParams = positionParams(helloWorldUri, 2, 0)
-      hover = client.call("textDocument/hover", %hoverParams).waitFor
-    check hover.kind == JNull
+    block:
+      let
+        hoverParams = positionParams(helloWorldUri, 1, 5)
+        hover = client.call("textDocument/hover", %hoverParams).waitFor
+      check hover.kind == JNull
+    block:
+      let
+        hoverParams = positionParams(helloWorldUri, 2, 0)
+        hover = client.call("textDocument/hover", %hoverParams).waitFor
+      check hover.kind == JNull
 
   test "Definitions.":
     let
-      positionParams = positionParams(helloWorldUri, 1, 0)
+      positionParams = positionParams(helloWorldUri, 1, 6)
       locations = to(waitFor client.call("textDocument/definition", %positionParams),
                      seq[Location])
       expected = seq[Location] %* [{
@@ -145,7 +167,7 @@ suite "LSP features":
           },
           "end": {
             "line": 0,
-            "character": 6
+            "character": 8
           }
         }
       }]
@@ -158,7 +180,7 @@ suite "LSP features":
       },
       "position": {
          "line": 1,
-         "character": 0
+         "character": 6
       },
       "textDocument": {
          "uri": helloWorldUri
@@ -175,7 +197,7 @@ suite "LSP features":
         },
         "end": {
           "line": 0,
-          "character": 6
+          "character": 8
         }
       }
       }, {
@@ -183,11 +205,11 @@ suite "LSP features":
       "range": {
         "start": {
           "line": 1,
-          "character": 0
+          "character": 6
         },
         "end": {
           "line": 1,
-          "character": 1
+          "character": 9
         }
       }
     }]
@@ -200,7 +222,7 @@ suite "LSP features":
       },
       "position": {
          "line": 1,
-         "character": 0
+         "character": 7
       },
       "textDocument": {
          "uri": helloWorldUri
@@ -214,11 +236,11 @@ suite "LSP features":
       "range": {
         "start": {
           "line": 1,
-          "character": 0
+          "character": 6
         },
         "end": {
           "line": 1,
-          "character": 1
+          "character": 9
         }
       }
     }]

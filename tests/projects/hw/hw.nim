@@ -1,5 +1,5 @@
-proc a() = discard
-a()
+proc a안녕() = discard
+#[안녕]#a안녕()
 var bbb = 100
 bbb = 200
 bbb = ""
@@ -32,3 +32,5 @@ type
 proc f(a: Obj) =
   with a:
     field1 = field2
+
+let a안녕bcd = 0

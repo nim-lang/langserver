@@ -40,12 +40,12 @@ suite "Nimsuggest tests":
     )[]
 
   test "test Nimsuggest.call":
-    let res = waitFor nimSuggest.call("def", helloWorldFile, helloWorldFile, 2, 0)
+    let res = waitFor nimSuggest.call("def", helloWorldFile, helloWorldFile, 2, 10)
     doAssert res.len == 1
     doAssert res[0].forth.contains("noSideEffect")
 
   test "test Nimsuggest.def":
-    let res = waitFor nimSuggest.def(helloWorldFile, helloWorldFile, 2, 0)
+    let res = waitFor nimSuggest.def(helloWorldFile, helloWorldFile, 2, 10)
     doAssert res.len == 1
     doAssert res[0].forth.contains("proc")
 
