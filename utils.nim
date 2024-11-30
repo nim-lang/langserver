@@ -35,6 +35,19 @@ proc createUTFMapping*(line: string): FingerTable =
 
   #echo fingerTable
 
+proc utf16Len*(utf8Str: string): int =
+  result = 0
+  for rune in utf8Str.runes:
+    case rune.int32
+    of 0x0000 .. 0x007F,
+       0x0080 .. 0x07FF,
+       0x0800 .. 0xFFFF:
+      result += 1
+    of 0x10000 .. 0x10FFFF:
+      result += 2
+    else:
+      discard
+
 proc utf16to8*(fingerTable: FingerTable, utf16pos: int): int =
   result = utf16pos
   for finger in fingerTable:
@@ -43,10 +56,18 @@ proc utf16to8*(fingerTable: FingerTable, utf16pos: int): int =
     else:
       break
 
+proc utf8to16*(fingerTable: FingerTable, utf8pos: int): int =
+  result = utf8pos
+  for finger in fingerTable:
+    if finger.u16pos < result:
+      result -= finger.offset
+    else:
+      break
+
 when isMainModule:
   import termstyle
   var x = "heållo☀☀wor𐐀𐐀☀ld heållo☀wor𐐀ld heållo☀wor𐐀ld"
-  var fingerTable = populateUTFMapping(x)
+  var fingerTable = createUTFMapping(x)
 
   var corrected = utf16to8(fingerTable, 5)
   for y in x:
