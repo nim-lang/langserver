@@ -556,6 +556,30 @@ proc uriToStash*(ls: LanguageServer, uri: string): string =
   else:
     ""
 
+proc toUtf16Pos*(
+    ls: LanguageServer, uri: string, line: int, utf8Pos: int
+): Option[int] =
+  if uri in ls.openFiles and line >= 0 and line < ls.openFiles[uri].fingerTable.len:
+    let utf16Pos = ls.openFiles[uri].fingerTable[line].utf8to16(utf8Pos)
+    return some(utf16Pos)
+  else:
+    return none(int)
+
+proc toUtf16Pos*(suggest: Suggest, ls: LanguageServer): Suggest =
+  result = suggest
+  let uri = pathToUri(suggest.filePath)
+  let pos = toUtf16Pos(ls, uri, suggest.line - 1, suggest.column)
+  if pos.isSome:
+    result.column = pos.get()
+
+proc toUtf16Pos*(
+  suggest: SuggestInlayHint, ls: LanguageServer, uri: string
+): SuggestInlayHint =
+  result = suggest
+  let pos = toUtf16Pos(ls, uri, suggest.line - 1, suggest.column)
+  if pos.isSome:
+    result.column = pos.get()
+
 proc range*(startLine, startCharacter, endLine, endCharacter: int): Range =
   return
     Range %* {
@@ -565,35 +589,41 @@ proc range*(startLine, startCharacter, endLine, endCharacter: int): Range =
 
 proc toLabelRange*(suggest: Suggest): Range =
   with suggest:
-    let endColumn = column + qualifiedPath[^1].strip(chars = {'`'}).len
-    return range(line - 1, column, line - 1, endColumn)
+    return range(line - 1, column, line - 1, column + utf16Len(qualifiedPath[^1]))
 
 proc toDiagnostic(suggest: Suggest): Diagnostic =
   with suggest:
     let
-      endColumn = column + doc.rfind('\'') - doc.find('\'') - 2
-      node =
-        %*{
-          "uri": pathToUri(filepath),
-          "range": range(line - 1, column, line - 1, column + endColumn),
-          "severity":
-            case forth
-            of "Error": DiagnosticSeverity.Error.int
-            of "Hint": DiagnosticSeverity.Hint.int
-            of "Warning": DiagnosticSeverity.Warning.int
-            else: DiagnosticSeverity.Error.int
-          ,
-          "message": doc,
-          "source": "nim",
-          "code": "nimsuggest chk",
-        }
+      textStart = doc.find('\'')
+      textEnd = doc.rfind('\'')
+      endColumn =
+        if textStart >= 0 and textEnd >= 0:
+          column + utf16Len(doc[textStart + 1 ..< textEnd])
+        else:
+          column + 1
+
+    let node =
+      %*{
+        "uri": pathToUri(filepath),
+        "range": range(line - 1, column, line - 1, endColumn),
+        "severity":
+          case forth
+          of "Error": DiagnosticSeverity.Error.int
+          of "Hint": DiagnosticSeverity.Hint.int
+          of "Warning": DiagnosticSeverity.Warning.int
+          else: DiagnosticSeverity.Error.int
+        ,
+        "message": doc,
+        "source": "nim",
+        "code": "nimsuggest chk",
+      }
     return node.to(Diagnostic)
 
 proc sendDiagnostics*(ls: LanguageServer, diagnostics: seq[Suggest], path: string) =
   debug "Sending diagnostics", count = diagnostics.len, path = path
   let params =
     PublishDiagnosticsParams %*
-    {"uri": pathToUri(path), "diagnostics": diagnostics.map(toDiagnostic)}
+    {"uri": pathToUri(path), "diagnostics": diagnostics.map(x => x.toUtf16Pos(ls).toDiagnostic)}
   ls.notify("textDocument/publishDiagnostics", %params)
 
   if diagnostics.len != 0:

@@ -176,7 +176,7 @@ proc definition*(
     result = ns.get
       .def(uriToPath(uri), ls.uriToStash(uri), line + 1, ch.get)
       .await()
-      .map(toLocation)
+      .map(x => x.toUtf16Pos(ls).toLocation)
 
 proc declaration*(
     ls: LanguageServer, params: TextDocumentPositionParams, id: int
@@ -192,7 +192,7 @@ proc declaration*(
     result = ns.get
       .declaration(uriToPath(uri), ls.uriToStash(uri), line + 1, ch.get)
       .await()
-      .map(toLocation)
+      .map(x => x.toUtf16Pos(ls).toLocation)
 
 proc expandAll*(
     ls: LanguageServer, params: TextDocumentPositionParams
@@ -310,7 +310,7 @@ proc typeDefinition*(
     result = ns.get
       .`type`(uriToPath(uri), ls.uriToStash(uri), line + 1, ch.get)
       .await()
-      .map(toLocation)
+      .map(x => x.toUtf16Pos(ls).toLocation)
 
 proc toSymbolInformation*(suggest: Suggest): SymbolInformation =
   with suggest:
@@ -329,7 +329,7 @@ proc documentSymbols*(
   let ns = await ls.tryGetNimsuggest(uri)
   if ns.isSome:
     ns.get().outline(uriToPath(uri), ls.uriToStash(uri)).await().map(
-      toSymbolInformation
+      x => x.toUtf16Pos(ls).toSymbolInformation
     )
   else:
     @[]
@@ -385,11 +385,23 @@ proc hover*(
     if ch.isNone:
       return none(Hover)
     let suggestions =
-      await nimsuggest.get().def(uriToPath(uri), ls.uriToStash(uri), line + 1, ch.get)
+      await nimsuggest.get().highlight(uriToPath(uri), ls.uriToStash(uri), line + 1, ch.get)
     if suggestions.len == 0:
-      return none[Hover]()
+      return none(Hover)
+    var suggest = suggestions[0]
+    if suggest.symkind == "skModule": # NOTE: skMoudle always return position (1, 0)
+      return some(Hover(contents: some(%toMarkedStrings(suggest))))
     else:
-      return some(Hover(contents: some(%toMarkedStrings(suggestions[0]))))
+      for s in suggestions:
+        if s.line == line + 1:
+          if s.column <= ch.get:
+            suggest = s
+          else:
+            break
+      return some(Hover(
+        contents: some(%toMarkedStrings(suggest)),
+        range: some(toLabelRange(suggest.toUtf16Pos(ls))),
+      ))
 
 proc references*(
     ls: LanguageServer, params: ReferenceParams
@@ -404,7 +416,7 @@ proc references*(
     let refs =
       await nimsuggest.get.use(uriToPath(uri), ls.uriToStash(uri), line + 1, ch.get)
     result = refs.filter(suggest => suggest.section != ideDef or includeDeclaration).map(
-        toLocation
+        x => x.toUtf16Pos(ls).toLocation
       )
 
 proc prepareRename*(
@@ -536,7 +548,7 @@ proc inlayHint*(
             configuration.parameterHintsEnabled
           )
       )
-      .map(x => x.inlayHintInfo.toInlayHint(configuration))
+      .map(x => x.inlayHintInfo.toUtf16Pos(ls, uri).toInlayHint(configuration))
       .filter(x => x.label != "")
 
 proc codeAction*(
@@ -706,7 +718,7 @@ proc workspaceSymbol*(
     let
       nimsuggest = await ls.lastNimsuggest
       symbols = await nimsuggest.globalSymbols(params.query, "-")
-    return symbols.map(toSymbolInformation)
+    return symbols.map(x => x.toUtf16Pos(ls).toSymbolInformation)
 
 proc toDocumentHighlight(suggest: Suggest): DocumentHighlight =
   return DocumentHighlight %* {"range": toLabelRange(suggest)}
@@ -725,7 +737,7 @@ proc documentHighlight*(
     let suggestLocations = await nimsuggest.get.highlight(
       uriToPath(uri), ls.uriToStash(uri), line + 1, ch.get
     )
-    result = suggestLocations.map(toDocumentHighlight)
+    result = suggestLocations.map(x => x.toUtf16Pos(ls).toDocumentHighlight)
 
 proc extractId(id: JsonNode): int =
   if id.kind == JInt:
