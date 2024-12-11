@@ -99,10 +99,9 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup Nimble
-        uses: nim-lang/nimble/.github/actions/install_nimble@master
+        uses: nim-lang/setup-nimble-action@v1
         with:
-          os: ${{ matrix.target.name }}
-          cpu: ${{ matrix.target.nimble_cpu }}
+          nimble-version: "0.16.3"
 
       - name: Restore nimble dependencies from cache
         id: nimble_deps
