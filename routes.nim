@@ -697,7 +697,7 @@ proc format*(
   let formattedText = readFile(filePath)
   let fullRange = Range(
     start: Position(line: 0, character: 0),
-    `end`: Position(line: int.high, character: int.high),
+    `end`: Position(line: int(uint32.high), character: int(uint32.high)),
   )
   some TextEdit(range: fullRange, newText: formattedText)
 
