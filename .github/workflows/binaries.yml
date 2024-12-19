@@ -101,7 +101,7 @@ jobs:
       - name: Setup Nimble
         uses: nim-lang/setup-nimble-action@v1
         with:
-          nimble-version: "0.16.4"
+          nimble-version: "latest"
 
       - name: Restore nimble dependencies from cache
         id: nimble_deps
