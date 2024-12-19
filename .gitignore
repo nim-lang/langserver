@@ -7,3 +7,4 @@ tests/all
 /nimlangserver
 nimble.develop
 nimble.paths
+nimbledeps

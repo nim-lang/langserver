@@ -1001,7 +1001,8 @@ type
 
   LspExtensionCapability* = enum
     #List of extensions this server support. Useful for clients
-    excRestartSuggest = "RestartSuggest"
+    excRestartSuggest = "RestartSuggest", 
+    excNimbleTask = "NimbleTask"
 
   ProjectError* = object
     projectFile*: string
