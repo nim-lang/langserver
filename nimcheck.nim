@@ -3,6 +3,7 @@ import regex
 import chronos, chronos/asyncproc
 import stew/[byteutils]
 import chronicles
+import protocol/types
 
 type
   CheckStacktrace* = object
@@ -19,7 +20,7 @@ type
     severity*: string
     stacktrace*: seq[CheckStacktrace]
 
-proc parseErrors(lines: seq[string]): seq[CheckResult] =
+proc parseCheckResults(lines: seq[string]): seq[CheckResult] =
   var
     messageText = ""
     stacktrace: seq[CheckStacktrace]
@@ -67,7 +68,8 @@ proc parseErrors(lines: seq[string]): seq[CheckResult] =
   if messageText.len > 0 and result.len > 0:
     result[^1].msg &= "\n" & messageText
 
-proc nimCheck*(filePath: string, nimPath: string): Future[void] {.async.} =
+
+proc nimCheck*(filePath: string, nimPath: string): Future[seq[CheckResult]] {.async.} =
   debug "nimCheck", filePath = filePath, nimPath = nimPath
   let process = await startProcess(
     nimPath,
@@ -85,8 +87,4 @@ proc nimCheck*(filePath: string, nimPath: string): Future[void] {.async.} =
     output = string.fromBytes(process.stderrStream.read().await)
   
   let lines = output.splitLines()
-  debug "nimCheck output", lines = lines
-  let errors = parseErrors(lines)
-  debug "nimCheck errors", errors = errors
-   
-  # debug "nimCheck output", output = output.splitLines()
+  parseCheckResults(lines)

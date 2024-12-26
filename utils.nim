@@ -2,12 +2,22 @@ import std/[unicode, uri, strformat, os, strutils, options, json, jsonutils, sug
 import chronos, chronicles
 import "$nim/compiler/pathutils"
 import json_rpc/private/jrpc_sys
-
 type
   FingerTable = seq[tuple[u16pos, offset: int]]
 
   UriParseError* = object of Defect
     uri: string
+
+proc writeStackTrace*(ex = getCurrentException()) =
+  try:
+    if ex != nil:
+      stderr.write "An exception occured \n"
+      stderr.write ex.msg & "\n"
+      stderr.write ex.getStackTrace()
+    else:
+      stderr.write getStackTrace()
+  except IOError:
+    discard
 
 proc createUTFMapping*(line: string): FingerTable =
   var pos = 0
@@ -155,17 +165,6 @@ proc catchOrQuit*(error: Exception) =
   else:
     fatal "Fatal exception reached", err = error.msg, stackTrace = getStackTrace()
     quit 1
-
-proc writeStackTrace*(ex = getCurrentException()) =
-  try:
-    if ex != nil:
-      stderr.write "An exception occured \n"
-      stderr.write ex.msg & "\n"
-      stderr.write ex.getStackTrace()
-    else:
-      stderr.write getStackTrace()
-  except IOError:
-    discard
 
 proc traceAsyncErrors*(fut: Future) =
   fut.addCallback do(data: pointer):

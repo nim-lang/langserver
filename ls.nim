@@ -20,7 +20,8 @@ import
   uri,
   json_serialization,
   json_rpc/[servers/socketserver],
-  regex
+  regex,
+  nimcheck
 
 proc getVersionFromNimble(): string =
   #We should static run nimble dump instead
@@ -580,6 +581,18 @@ proc toUtf16Pos*(
   if pos.isSome:
     result.column = pos.get()
 
+proc toUtf16Pos*(checkResult: CheckResult, ls: LanguageServer): CheckResult =
+  result = checkResult
+  let uri = pathToUri(checkResult.file)
+  let pos = toUtf16Pos(ls, uri, checkResult.line - 1, checkResult.column)
+  if pos.isSome:
+    result.column = pos.get()
+  
+  for i in 0..<result.stacktrace.len:
+    let stPos = toUtf16Pos(ls, uri, result.stacktrace[i].line - 1, result.stacktrace[i].column)
+    if stPos.isSome:
+      result.stacktrace[i].column = stPos.get()
+
 proc range*(startLine, startCharacter, endLine, endCharacter: int): Range =
   return
     Range %* {
@@ -619,7 +632,34 @@ proc toDiagnostic(suggest: Suggest): Diagnostic =
       }
     return node.to(Diagnostic)
 
-proc sendDiagnostics*(ls: LanguageServer, diagnostics: seq[Suggest], path: string) =
+proc toDiagnostic(checkResult: CheckResult): Diagnostic =
+  let
+    textStart = checkResult.msg.find('\'')
+    textEnd = checkResult.msg.rfind('\'')
+    endColumn =
+      if textStart >= 0 and textEnd >= 0:
+        checkResult.column + utf16Len(checkResult.msg[textStart + 1 ..< textEnd])
+      else:
+        checkResult.column + 1
+
+  let node =
+    %*{
+      "uri": pathToUri(checkResult.file),
+      "range": range(checkResult.line - 1, checkResult.column, checkResult.line - 1, endColumn),
+      "severity":
+        case checkResult.severity
+        of "Error": DiagnosticSeverity.Error.int
+        of "Hint": DiagnosticSeverity.Hint.int
+        of "Warning": DiagnosticSeverity.Warning.int
+        else: DiagnosticSeverity.Error.int
+      ,
+      "message": checkResult.msg,
+      "source": "nim",
+      "code": "nim check",
+    }
+  return node.to(Diagnostic)
+
+proc sendDiagnostics*(ls: LanguageServer, diagnostics: seq[Suggest] | seq[CheckResult], path: string) =
   debug "Sending diagnostics", count = diagnostics.len, path = path
   let params =
     PublishDiagnosticsParams %*
@@ -638,6 +678,35 @@ proc tryGetNimsuggest*(
 proc checkProject*(ls: LanguageServer, uri: string): Future[void] {.async, gcsafe.} =
   if not ls.getWorkspaceConfiguration.await().autoCheckProject.get(true):
     return
+  let useNimCheck = false
+  let nimPath = "nim"
+
+  if useNimCheck:
+    proc getFilePath(c: CheckResult): string = c.file
+
+    let token = fmt "Checking {uri}"
+    ls.workDoneProgressCreate(token)
+    ls.progress(token, "begin", fmt "Checking project {uri.uriToPath}")
+    
+    let diagnostics = await nimCheck(uriToPath(uri), nimPath)
+    let filesWithDiags = diagnostics.map(r => r.file).toHashSet
+    
+    ls.progress(token, "end")
+    
+    debug "Found diagnostics", file = filesWithDiags
+    for (path, diags) in groupBy(diagnostics, getFilePath):
+      ls.sendDiagnostics(diags, path)
+      
+    # clean files with no diags
+    for path in ls.filesWithDiags:
+      if not filesWithDiags.contains path:
+        debug "Sending zero diags", path = path
+        let params =
+          PublishDiagnosticsParams %* {"uri": pathToUri(path), "diagnostics": @[]}
+        ls.notify("textDocument/publishDiagnostics", %params)
+    ls.filesWithDiags = filesWithDiags
+    return
+
   debug "Running diagnostics", uri = uri
   let ns = ls.tryGetNimsuggest(uri).await
   if ns.isNone:
@@ -923,15 +992,22 @@ proc warnIfUnknown*(
     )
 
 proc checkFile*(ls: LanguageServer, uri: string): Future[void] {.async.} =
-  debug "Checking", uri = uri
+  let nimPath = "nim"  
+  let useNimCheck = true
+  
   let token = fmt "Checking file {uri}"
   ls.workDoneProgressCreate(token)
   ls.progress(token, "begin", fmt "Checking {uri.uriToPath}")
 
-  let
-    path = uriToPath(uri)
-    ns = await ls.tryGetNimsuggest(uri)
+  let path = uriToPath(uri)
 
+  if useNimCheck:
+    let checkResults = await nimCheck(uriToPath(uri), nimPath)
+    ls.progress(token, "end")
+    ls.sendDiagnostics(checkResults, path)
+    return
+
+  let ns = await ls.tryGetNimsuggest(uri)
   if ns.isSome:
     let diagnostics = ns.get().chkFile(path, ls.uriToStash(uri)).await()
     ls.progress(token, "end")
