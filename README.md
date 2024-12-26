@@ -109,7 +109,7 @@ Note when in a nimble project, `nimble` will drive the entry points for `nimsugg
 - `nim.notificationVerbosity` - configure the verbosity of notifications. Can be set to `"none"`, `"error"`, `"warning"`, or `"info"`.
 - `nim.formatOnSave` - format the file on save. Requires `nph` to be available in the PATH.
 - `nim.nimsuggestIdleTimeout` - the timeout in ms after which an idle `nimsuggest` will be stopped. If not specified the default is 120 seconds.
-
+- `nim.useNimCheck` - use `nim check` instead of `nimsuggest` for linting. Defaults to `true`.
 ## Features
 
 `nimlangserver` supports the following LSP features:

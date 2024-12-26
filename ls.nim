@@ -84,6 +84,7 @@ type
     notificationVerbosity*: Option[NlsNotificationVerbosity]
     formatOnSave*: Option[bool]
     nimsuggestIdleTimeout*: Option[int] #idle timeout in ms
+    useNimCheck*: Option[bool]
 
   NlsFileInfo* = ref object of RootObj
     projectFile*: Future[string]
@@ -279,7 +280,7 @@ proc parseWorkspaceConfiguration*(conf: JsonNode): NlsConfig =
     result = NlsConfig()
 
 proc getWorkspaceConfiguration*(
-    ls: LanguageServer
+    ls: LanguageServer, retries = 0
 ): Future[NlsConfig] {.async: (raises: []).} =
   try:
     #this is the root of a lot a problems as there are multiple race conditions here.
@@ -289,8 +290,13 @@ proc getWorkspaceConfiguration*(
     if ls.workspaceConfiguration.finished:
       return parseWorkspaceConfiguration(ls.workspaceConfiguration.read)
     else:
-      return NlsConfig()
+      if retries < 3: 
+        await sleepAsync(100)
+        return await ls.getWorkspaceConfiguration(retries + 1)
+    debug "Failed to get workspace configuration, returning default"
+    return NlsConfig()
   except CatchableError as ex:
+    error "Failed to get workspace configuration", error = ex.msg
     writeStackTrace(ex)
 
 proc showMessage*(
@@ -678,7 +684,8 @@ proc tryGetNimsuggest*(
 proc checkProject*(ls: LanguageServer, uri: string): Future[void] {.async, gcsafe.} =
   if not ls.getWorkspaceConfiguration.await().autoCheckProject.get(true):
     return
-  let useNimCheck = false
+  let useNimCheck = ls.getWorkspaceConfiguration.await().useNimCheck.get(true)
+  
   let nimPath = "nim"
 
   if useNimCheck:
@@ -686,8 +693,11 @@ proc checkProject*(ls: LanguageServer, uri: string): Future[void] {.async, gcsaf
 
     let token = fmt "Checking {uri}"
     ls.workDoneProgressCreate(token)
-    ls.progress(token, "begin", fmt "Checking project {uri.uriToPath}")
-    
+    ls.progress(token, "begin", fmt "Checking project {uri}")
+    if uri == "":
+      warn "Checking project with empty uri", uri = uri
+      ls.progress(token, "end")
+      return
     let diagnostics = await nimCheck(uriToPath(uri), nimPath)
     let filesWithDiags = diagnostics.map(r => r.file).toHashSet
     
@@ -993,8 +1003,8 @@ proc warnIfUnknown*(
 
 proc checkFile*(ls: LanguageServer, uri: string): Future[void] {.async.} =
   let nimPath = "nim"  
-  let useNimCheck = true
-  
+  let useNimCheck = ls.getWorkspaceConfiguration.await().useNimCheck.get(true)
+
   let token = fmt "Checking file {uri}"
   ls.workDoneProgressCreate(token)
   ls.progress(token, "begin", fmt "Checking {uri.uriToPath}")
