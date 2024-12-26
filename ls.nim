@@ -39,6 +39,7 @@ const
   LSPVersion* = getVersionFromNimble()
   CRLF* = "\r\n"
   CONTENT_LENGTH* = "Content-Length: "
+  USE_NIM_CHECK_BY_DEFAULT* = false
 type
   NlsNimsuggestConfig* = ref object of RootObj
     projectFile*: string
@@ -280,7 +281,7 @@ proc parseWorkspaceConfiguration*(conf: JsonNode): NlsConfig =
     result = NlsConfig()
 
 proc getWorkspaceConfiguration*(
-    ls: LanguageServer, retries = 0
+    ls: LanguageServer
 ): Future[NlsConfig] {.async: (raises: []).} =
   try:
     #this is the root of a lot a problems as there are multiple race conditions here.
@@ -289,12 +290,17 @@ proc getWorkspaceConfiguration*(
     #TODO review and handle project specific confs when received instead of reliying in this func
     if ls.workspaceConfiguration.finished:
       return parseWorkspaceConfiguration(ls.workspaceConfiguration.read)
-    else:
-      if retries < 3: 
-        await sleepAsync(100)
-        return await ls.getWorkspaceConfiguration(retries + 1)
-    debug "Failed to get workspace configuration, returning default"
     return NlsConfig()
+  except CatchableError as ex:
+    error "Failed to get workspace configuration", error = ex.msg
+    writeStackTrace(ex)
+
+proc getAndWaitForWorkspaceConfiguration*(
+    ls: LanguageServer
+): Future[NlsConfig] {.async.} =
+  try:    
+    let conf = await ls.workspaceConfiguration
+    return parseWorkspaceConfiguration(conf)
   except CatchableError as ex:
     error "Failed to get workspace configuration", error = ex.msg
     writeStackTrace(ex)
@@ -468,6 +474,17 @@ proc getNimSuggestPathAndVersion(
     nimVersion = getNimVersion(nimsuggestPath.parentDir)
   ls.showMessage(fmt "Using {nimVersion}", MessageType.Info)
   (nimsuggestPath, nimVersion)
+
+proc getNimPath*(conf: NlsConfig): Option[string] =
+  if conf.nimSuggestPath.isSome:
+    some(conf.nimSuggestPath.get.parentDir / "nim")
+  else:
+    let path = findExe "nim"
+    if path != "":
+      some(path)
+    else:
+      warn "Failed to find nim path"
+      none(string)
 
 proc getProjectFileAutoGuess*(ls: LanguageServer, fileUri: string): string =
   let file = fileUri.decodeUrl
@@ -643,7 +660,7 @@ proc toDiagnostic(checkResult: CheckResult): Diagnostic =
     textStart = checkResult.msg.find('\'')
     textEnd = checkResult.msg.rfind('\'')
     endColumn =
-      if textStart >= 0 and textEnd >= 0:
+      if textStart >= 0 and textEnd >= 0 and textEnd > textStart:
         checkResult.column + utf16Len(checkResult.msg[textStart + 1 ..< textEnd])
       else:
         checkResult.column + 1
@@ -651,7 +668,7 @@ proc toDiagnostic(checkResult: CheckResult): Diagnostic =
   let node =
     %*{
       "uri": pathToUri(checkResult.file),
-      "range": range(checkResult.line - 1, checkResult.column, checkResult.line - 1, endColumn),
+      "range": range(checkResult.line - 1, max(0, checkResult.column), checkResult.line - 1, max(0, endColumn)),
       "severity":
         case checkResult.severity
         of "Error": DiagnosticSeverity.Error.int
@@ -662,7 +679,7 @@ proc toDiagnostic(checkResult: CheckResult): Diagnostic =
       "message": checkResult.msg,
       "source": "nim",
       "code": "nim check",
-    }
+  }
   return node.to(Diagnostic)
 
 proc sendDiagnostics*(ls: LanguageServer, diagnostics: seq[Suggest] | seq[CheckResult], path: string) =
@@ -671,7 +688,6 @@ proc sendDiagnostics*(ls: LanguageServer, diagnostics: seq[Suggest] | seq[CheckR
     PublishDiagnosticsParams %*
     {"uri": pathToUri(path), "diagnostics": diagnostics.map(x => x.toUtf16Pos(ls).toDiagnostic)}
   ls.notify("textDocument/publishDiagnostics", %params)
-
   if diagnostics.len != 0:
     ls.filesWithDiags.incl path
   else:
@@ -684,11 +700,12 @@ proc tryGetNimsuggest*(
 proc checkProject*(ls: LanguageServer, uri: string): Future[void] {.async, gcsafe.} =
   if not ls.getWorkspaceConfiguration.await().autoCheckProject.get(true):
     return
-  let useNimCheck = ls.getWorkspaceConfiguration.await().useNimCheck.get(true)
+  let conf = await ls.getAndWaitForWorkspaceConfiguration()
+  let useNimCheck = conf.useNimCheck.get(USE_NIM_CHECK_BY_DEFAULT)
   
-  let nimPath = "nim"
+  let nimPath = getNimPath(conf)
 
-  if useNimCheck:
+  if useNimCheck and nimPath.isSome:
     proc getFilePath(c: CheckResult): string = c.file
 
     let token = fmt "Checking {uri}"
@@ -698,7 +715,7 @@ proc checkProject*(ls: LanguageServer, uri: string): Future[void] {.async, gcsaf
       warn "Checking project with empty uri", uri = uri
       ls.progress(token, "end")
       return
-    let diagnostics = await nimCheck(uriToPath(uri), nimPath)
+    let diagnostics = await nimCheck(uriToPath(uri), nimPath.get)
     let filesWithDiags = diagnostics.map(r => r.file).toHashSet
     
     ls.progress(token, "end")
@@ -1002,17 +1019,17 @@ proc warnIfUnknown*(
     )
 
 proc checkFile*(ls: LanguageServer, uri: string): Future[void] {.async.} =
-  let nimPath = "nim"  
-  let useNimCheck = ls.getWorkspaceConfiguration.await().useNimCheck.get(true)
-
+  let conf = await ls.getAndWaitForWorkspaceConfiguration()
+  let useNimCheck = conf.useNimCheck.get(USE_NIM_CHECK_BY_DEFAULT)
+  let nimPath = conf.getNimPath()
   let token = fmt "Checking file {uri}"
   ls.workDoneProgressCreate(token)
   ls.progress(token, "begin", fmt "Checking {uri.uriToPath}")
 
   let path = uriToPath(uri)
 
-  if useNimCheck:
-    let checkResults = await nimCheck(uriToPath(uri), nimPath)
+  if useNimCheck and nimPath.isSome:
+    let checkResults = await nimCheck(uriToPath(uri), nimPath.get)
     ls.progress(token, "end")
     ls.sendDiagnostics(checkResults, path)
     return

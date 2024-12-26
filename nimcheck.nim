@@ -21,6 +21,7 @@ type
     stacktrace*: seq[CheckStacktrace]
 
 proc parseCheckResults(lines: seq[string]): seq[CheckResult] =
+  result = @[]
   var
     messageText = ""
     stacktrace: seq[CheckStacktrace]
