@@ -350,6 +350,14 @@ proc createNimsuggest*(
   result = Project(file: root)
   result.ns = newFuture[NimSuggest]()
   result.errorCallback = some errorCallback
+  let isNimble = root.endsWith(".nimble")
+  let isNimScript = root.endsWith(".nims") or isNimble
+  var extraArgs = newSeq[string]()
+  if isNimScript:
+    extraArgs.add("--import: system/nimscript")
+  if isNimble:
+    let nimScriptApiPath = getNimScriptAPITemplatePath()
+    extraArgs.add("--include: " & nimScriptApiPath)
 
   let ns = Nimsuggest()
   ns.requestQueue = Deque[SuggestCall]()
@@ -367,7 +375,7 @@ proc createNimsuggest*(
     ns.protocolVersion = detectNimsuggestVersion(root, nimsuggestPath, workingDir)
     if ns.protocolVersion > HighestSupportedNimSuggestProtocolVersion:
       ns.protocolVersion = HighestSupportedNimSuggestProtocolVersion
-    var args = @[root, "--v" & $ns.protocolVersion, "--autobind"]
+    var args = @[root, "--v" & $ns.protocolVersion, "--autobind"] & extraArgs
     if ns.protocolVersion >= 4:
       args.add("--clientProcessId:" & $getCurrentProcessId())
     if enableLog:
