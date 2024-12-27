@@ -4,6 +4,7 @@ import chronos, chronos/asyncproc
 import stew/[byteutils]
 import chronicles
 import protocol/types
+import utils
 
 type
   CheckStacktrace* = object
@@ -69,18 +70,24 @@ proc parseCheckResults(lines: seq[string]): seq[CheckResult] =
   if messageText.len > 0 and result.len > 0:
     result[^1].msg &= "\n" & messageText
 
-
 proc nimCheck*(filePath: string, nimPath: string): Future[seq[CheckResult]] {.async.} =
   debug "nimCheck", filePath = filePath, nimPath = nimPath
+  let isNimble = filePath.endsWith(".nimble")
+  let isNimScript = filePath.endsWith(".nims") or isNimble
+  var extraArgs = newSeq[string]()
+  if isNimScript:
+    extraArgs.add("--import: system/nimscript")
+  if isNimble:
+    extraArgs.add("--include: " & getNimScriptAPITemplatePath())
   let process = await startProcess(
     nimPath,
-    arguments = @["check", "--listFullPaths", filePath],
+    arguments = @["check", "--listFullPaths"] & extraArgs & @[filePath],
     options = {UsePath},
     stderrHandle = AsyncProcess.Pipe,
     stdoutHandle = AsyncProcess.Pipe,
   )
   let res = await process.waitForExit(InfiniteDuration)
-  debug "nimCheck exit", res = res
+  # debug "nimCheck exit", res = res
   var output = ""
   if res == 0: #Nim check return 0 if there are no errors but we still need to check for hints and warnings
     output = string.fromBytes(process.stdoutStream.read().await)   

@@ -683,7 +683,7 @@ proc toDiagnostic(checkResult: CheckResult): Diagnostic =
   return node.to(Diagnostic)
 
 proc sendDiagnostics*(ls: LanguageServer, diagnostics: seq[Suggest] | seq[CheckResult], path: string) =
-  debug "Sending diagnostics", count = diagnostics.len, path = path
+  trace "Sending diagnostics", count = diagnostics.len, path = path
   let params =
     PublishDiagnosticsParams %*
     {"uri": pathToUri(path), "diagnostics": diagnostics.map(x => x.toUtf16Pos(ls).toDiagnostic)}

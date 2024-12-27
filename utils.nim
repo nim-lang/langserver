@@ -8,6 +8,10 @@ type
   UriParseError* = object of Defect
     uri: string
 
+const
+  NIM_SCRIPT_API_TEMPLATE* = staticRead("templates/nimscriptapi.nim") #We add this file to nimsuggest and `nim check` to support nimble files
+
+
 proc writeStackTrace*(ex = getCurrentException()) =
   try:
     if ex != nil:
@@ -327,3 +331,12 @@ func isWord*(str: string): bool =
     if c.int notin 97 .. 122:
       return false
   return true
+
+proc getNimScriptAPITemplatePath*(): string =
+  result = getCacheDir("nimlangserver") 
+  createDir(result)
+  result = result / "nimscriptapi.nim"
+
+  if not result.fileExists:
+    writeFile(result, NIM_SCRIPT_API_TEMPLATE)
+  debug "NimScriptApiPath", path = result
