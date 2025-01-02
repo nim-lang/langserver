@@ -398,8 +398,14 @@ proc hover*(
             suggest = s
           else:
             break
+      var content = toMarkedStrings(suggest)
+      if suggest.symkind == "skMacro":
+        let expanded = await nimsuggest.get
+          .expand(uriToPath(uri), ls.uriToStash(uri), suggest.line, suggest.column)
+        if expanded.len > 0:
+          content.add MarkedStringOption %* {"language": "nim", "value": expanded[0].doc}
       return some(Hover(
-        contents: some(%toMarkedStrings(suggest)),
+        contents: some(%content),
         range: some(toLabelRange(suggest.toUtf16Pos(ls))),
       ))
 
