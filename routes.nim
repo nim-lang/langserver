@@ -404,6 +404,17 @@ proc hover*(
           .expand(uriToPath(uri), ls.uriToStash(uri), suggest.line, suggest.column)
         if expanded.len > 0:
           content.add MarkedStringOption %* {"language": "nim", "value": expanded[0].doc}
+        else:          
+          # debug "Couldnt expand the macro. Trying with nim expand", suggest = suggest[]
+          let nimPath = ls.getWorkspaceConfiguration().await.getNimPath()
+          if nimPath.isSome:  
+            let expanded = await nimExpandMacro(nimPath.get, suggest, uriToPath(uri))
+            content.add MarkedStringOption %* {"language": "nim", "value": expanded}
+      if suggest.symkind in ["skProc", "skMethod", "skFunc", "skIterator"]:
+        let nimPath = ls.getWorkspaceConfiguration().await.getNimPath()
+        if nimPath.isSome:  
+          let expanded = await nimExpandArc(nimPath.get, suggest, uriToPath(uri))
+          content.add MarkedStringOption %* {"language": "nim", "value": expanded}
       return some(Hover(
         contents: some(%content),
         range: some(toLabelRange(suggest.toUtf16Pos(ls))),
