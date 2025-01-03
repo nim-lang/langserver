@@ -53,7 +53,7 @@ proc extractArcExpansion*(output: string, procName: string): string =
   var start = false
   let cond = &"--expandArc: {procName}"
   for line in output.splitLines:
-    debug "extractArcExpansion", line = line, condMet = cond in line
+    # debug "extractArcExpansion", line = line, condMet = cond in line
     if cond in line:
       start = true
     elif &"-- end of expandArc" in line and start:
@@ -79,7 +79,7 @@ proc nimExpandArc*(nimPath: string, suggest: Suggest, filePath: string): Future[
     let res = await process.waitForExit(10.seconds)
     let output = string.fromBytes(process.stdoutStream.read().await)  
     result = extractArcExpansion(output, procName)
-    debug "nimExpandArc", output = output, result = result
+    # debug "nimExpandArc", output = output, result = result
     if result.len == 0:
       result = output
   finally:

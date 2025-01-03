@@ -91,12 +91,13 @@ proc nimCheck*(filePath: string, nimPath: string): Future[seq[CheckResult]] {.as
     # debug "nimCheck exit", res = res
     var output = ""
     if res == 0: #Nim check return 0 if there are no errors but we still need to check for hints and warnings
-    output = string.fromBytes(process.stdoutStream.read().await)   
-  else:
-    output = string.fromBytes(process.stderrStream.read().await)
+      output = string.fromBytes(process.stdoutStream.read().await)   
+    else:
+      output = string.fromBytes(process.stderrStream.read().await)
   
-  let lines = output.splitLines()
-  parseCheckResults(lines)
+    let lines = output.splitLines()
+    parseCheckResults(lines)
+
   finally:
     if not process.isNil: 
       discard process.terminate()

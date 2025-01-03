@@ -19,8 +19,9 @@ import
   json_serialization,
   std/[strscans, times, json, parseutils, strutils],
   ls,
-  stew/[byteutils]
-
+  stew/[byteutils],
+  nimexpand,
+  nimcheck
 proc getNphPath(): Option[string] =
   let path = findExe "nph"
   if path == "":
@@ -410,7 +411,8 @@ proc hover*(
           if nimPath.isSome:  
             let expanded = await nimExpandMacro(nimPath.get, suggest, uriToPath(uri))
             content.add MarkedStringOption %* {"language": "nim", "value": expanded}
-      if suggest.symkind in ["skProc", "skMethod", "skFunc", "skIterator"]:
+      if suggest.section == ideDef and suggest.symkind in ["skProc", "skMethod", "skFunc", "skIterator"]:
+        debug "Expanding arc", suggest = suggest[]
         let nimPath = ls.getWorkspaceConfiguration().await.getNimPath()
         if nimPath.isSome:  
           let expanded = await nimExpandArc(nimPath.get, suggest, uriToPath(uri))
