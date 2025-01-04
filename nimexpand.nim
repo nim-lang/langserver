@@ -46,7 +46,7 @@ proc nimExpandMacro*(nimPath: string, suggest: Suggest, filePath: string): Futur
     result = extractMacroExpansion(output, line)
   finally:
     if not process.isNil: 
-      discard process.terminate()
+      discard process.kill()
 
 
 proc extractArcExpansion*(output: string, procName: string): string =
@@ -70,9 +70,8 @@ proc nimExpandArc*(nimPath: string, suggest: Suggest, filePath: string): Future[
   debug "nimExpandArc", procName = procName, filePath = filePath
   let process = await startProcess(
     nimPath,
-    arguments = @["c", "--expandArc:" & procName] & @[filePath],
-    options = {UsePath},
-    stderrHandle = AsyncProcess.Pipe,
+    arguments = @["c", &"--expandArc:{procName}", "--compileOnly"] & @[filePath],
+    options = {UsePath, StdErrToStdOut},
     stdoutHandle = AsyncProcess.Pipe,
   )
   try:
@@ -81,7 +80,8 @@ proc nimExpandArc*(nimPath: string, suggest: Suggest, filePath: string): Future[
     result = extractArcExpansion(output, procName)
     # debug "nimExpandArc", output = output, result = result
     if result.len == 0:
-      result = output
+      result = &"#Couldnt expand arc for `{procName}`. Showing raw output instead (nimPath). \n"
+      result.add output      
   finally:
     if not process.isNil: 
-      discard process.terminate()
+      discard process.kill()

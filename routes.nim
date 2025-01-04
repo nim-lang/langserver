@@ -411,12 +411,13 @@ proc hover*(
           if nimPath.isSome:  
             let expanded = await nimExpandMacro(nimPath.get, suggest, uriToPath(uri))
             content.add MarkedStringOption %* {"language": "nim", "value": expanded}
-      if suggest.section == ideDef and suggest.symkind in ["skProc", "skMethod", "skFunc", "skIterator"]:
-        debug "Expanding arc", suggest = suggest[]
+      if suggest.section == ideDef and suggest.symkind in ["skProc"]:
+        debug "#Expanding arc", suggest = suggest[]
         let nimPath = ls.getWorkspaceConfiguration().await.getNimPath()
         if nimPath.isSome:  
           let expanded = await nimExpandArc(nimPath.get, suggest, uriToPath(uri))
-          content.add MarkedStringOption %* {"language": "nim", "value": expanded}
+          let arcContent = "#Expanded arc \n" & expanded
+          content.add MarkedStringOption %* {"language": "nim", "value": arcContent}
       return some(Hover(
         contents: some(%content),
         range: some(toLabelRange(suggest.toUtf16Pos(ls))),

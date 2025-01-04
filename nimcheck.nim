@@ -100,4 +100,4 @@ proc nimCheck*(filePath: string, nimPath: string): Future[seq[CheckResult]] {.as
 
   finally:
     if not process.isNil: 
-      discard process.terminate()
+      discard process.kill()
