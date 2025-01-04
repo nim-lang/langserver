@@ -36,13 +36,12 @@ proc nimExpandMacro*(nimPath: string, suggest: Suggest, filePath: string): Futur
   let process = await startProcess(
     nimPath,
     arguments = @["c", "--expandMacro:" & macroName] & @[filePath],
-    options = {UsePath},
-    stderrHandle = AsyncProcess.Pipe,
+    options = {UsePath, StdErrToStdOut},
     stdoutHandle = AsyncProcess.Pipe,
   )
   try:
     let res = await process.waitForExit(10.seconds)
-    let output = string.fromBytes(process.stderrStream.read().await)  
+    let output = string.fromBytes(process.stdoutStream.read().await)  
     result = extractMacroExpansion(output, line)
   finally:
     if not process.isNil: 

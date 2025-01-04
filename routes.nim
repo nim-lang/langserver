@@ -403,7 +403,8 @@ proc hover*(
       if suggest.symkind == "skMacro":
         let expanded = await nimsuggest.get
           .expand(uriToPath(uri), ls.uriToStash(uri), suggest.line, suggest.column)
-        if expanded.len > 0:
+        if expanded.len > 0 and expanded[0].doc != "":
+          # debug "Expanded macro", expanded = expanded[0].doc
           content.add MarkedStringOption %* {"language": "nim", "value": expanded[0].doc}
         else:          
           # debug "Couldnt expand the macro. Trying with nim expand", suggest = suggest[]
