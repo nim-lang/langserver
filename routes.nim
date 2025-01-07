@@ -19,8 +19,9 @@ import
   json_serialization,
   std/[strscans, times, json, parseutils, strutils],
   ls,
-  stew/[byteutils]
-
+  stew/[byteutils],
+  nimexpand,
+  nimcheck
 proc getNphPath(): Option[string] =
   let path = findExe "nph"
   if path == "":
@@ -402,8 +403,22 @@ proc hover*(
       if suggest.symkind == "skMacro":
         let expanded = await nimsuggest.get
           .expand(uriToPath(uri), ls.uriToStash(uri), suggest.line, suggest.column)
-        if expanded.len > 0:
+        if expanded.len > 0 and expanded[0].doc != "":
+          # debug "Expanded macro", expanded = expanded[0].doc
           content.add MarkedStringOption %* {"language": "nim", "value": expanded[0].doc}
+        else:          
+          # debug "Couldnt expand the macro. Trying with nim expand", suggest = suggest[]
+          let nimPath = ls.getWorkspaceConfiguration().await.getNimPath()
+          if nimPath.isSome:  
+            let expanded = await nimExpandMacro(nimPath.get, suggest, uriToPath(uri))
+            content.add MarkedStringOption %* {"language": "nim", "value": expanded}
+      if suggest.section == ideDef and suggest.symkind in ["skProc"]:
+        debug "#Expanding arc", suggest = suggest[]
+        let nimPath = ls.getWorkspaceConfiguration().await.getNimPath()
+        if nimPath.isSome:  
+          let expanded = await nimExpandArc(nimPath.get, suggest, uriToPath(uri))
+          let arcContent = "#Expanded arc \n" & expanded
+          content.add MarkedStringOption %* {"language": "nim", "value": arcContent}
       return some(Hover(
         contents: some(%content),
         range: some(toLabelRange(suggest.toUtf16Pos(ls))),
