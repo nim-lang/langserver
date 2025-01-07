@@ -328,7 +328,7 @@ proc getNextFreePort*(): Port =
 func isWord*(str: string): bool =
   var str = str.toLower()
   for c in str:
-    if c.int notin 97 .. 122:
+    if c.int notin {48..57, 97..122}:  # Allow 0-9 and a-z
       return false
   return true
 
