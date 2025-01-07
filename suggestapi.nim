@@ -355,9 +355,10 @@ proc createNimsuggest*(
   var extraArgs = newSeq[string]()
   if isNimScript:
     extraArgs.add("--import: system/nimscript")
-  if isNimble:
-    let nimScriptApiPath = getNimScriptAPITemplatePath()
-    extraArgs.add("--include: " & nimScriptApiPath)
+  #Nimsuggest crashes when including the file. 
+  # if isNimble:
+  #   let nimScriptApiPath = getNimScriptAPITemplatePath()
+  #   extraArgs.add("--include: " & nimScriptApiPath)
 
   let ns = Nimsuggest()
   ns.requestQueue = Deque[SuggestCall]()
