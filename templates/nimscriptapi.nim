@@ -7,11 +7,6 @@ import system except getCommand, setCommand, switch, `--`
 import strformat, strutils, tables, sequtils
 export tables
 
-when (NimMajor, NimMinor) < (1, 3):
-  when not defined(nimscript):
-    import os
-else:
-  import os
 
 var
   packageName* = ""    ## Set this to the package name. It
@@ -32,17 +27,17 @@ var
   foreignDeps*: seq[string] = @[] ## The foreign dependencies. Only
                                   ## exported for 'distros.nim'.
 
-  nimbleTasks: seq[tuple[name, description: string]] = @[]
-  beforeHooks: seq[string] = @[]
-  afterHooks: seq[string] = @[]
-  flags: Table[string, seq[string]]
+  nimbleTasks*: seq[tuple[name, description: string]] = @[]
+  beforeHooks*: seq[string] = @[]
+  afterHooks*: seq[string] = @[]
+  flags*: Table[string, seq[string]]
   namedBin*: Table[string, string]
 
-  command = "e"
-  project = ""
-  success = false
-  retVal = true
-  nimblePathsEnv = "__NIMBLE_PATHS"
+  command* = "e"
+  project* = ""
+  success* = false
+  retVal* = true
+  nimblePathsEnv* = "__NIMBLE_PATHS"
 
 proc requires*(deps: varargs[string]) =
   ## Call this to set the list of requirements of your Nimble
@@ -58,11 +53,12 @@ proc taskRequires*(task: string, deps: varargs[string]) =
 
 proc getParams(): tuple[scriptFile, projectFile, outFile, actionName: string,
                         commandLineParams: seq[string]] =
+  result = (scriptFile: "", projectFile: "", outFile: "", actionName: "", commandLineParams: @[])
   # Called by nimscriptwrapper.nim:execNimscript()
   #   nim e --flags /full/path/to/file.nims /full/path/to/file.nimble /full/path/to/file.out action
-  for i in 2 .. paramCount():
+  for i in 2 .. nimscript.paramCount():
     let
-      param = paramStr(i)
+      param = nimscript.paramStr(i)
     if param[0] != '-':
       if result.scriptFile.len == 0:
         result.scriptFile = param
