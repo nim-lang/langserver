@@ -18,3 +18,6 @@ task helloWorld, "hello world":
 
 task anotherTask, "Another task":
   echo "another task"
+
+task anotherTask2, "Another task 2":
+  echo "another task 2"

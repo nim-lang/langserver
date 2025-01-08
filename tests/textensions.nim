@@ -75,6 +75,6 @@ suite "Nimlangserver":
         seq[NimbleTask]
       )
 
-    check tasks.len == 2
+    check tasks.len == 3
     check tasks[0].name == "helloWorld"
     check tasks[0].description == "hello world"
