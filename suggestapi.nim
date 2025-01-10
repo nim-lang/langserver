@@ -396,7 +396,15 @@ proc createNimsuggest*(
       stderrHandle = AsyncProcess.Pipe,
     )
     asyncSpawn logNsError(result)
-    ns.port = (await result.process.stdoutStream.readLine(sep = "\n")).parseInt
+    let portLine = await result.process.stdoutStream.readLine(sep = "\n")
+    debug "Nimsuggest port", portLine = portLine
+    try:
+      ns.port = portLine.parseInt
+    except ValueError:
+      error "Failed to parse nimsuggest port", portLine = portLine
+      let nextLine = await result.process.stdoutStream.readLine(sep = "\n")  
+      error "Nimsuggest nextLine", nextLine = nextLine
+      result.markFailed "Failed to parse nimsuggest port"
     result.ns.complete(ns)
   else:
     error "Unable to start nimsuggest. Unable to find binary on the $PATH",
@@ -425,7 +433,7 @@ proc processQueue(self: Nimsuggest): Future[void] {.async.} =
   while self.requestQueue.len != 0:
     let req = self.requestQueue.popFirst
     self.project.lastCmd = req.commandString
-    self.project.lastCmdDate = some(now())
+    
     logScope:
       command = req.commandString
     if req.future.finished:
@@ -487,6 +495,7 @@ proc processQueue(self: Nimsuggest): Future[void] {.async.} =
           debug "Call was cancelled before sending the result", command = req.command
           transport.close()
   self.processing = false
+  self.project.lastCmdDate = some(now())
 
 proc call*(
     self: Nimsuggest,
