@@ -133,7 +133,7 @@ proc registerProcMonitor(ls: LanguageServer) =
 
     hookAsyncProcMonitor(ls.cmdLineClientProcessId.get, onCmdLineClientProcessExit)
 
-proc tickLs(ls: LanguageServer, time = 1.seconds) {.async.} =
+proc tickLs*(ls: LanguageServer, time = 1.seconds) {.async.} =
   await ls.tick()
   await sleepAsync(time)
   await ls.tickLs()

@@ -3,7 +3,7 @@ import ../[
 ]
 
 import ../protocol/types
-import std/[options, unittest, json, os, jsonutils, tables, strutils, sequtils]
+import std/[options, unittest, json, os, jsonutils, tables, strutils, sequtils, sugar]
 import json_rpc/[rpcclient]
 import chronicles
 
@@ -205,3 +205,6 @@ proc waitForNotification*(client: LspSocketClient, name: string, predicate: proc
   await sleepAsync(100)
   await waitForNotification(client, name, predicate, accTime + 100)
   
+
+proc waitForNotificationMessage*(client: LspSocketClient, msg: string): Future[bool] {.async.}=
+  return await waitForNotification(client, "window/showMessage", (json: JsonNode) => json["message"].to(string) == msg)

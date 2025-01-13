@@ -7,7 +7,7 @@ import chronicles
 import lspsocketclient
 import chronos/asyncproc
 
-suite "Nimlangserver":
+suite "Nimlangserver extensions":
   let cmdParams = CommandLineParams(transport: some socket, port: getNextFreePort())
   let ls = main(cmdParams) #we could accesss to the ls here to test against its state
   let client = newLspSocketClient()
@@ -33,17 +33,9 @@ suite "Nimlangserver":
     let helloWorldFile = "projects/hw/hw.nim"
     let hwAbsFile = uriToPath(helloWorldFile.fixtureUri())
     client.notify("textDocument/didOpen", %createDidOpenParams(helloWorldFile))
-
-    let progressParam =
-      %ProgressParams(token: fmt "Creating nimsuggest for {hwAbsFile}")
-    check waitFor client.waitForNotification(
-      "$/progress", (json: JsonNode) => progressParam["token"] == json["token"]
-    )
-    check waitFor client.waitForNotification(
-      "$/progress", (json: JsonNode) => json["value"]["kind"].getStr == "begin"
-    )
-    check waitFor client.waitForNotification(
-      "$/progress", (json: JsonNode) => json["value"]["kind"].getStr == "end"
+    
+    check waitFor client.waitForNotificationMessage(
+      fmt"Nimsuggest initialized for {hwAbsFile}",
     )
 
     client.notify(

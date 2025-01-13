@@ -2,4 +2,5 @@ import
   tsuggestapi,
   tnimlangserver,
   tprojectsetup,
-  textensions
+  textensions,
+  tmisc
