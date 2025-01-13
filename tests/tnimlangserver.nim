@@ -74,10 +74,10 @@ suite "Suggest API selection":
     let helloWorldFile = "projects/hw/hw.nim"    
     client.notify("textDocument/didOpen", %createDidOpenParams(helloWorldFile))
 
-    let progressParam = %ProgressParams(token: fmt "Creating nimsuggest for {uriToPath(helloWorldFile.fixtureUri())}")
-    check waitFor client.waitForNotification("$/progress", (json: JsonNode) => progressParam["token"] == json["token"])
-    check waitFor client.waitForNotification("$/progress", (json: JsonNode) => json["value"]["kind"].getStr == "begin")
-    check waitFor client.waitForNotification("$/progress", (json: JsonNode) => json["value"]["kind"].getStr == "end")
+    let hwAbsFile = helloWorldFile.fixtureUri.uriToPath
+    check waitFor client.waitForNotificationMessage(
+      fmt"Nimsuggest initialized for {hwAbsFile}",
+    )
 
     client.notify("textDocument/didOpen",
                   %createDidOpenParams("projects/hw/useRoot.nim"))

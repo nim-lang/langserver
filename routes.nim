@@ -932,51 +932,12 @@ proc didSave*(
 proc didClose*(
     ls: LanguageServer, params: DidCloseTextDocumentParams
 ): Future[void] {.async, gcsafe.} =
-  let uri = params.textDocument.uri
-  debug "Closed the following document:", uri = uri
-
-  if ls.openFiles[uri].changed:
-    # check the file if it is closed but not saved.
-    traceAsyncErrors ls.checkFile(uri)
-
-  ls.openFiles.del uri
+  await ls.didCloseFile(params.textDocument.uri)
 
 proc didOpen*(
     ls: LanguageServer, params: DidOpenTextDocumentParams
 ): Future[void] {.async, gcsafe.} =
-  with params.textDocument:
-    debug "New document opened for URI:", uri = uri
-    let
-      file = open(ls.uriStorageLocation(uri), fmWrite)
-      projectFileFuture = getProjectFile(uriToPath(uri), ls)
-
-    ls.openFiles[uri] =
-      NlsFileInfo(projectFile: projectFileFuture, changed: false, fingerTable: @[])
-
-    let projectFile = await projectFileFuture
-    debug "Document associated with the following projectFile",
-      uri = uri, projectFile = projectFile
-    if not ls.projectFiles.hasKey(projectFile):
-      debug "Will create nimsuggest for this file", uri = uri
-      ls.createOrRestartNimsuggest(projectFile, uri)
-
-    for line in text.splitLines:
-      if uri in ls.openFiles:
-        ls.openFiles[uri].fingerTable.add line.createUTFMapping()
-        file.writeLine line
-    file.close()
-    ls.tryGetNimSuggest(uri).addCallback do(fut: Future[Option[Nimsuggest]]) -> void:
-      if not fut.failed and fut.read.isSome:
-        discard ls.warnIfUnknown(fut.read.get(), uri, projectFile)
-
-    let projectFileUri = projectFile.pathToUri
-    if projectFileUri notin ls.openFiles:
-      var params = params
-      params.textDocument.uri = projectFileUri
-      await didOpen(ls, params)
-
-      debug "Opening project file", uri = projectFile, file = uri
-    ls.showMessage(fmt "Opening {uri}", MessageType.Info)
+  await ls.didOpenFile(params.textDocument)
 
 proc didChangeConfiguration*(
     ls: LanguageServer, conf: JsonNode

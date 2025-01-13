@@ -89,10 +89,9 @@ suite "nimble setup":
           {"window": {"workDoneProgress": true}, "workspace": {"configuration": true}},
       }
     discard waitFor client.initialize(initParams)
-    let progressParam =
-      %ProgressParams(token: fmt "Creating nimsuggest for {entryPoint}")
-    check waitFor client.waitForNotification(
-      "$/progress", (json: JsonNode) => progressParam["token"] == json["token"]
+   
+    check waitFor client.waitForNotificationMessage(
+      fmt"Nimsuggest initialized for {entryPoint}",
     )
 
     let completionParams =
