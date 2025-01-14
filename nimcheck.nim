@@ -99,5 +99,4 @@ proc nimCheck*(filePath: string, nimPath: string): Future[seq[CheckResult]] {.as
     parseCheckResults(lines)
 
   finally:
-    if not process.isNil: 
-      discard process.kill()
+    await shutdownChildProcess(process)

@@ -44,8 +44,7 @@ proc nimExpandMacro*(nimPath: string, suggest: Suggest, filePath: string): Futur
     let output = string.fromBytes(process.stdoutStream.read().await)  
     result = extractMacroExpansion(output, line)
   finally:
-    if not process.isNil: 
-      discard process.kill()
+    await shutdownChildProcess(process)
 
 
 proc extractArcExpansion*(output: string, procName: string): string =
@@ -79,8 +78,7 @@ proc nimExpandArc*(nimPath: string, suggest: Suggest, filePath: string): Future[
     result = extractArcExpansion(output, procName)
     # debug "nimExpandArc", output = output, result = result
     if result.len == 0:
-      result = &"#Couldnt expand arc for `{procName}`. Showing raw output instead (nimPath). \n"
+      result = &"#Couldnt expand arc for `{procName}`. Showing raw output instead \n"
       result.add output      
   finally:
-    if not process.isNil: 
-      discard process.kill()
+    await shutdownChildProcess(process)

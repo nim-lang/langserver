@@ -1,5 +1,5 @@
 import std/[unicode, uri, strformat, os, strutils, options, json, jsonutils, sugar, net]
-import chronos, chronicles
+import chronos, chronicles, chronos/asyncproc
 import "$nim/compiler/pathutils"
 import json_rpc/private/jrpc_sys
 type
@@ -340,3 +340,14 @@ proc getNimScriptAPITemplatePath*(): string =
   if not result.fileExists:
     writeFile(result, NIM_SCRIPT_API_TEMPLATE)
   debug "NimScriptApiPath", path = result
+
+proc shutdownChildProcess*(p: AsyncProcessRef): Future[void]  {.async.} =
+  try:
+    let exitCode = await p.terminateAndWaitForExit(2.seconds)    # debug "Process terminated with exit code: ", exitCode
+  except CatchableError:
+    try:
+      let forcedExitCode = await p.killAndWaitForExit(3.seconds)
+      debug "Process forcibly killed with exit code: ", exitCode = forcedExitCode
+    except CatchableError:
+      debug "Could not kill process in time either!"
+      writeStackTrace()
