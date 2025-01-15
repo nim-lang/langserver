@@ -21,13 +21,13 @@ jobs:
             nim_cpu: amd64
             nimble_cpu: amd64
             archive_format: tgz
-          - os: linux
-            triple: i686-linux-musl
-            name: linux
-            cpu: i686
-            nim_cpu: i386
-            nimble_cpu: amd64
-            archive_format: tgz
+          # - os: linux
+          #   triple: i686-linux-musl
+          #   name: linux
+          #   cpu: i686
+          #   nim_cpu: i386
+          #   nimble_cpu: amd64
+          #   archive_format: tgz
           - os: linux
             triple: aarch64-linux-musl
             name: linux
@@ -56,13 +56,13 @@ jobs:
             nim_cpu: amd64
             nimble_cpu: amd64
             archive_format: zip
-          - os: windows
-            triple: i686-w32-mingw32
-            name: windows
-            cpu: i686
-            nim_cpu: i386
-            nimble_cpu: amd64
-            archive_format: zip
+          # - os: windows
+          #   triple: i686-w32-mingw32
+          #   name: windows
+          #   cpu: i686
+          #   nim_cpu: i386
+          #   nimble_cpu: amd64
+          #   archive_format: zip
         include:
           - target:
               os: linux
