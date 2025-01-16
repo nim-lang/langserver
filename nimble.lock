@@ -236,25 +236,24 @@
       }
     },
     "with": {
-      "version": "0.5.0",
-      "vcsRevision": "bd36a44410dd8365649e425ccade817178628e12",
-      "url": "https://github.com/zevv/with",
+        "version": "0.5.0",
+        "vcsRevision": "bd36a44410dd8365649e425ccade817178628e12",
+        "url": "https://github.com/zevv/with",
+        "downloadMethod": "git",
+        "dependencies": [],
+        "checksums": {
+          "sha1": "a3de696c9fa0c941646414d9ad28ef3afdcb8a9e"
+        }
+    },
+    "nim": {
+      "version": "2.0.8",
+      "vcsRevision": "5935c3bfa9fec6505394867b23510eb5cbab3dbf",
+      "url": "https://github.com/nim-lang/Nim.git",
       "downloadMethod": "git",
       "dependencies": [],
       "checksums": {
-        "sha1": "a3de696c9fa0c941646414d9ad28ef3afdcb8a9e"
+        "sha1": "46333e8f4bda41dd6d3852a3f5fa4975b96b66a2"
       }
     }
-  },
-  "nim": {
-    "version": "2.0.8",
-    "vcsRevision": "5935c3bfa9fec6505394867b23510eb5cbab3dbf",
-    "url": "https://github.com/nim-lang/Nim.git",
-    "downloadMethod": "git",
-    "dependencies": [],
-    "checksums": {
-      "sha1": "46333e8f4bda41dd6d3852a3f5fa4975b96b66a2"
-    }
-  },
-  "tasks": {}
+  }
 }
