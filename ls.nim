@@ -40,6 +40,9 @@ const
   CRLF* = "\r\n"
   CONTENT_LENGTH* = "Content-Length: "
   USE_NIM_CHECK_BY_DEFAULT* = false
+  NIM_EXPAND_ARC_BY_DEFAULT* = false
+  NIM_EXPAND_MACRO_BY_DEFAULT* = false
+
 type
   NlsNimsuggestConfig* = ref object of RootObj
     projectFile*: string
@@ -86,6 +89,8 @@ type
     formatOnSave*: Option[bool]
     nimsuggestIdleTimeout*: Option[int] #idle timeout in ms
     useNimCheck*: Option[bool]
+    nimExpandArc*: Option[bool]
+    nimExpandMacro*: Option[bool]
 
   NlsFileInfo* = ref object of RootObj
     projectFile*: Future[string]

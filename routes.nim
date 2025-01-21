@@ -378,6 +378,7 @@ proc hover*(
     ls: LanguageServer, params: HoverParams, id: int
 ): Future[Option[Hover]] {.async.} =
   with (params.position, params.textDocument):
+    let config = await ls.getWorkspaceConfiguration()
     asyncSpawn ls.addProjectFileToPendingRequest(id.uint, uri)
     let nimsuggest = await ls.tryGetNimsuggest(uri)
     if nimsuggest.isNone:
@@ -400,7 +401,7 @@ proc hover*(
           else:
             break
       var content = toMarkedStrings(suggest)
-      if suggest.symkind == "skMacro":
+      if suggest.symkind == "skMacro" and config.nimExpandMacro.get(NIM_EXPAND_MACRO_BY_DEFAULT):
         let expanded = await nimsuggest.get
           .expand(uriToPath(uri), ls.uriToStash(uri), suggest.line, suggest.column)
         if expanded.len > 0 and expanded[0].doc != "":
@@ -408,13 +409,13 @@ proc hover*(
           content.add MarkedStringOption %* {"language": "nim", "value": expanded[0].doc}
         else:          
           # debug "Couldnt expand the macro. Trying with nim expand", suggest = suggest[]
-          let nimPath = ls.getWorkspaceConfiguration().await.getNimPath()
+          let nimPath = config.getNimPath()
           if nimPath.isSome:  
             let expanded = await nimExpandMacro(nimPath.get, suggest, uriToPath(uri))
             content.add MarkedStringOption %* {"language": "nim", "value": expanded}
-      if suggest.section == ideDef and suggest.symkind in ["skProc"]:
+      if suggest.section == ideDef and suggest.symkind in ["skProc"] and config.nimExpandArc.get(NIM_EXPAND_ARC_BY_DEFAULT):
         debug "#Expanding arc", suggest = suggest[]
-        let nimPath = ls.getWorkspaceConfiguration().await.getNimPath()
+        let nimPath = config.getNimPath()
         if nimPath.isSome:  
           let expanded = await nimExpandArc(nimPath.get, suggest, uriToPath(uri))
           let arcContent = "#Expanded arc \n" & expanded
@@ -897,10 +898,10 @@ proc didSave*(
 ): Future[void] {.async, gcsafe.} =
   let
     uri = params.textDocument.uri
-    nimsuggest = ls.tryGetNimsuggest(uri).await()
-
-  let config = await ls.getWorkspaceConfiguration()
+    config = await ls.getWorkspaceConfiguration()
   asyncSpawn ls.autoFormat(config, uri)
+  let nimsuggest = await ls.tryGetNimsuggest(uri)
+
   if nimsuggest.isNone:
     return
 
