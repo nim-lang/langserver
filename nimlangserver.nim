@@ -78,6 +78,35 @@ proc registerRoutes(srv: RpcSocketServer, ls: LanguageServer) =
   srv.register("textDocument/didChange", wrapRpc(partial(didChange, ls)))
   srv.register("$/setTrace", wrapRpc(partial(setTrace, ls)))
 
+proc showHelp() =
+  echo "nimlangserver [--stdio] [--socket] [--port=<port>] [--clientProcessId=<pid>]"
+  echo "Version: ", LSPVersion
+  const readme = staticRead("README.md")
+  echo "CONFIGURATION OPTIONS"
+  proc formatForConsole(md: string): string =
+    var inCodeBlock = false
+    result = ""
+    for line in md.splitLines():
+      if line.startsWith("```"):
+        inCodeBlock = not inCodeBlock
+        continue
+      
+      var cleaned = line
+      if not inCodeBlock:
+        cleaned = cleaned.multiReplace([
+          ("`", ""),
+          ("\\", "")
+        ])
+      
+      if cleaned.len > 0:
+        result.add(cleaned & "\n")
+    
+    result = result.strip()
+
+  let section = readme.split("## Configuration Options")[1].split("##")[0]
+  echo formatForConsole(section)
+  quit(0)
+
 proc handleParams(): CommandLineParams =
   if paramCount() > 0 and paramStr(1) in ["-v", "--version"]:
     echo LSPVersion
@@ -104,6 +133,8 @@ proc handleParams(): CommandLineParams =
       except ValueError:
         error "Invalid port ", port = port
         quit(1)
+    if param == "help":
+      showHelp()
     inc i
   if result.transport.isSome and result.transport.get == socket:
     if result.port == default(Port):
