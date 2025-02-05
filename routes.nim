@@ -725,12 +725,25 @@ proc format*(
     ls.showMessage(&"Error formating {uri}:{err}", MessageType.Error)
     return none(TextEdit)
 
-  debug "nph completes ", res = res
+  #if enough time has passed since last modification, we skip the formatting:   
+  let lastModified = getLastModificationTime(filePath)
+  let timeSinceLastModified = getTime() - lastModified
+  let cond = timeSinceLastModified >= initDuration(seconds = 2)
+
+  if timeSinceLastModified >= initDuration(seconds = 2):
+    error "Skipping formatting because the file was modifyed long ago"
+    return none(TextEdit)
+
   let formattedText = readFile(filePath)
+  if formattedText.len < 2:
+    error "Failed to format document", uri = uri
+    return none(TextEdit)
+
   let fullRange = Range(
     start: Position(line: 0, character: 0),
     `end`: Position(line: int(uint32.high), character: int(uint32.high)),
   )
+  debug "Formatting document", uri = uri, formattedText = formattedText
   some TextEdit(range: fullRange, newText: formattedText)
 
 proc formatting*(
