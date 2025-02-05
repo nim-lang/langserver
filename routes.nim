@@ -116,14 +116,16 @@ proc initialize*(
     let nimbleFiles = walkFiles(rootPath / "*.nimble").toSeq
     if nimbleFiles.len > 0:
       let nimbleFile = nimbleFiles[0]
-      let nimbleDumpInfo = ls.getNimbleDumpInfo(nimbleFile)
+      let nimbleDumpInfo = await ls.getNimbleDumpInfo(nimbleFile)
       ls.entryPoints =
         nimbleDumpInfo.getNimbleEntryPoints(ls.initializeParams.getRootPath)
       # ls.showMessage(fmt "Found entry point {ls.entryPoints}?", MessageType.Info)
       for entryPoint in ls.entryPoints:
         debug "Starting nimsuggest for entry point ", entry = entryPoint
         if entryPoint notin ls.projectFiles:
-          ls.createOrRestartNimsuggest(entryPoint)
+          asyncSpawn ls.createOrRestartNimsuggest(entryPoint)
+
+  debug "Trying to start nimsuggest instances done"
 
 proc toCompletionItem(suggest: Suggest): CompletionItem =
   with suggest:
@@ -279,7 +281,7 @@ proc extensionSuggest*(
     ls.showMessage(fmt "Restarting nimsuggest {projectFile}", MessageType.Info)
     project.errorCallback = none(ProjectCallback)
     project.stop()
-    ls.createOrRestartNimsuggest(projectFile, projectFile.pathToUri)
+    await ls.createOrRestartNimsuggest(projectFile, projectFile.pathToUri)
     ls.sendStatusChanged()
 
   case params.action
@@ -386,8 +388,9 @@ proc hover*(
     let ch = ls.getCharacter(uri, line, character)
     if ch.isNone:
       return none(Hover)
-    let suggestions =
-      await nimsuggest.get().highlight(uriToPath(uri), ls.uriToStash(uri), line + 1, ch.get)
+    let suggestions = await nimsuggest.get().highlight(
+      uriToPath(uri), ls.uriToStash(uri), line + 1, ch.get
+    )
     if suggestions.len == 0:
       return none(Hover)
     var suggest = suggestions[0]
@@ -401,29 +404,35 @@ proc hover*(
           else:
             break
       var content = toMarkedStrings(suggest)
-      if suggest.symkind == "skMacro" and config.nimExpandMacro.get(NIM_EXPAND_MACRO_BY_DEFAULT):
-        let expanded = await nimsuggest.get
-          .expand(uriToPath(uri), ls.uriToStash(uri), suggest.line, suggest.column)
+      if suggest.symkind == "skMacro" and
+          config.nimExpandMacro.get(NIM_EXPAND_MACRO_BY_DEFAULT):
+        let expanded = await nimsuggest.get.expand(
+          uriToPath(uri), ls.uriToStash(uri), suggest.line, suggest.column
+        )
         if expanded.len > 0 and expanded[0].doc != "":
           # debug "Expanded macro", expanded = expanded[0].doc
-          content.add MarkedStringOption %* {"language": "nim", "value": expanded[0].doc}
-        else:          
+          content.add MarkedStringOption %* {
+            "language": "nim", "value": expanded[0].doc
+          }
+        else:
           # debug "Couldnt expand the macro. Trying with nim expand", suggest = suggest[]
           let nimPath = config.getNimPath()
-          if nimPath.isSome:  
+          if nimPath.isSome:
             let expanded = await nimExpandMacro(nimPath.get, suggest, uriToPath(uri))
             content.add MarkedStringOption %* {"language": "nim", "value": expanded}
-      if suggest.section == ideDef and suggest.symkind in ["skProc"] and config.nimExpandArc.get(NIM_EXPAND_ARC_BY_DEFAULT):
+      if suggest.section == ideDef and suggest.symkind in ["skProc"] and
+          config.nimExpandArc.get(NIM_EXPAND_ARC_BY_DEFAULT):
         debug "#Expanding arc", suggest = suggest[]
         let nimPath = config.getNimPath()
-        if nimPath.isSome:  
+        if nimPath.isSome:
           let expanded = await nimExpandArc(nimPath.get, suggest, uriToPath(uri))
           let arcContent = "#Expanded arc \n" & expanded
           content.add MarkedStringOption %* {"language": "nim", "value": arcContent}
-      return some(Hover(
-        contents: some(%content),
-        range: some(toLabelRange(suggest.toUtf16Pos(ls))),
-      ))
+      return some(
+        Hover(
+          contents: some(%content), range: some(toLabelRange(suggest.toUtf16Pos(ls)))
+        )
+      )
 
 proc references*(
     ls: LanguageServer, params: ReferenceParams
@@ -538,6 +547,7 @@ proc inlayHint*(
     ls: LanguageServer, params: InlayHintParams, id: int
 ): Future[seq[InlayHint]] {.async.} =
   debug "inlayHint received..."
+
   with (params.range, params.textDocument):
     asyncSpawn ls.addProjectFileToPendingRequest(id.uint, uri)
     let
@@ -615,7 +625,7 @@ proc executeCommand*(
   case params.command
   of RESTART_COMMAND:
     debug "Restarting nimsuggest", projectFile = projectFile
-    ls.createOrRestartNimsuggest(projectFile, projectFile.pathToUri)
+    await ls.createOrRestartNimsuggest(projectFile, projectFile.pathToUri)
   of CHECK_PROJECT_COMMAND:
     debug "Checking project", projectFile = projectFile
     ls.checkProject(projectFile.pathToUri).traceAsyncErrors
@@ -787,7 +797,9 @@ proc exit*(
   result = newJNull()
   await p.onExit()
 
-proc startNimbleProcess(ls: LanguageServer, args: seq[string]): Future[AsyncProcessRef] {.async.} =
+proc startNimbleProcess(
+    ls: LanguageServer, args: seq[string]
+): Future[AsyncProcessRef] {.async.} =
   await startProcess(
     "nimble",
     arguments = args,
@@ -797,9 +809,7 @@ proc startNimbleProcess(ls: LanguageServer, args: seq[string]): Future[AsyncProc
     stderrHandle = AsyncProcess.Pipe,
   )
 
-proc tasks*(
-    ls: LanguageServer, conf: JsonNode
-): Future[seq[NimbleTask]] {.async.} =
+proc tasks*(ls: LanguageServer, conf: JsonNode): Future[seq[NimbleTask]] {.async.} =
   let rootPath: string = ls.initializeParams.getRootPath
   debug "Received tasks ", rootPath = rootPath
   delEnv "NIMBLE_DIR"
@@ -817,7 +827,7 @@ proc tasks*(
 proc runTask*(
     ls: LanguageServer, params: RunTaskParams
 ): Future[RunTaskResult] {.async.} =
-  let process = await ls.startNimbleProcess(params.command) 
+  let process = await ls.startNimbleProcess(params.command)
   let res = await process.waitForExit(InfiniteDuration)
   result.command = params.command
   let prefix = "\""
@@ -826,14 +836,13 @@ proc runTask*(
     for line in lines.mitems:
       if line.startsWith(prefix):
         line = line.unescape(prefix)
-      if line != "":  
-        result.output.add line  
-        
+      if line != "":
+        result.output.add line
+
   debug "Ran nimble cmd/task", command = $params.command, output = $result.output
 
 #Notifications
 proc initialized*(ls: LanguageServer, _: JsonNode): Future[void] {.async.} =
-  debug "Client initialized."
   maybeRegisterCapabilityDidChangeConfiguration(ls)
   maybeRequestConfigurationFromClient(ls)
 
@@ -896,6 +905,7 @@ proc autoFormat(ls: LanguageServer, config: NlsConfig, uri: string) {.async.} =
 proc didSave*(
     ls: LanguageServer, params: DidSaveTextDocumentParams
 ): Future[void] {.async, gcsafe.} =
+  debug "DidSave"
   let
     uri = params.textDocument.uri
     config = await ls.getWorkspaceConfiguration()
@@ -911,7 +921,6 @@ proc didSave*(
   if config.checkOnSave.get(true):
     debug "Checking project", uri = uri
     traceAsyncErrors ls.checkProject(uri)
-
   # var toStop = newTable[string, Nimsuggest]()
   # #We first get the project file for the current file so we can test if this file recently imported another project
   # let thisProjectFile = await getProjectFile(uri.uriToPath, ls)

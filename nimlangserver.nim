@@ -90,17 +90,14 @@ proc showHelp() =
       if line.startsWith("```"):
         inCodeBlock = not inCodeBlock
         continue
-      
+
       var cleaned = line
       if not inCodeBlock:
-        cleaned = cleaned.multiReplace([
-          ("`", ""),
-          ("\\", "")
-        ])
-      
+        cleaned = cleaned.multiReplace([("`", ""), ("\\", "")])
+
       if cleaned.len > 0:
         result.add(cleaned & "\n")
-    
+
     result = result.strip()
 
   let section = readme.split("## Configuration Options")[1].split("##")[0]
@@ -193,7 +190,7 @@ when isMainModule:
     when defined(posix):
       onSignal(SIGINT, SIGTERM, SIGHUP, SIGQUIT, SIGPIPE):
         debug "Terminated via signal", sig
-        ls.stopNimsuggestProcessesP()
+        waitFor ls.stopNimsuggestProcessesP()
         exitnow(1)
     runForever()
   except Exception as e:
