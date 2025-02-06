@@ -285,6 +285,8 @@ proc startSocketServer*(ls: LanguageServer, port: Port) =
   ls.srv.addStreamServer("localhost", port)
   ls.srv.start
   proc waitUntilSocketTransportIsReady(ls: LanguageServer) {.async.} =
+    when defined(test):
+      return
     while ls.socketTransport.isNil:
       await sleepAsync(100)
 
