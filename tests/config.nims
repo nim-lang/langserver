@@ -6,3 +6,4 @@
 --define:"async_backend=asyncdispatch"
 --define:"chronicles_timestamps=None"
 --define:"debugLogging"
+--define:"test"
