@@ -829,9 +829,9 @@ proc didOpenFile*(
         ls.openFiles[uri].fingerTable.add line.createUTFMapping()
         file.writeLine line
     file.close()
-    ls.tryGetNimSuggest(uri).addCallback do(fut: Future[Option[Nimsuggest]]) -> void:
-      if not fut.failed and fut.read.isSome:
-        discard ls.warnIfUnknown(fut.read.get(), uri, projectFile)
+    let ns = await ls.tryGetNimSuggest(uri)
+    if ns.isSome:
+      discard ls.warnIfUnknown(ns.get(), uri, projectFile)
 
     let projectFileUri = projectFile.pathToUri
     if projectFileUri notin ls.openFiles:
@@ -907,7 +907,7 @@ proc checkProject*(ls: LanguageServer, uri: string): Future[void] {.async, gcsaf
     return
 
   debug "Running diagnostics", uri = uri
-  let ns = ls.tryGetNimsuggest(uri).await
+  let ns = await ls.tryGetNimSuggest(uri)
   if ns.isNone:
     return
   let nimsuggest = ns.get
@@ -1022,21 +1022,19 @@ proc createOrRestartNimsuggest*(
       project.stop()
     ls.projectFiles[projectFile] = projectNext
 
-    projectNext.ns.addCallback do(fut: Future[Nimsuggest]):
-      ls.sendStatusChanged()
-      if fut.failed:
-        let msg = fut.error.msg
-        error "Nimsuggest initialization failed", projectFile = projectFile, error = msg
-        ls.showMessage(
-          fmt "Nimsuggest initialization for {projectFile} failed with: {msg}",
-          MessageType.Error,
-        )
-      else:
-        debug "Nimsuggest initialized successfully", projectFile = projectFile
-        ls.showMessage(fmt "Nimsuggest initialized for {projectFile}", MessageType.Info)
-        traceAsyncErrors ls.checkProject(uri)
-        fut.read().openFiles.incl uri
-
+    try:
+      let ns = await projectNext.ns
+      debug "Nimsuggest initialized successfully", projectFile = projectFile
+      ls.showMessage(fmt "Nimsuggest initialized for {projectFile}", MessageType.Info)
+      traceAsyncErrors ls.checkProject(uri)
+      ns.openFiles.incl uri
+    except CatchableError as ex:
+      error "Nimsuggest initialization failed",
+        projectFile = projectFile, error = ex.msg
+      ls.showMessage(
+        fmt "Nimsuggest initialization for {projectFile} failed with: {ex.msg}",
+        MessageType.Error,
+      )
     ls.sendStatusChanged()
   except CatchableError as ex:
     error "Failed to create/restart nimsuggest",
