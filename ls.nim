@@ -172,6 +172,8 @@ type
       stdinContext*: ptr ReadStdinContext
     projectErrors*: seq[ProjectError]
     lastStatusSent: JsonNode
+    failTable*: Table[string, int]
+      #Project file to fail count
       #List of errors (crashes) nimsuggest has had since the lsp session started
 
   Certainty* = enum
@@ -772,6 +774,16 @@ proc getNimsuggestInner(ls: LanguageServer, uri: string): Future[Nimsuggest] {.a
         uri = uri, projectFile = projectFileReused
       return await ls.projectFiles[projectFileReused].ns
 
+  const MaxFails = 10
+  if projectFile in ls.failTable and ls.failTable[projectFile] >= MaxFails:
+    let nextNs = ls.projectFiles.keys.toSeq.filterIt(it != projectFile)
+    if nextNs.len > 0:
+      let nextNs = nextNs[0]
+      debug "Reusing nimsuggest instance for", uri = uri, projectFile = nextNs
+      return await ls.projectFiles[nextNs].ns
+    else:
+      return nil
+
   # Check multiple times with small delays
   var attempts = 0
   const maxAttempts = 10
@@ -977,6 +989,8 @@ proc onErrorCallback(args: (LanguageServer, string), project: Project) =
     ls = args[0]
     uri = args[1]
   debug "NimSuggest needed to be restarted due to an error "
+  ls.failTable[project.file] = ls.failTable.getOrDefault(project.file, 0) + 1
+  debug "Fail count", count = ls.failTable[project.file]
   let configuration = ls.getWorkspaceConfiguration().waitFor()
   warn "Server stopped.", projectFile = project.file
   try:
