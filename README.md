@@ -110,6 +110,7 @@ Note when in a nimble project, `nimble` will drive the entry points for `nimsugg
 - `nim.formatOnSave` - format the file on save. Requires `nph` to be available in the PATH.
 - `nim.nimsuggestIdleTimeout` - the timeout in ms after which an idle `nimsuggest` will be stopped. If not specified the default is 120 seconds.
 - `nim.useNimCheck` - use `nim check` instead of `nimsuggest` for linting. Defaults to `true`.
+- `nim.maxNimsuggestProcesses` - the maximum number of `nimsuggest` processes to keep alive. 0 means unlimited. If not specified the default is 0.
 ## Features
 
 `nimlangserver` supports the following LSP features:
