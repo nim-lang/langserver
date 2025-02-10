@@ -93,6 +93,8 @@ type
     useNimCheck*: Option[bool]
     nimExpandArc*: Option[bool]
     nimExpandMacro*: Option[bool]
+    maxNimsuggestProcesses*: Option[int]
+      #max number of nimsuggest processes to keep alive. zero means unlimited
 
   NlsFileInfo* = ref object of RootObj
     projectFile*: Future[string]
@@ -401,6 +403,14 @@ proc sendStatusChanged*(ls: LanguageServer) {.raises: [].} =
   if status != ls.lastStatusSent:
     ls.notify("extension/statusUpdate", status)
     ls.lastStatusSent = status
+
+proc shouldSpawnNimsuggest*(ls: LanguageServer): Future[bool] {.async.} =
+  let nsCount = ls.getLspStatus().nimsuggestInstances.len
+  let conf = await ls.getWorkspaceConfiguration
+  let maxNimsuggestProcesses = conf.maxNimsuggestProcesses.get(0)
+  result = maxNimsuggestProcesses == 0 or nsCount < maxNimsuggestProcesses
+  debug "shouldSpawnNimsuggest",
+    result = result, nsCount = nsCount, maxNimsuggestProcesses = maxNimsuggestProcesses
 
 proc addProjectFileToPendingRequest*(
     ls: LanguageServer, id: uint, uri: string
@@ -748,10 +758,19 @@ proc getNimsuggestInner(ls: LanguageServer, uri: string): Future[Nimsuggest] {.a
 
   let projectFile = await ls.openFiles[uri].projectFile
   if not ls.projectFiles.hasKey(projectFile):
+    let shouldSpawn = await ls.shouldSpawnNimsuggest()
+    if shouldSpawn:
     debug "Creating new nimsuggest instance", uri = uri, projectFile = projectFile
     await ls.createOrRestartNimsuggest(projectFile, uri)
     # Wait a bit to allow nimsuggest to start
     await sleepAsync(10)
+    else:
+      #Reuse an existing nimsuggest instance
+      assert ls.projectFiles.len > 0, "No nimsuggest instances found to reuse"
+      let projectFileReused = ls.projectFiles.keys.toSeq[0]
+      debug "Reusing nimsuggest instance for",
+        uri = uri, projectFile = projectFileReused
+      return await ls.projectFiles[projectFileReused].ns
 
   # Check multiple times with small delays
   var attempts = 0
