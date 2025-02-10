@@ -760,10 +760,10 @@ proc getNimsuggestInner(ls: LanguageServer, uri: string): Future[Nimsuggest] {.a
   if not ls.projectFiles.hasKey(projectFile):
     let shouldSpawn = await ls.shouldSpawnNimsuggest()
     if shouldSpawn:
-    debug "Creating new nimsuggest instance", uri = uri, projectFile = projectFile
-    await ls.createOrRestartNimsuggest(projectFile, uri)
-    # Wait a bit to allow nimsuggest to start
-    await sleepAsync(10)
+      debug "Creating new nimsuggest instance", uri = uri, projectFile = projectFile
+      await ls.createOrRestartNimsuggest(projectFile, uri)
+      # Wait a bit to allow nimsuggest to start
+      await sleepAsync(10)
     else:
       #Reuse an existing nimsuggest instance
       assert ls.projectFiles.len > 0, "No nimsuggest instances found to reuse"
