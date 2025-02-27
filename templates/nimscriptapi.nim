@@ -251,3 +251,6 @@ proc getPaths*(): seq[string] =
 proc getPathsClause*(): string =
   ## Returns the paths to the dependencies as consumed by the nim compiler.
   return getPaths().mapIt("--path:" & it).join(" ")
+
+template feature*(name: string, body: untyped): untyped =
+  discard
