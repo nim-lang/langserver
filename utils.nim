@@ -337,8 +337,9 @@ proc getNimScriptAPITemplatePath*(): string =
   createDir(result)
   result = result / "nimscriptapi.nim"
 
-  if not result.fileExists:
-    writeFile(result, NIM_SCRIPT_API_TEMPLATE)
+  once:
+    if not result.fileExists or result.readFile != NIM_SCRIPT_API_TEMPLATE:
+      writeFile(result, NIM_SCRIPT_API_TEMPLATE)
   debug "NimScriptApiPath", path = result
 
 proc shutdownChildProcess*(p: AsyncProcessRef): Future[void]  {.async.} =
