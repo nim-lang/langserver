@@ -1,5 +1,4 @@
 import
-  macros,
   strformat,
   chronos,
   chronos/asyncproc,
@@ -22,6 +21,9 @@ import
   stew/[byteutils],
   nimexpand,
   nimcheck
+
+import macros except error
+
 proc getNphPath(): Option[string] =
   let path = findExe "nph"
   if path == "":
