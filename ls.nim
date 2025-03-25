@@ -175,6 +175,7 @@ type
     failTable*: Table[string, int]
       #Project file to fail count
       #List of errors (crashes) nimsuggest has had since the lsp session started
+    checkInProgress*: bool  
 
   Certainty* = enum
     None
@@ -904,6 +905,11 @@ proc tryGetNimsuggest*(
   return none(NimSuggest)
 
 proc checkProject*(ls: LanguageServer, uri: string): Future[void] {.async, gcsafe.} =
+  if ls.checkInProgress:
+    return
+  ls.checkInProgress = true
+  defer: ls.checkInProgress = false
+
   if not ls.getWorkspaceConfiguration.await().autoCheckProject.get(true):
     return
   let conf = await ls.getAndWaitForWorkspaceConfiguration()
@@ -957,6 +963,10 @@ proc checkProject*(ls: LanguageServer, uri: string): Future[void] {.async, gcsaf
   ls.workDoneProgressCreate(token)
   ls.progress(token, "begin", fmt "Checking project {uri.uriToPath}")
   nimsuggest.checkProjectInProgress = true
+  defer: 
+    nimsuggest.checkProjectInProgress = false
+    ls.progress(token, "end")
+
   proc getFilepath(s: Suggest): string =
     s.filepath
 
@@ -980,7 +990,6 @@ proc checkProject*(ls: LanguageServer, uri: string): Future[void] {.async, gcsaf
         PublishDiagnosticsParams %* {"uri": pathToUri(path), "diagnostics": @[]}
       ls.notify("textDocument/publishDiagnostics", %params)
   ls.filesWithDiags = filesWithDiags
-  nimsuggest.checkProjectInProgress = false
 
   if nimsuggest.needsCheckProject:
     nimsuggest.needsCheckProject = false
