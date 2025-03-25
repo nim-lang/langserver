@@ -257,8 +257,9 @@ proc getNimbleDumpInfo*(
 ): Future[NimbleDumpInfo] {.async.} =
   if nimbleFile in ls.nimDumpCache:
     return ls.nimDumpCache.getOrDefault(nimbleFile)
+  var process: AsyncProcessRef
   try:
-    let process = await startProcess(
+    process = await startProcess(
       "nimble",
       arguments = @["dump", nimbleFile],
       options = {UsePath},
@@ -287,6 +288,9 @@ proc getNimbleDumpInfo*(
       ls.nimDumpCache[nimbleFile] = result
   except OSError, IOError:
     debug "Failed to get nimble dump info", nimbleFile = nimbleFile
+  finally: 
+    await shutdownChildProcess(process)
+
 
 proc parseWorkspaceConfiguration*(conf: JsonNode): NlsConfig =
   try:

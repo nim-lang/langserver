@@ -838,6 +838,7 @@ proc tasks*(ls: LanguageServer, conf: JsonNode): Future[seq[NimbleTask]] {.async
       #first run of nimble tasks can compile nim and output the result of the compilation
       if name.isWord:
         result.add NimbleTask(name: name.strip(), description: desc.strip())
+  await process.shutdownChildProcess()
 
 proc runTask*(
     ls: LanguageServer, params: RunTaskParams
@@ -855,6 +856,7 @@ proc runTask*(
         result.output.add line
 
   debug "Ran nimble cmd/task", command = $params.command, output = $result.output
+  await process.shutdownChildProcess()
 
 #Notifications
 proc initialized*(ls: LanguageServer, _: JsonNode): Future[void] {.async.} =
