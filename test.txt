@@ -1,0 +1,9 @@
+Content-Length: 256
+
+{"jsonrpc":"2.0","method":"extension/statusUpdate","params":{"lspPath":"/Volumes/Store/langserver/nimlangserver","version":"1.6.0","nimsuggestInstances":[],"openFiles":[],"extensionCapabilities":["RestartSuggest"],"pendingRequests":[],"projectErrors":[]}}
+Content-Length: 256
+
+{"jsonrpc":"2.0","method":"extension/statusUpdate","params":{"lspPath":"/Volumes/Store/langserver/nimlangserver","version":"1.6.0","nimsuggestInstances":[],"openFiles":[],"extensionCapabilities":["RestartSuggest"],"pendingRequests":[],"projectErrors":[]}}
+Content-Length: 256
+
+{"jsonrpc":"2.0","method":"extension/statusUpdate","params":{"lspPath":"/Volumes/Store/langserver/nimlangserver","version":"1.6.0","nimsuggestInstances":[],"openFiles":[],"extensionCapabilities":["RestartSuggest"],"pendingRequests":[],"projectErrors":[]}}
