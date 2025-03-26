@@ -392,6 +392,7 @@ proc createNimsuggest*(
       stdoutHandle = AsyncProcess.Pipe,
       stderrHandle = AsyncProcess.Pipe,
     )
+    debug "Nimsuggest started with args", args = args
     asyncSpawn logNsError(result)
     let portLine = await result.process.stdoutStream.readLine(sep = "\n")
     debug "Nimsuggest port", portLine = portLine
