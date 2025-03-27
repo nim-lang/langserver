@@ -44,6 +44,7 @@ const
   USE_NIM_CHECK_BY_DEFAULT* = false
   NIM_EXPAND_ARC_BY_DEFAULT* = false
   NIM_EXPAND_MACRO_BY_DEFAULT* = false
+  NIM_MAX_NS_PROCESSES* = 1
 
 type
   NlsNimsuggestConfig* = ref object of RootObj
@@ -414,7 +415,7 @@ proc sendStatusChanged*(ls: LanguageServer) {.raises: [].} =
 proc shouldSpawnNimsuggest*(ls: LanguageServer): Future[bool] {.async.} =
   let nsCount = ls.getLspStatus().nimsuggestInstances.len
   let conf = await ls.getWorkspaceConfiguration
-  let maxNimsuggestProcesses = conf.maxNimsuggestProcesses.get(0)
+  let maxNimsuggestProcesses = conf.maxNimsuggestProcesses.get(NIM_MAX_NS_PROCESSES)
   result = maxNimsuggestProcesses == 0 or nsCount < maxNimsuggestProcesses
   debug "shouldSpawnNimsuggest",
     result = result, nsCount = nsCount, maxNimsuggestProcesses = maxNimsuggestProcesses
