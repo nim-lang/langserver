@@ -130,7 +130,7 @@ suite "nimble setup":
       (json: JsonNode) => json["message"].to(string) == &"Opening {pathToUri(submodule)}",
     )
 
-    check ls.projectFiles.len == 2
+    check ls.projectFiles.len == 1
 
 suite "Project Mapping":
   let cmdParams = CommandLineParams(transport: some socket, port: getNextFreePort())

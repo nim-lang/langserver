@@ -185,10 +185,7 @@ proc processMessage(ls: LanguageServer, message: string) {.raises: [].} =
       if rpc.isNil:
         error "[Processsing Message] rpc method not found: ", msg = req.meth.get
         return
-      let start = now()
-      trace ">>> Processing request", meth = req.meth.get
       asyncSpawn ls.runRpc(req, rpc)
-      trace ">>> Spawned RPC", meth = req.meth.get, elapsed = (now() - start)
     else: #Response
       let response = JrpcSys.decode(message, LspClientResponse)
       let id = response.id
