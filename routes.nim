@@ -19,8 +19,7 @@ import
   std/[strscans, times, json, parseutils, strutils],
   ls,
   stew/[byteutils],
-  nimexpand,
-  nimcheck
+  nimexpand
 
 import macros except error
 

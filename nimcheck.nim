@@ -3,7 +3,6 @@ import regex
 import chronos, chronos/asyncproc
 import stew/[byteutils]
 import chronicles
-import protocol/types
 import utils
 
 type

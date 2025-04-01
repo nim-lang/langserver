@@ -1,12 +1,10 @@
 import std/[strutils]
-import regex
 import chronos, chronos/asyncproc
 import stew/[byteutils]
 import chronicles
-import protocol/types
 import utils
 import suggestapi
-import std/[strscans, strformat]
+import std/[strformat]
 
 
 proc extractMacroExpansion*(output: string, targetLine: int): string =
