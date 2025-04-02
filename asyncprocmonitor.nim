@@ -1,7 +1,7 @@
 # Monitor a client process and shutdown the current process, if the client
 # process is found to be dead
 
-import os, chronos, utils, sugar
+import chronos
 
 when defined(posix):
   import posix_utils
