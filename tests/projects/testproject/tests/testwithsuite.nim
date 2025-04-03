@@ -20,6 +20,5 @@ suite "test suite 2":
   test "can add 5":
     check add(5, 5) == 10
 
-
 test "can add 6":
   check add(5, 5) == 10

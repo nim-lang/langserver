@@ -15,6 +15,10 @@ suite "Test Parser":
 
   test "should be able to retrieve suites and tests from a file":
     let file = getCurrentDir() / "tests" / "projects" / "testproject" / "tests" / "testwithsuite.nim"
+    if not fileExists(file):
+      echo "File does not exist " & file
+      echo getCurrentDir()
+      
     check fileExists(file)
     let testInfo = extractTestInfo(file)
     # echo testInfo
