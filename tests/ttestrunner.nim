@@ -4,8 +4,9 @@ import testparser
 
 suite "Test Parser":
   test "should be able to retrieve a test from a file":
-    let fileDir = getCurrentDir() / "tests" / "projects" / "testproject" / "tests" / "test1.nim"
-    let testInfo = extractTestInfo(fileDir)
+    let file = getCurrentDir() / "tests" / "projects" / "testproject" / "tests" / "test1.nim"
+    check fileExists(file), "File does not exist " & file
+    let testInfo = extractTestInfo(file)
     # echo testInfo
     check testInfo.suites.len == 1
     check testInfo.suites[""].tests.len == 1
@@ -13,8 +14,9 @@ suite "Test Parser":
     check testInfo.suites[""].tests[0].line == 11
 
   test "should be able to retrieve suites and tests from a file":
-    let fileDir = getCurrentDir() / "tests" / "projects" / "testproject" / "tests" / "testwithsuite.nim"
-    let testInfo = extractTestInfo(fileDir)
+    let file = getCurrentDir() / "tests" / "projects" / "testproject" / "tests" / "testwithsuite.nim"
+    check fileExists(file), "File does not exist " & file
+    let testInfo = extractTestInfo(file)
     # echo testInfo
     check testInfo.suites.len == 3 # 2 suites and 1 test global
     check testInfo.suites["test suite"].tests.len == 3
