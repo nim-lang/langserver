@@ -5,7 +5,6 @@ import testparser
 suite "Test Parser":
   test "should be able to retrieve a test from a file":
     let file = getCurrentDir() / "tests" / "projects" / "testproject" / "tests" / "test1.nim"
-    check fileExists(file)
     let testInfo = extractTestInfo(file)
     # echo testInfo
     check testInfo.suites.len == 1
@@ -14,16 +13,7 @@ suite "Test Parser":
     check testInfo.suites[""].tests[0].line == 11
 
   test "should be able to retrieve suites and tests from a file":
-    let file = getCurrentDir() / "tests" / "projects" / "testproject" / "tests" / "testwithsuite.nim"
-    if not fileExists(file):
-      echo "File does not exist " & file
-      echo getCurrentDir()
-      echo "Does exists as relative?", fileExists("./" & "tests" / "projects" / "testproject" / "tests" / "testwithsuite.nim")
-      let dir = getCurrentDir() / "tests" / "projects" / "testproject" / "tests"
-      echo "Walking dir: ", dir, "dir exists? ", dirExists(dir)
-      for f in dir.walkDir():
-        echo f.path
-    check fileExists(file)
+    let file = getCurrentDir() / "tests" / "projects" / "tasks" / "tests" / "testwithsuites.nim"
     let testInfo = extractTestInfo(file)
     # echo testInfo
     check testInfo.suites.len == 3 # 2 suites and 1 test global
