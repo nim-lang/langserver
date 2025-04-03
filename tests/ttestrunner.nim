@@ -18,7 +18,11 @@ suite "Test Parser":
     if not fileExists(file):
       echo "File does not exist " & file
       echo getCurrentDir()
-      
+      echo "Does exists as relative?", fileExists("./" & "tests" / "projects" / "testproject" / "tests" / "testwithsuite.nim")
+      let dir = getCurrentDir() / "tests" / "projects" / "testproject" / "tests"
+      echo "Walking dir: ", dir, "dir exists? ", dirExists(dir)
+      for f in dir.walkDir():
+        echo f.path
     check fileExists(file)
     let testInfo = extractTestInfo(file)
     # echo testInfo
