@@ -10,7 +10,7 @@ when defined(posix):
 type Callback* = proc() {.closure, gcsafe, raises: [].}
 
 when defined(windows):
-  import winlean
+  import winlean, sugar
 
   proc hookAsyncProcMonitor*(pid: int, cb: Callback) =
     discard addProcess2(pid, (arg: pointer) => cb())
