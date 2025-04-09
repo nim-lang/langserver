@@ -1062,3 +1062,19 @@ type
 
   ListTestsResult* = object
     projectInfo*: TestProjectInfo
+  
+  RunTestResult* = object
+    name*: string
+    time*: float
+
+  RunTestSuiteResult* = object
+    name*: string
+    tests*: int
+    failures*: int
+    errors*: int
+    skipped*: int
+    time*: float
+    testResults*: seq[RunTestResult]
+  
+  RunTestProjectResult* = object
+    suites*: seq[RunTestSuiteResult]

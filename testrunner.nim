@@ -1,4 +1,4 @@
-import std/[os, osproc, strscans, tables, sequtils, enumerate, strutils]
+import std/[os, strscans, tables, enumerate, strutils, xmlparser, xmltree]
 import chronos, chronos/asyncproc
 import protocol/types
 import ls
@@ -56,3 +56,58 @@ proc listTestsForEntryPoint*(
       result = extractTestInfo(rawOutput)
   finally:
     await shutdownChildProcess(process)
+
+
+proc parseObject(obj: var object, node: XmlNode) = 
+  for field, value in obj.fieldPairs:
+    when value is string:
+      getField(obj, field) = node.attr(field)
+    elif value is int:
+      getField(obj, field) = parseInt(node.attr(field))
+    elif value is float:
+      getField(obj, field) = parseFloat(node.attr(field))
+
+proc parseTestResult*(node: XmlNode): RunTestResult =
+  parseObject(result, node)
+
+proc parseTestSuite*(node: XmlNode): RunTestSuiteResult =
+  parseObject(result, node) 
+  for testCase in node.findAll("testcase"):
+    result.testResults.add(parseTestResult(testCase))
+
+proc parseTestResults*(xmlContent: string): RunTestProjectResult =
+  let xml = parseXml(xmlContent)    
+  for suiteNode in xml.findAll("testsuite"):
+    result.suites.add(parseTestSuite(suiteNode))
+
+proc runTests*(entryPoints: seq[string], nimPath: string): Future[RunTestProjectResult] {.async.} =
+  #For now only one entry point is supported
+  assert entryPoints.len == 1
+  let entryPoint = entryPoints[0]  
+  let resultFile = (getTempDir() / "result.xml").absolutePath
+  if not fileExists(entryPoint):
+    error "Entry point does not exist", entryPoint = entryPoint
+    return RunTestProjectResult()
+  let process = await startProcess(
+    nimPath,
+    arguments = @["c", "-r", entryPoints[0], "--xml:" & resultFile],
+    options = {UsePath},
+    stderrHandle = AsyncProcess.Pipe,
+    stdoutHandle = AsyncProcess.Pipe,
+  )
+  try:
+    let res = await process.waitForExit(15.seconds)
+    if res != 0:
+      error "Failed to run tests", nimPath = nimPath, entryPoint = entryPoints[0], res = res    
+      error "An error occurred while running tests", error = string.fromBytes(process.stderrStream.read().await)
+    else:
+      assert fileExists(resultFile)
+      let xmlContent = readFile(resultFile)
+      result = parseTestResults(xmlContent)
+  except Exception as e:
+    let processOutput = string.fromBytes(process.stdoutStream.read().await)
+    error "An error occurred while running tests", error = e.msg
+    error "Output from process", output = processOutput
+  finally:
+    await shutdownChildProcess(process)
+  
