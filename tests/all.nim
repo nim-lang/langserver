@@ -1,7 +1,7 @@
 import
-  tsuggestapi,
-  tnimlangserver,
-  tprojectsetup,
-  textensions,
-  tmisc,
+  # tsuggestapi,
+  # tnimlangserver,
+  # tprojectsetup,
+  # textensions,
+  # tmisc,
   ttestrunner
