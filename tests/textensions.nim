@@ -70,3 +70,24 @@ suite "Nimlangserver extensions":
     check tasks.len == 3
     check tasks[0].name == "helloWorld"
     check tasks[0].description == "hello world"
+
+  test "calling extension/test should return all existing tests":
+    let initParams =
+      InitializeParams %* {
+        "processId": %getCurrentProcessId(),
+        "rootUri": fixtureUri("projects/testrunner/"),
+        "capabilities":
+          {"window": {"workDoneProgress": true}, "workspace": {"configuration": true}},
+      }
+    let initializeResult = waitFor client.initialize(initParams)
+
+    let listTestsParams = ListTestsParams(entryPoints: @["tests/projects/testrunner/tests/sampletests.nim".absolutePath])
+    let tests = client.call("extension/listTests", jsonutils.toJson(listTestsParams)).waitFor().jsonTo(
+        ListTestsResult
+      )
+    let testProjectInfo = tests.projectInfo
+    check testProjectInfo.suites.len == 3
+    check testProjectInfo.suites["Sample Tests"].tests.len == 1
+    check testProjectInfo.suites["Sample Tests"].tests[0].name == "Sample Test"
+    check testProjectInfo.suites["Sample Tests"].tests[0].file == "sampletests.nim"
+    check testProjectInfo.suites["Sample Tests"].tests[0].line == 4

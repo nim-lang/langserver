@@ -19,8 +19,9 @@ import
   std/[strscans, times, json, parseutils, strutils],
   ls,
   stew/[byteutils],
-  nimexpand
-
+  nimexpand,
+  testrunner
+  
 import macros except error
 
 proc getNphPath(): Option[string] =
@@ -846,6 +847,16 @@ proc runTask*(
         
   debug "Ran nimble cmd/task", command = $params.command, output = $result.output
   await process.shutdownChildProcess()
+
+proc listTests*(
+    ls: LanguageServer, params: ListTestsParams
+): Future[ListTestsResult] {.async.} =
+  let config = await ls.getWorkspaceConfiguration()
+  let nimPath = config.getNimPath()
+  if nimPath.isNone:
+    return ListTestsResult(projectInfo: TestProjectInfo(entryPoints: params.entryPoints, suites: initTable[string, TestSuiteInfo]()))
+  let testProjectInfo = await ls.listTestsForEntryPoint(params.entryPoints, nimPath.get())
+  result.projectInfo = testProjectInfo
 
 #Notifications
 proc initialized*(ls: LanguageServer, _: JsonNode): Future[void] {.async.} =

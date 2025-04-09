@@ -1,5 +1,6 @@
 import json
 import options
+import tables
 
 type
   OptionalSeq*[T] = Option[seq[T]]
@@ -1042,3 +1043,22 @@ type
   RunTaskResult* = object
     command*: seq[string] #command and args
     output*: seq[string] #output lines
+  
+  TestInfo* = object
+    name*: string
+    line*: int
+    file*: string
+  
+  TestSuiteInfo* = object
+    name*: string #The suite name, empty if it's a global test
+    tests*: seq[TestInfo]
+
+  TestProjectInfo* = object
+    entryPoints*: seq[string]
+    suites*: Table[string, TestSuiteInfo]
+
+  ListTestsParams* = object
+    entryPoints*: seq[string] #can be patterns? if empty we could do the same as nimble does or just run `nimble test args`
+
+  ListTestsResult* = object
+    projectInfo*: TestProjectInfo

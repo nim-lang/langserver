@@ -66,6 +66,7 @@ proc registerRoutes(srv: RpcSocketServer, ls: LanguageServer) =
   srv.register("extension/suggest", wrapRpc(partial(extensionSuggest, ls)))
   srv.register("extension/tasks", wrapRpc(partial(tasks, ls)))
   srv.register("extension/runTask", wrapRpc(partial(runTask, ls)))
+  srv.register("extension/listTests", wrapRpc(partial(listTests, ls)))
   #Notifications
   srv.register("$/cancelRequest", wrapRpc(partial(cancelRequest, ls)))
   srv.register("initialized", wrapRpc(partial(initialized, ls)))
