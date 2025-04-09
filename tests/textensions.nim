@@ -6,6 +6,7 @@ import json_rpc/[rpcclient]
 import chronicles
 import lspsocketclient
 import chronos/asyncproc
+import testhelpers
 
 suite "Nimlangserver extensions":
   let cmdParams = CommandLineParams(transport: some socket, port: getNextFreePort())
@@ -77,7 +78,7 @@ suite "Nimlangserver extensions":
     cd projectDir:
       let (output, _) = execNimble("install", "-l")
       discard execNimble("setup")
-    
+
     let initParams =
       InitializeParams %* {
         "processId": %getCurrentProcessId(),
