@@ -3,4 +3,5 @@ import
   tnimlangserver,
   tprojectsetup,
   textensions,
-  tmisc
+  tmisc,
+  ttestrunner
