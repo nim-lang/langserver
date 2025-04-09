@@ -1,48 +1,7 @@
 import unittest
 import std/[os, osproc, strscans, tables, sequtils, enumerate, strutils]
 import testhelpers
-
-type
-  TestInfo* = object
-    name*: string
-    line*: int
-    file*: string
-  
-  TestSuiteInfo* = object
-    name*: string #The suite name, empty if it's a global test
-    tests*: seq[TestInfo]
-
-  TestProjectInfo* = object
-    entryPoints*: seq[string]
-    suites*: Table[string, TestSuiteInfo]
-
-
-
-
-proc extractTestInfo*(rawOutput: string): TestProjectInfo =
-  result.suites = initTable[string, TestSuiteInfo]()
-  let lines = rawOutput.split("\n")
-  var currentSuite = "" 
-  
-  for i, line in enumerate(lines):
-    var name, file, ignore: string
-    var lineNumber: int
-    if scanf(line, "Suite: $*", name):
-      currentSuite = name.strip() 
-      result.suites[currentSuite] = TestSuiteInfo(name: currentSuite)
-      # echo "Found suite: ", currentSuite
-    
-    elif scanf(line, "$*Test: $*", ignore, name):
-      let insideSuite = line.startsWith("\t")
-      # Use currentSuite if inside a suite, empty string if not
-      let suiteName = if insideSuite: currentSuite else: ""
-      
-      #File is always next line of a test
-      if scanf(lines[i+1], "$*File:$*:$i", ignore, file, lineNumber):
-        var testInfo = TestInfo(name: name.strip(), file: file.strip(), line: lineNumber)
-        # echo "Adding test: ", testInfo.name, " to suite: ", suiteName
-        result.suites[suiteName].tests.add(testInfo)
-
+import testrunner
 
 
 suite "Test Parser":
