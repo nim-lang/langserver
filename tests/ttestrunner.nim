@@ -55,6 +55,9 @@ suite "Test Parser":
       discard execNimble("setup")
       let (listTestsOutput, _) = execCmdEx("nim c -d:unittest2ListTests -r ./tests/test1.nim")
       let testProjectInfo = extractTestInfo(listTestsOutput)
+      echo "***LIST TESTS OUTPUT***"
+      echo listTestsOutput
+      echo "***TEST PROJECT INFO***"
       echo testProjectInfo
       check testProjectInfo.suites.len == 1
       check testProjectInfo.suites["test1.nim"].tests.len == 1

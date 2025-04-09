@@ -7,6 +7,5 @@
 
 import unittest2
 
-import testrunner
 test "can add":
   check add(5, 5) == 10
