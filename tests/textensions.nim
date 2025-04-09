@@ -72,6 +72,12 @@ suite "Nimlangserver extensions":
     check tasks[0].description == "hello world"
 
   test "calling extension/test should return all existing tests":
+    #We first need to initialize the nimble project
+    let projectDir = getCurrentDir() / "tests" / "projects" / "testrunner"
+    cd projectDir:
+      let (output, _) = execNimble("install", "-l")
+      discard execNimble("setup")
+    
     let initParams =
       InitializeParams %* {
         "processId": %getCurrentProcessId(),
