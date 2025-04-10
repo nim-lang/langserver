@@ -2,6 +2,8 @@ import std/[unicode, uri, strformat, os, strutils, options, json, jsonutils, sug
 import chronos, chronicles, chronos/asyncproc
 import "$nim/compiler/pathutils"
 import json_rpc/private/jrpc_sys
+import macros
+
 type
   FingerTable = seq[tuple[u16pos, offset: int]]
 
@@ -353,3 +355,6 @@ proc shutdownChildProcess*(p: AsyncProcessRef): Future[void]  {.async.} =
     except CatchableError:
       debug "Could not kill process in time either!"
       writeStackTrace()
+
+macro getField*(obj: object, fld: string): untyped =
+  result = newDotExpr(obj, newIdentNode(fld.strVal))
