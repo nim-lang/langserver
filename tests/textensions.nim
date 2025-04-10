@@ -72,7 +72,7 @@ suite "Nimlangserver extensions":
     check tasks[0].name == "helloWorld"
     check tasks[0].description == "hello world"
 
-  test "calling extension/test should return all existing tests":
+  test "calling extension/listTests should return all existing tests":
     #We first need to initialize the nimble project
     let projectDir = getCurrentDir() / "tests" / "projects" / "testrunner"
     cd projectDir:
@@ -98,3 +98,25 @@ suite "Nimlangserver extensions":
     check testProjectInfo.suites["Sample Tests"].tests[0].name == "Sample Test"
     check testProjectInfo.suites["Sample Tests"].tests[0].file == "sampletests.nim"
     check testProjectInfo.suites["Sample Tests"].tests[0].line == 4
+
+  test "calling extension/runTests should run the tests and return the results":
+    let initParams =
+      InitializeParams %* {
+        "processId": %getCurrentProcessId(),
+        "rootUri": fixtureUri("projects/testrunner/"),
+        "capabilities":
+          {"window": {"workDoneProgress": true}, "workspace": {"configuration": true}},
+      }
+    let initializeResult = waitFor client.initialize(initParams)
+
+    let runTestsParams = RunTestParams(entryPoints: @["tests/projects/testrunner/tests/sampletests.nim".absolutePath])
+    let runTestsRes = client.call("extension/runTests", jsonutils.toJson(runTestsParams)).waitFor().jsonTo(
+        RunTestProjectResult
+      )
+    check runTestsRes.suites.len == 4
+    check runTestsRes.suites[0].name == "Sample Tests"
+    check runTestsRes.suites[0].tests == 1
+    check runTestsRes.suites[0].failures == 0
+    check runTestsRes.suites[0].errors == 0
+    check runTestsRes.suites[0].skipped == 0
+    check runTestsRes.suites[0].time > 0.0 and runTestsRes.suites[0].time < 1.0

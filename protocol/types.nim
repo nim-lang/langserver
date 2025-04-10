@@ -1003,7 +1003,8 @@ type
   LspExtensionCapability* = enum
     #List of extensions this server support. Useful for clients
     excRestartSuggest = "RestartSuggest", 
-    excNimbleTask = "NimbleTask"
+    excNimbleTask = "NimbleTask",
+    excRunTests = "RunTests"
 
   ProjectError* = object
     projectFile*: string
@@ -1076,5 +1077,8 @@ type
     time*: float
     testResults*: seq[RunTestResult]
   
+  RunTestParams* = object
+    entryPoints*: seq[string]
+
   RunTestProjectResult* = object
     suites*: seq[RunTestSuiteResult]
