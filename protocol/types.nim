@@ -1076,5 +1076,8 @@ type
     time*: float
     testResults*: seq[RunTestResult]
   
+  RunTestParams* = object
+    entryPoints*: seq[string]
+
   RunTestProjectResult* = object
     suites*: seq[RunTestSuiteResult]
