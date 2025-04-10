@@ -30,8 +30,8 @@ proc extractTestInfo*(rawOutput: string): TestProjectInfo =
         # echo "Adding test: ", testInfo.name, " to suite: ", suiteName
         result.suites[suiteName].tests.add(testInfo)
 
-proc listTestsForEntryPoint*(
-    ls: LanguageServer, entryPoints: seq[string], nimPath: string
+proc listTests*(
+  entryPoints: seq[string], nimPath: string
 ): Future[TestProjectInfo] {.async.} =
   #For now only one entry point is supported
   assert entryPoints.len == 1
@@ -56,7 +56,6 @@ proc listTestsForEntryPoint*(
       result = extractTestInfo(rawOutput)
   finally:
     await shutdownChildProcess(process)
-
 
 proc parseObject(obj: var object, node: XmlNode) = 
   for field, value in obj.fieldPairs:
