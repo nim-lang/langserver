@@ -1,5 +1,5 @@
 import unittest
-import std/[os, osproc, strscans, tables, sequtils, enumerate, strutils]
+import std/[os, osproc, strscans, tables, sequtils, enumerate, strutils, options]
 import testhelpers
 import testrunner
 import chronos
@@ -27,7 +27,7 @@ suite "Test Parser":
       let testProjectInfo = extractTestInfo(listTestsOutput)
       check testProjectInfo.suites.len == 3
       check testProjectInfo.suites["Sample Tests"].tests.len == 1
-      check testProjectInfo.suites["Sample Tests"].tests[0].name == "Sample Test"
+      check testProjectInfo.suites["Sample Tests"].tests[0].name == "Sample Test alone"
       check testProjectInfo.suites["Sample Tests"].tests[0].file == "sampletests.nim"
       check testProjectInfo.suites["Sample Tests"].tests[0].line == 4
       check testProjectInfo.suites["Sample Suite"].tests.len == 3
@@ -36,7 +36,7 @@ suite "Test Parser":
 suite "Test Runner":
   test "should be able to run tests and retrieve results":
     let entryPoint = getCurrentDir() / "tests" / "projects" / "testrunner" / "tests" / "sampletests.nim"
-    let testProjectResult = waitFor runTests(@[entryPoint], "nim")
+    let testProjectResult = waitFor runTests(@[entryPoint], "nim", none(string), @[])
     check testProjectResult.suites.len == 4
     check testProjectResult.suites[0].name == "Sample Tests"
     check testProjectResult.suites[0].tests == 1
