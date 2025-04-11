@@ -1067,6 +1067,7 @@ type
   RunTestResult* = object
     name*: string
     time*: float
+    failure*: Option[string]
 
   RunTestSuiteResult* = object
     name*: string
