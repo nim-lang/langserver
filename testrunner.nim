@@ -1,4 +1,4 @@
-import std/[os, strscans, tables, enumerate, strutils, xmlparser, xmltree]
+import std/[os, strscans, tables, enumerate, strutils, xmlparser, xmltree, options, strformat]
 import chronos, chronos/asyncproc
 import protocol/types
 import ls
@@ -77,9 +77,12 @@ proc parseTestSuite*(node: XmlNode): RunTestSuiteResult =
 proc parseTestResults*(xmlContent: string): RunTestProjectResult =
   let xml = parseXml(xmlContent)    
   for suiteNode in xml.findAll("testsuite"):
-    result.suites.add(parseTestSuite(suiteNode))
+    let suite = parseTestSuite(suiteNode)
+    # echo suite.name, " ", suite.testResults.len
+    if suite.testResults.len > 0:
+      result.suites.add(suite)
 
-proc runTests*(entryPoints: seq[string], nimPath: string): Future[RunTestProjectResult] {.async.} =
+proc runTests*(entryPoints: seq[string], nimPath: string, suiteName: Option[string], testNames: seq[string]): Future[RunTestProjectResult] {.async.} =
   #For now only one entry point is supported
   assert entryPoints.len == 1
   let entryPoint = entryPoints[0]  
@@ -87,9 +90,18 @@ proc runTests*(entryPoints: seq[string], nimPath: string): Future[RunTestProject
   if not fileExists(entryPoint):
     error "Entry point does not exist", entryPoint = entryPoint
     return RunTestProjectResult()
+
+
+  var args = @["c", "-r", entryPoints[0], fmt"--xml:{resultFile}"]
+  if suiteName.isSome:
+    args.add(fmt"{suiteName.get()}::")
+  else:
+    for testName in testNames:
+      args.add(testName)
+
   let process = await startProcess(
     nimPath,
-    arguments = @["c", "-r", entryPoints[0], "--xml:" & resultFile],
+    arguments = args,
     options = {UsePath},
     stderrHandle = AsyncProcess.Pipe,
     stdoutHandle = AsyncProcess.Pipe,
@@ -102,6 +114,7 @@ proc runTests*(entryPoints: seq[string], nimPath: string): Future[RunTestProject
     else:
       assert fileExists(resultFile)
       let xmlContent = readFile(resultFile)
+      # echo "XML CONTENT: ", xmlContent
       result = parseTestResults(xmlContent)
   except Exception as e:
     let processOutput = string.fromBytes(process.stdoutStream.read().await)

@@ -867,7 +867,8 @@ proc runTests*(
   if nimPath.isNone:
     error "Nim path not found when running tests"
     return RunTestProjectResult()
-  await runTests(params.entryPoints, nimPath.get())
+  let suiteName = if params.suiteName == "": none(string) else: some(params.suiteName)
+  await runTests(params.entryPoints, nimPath.get(), suiteName, params.testNames)
 
 #Notifications
 proc initialized*(ls: LanguageServer, _: JsonNode): Future[void] {.async.} =

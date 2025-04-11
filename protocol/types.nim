@@ -1079,6 +1079,8 @@ type
   
   RunTestParams* = object
     entryPoints*: seq[string]
+    suiteName*: string #Optional, if provided, only run tests in the suite. Takes precedence over testName
+    testNames*: seq[string] #Optional, if provided, only run the specific tests
 
   RunTestProjectResult* = object
     suites*: seq[RunTestSuiteResult]
