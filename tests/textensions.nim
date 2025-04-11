@@ -95,7 +95,7 @@ suite "Nimlangserver extensions":
     let testProjectInfo = tests.projectInfo
     check testProjectInfo.suites.len == 3
     check testProjectInfo.suites["Sample Tests"].tests.len == 1
-    check testProjectInfo.suites["Sample Tests"].tests[0].name == "Sample Test"
+    check testProjectInfo.suites["Sample Tests"].tests[0].name == "Sample Test alone"
     check testProjectInfo.suites["Sample Tests"].tests[0].file == "sampletests.nim"
     check testProjectInfo.suites["Sample Tests"].tests[0].line == 4
 
@@ -120,3 +120,58 @@ suite "Nimlangserver extensions":
     check runTestsRes.suites[0].errors == 0
     check runTestsRes.suites[0].skipped == 0
     check runTestsRes.suites[0].time > 0.0 and runTestsRes.suites[0].time < 1.0
+
+  test "calling extension/runTest with a suite name should run the tests in the suite":
+    let initParams =
+      InitializeParams %* {
+        "processId": %getCurrentProcessId(),
+        "rootUri": fixtureUri("projects/testrunner/"),
+        "capabilities":
+          {"window": {"workDoneProgress": true}, "workspace": {"configuration": true}},
+      }
+    let initializeResult = waitFor client.initialize(initParams)
+
+    let suiteName = "Sample Suite"
+    let runTestsParams = RunTestParams(entryPoints: @["tests/projects/testrunner/tests/sampletests.nim".absolutePath], suiteName: suiteName)
+    let runTestsRes = client.call("extension/runTests", jsonutils.toJson(runTestsParams)).waitFor().jsonTo(
+        RunTestProjectResult
+      )
+    check runTestsRes.suites.len == 1
+    check runTestsRes.suites[0].name == suiteName
+    check runTestsRes.suites[0].tests == 3
+
+  test "calling extension/runTest with a test name should run the tests in the suite":
+    let initParams =
+      InitializeParams %* {
+        "processId": %getCurrentProcessId(),
+        "rootUri": fixtureUri("projects/testrunner/"),
+        "capabilities":
+          {"window": {"workDoneProgress": true}, "workspace": {"configuration": true}},
+      }
+    
+    let initializeResult = waitFor client.initialize(initParams)
+
+    let testName = "Sample Test"
+    let runTestsParams = RunTestParams(entryPoints: @["tests/projects/testrunner/tests/sampletests.nim".absolutePath], testNames: @[testName])
+    let runTestsRes = client.call("extension/runTests", jsonutils.toJson(runTestsParams)).waitFor().jsonTo(RunTestProjectResult)
+
+    check runTestsRes.suites.len == 1
+    check runTestsRes.suites[0].tests == 1
+    check runTestsRes.suites[0].testResults[0].name == testName
+
+    test "calling extension/runTest with multiple test names should run the tests in the suite":
+      let initParams =
+        InitializeParams %* {
+          "processId": %getCurrentProcessId(),
+          "rootUri": fixtureUri("projects/testrunner/"),
+          "capabilities":
+            {"window": {"workDoneProgress": true}, "workspace": {"configuration": true}},
+        }
+      let initializeResult = waitFor client.initialize(initParams)
+
+      let testNames = @["Sample Test", "Sample Test 2"]
+      let runTestsParams = RunTestParams(entryPoints: @["tests/projects/testrunner/tests/sampletests.nim".absolutePath], testNames: testNames)
+      let runTestsRes = client.call("extension/runTests", jsonutils.toJson(runTestsParams)).waitFor().jsonTo(RunTestProjectResult)
+
+      check runTestsRes.suites.len == 1
+      check runTestsRes.suites[0].tests == 2

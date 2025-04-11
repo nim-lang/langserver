@@ -1,7 +1,7 @@
 import unittest2
 
 suite "Sample Tests":
-  test "Sample Test":
+  test "Sample Test alone":
     check(1 == 1)
 
 test "Global test":
