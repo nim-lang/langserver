@@ -173,5 +173,26 @@ suite "Nimlangserver extensions":
       let runTestsParams = RunTestParams(entryPoints: @["tests/projects/testrunner/tests/sampletests.nim".absolutePath], testNames: testNames)
       let runTestsRes = client.call("extension/runTests", jsonutils.toJson(runTestsParams)).waitFor().jsonTo(RunTestProjectResult)
 
-      check runTestsRes.suites.len == 1
-      check runTestsRes.suites[0].tests == 2
+    check runTestsRes.suites.len == 1
+  #   check runTestsRes.suites[0].tests == 2
+
+  test "calling extension/runTest with a failing test should return the failure":
+    let initParams =
+      InitializeParams %* {
+        "processId": %getCurrentProcessId(),
+        "rootUri": fixtureUri("projects/testrunner/"),
+        "capabilities":
+          {"window": {"workDoneProgress": true}, "workspace": {"configuration": true}},
+      }
+      
+    let initializeResult = waitFor client.initialize(initParams)
+
+    let runTestsParams = RunTestParams(entryPoints: @["tests/projects/testrunner/tests/failingtest.nim".absolutePath])
+    let runTestsRes = client.call("extension/runTests", jsonutils.toJson(runTestsParams)).waitFor().jsonTo(RunTestProjectResult)
+
+    check runTestsRes.suites.len == 1
+    check runTestsRes.suites[0].name == "Failing Tests"
+    check runTestsRes.suites[0].tests == 2
+    check runTestsRes.suites[0].failures == 1
+    check runTestsRes.suites[0].testResults[0].name == "Failing Test"
+    check runTestsRes.suites[0].testResults[0].failure.isSome

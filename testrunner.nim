@@ -68,6 +68,10 @@ proc parseObject(obj: var object, node: XmlNode) =
 
 proc parseTestResult*(node: XmlNode): RunTestResult =
   parseObject(result, node)
+  # Add handling for failure node
+  let failureNode = node.child("failure")
+  if not failureNode.isNil:
+    result.failure = some failureNode.attr("message")
 
 proc parseTestSuite*(node: XmlNode): RunTestSuiteResult =
   parseObject(result, node) 
@@ -91,7 +95,6 @@ proc runTests*(entryPoints: seq[string], nimPath: string, suiteName: Option[stri
     error "Entry point does not exist", entryPoint = entryPoint
     return RunTestProjectResult()
 
-
   var args = @["c", "-r", entryPoints[0], fmt"--xml:{resultFile}"]
   if suiteName.isSome:
     args.add(fmt"{suiteName.get()}::")
@@ -108,14 +111,17 @@ proc runTests*(entryPoints: seq[string], nimPath: string, suiteName: Option[stri
   )
   try:
     let res = await process.waitForExit(15.seconds)
-    if res != 0:
-      error "Failed to run tests", nimPath = nimPath, entryPoint = entryPoints[0], res = res    
-      error "An error occurred while running tests", error = string.fromBytes(process.stderrStream.read().await)
+    if not fileExists(resultFile):
+      let processOutput = string.fromBytes(process.stdoutStream.read().await)
+      let processError = string.fromBytes(process.stderrStream.read().await)
+      error "Result file does not exist meaning tests were not run"
+      error "Output from process", output = processOutput
+      error "Error from process", error = processError
     else:
-      assert fileExists(resultFile)
       let xmlContent = readFile(resultFile)
       # echo "XML CONTENT: ", xmlContent
       result = parseTestResults(xmlContent)
+      removeFile(resultFile)
   except Exception as e:
     let processOutput = string.fromBytes(process.stdoutStream.read().await)
     error "An error occurred while running tests", error = e.msg
