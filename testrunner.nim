@@ -30,18 +30,23 @@ proc extractTestInfo*(rawOutput: string): TestProjectInfo =
         # echo "Adding test: ", testInfo.name, " to suite: ", suiteName
         result.suites[suiteName].tests.add(testInfo)
 
-proc listTests*(
-  entryPoints: seq[string], nimPath: string
-): Future[TestProjectInfo] {.async.} =
-  #For now only one entry point is supported
-  assert entryPoints.len == 1
-  let entryPoint = entryPoints[0]
+proc getFullPath*(entryPoint: string, workspaceRoot: string): string =
   if not fileExists(entryPoint):
-    error "Entry point does not exist", entryPoint = entryPoint
-    return TestProjectInfo()
+    let absolutePath = joinPath(workspaceRoot, entryPoint)
+    if fileExists(absolutePath):
+      return absolutePath
+  return entryPoint
+
+proc listTests*(
+  entryPoints: seq[string], 
+  nimPath: string,
+  workspaceRoot: string
+): Future[TestProjectInfo] {.async.} =
+  assert entryPoints.len == 1
+  var entryPoint = getFullPath(entryPoints[0], workspaceRoot)
   let process = await startProcess(
     nimPath,
-    arguments = @["c", "-d:unittest2ListTests", "-r", "--listFullPaths", entryPoints[0]],
+    arguments = @["c", "-d:unittest2ListTests", "-r", "--listFullPaths", entryPoint],
     options = {UsePath},
     stderrHandle = AsyncProcess.Pipe,
     stdoutHandle = AsyncProcess.Pipe,
@@ -49,7 +54,7 @@ proc listTests*(
   try:
     let res = await process.waitForExit(15.seconds)
     if res != 0:
-      error "Failed to list tests", nimPath = nimPath, entryPoint = entryPoints[0], res = res    
+      error "Failed to list tests", nimPath = nimPath, entryPoint = entryPoint, res = res    
       error "An error occurred while listing tests", error = string.fromBytes(process.stderrStream.read().await)
     else:
       let rawOutput = string.fromBytes(process.stdoutStream.read().await)   
@@ -86,16 +91,20 @@ proc parseTestResults*(xmlContent: string): RunTestProjectResult =
     if suite.testResults.len > 0:
       result.suites.add(suite)
 
-proc runTests*(entryPoints: seq[string], nimPath: string, suiteName: Option[string], testNames: seq[string]): Future[RunTestProjectResult] {.async.} =
-  #For now only one entry point is supported
+proc runTests*(
+  entryPoints: seq[string], 
+  nimPath: string, 
+  suiteName: Option[string], 
+  testNames: seq[string],
+  workspaceRoot: string
+): Future[RunTestProjectResult] {.async.} =
   assert entryPoints.len == 1
-  let entryPoint = entryPoints[0]  
-  let resultFile = (getTempDir() / "result.xml").absolutePath
+  var entryPoint = getFullPath(entryPoints[0], workspaceRoot)
   if not fileExists(entryPoint):
-    error "Entry point does not exist", entryPoint = entryPoint
+    error "Entry point does not exist", entryPoint = entryPoint    
     return RunTestProjectResult()
-
-  var args = @["c", "-r", entryPoints[0], fmt"--xml:{resultFile}"]
+  let resultFile = (getTempDir() / "result.xml").absolutePath        
+  var args = @["c", "-r", entryPoint , fmt"--xml:{resultFile}"]
   if suiteName.isSome:
     args.add(fmt"{suiteName.get()}::")
   else:
