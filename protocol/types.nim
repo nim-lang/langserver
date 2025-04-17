@@ -1057,6 +1057,7 @@ type
   TestProjectInfo* = object
     entryPoints*: seq[string]
     suites*: Table[string, TestSuiteInfo]
+    error*: Option[string]
 
   ListTestsParams* = object
     entryPoints*: seq[string] #can be patterns? if empty we could do the same as nimble does or just run `nimble test args`
@@ -1080,8 +1081,8 @@ type
   
   RunTestParams* = object
     entryPoints*: seq[string]
-    suiteName*: string #Optional, if provided, only run tests in the suite. Takes precedence over testName
-    testNames*: seq[string] #Optional, if provided, only run the specific tests
+    suiteName*: Option[string] #Optional, if provided, only run tests in the suite. Takes precedence over testName
+    testNames*: Option[seq[string]] #Optional, if provided, only run the specific tests
 
   RunTestProjectResult* = object
     suites*: seq[RunTestSuiteResult]
