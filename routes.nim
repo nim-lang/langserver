@@ -868,9 +868,8 @@ proc runTests*(
   if nimPath.isNone:
     error "Nim path not found when running tests"
     return RunTestProjectResult()
-  let suiteName = if params.suiteName == "": none(string) else: some(params.suiteName)
   let workspaceRoot = ls.initializeParams.getRootPath
-  await runTests(params.entryPoints, nimPath.get(), suiteName, params.testNames, workspaceRoot)
+  await runTests(params.entryPoints, nimPath.get(), params.suiteName, params.testNames.get(@[]), workspaceRoot)
 
 #Notifications
 proc initialized*(ls: LanguageServer, _: JsonNode): Future[void] {.async.} =

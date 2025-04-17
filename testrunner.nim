@@ -55,7 +55,9 @@ proc listTests*(
     let res = await process.waitForExit(15.seconds)
     if res != 0:
       error "Failed to list tests", nimPath = nimPath, entryPoint = entryPoint, res = res    
-      error "An error occurred while listing tests", error = string.fromBytes(process.stderrStream.read().await)
+      let error = string.fromBytes(process.stderrStream.read().await)
+      error "An error occurred while listing tests", error = error
+      result = TestProjectInfo(error: some error)
     else:
       let rawOutput = string.fromBytes(process.stdoutStream.read().await)   
       result = extractTestInfo(rawOutput)
