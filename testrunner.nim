@@ -10,7 +10,6 @@ proc extractTestInfo*(rawOutput: string): TestProjectInfo =
   result.suites = initTable[string, TestSuiteInfo]()
   let lines = rawOutput.split("\n")
   var currentSuite = "" 
-  
   for i, line in enumerate(lines):
     var name, file, ignore: string
     var lineNumber: int
@@ -38,12 +37,11 @@ proc getFullPath*(entryPoint: string, workspaceRoot: string): string =
   return entryPoint
 
 proc listTests*(
-  entryPoints: seq[string], 
+  entryPoint: string, 
   nimPath: string,
   workspaceRoot: string
 ): Future[TestProjectInfo] {.async.} =
-  assert entryPoints.len == 1
-  var entryPoint = getFullPath(entryPoints[0], workspaceRoot)
+  var entryPoint = getFullPath(entryPoint, workspaceRoot)
   let process = await startProcess(
     nimPath,
     arguments = @["c", "-d:unittest2ListTests", "-r", "--listFullPaths", entryPoint],
@@ -94,14 +92,13 @@ proc parseTestResults*(xmlContent: string): RunTestProjectResult =
       result.suites.add(suite)
 
 proc runTests*(
-  entryPoints: seq[string], 
+  entryPoint: string, 
   nimPath: string, 
   suiteName: Option[string], 
   testNames: seq[string],
   workspaceRoot: string
 ): Future[RunTestProjectResult] {.async.} =
-  assert entryPoints.len == 1
-  var entryPoint = getFullPath(entryPoints[0], workspaceRoot)
+  var entryPoint = getFullPath(entryPoint, workspaceRoot)
   if not fileExists(entryPoint):
     error "Entry point does not exist", entryPoint = entryPoint    
     return RunTestProjectResult()
@@ -122,8 +119,9 @@ proc runTests*(
   )
   try:
     let res = await process.waitForExit(15.seconds)
+    let processOutput = string.fromBytes(process.stdoutStream.read().await)
+
     if not fileExists(resultFile):
-      let processOutput = string.fromBytes(process.stdoutStream.read().await)
       let processError = string.fromBytes(process.stderrStream.read().await)
       error "Result file does not exist meaning tests were not run"
       error "Output from process", output = processOutput
@@ -132,6 +130,7 @@ proc runTests*(
       let xmlContent = readFile(resultFile)
       # echo "XML CONTENT: ", xmlContent
       result = parseTestResults(xmlContent)
+      result.fullOutput = processOutput
       removeFile(resultFile)
   except Exception as e:
     let processOutput = string.fromBytes(process.stdoutStream.read().await)

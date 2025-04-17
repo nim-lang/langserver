@@ -855,9 +855,9 @@ proc listTests*(
   let nimPath = config.getNimPath()
   if nimPath.isNone:
     error "Nim path not found when listing tests"
-    return ListTestsResult(projectInfo: TestProjectInfo(entryPoints: params.entryPoints, suites: initTable[string, TestSuiteInfo]()))
+    return ListTestsResult(projectInfo: TestProjectInfo(entryPoint: params.entryPoint, suites: initTable[string, TestSuiteInfo]()))
   let workspaceRoot = ls.initializeParams.getRootPath
-  let testProjectInfo = await listTests(params.entryPoints, nimPath.get(), workspaceRoot)
+  let testProjectInfo = await listTests(params.entryPoint, nimPath.get(), workspaceRoot)
   result.projectInfo = testProjectInfo
 
 proc runTests*(
@@ -869,7 +869,7 @@ proc runTests*(
     error "Nim path not found when running tests"
     return RunTestProjectResult()
   let workspaceRoot = ls.initializeParams.getRootPath
-  await runTests(params.entryPoints, nimPath.get(), params.suiteName, params.testNames.get(@[]), workspaceRoot)
+  await runTests(params.entryPoint, nimPath.get(), params.suiteName, params.testNames.get(@[]), workspaceRoot)
 
 #Notifications
 proc initialized*(ls: LanguageServer, _: JsonNode): Future[void] {.async.} =
