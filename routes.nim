@@ -869,7 +869,18 @@ proc runTests*(
     error "Nim path not found when running tests"
     return RunTestProjectResult()
   let workspaceRoot = ls.initializeParams.getRootPath
-  await runTests(params.entryPoint, nimPath.get(), params.suiteName, params.testNames.get(@[]), workspaceRoot)
+  await runTests(params.entryPoint, nimPath.get(), params.suiteName, params.testNames.get(@[]), workspaceRoot, ls)
+
+proc cancelTest*(
+    ls: LanguageServer, params: JsonNode
+): Future[CancelTestResult] {.async.} =
+  debug "Cancelling test"
+  if ls.testRunProcess.isSome: #No need to cancel the runTests request. The client should handle it.
+    await shutdownChildProcess(ls.testRunProcess.get)
+    ls.testRunProcess = none(AsyncProcessRef)
+    CancelTestResult(cancelled: true)
+  else:
+    CancelTestResult(cancelled: false)
 
 #Notifications
 proc initialized*(ls: LanguageServer, _: JsonNode): Future[void] {.async.} =

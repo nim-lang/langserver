@@ -1088,3 +1088,5 @@ type
     suites*: seq[RunTestSuiteResult]
     fullOutput*: string
 
+  CancelTestResult* = object
+    cancelled*: bool
