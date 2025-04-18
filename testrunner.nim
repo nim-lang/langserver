@@ -96,7 +96,8 @@ proc runTests*(
   nimPath: string, 
   suiteName: Option[string], 
   testNames: seq[string],
-  workspaceRoot: string
+  workspaceRoot: string,
+  ls: LanguageServer
 ): Future[RunTestProjectResult] {.async.} =
   var entryPoint = getFullPath(entryPoint, workspaceRoot)
   if not fileExists(entryPoint):
@@ -117,6 +118,7 @@ proc runTests*(
     stderrHandle = AsyncProcess.Pipe,
     stdoutHandle = AsyncProcess.Pipe,
   )
+  ls.testRunProcess = some(process)
   try:
     let res = await process.waitForExit(15.seconds)
     let processOutput = string.fromBytes(process.stdoutStream.read().await)
@@ -138,4 +140,5 @@ proc runTests*(
     error "Output from process", output = processOutput
   finally:
     await shutdownChildProcess(process)
-  
+    if ls.testRunProcess.isSome:
+      ls.testRunProcess = none(AsyncProcessRef)

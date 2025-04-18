@@ -3,6 +3,7 @@ import std/[os, osproc, strscans, tables, sequtils, enumerate, strutils, options
 import testhelpers
 import testrunner
 import chronos
+import ls
 
 suite "Test Parser":
   test "should be able to list tests from an entry point":
@@ -36,7 +37,8 @@ suite "Test Parser":
 suite "Test Runner":
   test "should be able to run tests and retrieve results":
     let entryPoint = getCurrentDir() / "tests" / "projects" / "testrunner" / "tests" / "sampletests.nim"
-    let testProjectResult = waitFor runTests(entryPoint, "nim", none(string), @[], "")
+    let ls = LanguageServer()
+    let testProjectResult = waitFor runTests(entryPoint, "nim", none(string), @[], "", ls)
     check testProjectResult.suites.len == 4
     check testProjectResult.suites[0].name == "Sample Tests"
     check testProjectResult.suites[0].tests == 1

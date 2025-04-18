@@ -160,6 +160,8 @@ type
     nimDumpCache*: Table[string, NimbleDumpInfo] #path to NimbleDumpInfo
     entryPoints*: seq[string]
     responseMap*: TableRef[string, Future[JsonNode]]
+    testRunProcess*: Option[AsyncProcessRef] #There is only one test run process at a time
+
       #id to future. Represents the pending requests as result of calling ls.call
     srv*: RpcSocketServer
       #Both modes uses it to store the routes. Only actually started in socket mode
