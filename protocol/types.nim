@@ -5,13 +5,14 @@ import tables
 type
   OptionalSeq*[T] = Option[seq[T]]
   OptionalNode* = Option[JsonNode]
+  uinteger* = range[0 .. (1 shl 31 - 1)]
 
   CancelParams* = ref object of RootObj
     id*: OptionalNode
 
   Position* = ref object of RootObj
-    line*: int # uinteger
-    character*: int # uinteger
+    line*: uinteger
+    character*: uinteger
 
   Range* = ref object of RootObj
     start*: Position
@@ -397,7 +398,7 @@ type
 
   FoldingRangeClientCapabilities* = ref object of RootObj
     dynamicRegistration*: Option[bool]
-    rangeLimit*: Option[int] # uinteger
+    rangeLimit*: Option[uinteger]
     lineFoldingOnly*: Option[bool]
     foldingRangeKind*: Option[FoldingRangeClientCapabilities_foldingRangeKind]
     foldingRange*: Option[FoldingRangeClientCapabilities_foldingRange]
