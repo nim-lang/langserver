@@ -733,7 +733,7 @@ proc format*(
 
   let fullRange = Range(
     start: Position(line: 0, character: 0),
-    `end`: Position(line: int(uint32.high), character: int(uint32.high)),
+    `end`: Position(line: uinteger.high, character: uinteger.high)
   )
   debug "Formatting document", uri = uri, formattedText = formattedText
   some TextEdit(range: fullRange, newText: formattedText)
