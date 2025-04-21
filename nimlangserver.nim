@@ -79,6 +79,7 @@ proc registerRoutes(srv: RpcSocketServer, ls: LanguageServer) =
     "workspace/didChangeConfiguration", wrapRpc(partial(didChangeConfiguration, ls))
   )
   srv.register("textDocument/didChange", wrapRpc(partial(didChange, ls)))
+  srv.register("textDocument/willSaveWaitUntil", wrapRpc(partial(willSaveWaitUntil, ls)))
   srv.register("$/setTrace", wrapRpc(partial(setTrace, ls)))
 
 proc showHelp() =
