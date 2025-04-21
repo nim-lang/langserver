@@ -71,7 +71,7 @@ proc initialize*(
           openClose: some(true),
           change: some(TextDocumentSyncKind.Full.int),
           willSave: some(false),
-          willSaveWaitUntil: some(false),
+          willSaveWaitUntil: some(true),
           save: some(SaveOptions(includeText: some(true))),
         )
       ),
@@ -924,25 +924,29 @@ proc didChange*(
 
     ls.scheduleFileCheck(uri)
 
-proc autoFormat(ls: LanguageServer, config: NlsConfig, uri: string) {.async.} =
-  let nphPath = getNphPath()
-  let shouldAutoFormat =
-    nphPath.isSome and ls.serverCapabilities.documentFormattingProvider.get(false) and
-    ls.clientCapabilities.workspace.get(ClientCapabilities_workspace()).applyEdit.get(
-      false
-    ) and config.formatOnSave.get(false)
-  if shouldAutoFormat:
+proc willSaveWaitUntil*(
+    ls: LanguageServer, 
+    params: WillSaveTextDocumentParams
+): Future[seq[TextEdit]] {.async.} =
+  debug "Received willSaveWaitUntil request"
+
+  let
+    uri = params.textDocument.uri
+    config = await ls.getWorkspaceConfiguration()
+    nphPath = getNphPath()
+  
+  let shouldFormat = 
+    nphPath.isSome and 
+    ls.serverCapabilities.documentFormattingProvider.get(false) and
+    config.formatOnSave.get(false)
+    
+  if shouldFormat:
+    debug "Formatting document before save", uri = uri
     let formatTextEdit = await ls.format(nphPath.get(), uri)
     if formatTextEdit.isSome:
-      let workspaceEdit = WorkspaceEdit(
-        documentChanges: some @[
-          TextDocumentEdit(
-            textDocument: VersionedTextDocumentIdentifier(uri: uri),
-            edits: some @[formatTextEdit.get()],
-          )
-        ]
-      )
-      discard await ls.applyEdit(ApplyWorkspaceEditParams(edit: workspaceEdit))
+      return @[formatTextEdit.get]
+  
+  return @[]
 
 proc didSave*(
     ls: LanguageServer, params: DidSaveTextDocumentParams
@@ -950,7 +954,6 @@ proc didSave*(
   let
     uri = params.textDocument.uri
     config = await ls.getWorkspaceConfiguration()
-  asyncSpawn ls.autoFormat(config, uri)
   let nimsuggest = await ls.tryGetNimsuggest(uri)
 
   if nimsuggest.isNone:
