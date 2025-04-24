@@ -3,6 +3,7 @@ import chronos, chronicles, chronos/asyncproc
 import "$nim/compiler/pathutils"
 import json_rpc/private/jrpc_sys
 import macros
+import stew/byteutils
 
 type
   FingerTable = seq[tuple[u16pos, offset: int]]
@@ -358,3 +359,30 @@ proc shutdownChildProcess*(p: AsyncProcessRef): Future[void]  {.async.} =
 
 macro getField*(obj: object, fld: string): untyped =
   result = newDotExpr(obj, newIdentNode(fld.strVal))
+
+
+proc readAllOutput*(stream: AsyncStreamReader): Future[string] {.async.} =
+  result = ""
+  while not stream.atEof:
+    let data = await stream.read()
+    result.add(string.fromBytes(data))
+
+proc readErrorOutputUntilExit*(process: AsyncProcessRef, duration: Duration): Future[tuple[output: string, code: int]] {.async.} =
+  var output = ""
+  var res = 0
+  while true:
+    if not process.stderrStream.atEof:
+      let data = await process.stderrStream.read()
+      output.add(string.fromBytes(data))
+    
+    let hasExited = try:
+      res = await process.waitForExit(duration)
+      true
+    except AsyncTimeoutError:
+      false
+    
+    if hasExited:
+      while not process.stderrStream.atEof:
+        let data = await process.stderrStream.read()
+        output.add(string.fromBytes(data))
+      return (output, res)
