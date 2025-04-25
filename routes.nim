@@ -513,6 +513,9 @@ proc toInlayHint(suggest: SuggestInlayHint, configuration: NlsConfig): InlayHint
   let hint_line = suggest.line - 1
   # TODO: how to convert column?
   var hint_col = suggest.column
+  var suggest = suggest
+  if suggest.label.contains("Error Type"):
+    suggest.label = ""
   result = InlayHint(
     position: Position(line: hint_line, character: hint_col),
     label: suggest.label,

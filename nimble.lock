@@ -127,8 +127,8 @@
       }
     },
     "chronos": {
-      "version": "4.0.4",
-      "vcsRevision": "0646c444fce7c7ed08ef6f2c9a7abfd172ffe655",
+      "version": "4.0.3",
+      "vcsRevision": "36d8ee5617fbd9747726688fce72fcd215628937",
       "url": "https://github.com/status-im/nim-chronos",
       "downloadMethod": "git",
       "dependencies": [
@@ -139,7 +139,7 @@
         "unittest2"
       ],
       "checksums": {
-        "sha1": "455802a90204d8ad6b31d53f2efff8ebfe4c834a"
+        "sha1": "fd6062c492e5b6053702638159d38d1219b4bf72"
       }
     },
     "nimcrypto": {
@@ -217,7 +217,7 @@
     },
     "nim": {
       "version": "2.0.8",
-      "vcsRevision": "",
+      "vcsRevision": "5935c3bfa9fec6505394867b23510eb5cbab3dbf",
       "url": "https://github.com/nim-lang/Nim.git",
       "downloadMethod": "git",
       "dependencies": [],
