@@ -1,9 +1,9 @@
-import unittest
 import std/[os, osproc, strscans, tables, sequtils, enumerate, strutils, options]
 import testhelpers
 import testrunner
 import chronos
 import ls
+import unittest2
 
 suite "Test Parser":
   test "should be able to list tests from an entry point":

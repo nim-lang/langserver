@@ -1,12 +1,13 @@
 import ../[nimlangserver, ls, lstransports, utils]
 import ../protocol/[enums, types]
 import
-  std/[options, unittest, json, os, jsonutils, sequtils, strutils, sugar, strformat]
+  std/[options, json, os, jsonutils, sequtils, strutils, sugar, strformat]
 import json_rpc/[rpcclient]
 import chronicles
 import lspsocketclient
 import chronos/asyncproc
 import testhelpers
+import unittest2
 
 suite "Nimlangserver extensions":
   let cmdParams = CommandLineParams(transport: some socket, port: getNextFreePort())

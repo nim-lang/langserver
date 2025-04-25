@@ -1,5 +1,6 @@
 import
-  ../suggestapi, unittest, os, std/asyncnet, strutils, chronos, options
+  ../suggestapi, os, std/asyncnet, strutils, chronos, options
+import unittest2
 
 const inputLine = "def	skProc	hw.a	proc (){.noSideEffect, gcsafe.}	hw/hw.nim	1	5	\"\"	100"
 const inputLineWithEndLine = "outline	skEnumField	system.bool.true	bool	basic_types.nim	46	15	\"\"	100	4	11"
