@@ -3,5 +3,6 @@
             "projectFile": "nimlangserver.nim",
             "fileRegex": ".*\\.nim"
         }
-    ]
+    ],
+    "nim.test.entryPoint": "tests/all.nim"
 }
