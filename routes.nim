@@ -16,8 +16,9 @@ import
   chronicles,
   asyncprocmonitor,
   json_serialization,
-  std/[strscans, times, json, parseutils, strutils, nre],
+  std/[strscans, times, json, parseutils, strutils],
   ls,
+  regex,
   stew/[byteutils],
   nimexpand,
   testrunner
@@ -368,12 +369,10 @@ proc scheduleFileCheck(ls: LanguageServer, uri: string) {.gcsafe, raises: [].} =
 
 proc toMdLinks(s: string): string =
   result = s
-  var d = newSeq[(Slice[int], string)]()
-  for match in s.findIter(re"`([^`<]*?)<([^`>]*?)>`_"):
-    d.add (match.matchBounds, fmt"[{match.captures[0]}]({match.captures[1]})")
-
-  for i in countDown(d.high, d.low):
-     result[d[i][0].a..d[i][0].b] = d[i][1]
+  let matches = s.findAll(re2"`([^`<]*?)<([^`>]*?)>`_")
+  for i in countDown(matches.high, matches.low):
+    let match = matches[i]
+    result[match.boundaries] = fmt"[{s[match.captures[0]]}]({s[match.captures[1]]})"
   
 proc toMarkupContent(suggest: Suggest): MarkupContent =
   result = MarkupContent(kind: "markdown", value: "```nim\n")
