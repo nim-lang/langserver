@@ -81,16 +81,15 @@ proc listTests*(
     stdoutHandle = AsyncProcess.Pipe,
   )
   try:
-    let (error, res) = await readErrorOutputUntilExit(process, 15.seconds)
+    let (rawOutput, error, res) = await readOutputUntilExit(process, 15.seconds)
     if res != 0:
       error "Failed to list tests", nimPath = nimPath, entryPoint = entryPoint, res = res    
       error "An error occurred while listing tests"
       for line in error.splitLines:
         error "Error line: ", line = line
       error "Command args: ", args = args
-      result = TestProjectInfo(error: some error)
+      result = TestProjectInfo(error: some error)      
     else:
-      let rawOutput = await readAllOutput(process.stdoutStream)   
       debug "list test raw output", rawOutput = rawOutput
       result = extractTestInfo(rawOutput)
   finally:
@@ -126,7 +125,7 @@ proc runTests*(
   ls.testRunProcess = some(process)
   try:
     removeFile(resultFile)
-    let (error, res) = await readErrorOutputUntilExit(process, 15.seconds)
+    let (output, error, res) = await readOutputUntilExit(process, 15.seconds)
     if res != 0: #When a test fails, the process will exit with a non-zero code
       if fileExists(resultFile):
         result = parseTestResults(readFile(resultFile))
@@ -137,11 +136,12 @@ proc runTests*(
       error "An error occurred while running tests"
       error "Error from process", error = error
       result = RunTestProjectResult(fullOutput: error)
+      result.fullOutput = output
     else:
       let xmlContent = readFile(resultFile)
       # echo "XML CONTENT: ", xmlContent
       result = parseTestResults(xmlContent)
-      result.fullOutput = error
+      result.fullOutput = output
       removeFile(resultFile)
   except Exception as e:
     let processOutput = string.fromBytes(process.stdoutStream.read().await)

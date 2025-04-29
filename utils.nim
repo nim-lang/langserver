@@ -386,3 +386,45 @@ proc readErrorOutputUntilExit*(process: AsyncProcessRef, duration: Duration): Fu
         let data = await process.stderrStream.read()
         output.add(string.fromBytes(data))
       return (output, res)
+
+
+proc readOutputUntilExit*(process: AsyncProcessRef, duration: Duration): Future[tuple[output: string, error: string, code: int]] {.async.} =
+  var output = ""
+  var error = ""
+  var res = 0
+  # debug "Starting read output until exit"
+  
+  while true:
+    let hasExited = try:
+      res = await process.waitForExit(duration)
+      debug "Process exit check", hasExited = true, res = res
+      true
+    except AsyncTimeoutError:
+      debug "Process still running"
+      false
+
+    # Quick non-blocking reads
+    try:
+      if not process.stdoutStream.atEof:
+        # debug "Attempting stdout read"
+        let data = await process.stdoutStream.read()  #
+        if data.len > 0:
+          # debug "Got stdout data", len = data.len
+          output.add(string.fromBytes(data))
+    except CatchableError as e:
+      debug "Stdout read error", msg = e.msg
+
+    try:
+      if not process.stderrStream.atEof:
+        # debug "Attempting stderr read"
+        let data = await process.stderrStream.read() 
+        if data.len > 0:
+          # debug "Got stderr data", len = data.len
+          error.add(string.fromBytes(data))
+    except CatchableError as e:
+      debug "Stderr read error", msg = e.msg
+    
+    if hasExited:
+      # debug "Process has exited, final cleanup", output = output, error = error, code = res
+      return (output, error, res)
+    
