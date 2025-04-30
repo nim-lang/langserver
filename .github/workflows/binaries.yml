@@ -66,7 +66,7 @@ jobs:
         include:
           - target:
               os: linux
-            builder: ubuntu-20.04
+            builder: ubuntu-22.04
           - target:
               os: macos
             builder: macos-14
@@ -81,7 +81,7 @@ jobs:
     runs-on: ${{ matrix.builder }}
     steps:
       - name: Setup Build
-        if: matrix.builder == 'ubuntu-20.04'
+        if: matrix.builder == 'ubuntu-22.04'
         run: |
           sudo apt install gcc make gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu \
                                     gcc-i686-linux-gnu binutils-i686-linux-gnu \
