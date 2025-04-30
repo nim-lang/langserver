@@ -5,9 +5,9 @@ on:
     branches:
     - master
     paths-ignore: ['media/**', 'docs/**', '**/*.md']
-    pull_request:
+  pull_request:
       paths-ignore: ['media/**', 'docs/**', '**/*.md']
-    workflow_dispatch:
+  workflow_dispatch:
 jobs:
   build:
     strategy:
