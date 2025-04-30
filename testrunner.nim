@@ -71,8 +71,9 @@ proc listTests*(
   workspaceRoot: string
 ): Future[TestProjectInfo] {.async.} =
   var entryPoint = getFullPath(entryPoint, workspaceRoot)
+  let executableDir = (getTempDir() / entryPoint.splitFile.name).absolutePath
   debug "Listing tests", entryPoint = entryPoint, exists = fileExists(entryPoint)
-  let args = @["c", "-d:unittest2ListTests", "-r", entryPoint]
+  let args = @["c", "--outdir:" & executableDir, "-d:unittest2ListTests", "-r", entryPoint]
   let process = await startProcess(
     nimPath,
     arguments = args,
@@ -112,7 +113,8 @@ proc runTests*(
     return RunTestProjectResult()
   let resultFile = (getTempDir() / "result.xml").absolutePath        
   removeFile(resultFile)
-  var args = @["c", "-r", entryPoint , fmt"--xml:{resultFile}"]
+  let executableDir = (getTempDir() / entryPoint.splitFile.name).absolutePath
+  var args = @["c", "--outdir:" & executableDir, "-r", entryPoint , fmt"--xml:{resultFile}"]
   if suiteName.isSome:
     args.add(fmt"{suiteName.get()}::")
   else:
