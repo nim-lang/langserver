@@ -210,6 +210,7 @@ jobs:
           makeLatest: true
           prerelease: true
           tag: latest
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Delete artefacts
         uses: geekyeggo/delete-artifact@v5
