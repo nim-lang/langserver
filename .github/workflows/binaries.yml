@@ -191,29 +191,29 @@ jobs:
           name: nimlangserver-macos-universal.zip
           path: nimlangserver-macos-universal.zip
 
-  create-github-release:
-    name: Create Github Release
-    needs: [build, create-macos-universal-binary]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      actions: write
-    steps:
-      - name: Download artefacts
-        uses: actions/download-artifact@v4
+  # create-github-release:
+  #   name: Create Github Release
+  #   needs: [build, create-macos-universal-binary]
+  #   runs-on: ubuntu-latest
+  #   permissions:
+  #     contents: write
+  #     actions: write
+  #   steps:
+  #     - name: Download artefacts
+  #       uses: actions/download-artifact@v4
 
-      - uses: ncipollo/release-action@v1
-        with:
-          name: Latest Nimlangserver Binaries
-          artifacts: "*/*"
-          allowUpdates: true
-          makeLatest: true
-          prerelease: true
-          tag: latest
-          token: ${{ secrets.GITHUB_TOKEN }}
+  #     - uses: ncipollo/release-action@v1
+  #       with:
+  #         name: Latest Nimlangserver Binaries
+  #         artifacts: "*/*"
+  #         allowUpdates: true
+  #         makeLatest: true
+  #         prerelease: true
+  #         tag: latest
+  #         token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Delete artefacts
-        uses: geekyeggo/delete-artifact@v5
-        with:
-          failOnError: false
-          name: "nimlangserver-*"
+  #     - name: Delete artefacts
+  #       uses: geekyeggo/delete-artifact@v5
+  #       with:
+  #         failOnError: false
+  #         name: "nimlangserver-*"
