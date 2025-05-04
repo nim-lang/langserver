@@ -71,8 +71,9 @@ proc listTests*(
   workspaceRoot: string
 ): Future[TestProjectInfo] {.async.} =
   var entryPoint = getFullPath(entryPoint, workspaceRoot)
+  let executableDir = (getTempDir() / entryPoint.splitFile.name).absolutePath
   debug "Listing tests", entryPoint = entryPoint, exists = fileExists(entryPoint)
-  let args = @["c", "-d:unittest2ListTests", "-r", entryPoint]
+  let args = @["c", "--outdir:" & executableDir, "-d:unittest2ListTests", "-r", entryPoint]
   let process = await startProcess(
     nimPath,
     arguments = args,
@@ -83,14 +84,16 @@ proc listTests*(
   try:
     let (error, res) = await readErrorOutputUntilExit(process, 15.seconds)
     if res != 0:
-      error "Failed to list tests", nimPath = nimPath, entryPoint = entryPoint, res = res    
-      error "An error occurred while listing tests"
-      for line in error.splitLines:
-        error "Error line: ", line = line
-      error "Command args: ", args = args
-      result = TestProjectInfo(error: some error)
+      result = extractTestInfo(error)
+      if result.suites.len == 0:
+        error "Failed to list tests", nimPath = nimPath, entryPoint = entryPoint, res = res    
+        error "An error occurred while listing tests"
+        for line in error.splitLines:
+          error "Error line: ", line = line
+        error "Command args: ", args = args
+        result = TestProjectInfo(error: some error)      
     else:
-      let rawOutput = await readAllOutput(process.stdoutStream)   
+      let rawOutput = await process.stdoutStream.readAllOutput()
       debug "list test raw output", rawOutput = rawOutput
       result = extractTestInfo(rawOutput)
   finally:
@@ -109,7 +112,9 @@ proc runTests*(
     error "Entry point does not exist", entryPoint = entryPoint    
     return RunTestProjectResult()
   let resultFile = (getTempDir() / "result.xml").absolutePath        
-  var args = @["c", "-r", entryPoint , fmt"--xml:{resultFile}"]
+  removeFile(resultFile)
+  let executableDir = (getTempDir() / entryPoint.splitFile.name).absolutePath
+  var args = @["c", "--outdir:" & executableDir, "-r", entryPoint , fmt"--xml:{resultFile}"]
   if suiteName.isSome:
     args.add(fmt"{suiteName.get()}::")
   else:
@@ -125,7 +130,6 @@ proc runTests*(
   )
   ls.testRunProcess = some(process)
   try:
-    removeFile(resultFile)
     let (error, res) = await readErrorOutputUntilExit(process, 15.seconds)
     if res != 0: #When a test fails, the process will exit with a non-zero code
       if fileExists(resultFile):
@@ -137,17 +141,20 @@ proc runTests*(
       error "An error occurred while running tests"
       error "Error from process", error = error
       result = RunTestProjectResult(fullOutput: error)
+      result.fullOutput = error
     else:
+      let output = await process.stdoutStream.readAllOutput()
       let xmlContent = readFile(resultFile)
       # echo "XML CONTENT: ", xmlContent
       result = parseTestResults(xmlContent)
-      result.fullOutput = error
-      removeFile(resultFile)
+      result.fullOutput = output
+     
   except Exception as e:
     let processOutput = string.fromBytes(process.stdoutStream.read().await)
     error "An error occurred while running tests", error = e.msg
     error "Output from process", output = processOutput
   finally:
+    removeFile(resultFile)
     await shutdownChildProcess(process)
     if ls.testRunProcess.isSome:
       ls.testRunProcess = none(AsyncProcessRef)
