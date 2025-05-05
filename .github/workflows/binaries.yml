@@ -2,12 +2,12 @@ on:
   push:
     tags:
     - 'v*' # "v1.2.3"
-    branches:
-    - master
+    # branches: #Dont push to master the binaries as GH Actions will return an Error 403: Resource not accessible by integration
+    # - master
     paths-ignore: ['media/**', 'docs/**', '**/*.md']
-    pull_request:
-      paths-ignore: ['media/**', 'docs/**', '**/*.md']
-    workflow_dispatch:
+  # pull_request:
+  #     paths-ignore: ['media/**', 'docs/**', '**/*.md']
+  workflow_dispatch:
 jobs:
   build:
     strategy:
@@ -66,7 +66,7 @@ jobs:
         include:
           - target:
               os: linux
-            builder: ubuntu-20.04
+            builder: ubuntu-22.04
           - target:
               os: macos
             builder: macos-14
@@ -81,7 +81,7 @@ jobs:
     runs-on: ${{ matrix.builder }}
     steps:
       - name: Setup Build
-        if: matrix.builder == 'ubuntu-20.04'
+        if: matrix.builder == 'ubuntu-22.04'
         run: |
           sudo apt install gcc make gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu \
                                     gcc-i686-linux-gnu binutils-i686-linux-gnu \
@@ -202,14 +202,20 @@ jobs:
       - name: Download artefacts
         uses: actions/download-artifact@v4
 
+      - name: Get version from tag
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
       - uses: ncipollo/release-action@v1
         with:
-          name: Latest Nimlangserver Binaries
+          name: "Nimlangserver ${{ steps.get_version.outputs.VERSION }}"
           artifacts: "*/*"
           allowUpdates: true
           makeLatest: true
-          prerelease: true
-          tag: latest
+          prerelease: false
+          tag: ${{ steps.get_version.outputs.VERSION }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          generateReleaseNotes: true
 
       - name: Delete artefacts
         uses: geekyeggo/delete-artifact@v5

@@ -220,6 +220,10 @@ Install the `vscode-nim` extension from [here](https://github.com/nim-lang/vscod
 
 To use socket mode, start `nimlangserver` with the `--socket` flag. You can set the port using the `--port` flag. If you don't specify the port, `nimlangserver` will automatically find an open port and print it in the console.
 
+## Test Runner
+
+In order to list and run tests the test library `unittest2 >= 0.2.4` must be used. An entry point for the tests must be provided via the vsc extension `nim.test.entryPoint` or `testEntryPoint` in future versions of `nimble`
+
 ## Related Projects
 
 - [nimlsp](https://github.com/PMunch/nimlsp)
