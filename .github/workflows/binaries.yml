@@ -5,8 +5,8 @@ on:
     # branches: #Dont push to master the binaries as GH Actions will return an Error 403: Resource not accessible by integration
     # - master
     paths-ignore: ['media/**', 'docs/**', '**/*.md']
-  pull_request:
-      paths-ignore: ['media/**', 'docs/**', '**/*.md']
+  # pull_request:
+  #     paths-ignore: ['media/**', 'docs/**', '**/*.md']
   workflow_dispatch:
 jobs:
   build:
