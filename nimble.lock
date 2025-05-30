@@ -2,13 +2,13 @@
   "version": 2,
   "packages": {
     "unittest2": {
-      "version": "0.2.3",
-      "vcsRevision": "845b6af28b9f68f02d320e03ad18eccccea7ddb9",
+      "version": "0.2.4",
+      "vcsRevision": "8b51e99b4a57fcfb31689230e75595f024543024",
       "url": "https://github.com/status-im/nim-unittest2",
       "downloadMethod": "git",
       "dependencies": [],
       "checksums": {
-        "sha1": "6936b4e4676c9b37537d93f31cb8fc46f4ebaacb"
+        "sha1": "746106a4dfefffce497f1693733f1c1513b5c62c"
       }
     },
     "bearssl": {
@@ -127,8 +127,8 @@
       }
     },
     "chronos": {
-      "version": "4.0.3",
-      "vcsRevision": "36d8ee5617fbd9747726688fce72fcd215628937",
+      "version": "4.0.4",
+      "vcsRevision": "0646c444fce7c7ed08ef6f2c9a7abfd172ffe655",
       "url": "https://github.com/status-im/nim-chronos",
       "downloadMethod": "git",
       "dependencies": [
@@ -139,7 +139,7 @@
         "unittest2"
       ],
       "checksums": {
-        "sha1": "fd6062c492e5b6053702638159d38d1219b4bf72"
+        "sha1": "455802a90204d8ad6b31d53f2efff8ebfe4c834a"
       }
     },
     "nimcrypto": {
