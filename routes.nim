@@ -18,6 +18,7 @@ import
   json_serialization,
   std/[strscans, times, json, parseutils, strutils],
   ls,
+  regex,
   stew/[byteutils],
   nimexpand,
   testrunner
@@ -366,15 +367,24 @@ proc scheduleFileCheck(ls: LanguageServer, uri: string) {.gcsafe, raises: [].} =
         # except Exception:
         #   discard
 
-proc toMarkedStrings(suggest: Suggest): seq[MarkedStringOption] =
-  var label = suggest.qualifiedPath.join(".")
-  if suggest.forth != "":
-    label &= ": " & suggest.forth
+proc toMdLinks(s: string): string =
+  result = s
+  let matches = s.findAll(re2"`([^`<]*?)<([^`>]*?)>`_")
+  for i in countDown(matches.high, matches.low):
+    let match = matches[i]
+    result[match.boundaries] = fmt"[{s[match.captures[0]]}]({s[match.captures[1]]})"
+  
+proc toMarkupContent(suggest: Suggest): MarkupContent =
+  result = MarkupContent(kind: "markdown", value: "```nim\n")
+  result.value.add suggest.qualifiedPath.join(".")
+  if suggest.forth.len != 0:
+    result.value.add ": "
+    result.value.add suggest.forth
+  result.value.add "\n```"
 
-  result = @[MarkedStringOption %* {"language": "nim", "value": label}]
-
-  if suggest.doc != "":
-    result.add MarkedStringOption %* {"language": "markdown", "value": suggest.doc}
+  if suggest.doc.len != 0:
+    result.value.add "\n\n---\n"
+    result.value.add toMdLinks(suggest.doc)
 
 proc hover*(
     ls: LanguageServer, params: HoverParams, id: int
@@ -394,7 +404,7 @@ proc hover*(
       return none(Hover)
     var suggest = suggestions[0]
     if suggest.symkind == "skModule": # NOTE: skMoudle always return position (1, 0)
-      return some(Hover(contents: some(%toMarkedStrings(suggest))))
+      return some(Hover(contents: some(%toMarkupContent(suggest))))
     else:
       for s in suggestions:
         if s.line == line + 1:
@@ -402,26 +412,26 @@ proc hover*(
             suggest = s
           else:
             break
-      var content = toMarkedStrings(suggest)
+      var content = toMarkupContent(suggest)
       if suggest.symkind == "skMacro" and config.nimExpandMacro.get(NIM_EXPAND_MACRO_BY_DEFAULT):
         let expanded = await nimsuggest.get
           .expand(uriToPath(uri), ls.uriToStash(uri), suggest.line, suggest.column)
         if expanded.len > 0 and expanded[0].doc != "":
           # debug "Expanded macro", expanded = expanded[0].doc
-          content.add MarkedStringOption %* {"language": "nim", "value": expanded[0].doc}
+          content.value.add &"```nim\n{expanded[0].doc}\n```"
         else:          
           # debug "Couldnt expand the macro. Trying with nim expand", suggest = suggest[]
           let nimPath = config.getNimPath()
           if nimPath.isSome:  
             let expanded = await nimExpandMacro(nimPath.get, suggest, uriToPath(uri))
-            content.add MarkedStringOption %* {"language": "nim", "value": expanded}
+            content.value.add &"```nim\n{expanded}\n```"
       if suggest.section == ideDef and suggest.symkind in ["skProc"] and config.nimExpandArc.get(NIM_EXPAND_ARC_BY_DEFAULT):
         debug "#Expanding arc", suggest = suggest[]
         let nimPath = config.getNimPath()
         if nimPath.isSome:  
           let expanded = await nimExpandArc(nimPath.get, suggest, uriToPath(uri))
           let arcContent = "#Expanded arc \n" & expanded
-          content.add MarkedStringOption %* {"language": "nim", "value": arcContent}
+          content.value.add &"```nim\n{arcContent}\n```"
       return some(Hover(
         contents: some(%content),
         range: some(toLabelRange(suggest.toUtf16Pos(ls))),

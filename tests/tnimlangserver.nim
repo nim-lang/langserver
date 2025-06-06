@@ -124,10 +124,10 @@ suite "LSP features":
       hoverParams = positionParams(helloWorldUri, 1, 6)
       hover = client.call("textDocument/hover", %hoverParams).waitFor
       expected = %*{
-        "contents": [{
-          "language": "nim",
-          "value": "hw.a안녕: proc (){.noSideEffect, gcsafe, raises: <inferred> [].}"
-        }],
+        "contents": {
+          "kind": "markdown",
+          "value": "```nim\nhw.a안녕: proc (){.noSideEffect, gcsafe, raises: <inferred> [].}\n```"
+        },
         "range": {
           "start": {
             "line": 1,
