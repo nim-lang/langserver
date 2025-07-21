@@ -170,7 +170,7 @@ proc processMessage(ls: LanguageServer, message: string) {.raises: [].} =
       #OPT oportunity reuse the same JSON already parsed
     let isReq = "method" in contentJson
     if isReq:
-      debug "[Processsing Message]", request = contentJson["method"]
+      debug "[Processing Message]", request = contentJson["method"]
       var fut = Future[JsonString]()
       var req = JrpcSys.decode(message, RequestRx)
       if req.params.kind == rpNamed and req.id.kind == riNumber:
@@ -183,7 +183,7 @@ proc processMessage(ls: LanguageServer, message: string) {.raises: [].} =
         )
       let rpc = ls.srv.router.procs.getOrDefault(req.meth.get)
       if rpc.isNil:
-        error "[Processsing Message] rpc method not found: ", msg = req.meth.get
+        error "[Processing Message] rpc method not found: ", msg = req.meth.get
         return
       asyncSpawn ls.runRpc(req, rpc)
     else: #Response
@@ -200,10 +200,10 @@ proc processMessage(ls: LanguageServer, message: string) {.raises: [].} =
         ls.responseMap[id].complete(r)
         ls.responseMap.del id
   except JsonParsingError as ex:
-    error "[Processsing Message] Error parsing message", message = message
+    error "[Processing Message] Error parsing message", message = message
     writeStackTrace(ex)
   except CatchableError as ex:
-    error "[Processsing Message] "
+    error "[Processing Message] "
     writeStackTrace(ex)
 
 proc initActions*(ls: LanguageServer) =
