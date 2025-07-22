@@ -108,8 +108,12 @@ jobs:
         id: nimble_deps
         uses: actions/cache@v4
         with:
-          path: ~/.nimble/
-          key: ${{ matrix.target.os }}-${{ env.cache_nonce }}
+          path: |
+            ~/.nimble
+            ~/.cache/nim
+          key: ${{ matrix.target.os }}-${{ env.cache_nonce }}-${{ hashFiles('**/nimble.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ env.cache_nonce }}-
 
       - name: build nimlangserver
         run: |

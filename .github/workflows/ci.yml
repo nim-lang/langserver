@@ -28,15 +28,17 @@ jobs:
         id: nimble_deps
         uses: actions/cache@v4
         with:
-          path: ~/.nimble/
-          key: ${{ matrix.os }}-${{ env.cache_nonce }}
+          path: |
+            ~/.nimble
+            ~/.cache/nim
+          key: ${{ matrix.target.os }}-${{ env.cache_nonce }}-${{ hashFiles('**/nimble.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ env.cache_nonce }}-
 
-      - name: Nimble Install
+      - name: Install dependencies
         shell: bash
-        run: |
-          nimble -y install -l
+        run: nimble -y install -l
       
       - name: Nimble Test
         shell: bash
-        run: |
-          nimble test
+        run: nimble test
