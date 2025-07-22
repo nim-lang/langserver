@@ -83,10 +83,20 @@ proc registerRoutes(srv: RpcSocketServer, ls: LanguageServer) =
   srv.register("$/setTrace", wrapRpc(partial(setTrace, ls)))
 
 proc showHelp() =
-  echo "nimlangserver [--stdio] [--socket] [--port=<port>] [--clientProcessId=<pid>]"
+  echo "nimlangserver: The Nim Language Server"
   echo "Version: ", LSPVersion
+  echo ""
+  echo "Options:"
+  echo "  --help, -h               Show this help message"
+  echo "  --version, -v            Show version information"
+  echo "  --stdio                  Use stdio transport (default)"
+  echo "  --socket                 Use socket transport"
+  echo "  --port=<port>            Port to use for socket transport"
+  echo "  --clientProcessId=<pid>  Exit when the given process ID terminates"
+  echo ""
   const readme = staticRead("README.md")
   echo "CONFIGURATION OPTIONS"
+
   proc formatForConsole(md: string): string =
     var inCodeBlock = false
     result = ""
@@ -137,7 +147,7 @@ proc handleParams(): CommandLineParams =
       except ValueError:
         error "Invalid port ", port = port
         quit(1)
-    if param == "help":
+    if param in ["help", "--help", "-h"]:
       showHelp()
     inc i
   if result.transport.isSome and result.transport.get == socket:
