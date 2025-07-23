@@ -527,8 +527,13 @@ proc getProjectFileAutoGuess*(ls: LanguageServer, fileUri: string): Future[strin
     path = dir
     certainty = Certainty.None
     up = 0
-      #Limit the times it goes up through the directories. Ideally nimble dump should do this job
-  while path.len > 0 and path != "/" and up < 2:
+
+  let conf = await ls.getWorkspaceConfiguration
+  let maxNimsuggestProcesses = conf.maxNimsuggestProcesses.get(NIM_MAX_NS_PROCESSES)
+  # When using only one nimsuggest process, we should not search for parent projects
+  # as this will cause all files to be opened in the same nimsuggest process.
+  let maxUp = if maxNimsuggestProcesses == 1: 0 else: 2
+  while path.len > 0 and path != "/" and up < maxUp:
     let
       (dir, fname, ext) = path.splitFile()
       current = fname & ext
