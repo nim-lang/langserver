@@ -17,7 +17,7 @@ jobs:
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Setup Nimble
         uses: nim-lang/setup-nimble-action@v1
         with:
