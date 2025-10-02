@@ -173,7 +173,7 @@ type
     dynamicRegistration*: Option[bool]
     symbolKind*: Option[WorkspaceSymbolClientCapabilities_symbolKind]
     tagSupport*: Option[WorkspaceSymbolClientCapabilities_tagSupport]
-    resolveSupport*: Option[WorkspaceSymbolClientCapabilities_ResolveSupport]
+    resolveSupport*: Option[WorkspaceSymbolClientCapabilities_resolveSupport]
 
   ExecuteCommandClientCapabilities* = ref object of RootObj
     dynamicRegistration*: Option[bool]

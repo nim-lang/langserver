@@ -154,7 +154,7 @@ proc completion*(
     result = completions.map(toCompletionItem)
 
     if ls.clientCapabilities.supportSignatureHelp() and
-        nsCon in nimSuggest.get.capabilities:
+        nsCon in nimsuggest.get.capabilities:
       #show only unique overloads if we support signatureHelp
       var unique = initTable[string, CompletionItem]()
       for completion in result:
@@ -164,7 +164,7 @@ proc completion*(
 
 proc toLocation*(suggest: Suggest): Location =
   return
-    Location %* {"uri": pathToUri(suggest.filepath), "range": toLabelRange(suggest)}
+    Location %* {"uri": pathToUri(suggest.filePath), "range": toLabelRange(suggest)}
 
 proc definition*(
     ls: LanguageServer, params: TextDocumentPositionParams, id: int
@@ -305,7 +305,7 @@ proc typeDefinition*(
 ): Future[seq[Location]] {.async.} =
   with (params.position, params.textDocument):
     asyncSpawn ls.addProjectFileToPendingRequest(id.uint, uri)
-    let ns = await ls.tryGetNimSuggest(uri)
+    let ns = await ls.tryGetNimsuggest(uri)
     if ns.isNone:
       return @[]
     let ch = ls.getCharacter(uri, line, character)
@@ -321,7 +321,7 @@ proc toSymbolInformation*(suggest: Suggest): SymbolInformation =
     return
       SymbolInformation %* {
         "location": toLocation(suggest),
-        "kind": nimSymToLSPSymbolKind(suggest.symKind).int,
+        "kind": nimSymToLSPSymbolKind(suggest.symkind).int,
         "name": suggest.name,
       }
 
@@ -370,7 +370,7 @@ proc scheduleFileCheck(ls: LanguageServer, uri: string) {.gcsafe, raises: [].} =
 proc toMdLinks(s: string): string =
   result = s
   let matches = s.findAll(re2"`([^`<]*?)<([^`>]*?)>`_")
-  for i in countDown(matches.high, matches.low):
+  for i in countdown(matches.high, matches.low):
     let match = matches[i]
     result[match.boundaries] = fmt"[{s[match.captures[0]]}]({s[match.captures[1]]})"
   
@@ -692,7 +692,7 @@ proc signatureHelp*(
     let nimsuggest = await ls.tryGetNimsuggest(uri)
     if nimsuggest.isNone:
       return none[SignatureHelp]()
-    if nsCon notin nimSuggest.get.capabilities:
+    if nsCon notin nimsuggest.get.capabilities:
       #support signatureHelp only if the current version of NimSuggest supports it.
       return none[SignatureHelp]()
     let ch = ls.getCharacter(uri, line, character)

@@ -127,7 +127,7 @@ proc readStdin*(ctx: ptr ReadStdinContext) {.thread.} =
   while true:
     let str = processContentLength(inputStream) & CRLF
     ctx.value = cast[cstring](createShared(char, str.len + 1))
-    copymem(ctx.value[0].addr, str[0].addr, str.len)
+    copyMem(ctx.value[0].addr, str[0].addr, str.len)
     discard ctx.onStdReadSignal.fireSync()
     discard ctx.onMainReadSignal.waitSync()
 
