@@ -184,7 +184,7 @@ iterator groupBy*[T, U](
   var t = initTable[U, seq[T]]()
   for x in s:
     let fx = f(x)
-    t.mGetOrPut(fx, @[]).add(x)
+    t.mgetOrPut(fx, @[]).add(x)
   for x in t.pairs:
     yield x
 
@@ -347,7 +347,7 @@ proc getNimScriptAPITemplatePath*(): string =
 
 proc shutdownChildProcess*(p: AsyncProcessRef): Future[void]  {.async.} =
   try:
-    debug "Shutting down process with pid: ", pid = p.processID()
+    debug "Shutting down process with pid: ", pid = p.processId()
     let exitCode = await p.terminateAndWaitForExit(2.seconds)    # debug "Process terminated with exit code: ", exitCode
   except CatchableError:
     try:
