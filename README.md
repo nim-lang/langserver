@@ -10,10 +10,6 @@ Nim Language Server, or `nimlangserver`, is a language server for Nim.
 
 ### Installing binaries
 
-_NB:_ `nimlangserver` requires `nimsuggest` version that supports `--v3`:
-- `devel` containing [19826](https://github.com/nim-lang/Nim/pull/19826)
-- 1.6+ containing [19892](https://github.com/nim-lang/Nim/pull/19892)
-
 You can install the latest release into `$HOME/.nimble/bin` using e.g.:
 
 ```sh
@@ -31,13 +27,13 @@ nimble build
 https://github.com/nim-lang/vscode-nim#using
 
 ### Sublime Text
-Install [LSP-nimlangserver](https://packagecontrol.io/packages/LSP-nimlangserver) from Package Control.
+- Install [LSP-nimlangserver](https://packagecontrol.io/packages/LSP-nimlangserver) from Package Control.
 
 ### Zed Editor
-Install [Nim Extenstion](https://github.com/foxoman/zed-nim) from the Zed Editor extensions.
+- Install [Nim](https://github.com/foxoman/zed-nim) from the Zed Editor extensions.
 
 ### Neovim
-- [lsp](https://neovim.io/doc/user/lsp.html) Neovim has built-in LSP support. Although, you might want to use something like [lsp-config](https://github.com/neovim/nvim-lspconfig) to take care of the boilerplate code for the most LSP configurations. Install `lsp-config` using your favourite plugin manager an place the following code into your `init.vim` config:
+- Neovim has built-in [LSP](https://neovim.io/doc/user/lsp.html) support. Although, you might want to use something like [lsp-config](https://github.com/neovim/nvim-lspconfig) to take care of the boilerplate code for the most LSP configurations. Install `lsp-config` using your favourite plugin manager an place the following code into your `init.vim` config:
 ```lua
 lua <<EOF
 
@@ -75,6 +71,14 @@ Change configuration to your liking (most probably you don't need to provide any
 ```
 Of course, change the configuration to your liking. You might also want to read `coc.nvim` documentation to setup key bindings, autocompletion and so on.
 
+### Emacs
+
+- Install [lsp-mode](https://github.com/emacs-lsp/lsp-mode) and `nim-mode` from melpa, and add the following to your
+  config:
+
+``` elisp
+(add-hook 'nim-mode-hook #'lsp)
+```
 
 ## Configuration Options
 
@@ -134,8 +138,6 @@ Note when in a nimble project, `nimble` will drive the entry points for `nimsugg
 - Document highlight
 - Shutdown
 - Exit
-
-You can install `nimlangserver` using the instructions for your text editor below:
 
 ### Extension methods
 In addition to the standard `LSP` methods, `nimlangserver` provides additional nim specific methods.
@@ -199,19 +201,6 @@ Result: {
 
 ```
 
-### VSCode
-
-Install the `vscode-nim` extension from [here](https://github.com/nim-lang/vscode-nim)
-
-### Emacs
-
-- Install [lsp-mode](https://github.com/emacs-lsp/lsp-mode) and `nim-mode` from melpa and add the following to your
-  config:
-
-``` elisp
-(add-hook 'nim-mode-hook #'lsp)
-```
-
 ## Transport
 
 `nimlangserver` supports two transport modes:
@@ -222,7 +211,7 @@ To use socket mode, start `nimlangserver` with the `--socket` flag. You can set 
 
 ## Test Runner
 
-In order to list and run tests the test library `unittest2 >= 0.2.4` must be used. An entry point for the tests must be provided via the vsc extension `nim.test.entryPoint` or `testEntryPoint` in future versions of `nimble`
+In order to list and run tests, the test library `unittest2 >= 0.2.4` must be used. An entry point for the tests must be provided via the vsc extension `nim.test.entryPoint` or `testEntryPoint` in future versions of `nimble`.
 
 ## Related Projects
 
