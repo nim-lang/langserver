@@ -145,14 +145,14 @@ jobs:
 
       - name: Upload the Nim Language Server Binaries (.zip)
         if: matrix.target.archive_format == 'zip'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: nimlangserver-${{ matrix.target.name }}-${{ matrix.target.cpu }}.zip
           path: nimlangserver-${{ matrix.target.name }}-${{ matrix.target.cpu }}.zip
 
       - name: Upload the Nim Language Server Binaries (.tar.gz)
         if: matrix.target.archive_format == 'tgz'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: nimlangserver-${{ matrix.target.name }}-${{ matrix.target.cpu }}.tar.gz
           path: nimlangserver-${{ matrix.target.name }}-${{ matrix.target.cpu }}.tar.gz
@@ -190,7 +190,7 @@ jobs:
           7z a -tzip nimlangserver-macos-universal.zip nimlangserver
 
       - name: Upload the Nim Language Server Binaries
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: nimlangserver-macos-universal.zip
           path: nimlangserver-macos-universal.zip
