@@ -36,6 +36,23 @@ Install [LSP-nimlangserver](https://packagecontrol.io/packages/LSP-nimlangserver
 ### Zed Editor
 Install [Nim Extenstion](https://github.com/foxoman/zed-nim) from the Zed Editor extensions.
 
+### Helix
+Just install the langserver with Nimble and make sure it's on your PATH.
+
+To verify that everything is set up, run:
+```shell
+$ hx --health nim
+Configured language servers:
+  ✓ nimlangserver: /home/username/.nimble/bin/nimlangserver
+  Configured debug adapter: None
+  Configured formatter:
+    ✓ /home/username/.nimble/bin/nph
+    Tree-sitter parser: ✓
+    Highlight queries: ✓
+    Textobject queries: ✓
+    Indent queries: ✓
+```
+
 ### Neovim
 - [lsp](https://neovim.io/doc/user/lsp.html) Neovim has built-in LSP support. Although, you might want to use something like [lsp-config](https://github.com/neovim/nvim-lspconfig) to take care of the boilerplate code for the most LSP configurations. Install `lsp-config` using your favourite plugin manager an place the following code into your `init.vim` config:
 ```lua
