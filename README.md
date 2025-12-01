@@ -140,7 +140,7 @@ In VSCode, inlay hints are enabled by default. You can toggle different kinds of
 
 ![](./vscode_settings.png)
 
-To enabler inlay hints in Neovim, configure lspconfig in your  `init.vim`:
+To enable inlay hints in Neovim, configure lspconfig in your  `init.vim`:
 
 ```lua
 lua << EOF
@@ -167,24 +167,7 @@ lspconfig.nim_langserver.setup({
 EOF
 ```
 
-" 3. Optional: Keymap to toggle hints (Leader + th)
-nnoremap <leader>th <cmd>lua vim.lsp.inlay_hint.enable(not vim.lsp.inlay_hint.is_enabled())<CR>
-
-
-```lua
-require'lspconfig'.nim_langserver.setup{
-  settings = {
-    nim = {
-      inlayHints = {
-      	typeHints = true,
-      	parameterHints = true,
-      	exceptionHints = true,
-      }
-    }
-  }
-}
-
-```
+In Vim, use the coc configuration to enable inlay hints (see [VIM/Neovim](#vimneovim)).
 
 To enable inlay hints in Helix, add this langserver configuration to your `languages.toml` (you can toggle different hint kinds individually):
 
