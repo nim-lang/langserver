@@ -140,6 +140,52 @@ In VSCode, inlay hints are enabled by default. You can toggle different kinds of
 
 ![](./vscode_settings.png)
 
+To enabler inlay hints in Neovim, configure lspconfig in your  `init.vim`:
+
+```lua
+lua << EOF
+
+lspconfig.nim_langserver.setup({
+  settings = {
+    nim = {
+      inlayHints = {
+        typeHints = true,
+        parameterHints = true,
+        exceptionHints = true,
+      }
+    }
+  },
+
+  -- Enable hints on LSP attach
+  on_attach = function(client, bufnr)
+    if client.server_capabilities.inlayHintProvider then
+       vim.lsp.inlay_hint.enable(true, { bufnr = bufnr })
+    end
+  end
+})
+
+EOF
+```
+
+" 3. Optional: Keymap to toggle hints (Leader + th)
+nnoremap <leader>th <cmd>lua vim.lsp.inlay_hint.enable(not vim.lsp.inlay_hint.is_enabled())<CR>
+
+
+```lua
+require'lspconfig'.nim_langserver.setup{
+  settings = {
+    nim = {
+      inlayHints = {
+      	typeHints = true,
+      	parameterHints = true,
+      	exceptionHints = true,
+      }
+    }
+  }
+}
+
+```
+
 To enable inlay hints in Helix, add this langserver configuration to your `languages.toml` (you can toggle different hint kinds individually):
 
 ```toml
