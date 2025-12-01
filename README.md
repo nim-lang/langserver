@@ -111,6 +111,42 @@ Note when in a nimble project, `nimble` will drive the entry points for `nimsugg
 - `nim.nimsuggestIdleTimeout` - the timeout in ms after which an idle `nimsuggest` will be stopped. If not specified the default is 120 seconds.
 - `nim.useNimCheck` - use `nim check` instead of `nimsuggest` for linting. Defaults to `true`.
 - `nim.maxNimsuggestProcesses` - the maximum number of `nimsuggest` processes to keep alive. 0 means unlimited. If not specified the default is 0.
+
+### Inlay Hints
+
+Inlay hints are visual snippets displayed by the editor inside your code.
+
+Typical usage for inlay hints is displaying type information but it can go beyond that and provide all sorts of useful context.
+
+nimlangserver offers three kinds of inlay hints:
+- **Type hints**. Show variable types.
+- **Parameter hints**. TODO
+- **Exception hints**. Highlight functions that raise exceptions.
+
+Here's how inlay hints look like in VSCode
+- type hint: ![](./vscode_type_hint.png)
+- exception hint: ![](./vscode_exception_hint.png)
+
+Here are the same hints in Helix:
+- ![](./helix_type_hint.png)
+- ![](./helix_exception_hint.png)
+
+
+In VSCode, inlay hints are enabled by default. You can toggle different kinds of hints in the settings:
+
+1. Go to **Settings**.
+2. Search **inlay**.
+3. Go to **Nim configuration**.
+
+![](./vscode_settings.png)
+
+To enable inlay hints in Helix, add this langserver configuration to your `languages.toml` (you can toggle different hint kinds individually):
+
+```toml
+[language-server.nimlangserver.config.nim]
+inlayHints = { typeHints = true, parameterHints = true, exceptionHints = true }
+```
+
 ## Features
 
 `nimlangserver` supports the following LSP features:
