@@ -8,3 +8,4 @@ tests/all
 nimble.develop
 nimble.paths
 nimbledeps
+dprint.json
