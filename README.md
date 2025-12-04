@@ -11,6 +11,7 @@ Nim Language Server, or `nimlangserver`, is a language server for Nim.
 ### Installing binaries
 
 _NB:_ `nimlangserver` requires `nimsuggest` version that supports `--v3`:
+
 - `devel` containing [19826](https://github.com/nim-lang/Nim/pull/19826)
 - 1.6+ containing [19892](https://github.com/nim-lang/Nim/pull/19892)
 
@@ -27,19 +28,24 @@ nimble build
 ```
 
 ### VSCode
+
 - [vscode-nim](https://github.com/nim-lang/vscode-nim) has support for `nimlangserver`. Follow the instructions at:
-https://github.com/nim-lang/vscode-nim#using
+  https://github.com/nim-lang/vscode-nim#using
 
 ### Sublime Text
+
 Install [LSP-nimlangserver](https://packagecontrol.io/packages/LSP-nimlangserver) from Package Control.
 
 ### Zed Editor
+
 Install [Nim Extenstion](https://github.com/foxoman/zed-nim) from the Zed Editor extensions.
 
 ### Helix
+
 Just install the langserver with Nimble and make sure it's on your PATH.
 
 To verify that everything is set up, run:
+
 ```shell
 $ hx --health nim
 Configured language servers:
@@ -54,7 +60,9 @@ Configured language servers:
 ```
 
 ### Neovim
+
 - [lsp](https://neovim.io/doc/user/lsp.html) Neovim has built-in LSP support. Although, you might want to use something like [lsp-config](https://github.com/neovim/nvim-lspconfig) to take care of the boilerplate code for the most LSP configurations. Install `lsp-config` using your favourite plugin manager an place the following code into your `init.vim` config:
+
 ```lua
 lua <<EOF
 
@@ -68,12 +76,15 @@ require'lspconfig'.nim_langserver.setup{
 
 EOF
 ```
+
 Change configuration to your liking (most probably you don't need to provide any settings at all, defaults should work fine for the majority of the users). You might also want to read `lsp-config` documentation to setup key bindings, autocompletion and so on.
 
 **IMPORTANT** you might want to use latest build of the `nimlangserver` and/or build it from source.
 
 ### VIM/Neovim
+
 - [coc.nvim](https://github.com/neoclide/coc.nvim) supports both classical VIM as well as Neovim. It also supports vscode-like `coc-settings.json` for LSP configuration. Install the plugin via your favourite plugin manager, create `coc-settings.json` alongside your `init.vim` and add the following contents to it:
+
 ```json
 {
   "languageserver": {
@@ -90,14 +101,14 @@ Change configuration to your liking (most probably you don't need to provide any
   }
 }
 ```
-Of course, change the configuration to your liking. You might also want to read `coc.nvim` documentation to setup key bindings, autocompletion and so on.
 
+Of course, change the configuration to your liking. You might also want to read `coc.nvim` documentation to setup key bindings, autocompletion and so on.
 
 ## Configuration Options
 
 - `nim.projectMapping` - configure how `nimsuggest` should be started. Here it is sample configuration for `VScode`. We don't want `nimlangserver` to start `nimsuggest` for each file and this configuration will allow configuring pair `projectFile`/`fileRegex` so when one of the regexp in the list matches current file then `nimls` will use `root` to start `nimsuggest`. In case there are no matches `nimlangserver` will try to guess the most suitable project root.
 
-``` json
+```json
 {
     "nim.projectMapping": [{
         // open files under tests using one nimsuggest instance started with root = test/all.nim
@@ -110,7 +121,8 @@ Of course, change the configuration to your liking. You might also want to read 
     }]
 }
 ```
-Note when in a nimble project, `nimble` will drive the entry points for `nimsuggest`. 
+
+Note when in a nimble project, `nimble` will drive the entry points for `nimsuggest`.
 
 - `nim.timeout` - the request timeout in ms after which `nimlangserver` will restart the language server. If not specified the default is 2 minutes.
 - `nim.nimsuggestPath` - the path to the `nimsuggest`. The default is `"nimsuggest"`.
@@ -136,18 +148,21 @@ Inlay hints are visual snippets displayed by the editor inside your code.
 Typical usage for inlay hints is displaying type information but it can go beyond that and provide all sorts of useful context.
 
 nimlangserver offers three kinds of inlay hints:
+
 - **Type hints**. Show variable types.
-- **Parameter hints**. TODO
 - **Exception hints**. Highlight functions that raise exceptions.
+- **Parameter hints**. Hints for param names in function calls.
+  - **Note:** This kind of inlay hints is not implemented yet so enabling it won't do anything at the moment. See [issue 183](https://github.com/nim-lang/langserver/issues/183).
 
 Here's how inlay hints look like in VSCode
+
 - type hint: ![](./vscode_type_hint.png)
 - exception hint: ![](./vscode_exception_hint.png)
 
 Here are the same hints in Helix:
+
 - ![](./helix_type_hint.png)
 - ![](./helix_exception_hint.png)
-
 
 In VSCode, inlay hints are enabled by default. You can toggle different kinds of hints in the settings:
 
@@ -157,7 +172,7 @@ In VSCode, inlay hints are enabled by default. You can toggle different kinds of
 
 ![](./vscode_settings.png)
 
-To enable inlay hints in Neovim, configure lspconfig in your  `init.vim`:
+To enable inlay hints in Neovim, configure lspconfig in your `init.vim`:
 
 ```lua
 lua << EOF
@@ -167,8 +182,8 @@ lspconfig.nim_langserver.setup({
     nim = {
       inlayHints = {
         typeHints = true,
-        parameterHints = true,
         exceptionHints = true,
+        parameterHints = true,
       }
     }
   },
@@ -190,7 +205,7 @@ To enable inlay hints in Helix, add this langserver configuration to your `langu
 
 ```toml
 [language-server.nimlangserver.config.nim]
-inlayHints = { typeHints = true, parameterHints = true, exceptionHints = true }
+inlayHints = { typeHints = true, exceptionHints = true, parameterHints = true }
 ```
 
 ## Features
@@ -220,11 +235,13 @@ inlayHints = { typeHints = true, parameterHints = true, exceptionHints = true }
 You can install `nimlangserver` using the instructions for your text editor below:
 
 ### Extension methods
+
 In addition to the standard `LSP` methods, `nimlangserver` provides additional nim specific methods.
 
 ### `extension/macroExpand`
 
-* Request:
+- Request:
+
 ```nim
 type
   ExpandTextDocumentPositionParams* = ref object of RootObj
@@ -232,19 +249,24 @@ type
     position*: Position
     level*: Option[int]
 ```
+
 Where:
+
 - `position` is the position in the document.
 - `textDocument` is the document.
 - `level` is the how much levels to expand from the current position
 
 * Response:
-``` nim
+
+```nim
 type
   ExpandResult* = ref object of RootObj
     range*: Range
     content*: string
 ```
+
 Where:
+
 - `content` is the expand result
 - `range` is the original range of the request.
 
@@ -278,7 +300,6 @@ Result: {
   },
   "content": "  block:\n    template field1(): untyped =\n      a.field1\n\n    template field2(): untyped =\n      a.field2\n\n    field1 = field2"
 }
-
 ```
 
 ### VSCode
@@ -290,13 +311,14 @@ Install the `vscode-nim` extension from [here](https://github.com/nim-lang/vscod
 - Install [lsp-mode](https://github.com/emacs-lsp/lsp-mode) and `nim-mode` from melpa and add the following to your
   config:
 
-``` elisp
+```elisp
 (add-hook 'nim-mode-hook #'lsp)
 ```
 
 ## Transport
 
 `nimlangserver` supports two transport modes:
+
 - stdio
 - socket
 
@@ -310,11 +332,11 @@ In order to list and run tests the test library `unittest2 >= 0.2.4` must be use
 
 - [nimlsp](https://github.com/PMunch/nimlsp)
 
-   Both `nimlangserver` and `nimlsp` are based on `nimsuggest`, but the main
-   difference is that `nimlsp` has a single specific version of `nimsuggest`
-   embedded in the server executable, while `nimlangserver` launches `nimsuggest`
-   as an external process. This allows `nimlangserver` to handle any `nimsuggest`
-   crashes more gracefully.
+  Both `nimlangserver` and `nimlsp` are based on `nimsuggest`, but the main
+  difference is that `nimlsp` has a single specific version of `nimsuggest`
+  embedded in the server executable, while `nimlangserver` launches `nimsuggest`
+  as an external process. This allows `nimlangserver` to handle any `nimsuggest`
+  crashes more gracefully.
 
 ## License
 
