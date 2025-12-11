@@ -268,7 +268,8 @@ proc markFailed(self: Project, errMessage: string) {.raises: [].} =
 
 proc stop*(self: Project) =
   debug "Stopping nimsuggest for ", root = self.file
-  asyncSpawn shutdownChildProcess(self.process)
+  if not self.process.isNil:
+    asyncSpawn shutdownChildProcess(self.process)
 
 proc doWithTimeout*[T](fut: Future[T], timeout: int, s: string): owned(Future[bool]) =
   var retFuture = newFuture[bool]("asyncdispatch.`doWithTimeout`")
