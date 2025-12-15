@@ -26,7 +26,7 @@ jobs:
 
       - name: Restore nimble dependencies from cache
         id: nimble_deps
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.nimble
