@@ -10,7 +10,7 @@ skipDirs = @["tests"]
 
 requires "nim == 2.0.8",
   "chronos >= 4.0.4", "json_rpc >= 0.5.0", "with", "chronicles", "serialization",
-  "json_serialization", "stew", "regex","unittest2 >= 0.2.4"
+  "json_serialization", "stew", "regex","unittest2 == 0.2.5"
 
 --path:
   "."

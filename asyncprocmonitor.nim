@@ -7,7 +7,7 @@ when defined(posix):
   import posix_utils
   import posix
 
-type Callback* = proc() {.closure, gcsafe, raises: [].}
+type Callback* = proc() {.gcsafe, raises: [].}
 
 when defined(windows):
   import winlean, sugar

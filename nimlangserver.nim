@@ -79,7 +79,9 @@ proc registerRoutes(srv: RpcSocketServer, ls: LanguageServer) =
     "workspace/didChangeConfiguration", wrapRpc(partial(didChangeConfiguration, ls))
   )
   srv.register("textDocument/didChange", wrapRpc(partial(didChange, ls)))
-  srv.register("textDocument/willSaveWaitUntil", wrapRpc(partial(willSaveWaitUntil, ls)))
+  srv.register(
+    "textDocument/willSaveWaitUntil", wrapRpc(partial(willSaveWaitUntil, ls))
+  )
   srv.register("$/setTrace", wrapRpc(partial(setTrace, ls)))
 
 proc showHelp() =
@@ -104,17 +106,14 @@ proc showHelp() =
       if line.startsWith("```"):
         inCodeBlock = not inCodeBlock
         continue
-      
+
       var cleaned = line
       if not inCodeBlock:
-        cleaned = cleaned.multiReplace([
-          ("`", ""),
-          ("\\", "")
-        ])
-      
+        cleaned = cleaned.multiReplace([("`", ""), ("\\", "")])
+
       if cleaned.len > 0:
         result.add(cleaned & "\n")
-    
+
     result = result.strip()
 
   let section = readme.split("## Configuration Options")[1].split("##")[0]

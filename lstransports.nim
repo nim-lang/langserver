@@ -286,6 +286,7 @@ proc startSocketServer*(ls: LanguageServer, port: Port) =
       return
     while ls.socketTransport.isNil:
       await sleepAsync(0)
+
   debug "Waiting for socket server to be ready"
   waitFor waitUntilSocketTransportIsReady(ls)
   debug "Socket server started"
