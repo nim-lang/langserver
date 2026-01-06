@@ -160,7 +160,8 @@ type
     nimDumpCache*: Table[string, NimbleDumpInfo] #path to NimbleDumpInfo
     entryPoints*: seq[string]
     responseMap*: TableRef[string, Future[JsonNode]]
-    testRunProcess*: Option[AsyncProcessRef] #There is only one test run process at a time
+    testRunProcess*: Option[AsyncProcessRef]
+      #There is only one test run process at a time
 
       #id to future. Represents the pending requests as result of calling ls.call
     srv*: RpcSocketServer
@@ -178,7 +179,7 @@ type
     failTable*: Table[string, int]
       #Project file to fail count
       #List of errors (crashes) nimsuggest has had since the lsp session started
-    checkInProgress*: bool  
+    checkInProgress*: bool
 
   Certainty* = enum
     None
@@ -256,7 +257,9 @@ proc supportSignatureHelp*(cc: ClientCapabilities): bool =
   let caps = cc.textDocument
   caps.isSome and caps.get.signatureHelp.isSome
 
-proc getNimbleDumpInfo*(ls: LanguageServer, nimbleFile: string): Future[NimbleDumpInfo] {.async.}=
+proc getNimbleDumpInfo*(
+    ls: LanguageServer, nimbleFile: string
+): Future[NimbleDumpInfo] {.async.} =
   if nimbleFile in ls.nimDumpCache:
     return ls.nimDumpCache.getOrDefault(nimbleFile)
   var process: AsyncProcessRef
@@ -290,9 +293,8 @@ proc getNimbleDumpInfo*(ls: LanguageServer, nimbleFile: string): Future[NimbleDu
       ls.nimDumpCache[nimbleFile] = result
   except OSError, IOError:
     debug "Failed to get nimble dump info", nimbleFile = nimbleFile
-  finally: 
+  finally:
     await shutdownChildProcess(process)
-
 
 proc parseWorkspaceConfiguration*(conf: JsonNode): NlsConfig =
   try:
@@ -487,7 +489,7 @@ proc getNimVersion(nimDir: string): string =
 
 proc getNimSuggestPathAndVersion(
     ls: LanguageServer, conf: NlsConfig, workingDir: string
-): Future[(string, string)] {.async.}=
+): Future[(string, string)] {.async.} =
   #Attempting to see if the project is using a custom Nim version, if it's the case this will be slower than usual
   let nimbleDumpInfo = await ls.getNimbleDumpInfo("")
   let nimDir = nimbleDumpInfo.nimDir.get ""
@@ -518,7 +520,9 @@ proc getNimPath*(conf: NlsConfig): Option[string] =
       warn "Failed to find nim path"
       none(string)
 
-proc getProjectFileAutoGuess*(ls: LanguageServer, fileUri: string): Future[string] {.async.}=
+proc getProjectFileAutoGuess*(
+    ls: LanguageServer, fileUri: string
+): Future[string] {.async.} =
   let file = fileUri.decodeUrl
   debug "Auto-guessing project file for", file = file
   result = file
@@ -742,7 +746,7 @@ proc sendDiagnostics*(
 
 proc warnIfUnknown*(
     ls: LanguageServer, ns: Nimsuggest, uri: string, projectFile: string
-): Future[void] {.async, gcsafe.} =
+): Future[void] {.async.} =
   let path = uri.uriToPath
   let isFileKnown = await ns.isKnown(path)
   if not isFileKnown and not ns.canHandleUnknown:
@@ -799,7 +803,7 @@ proc tryGetNimsuggest*(
 
 proc checkFile*(ls: LanguageServer, uri: string): Future[void] {.raises: [], gcsafe.}
 
-proc didCloseFile*(ls: LanguageServer, uri: string): Future[void] {.async, gcsafe.} =
+proc didCloseFile*(ls: LanguageServer, uri: string): Future[void] {.async.} =
   debug "Closed the following document:", uri = uri
 
   if ls.openFiles[uri].changed:
@@ -808,22 +812,18 @@ proc didCloseFile*(ls: LanguageServer, uri: string): Future[void] {.async, gcsaf
 
   ls.openFiles.del uri
 
-proc makeIdleFile*(
-    ls: LanguageServer, file: NlsFileInfo
-): Future[void] {.async, gcsafe.} =
+proc makeIdleFile*(ls: LanguageServer, file: NlsFileInfo): Future[void] {.async.} =
   let uri = file.textDocument.uri
   if uri in ls.openFiles:
     await ls.didCloseFile(uri)
     ls.idleOpenFiles[uri] = file
     ls.openFiles.del(uri)
 
-proc getProjectFile*(
-  fileUri: string, ls: LanguageServer
-): Future[string] {.raises: [], gcsafe.}
+proc getProjectFile*(fileUri: string, ls: LanguageServer): Future[string] {.async.}
 
 proc didOpenFile*(
     ls: LanguageServer, textDocument: TextDocumentItem
-): Future[void] {.async, gcsafe.} =
+): Future[void] {.async.} =
   with textDocument:
     debug "New document opened for URI:", uri = uri
     let
@@ -891,11 +891,12 @@ proc tryGetNimsuggest*(
   debug "Nimsuggest not found after retries", uri = uri
   return none(NimSuggest)
 
-proc checkProject*(ls: LanguageServer, uri: string): Future[void] {.async, gcsafe.} =
+proc checkProject*(ls: LanguageServer, uri: string): Future[void] {.async.} =
   if ls.checkInProgress:
     return
   ls.checkInProgress = true
-  defer: ls.checkInProgress = false
+  defer:
+    ls.checkInProgress = false
 
   if not ls.getWorkspaceConfiguration.await().autoCheckProject.get(true):
     return
@@ -950,7 +951,7 @@ proc checkProject*(ls: LanguageServer, uri: string): Future[void] {.async, gcsaf
   ls.workDoneProgressCreate(token)
   ls.progress(token, "begin", fmt "Checking project {uri.uriToPath}")
   nimsuggest.checkProjectInProgress = true
-  defer: 
+  defer:
     nimsuggest.checkProjectInProgress = false
     ls.progress(token, "end")
 
@@ -1021,7 +1022,8 @@ proc createOrRestartNimsuggest*(
     let
       configuration = ls.getWorkspaceConfiguration().waitFor()
       workingDir = ls.getWorkingDir(projectFile).waitFor()
-      (nimsuggestPath, version) = ls.getNimSuggestPathAndVersion(configuration, workingDir).waitFor()
+      (nimsuggestPath, version) =
+        ls.getNimSuggestPathAndVersion(configuration, workingDir).waitFor()
       timeout = configuration.timeout.get(REQUEST_TIMEOUT)
       restartCallback = proc(ns: Nimsuggest) {.gcsafe, raises: [].} =
         warn "Restarting the server due to requests being to slow",
@@ -1089,7 +1091,9 @@ proc maybeRegisterCapabilityDidChangeConfiguration*(ls: LanguageServer) =
     )
     ls.didChangeConfigurationRegistrationRequest =
       ls.call("client/registerCapability", %registrationParams)
-    ls.didChangeConfigurationRegistrationRequest.addCallback do(res: Future[JsonNode]):
+    ls.didChangeConfigurationRegistrationRequest.addCallback do(res: Future[JsonNode]) {.
+      gcsafe
+    .}:
       debug "Got response for the didChangeConfiguration registration:",
         res = res.read()
 
@@ -1184,7 +1188,8 @@ proc getProjectFile*(fileUri: string, ls: LanguageServer): Future[string] {.asyn
   let shouldSpawn = await ls.shouldSpawnNimsuggest()
   if not shouldSpawn:
     result = ls.projectFiles.keys.toSeq[0]
-    debug "Reached the maximum instances of nimsuggest, reusing the first nimsuggest instance", project = result
+    debug "Reached the maximum instances of nimsuggest, reusing the first nimsuggest instance",
+      project = result
     return result
 
   result = await ls.getProjectFileAutoGuess(fileUri)

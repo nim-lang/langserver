@@ -42,3 +42,15 @@ jobs:
       - name: Nimble Test
         shell: bash
         run: nimble test
+
+  nph:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Check `nph` formatting
+        uses: arnetheduck/nph-action@v1
+        with:
+          version: 0.6.2
+          options: "*.nim protocol"
+          fail: true
+          suggest: true

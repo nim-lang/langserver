@@ -1,4 +1,6 @@
-import std/[os, strscans, tables, enumerate, strutils, xmlparser, xmltree, options, strformat]
+import
+  std/
+    [os, strscans, tables, enumerate, strutils, xmlparser, xmltree, options, strformat]
 import chronos, chronos/asyncproc
 import protocol/types
 import ls
@@ -9,23 +11,23 @@ import utils
 proc extractTestInfo*(rawOutput: string): TestProjectInfo =
   result.suites = initTable[string, TestSuiteInfo]()
   let lines = rawOutput.split("\n")
-  var currentSuite = "" 
+  var currentSuite = ""
   for i, line in enumerate(lines):
     var name, file, ignore: string
     var lineNumber: int
     if scanf(line, "Suite: $*", name):
-      currentSuite = name.strip() 
+      currentSuite = name.strip()
       result.suites[currentSuite] = TestSuiteInfo(name: currentSuite)
       # echo "Found suite: ", currentSuite
-    
     elif scanf(line, "$*Test: $*", ignore, name):
       let insideSuite = line.startsWith("\t")
       # Use currentSuite if inside a suite, empty string if not
       let suiteName = if insideSuite: currentSuite else: ""
-      
+
       #File is always next line of a test
-      if scanf(lines[i+1], "$*File:$*:$i", ignore, file, lineNumber):
-        var testInfo = TestInfo(name: name.strip(), file: file.strip(), line: lineNumber)
+      if scanf(lines[i + 1], "$*File:$*:$i", ignore, file, lineNumber):
+        var testInfo =
+          TestInfo(name: name.strip(), file: file.strip(), line: lineNumber)
         # echo "Adding test: ", testInfo.name, " to suite: ", suiteName
         result.suites[suiteName].tests.add(testInfo)
 
@@ -36,7 +38,7 @@ proc getFullPath*(entryPoint: string, workspaceRoot: string): string =
       return absolutePath
   return entryPoint
 
-proc parseObject(obj: var object, node: XmlNode) = 
+proc parseObject(obj: var object, node: XmlNode) =
   for field, value in obj.fieldPairs:
     when value is string:
       getField(obj, field) = node.attr(field)
@@ -53,12 +55,12 @@ proc parseTestResult*(node: XmlNode): RunTestResult =
     result.failure = some failureNode.attr("message")
 
 proc parseTestSuite*(node: XmlNode): RunTestSuiteResult =
-  parseObject(result, node) 
+  parseObject(result, node)
   for testCase in node.findAll("testcase"):
     result.testResults.add(parseTestResult(testCase))
 
 proc parseTestResults*(xmlContent: string): RunTestProjectResult =
-  let xml = parseXml(xmlContent)    
+  let xml = parseXml(xmlContent)
   for suiteNode in xml.findAll("testsuite"):
     let suite = parseTestSuite(suiteNode)
     # echo suite.name, " ", suite.testResults.len
@@ -66,14 +68,13 @@ proc parseTestResults*(xmlContent: string): RunTestProjectResult =
       result.suites.add(suite)
 
 proc listTests*(
-  entryPoint: string, 
-  nimPath: string,
-  workspaceRoot: string
+    entryPoint: string, nimPath: string, workspaceRoot: string
 ): Future[TestProjectInfo] {.async.} =
   var entryPoint = getFullPath(entryPoint, workspaceRoot)
   let executableDir = (getTempDir() / entryPoint.splitFile.name).absolutePath
   debug "Listing tests", entryPoint = entryPoint, exists = fileExists(entryPoint)
-  let args = @["c", "--outdir:" & executableDir, "-d:unittest2ListTests", "-r", entryPoint]
+  let args =
+    @["c", "--outdir:" & executableDir, "-d:unittest2ListTests", "-r", entryPoint]
   let process = await startProcess(
     nimPath,
     arguments = args,
@@ -86,12 +87,13 @@ proc listTests*(
     if res != 0:
       result = extractTestInfo(error)
       if result.suites.len == 0:
-        error "Failed to list tests", nimPath = nimPath, entryPoint = entryPoint, res = res    
+        error "Failed to list tests",
+          nimPath = nimPath, entryPoint = entryPoint, res = res
         error "An error occurred while listing tests"
         for line in error.splitLines:
           error "Error line: ", line = line
         error "Command args: ", args = args
-        result = TestProjectInfo(error: some error)      
+        result = TestProjectInfo(error: some error)
     else:
       let rawOutput = await process.stdoutStream.readAllOutput()
       debug "list test raw output", rawOutput = rawOutput
@@ -100,21 +102,22 @@ proc listTests*(
     await shutdownChildProcess(process)
 
 proc runTests*(
-  entryPoint: string, 
-  nimPath: string, 
-  suiteName: Option[string], 
-  testNames: seq[string],
-  workspaceRoot: string,
-  ls: LanguageServer
+    entryPoint: string,
+    nimPath: string,
+    suiteName: Option[string],
+    testNames: seq[string],
+    workspaceRoot: string,
+    ls: LanguageServer,
 ): Future[RunTestProjectResult] {.async.} =
   var entryPoint = getFullPath(entryPoint, workspaceRoot)
   if not fileExists(entryPoint):
-    error "Entry point does not exist", entryPoint = entryPoint    
+    error "Entry point does not exist", entryPoint = entryPoint
     return RunTestProjectResult()
-  let resultFile = (getTempDir() / "result.xml").absolutePath        
+  let resultFile = (getTempDir() / "result.xml").absolutePath
   removeFile(resultFile)
   let executableDir = (getTempDir() / entryPoint.splitFile.name).absolutePath
-  var args = @["c", "--outdir:" & executableDir, "-r", entryPoint , fmt"--xml:{resultFile}"]
+  var args =
+    @["c", "--outdir:" & executableDir, "-r", entryPoint, fmt"--xml:{resultFile}"]
   if suiteName.isSome:
     args.add(fmt"{suiteName.get()}::")
   else:
@@ -137,7 +140,7 @@ proc runTests*(
         result.fullOutput = error
         return result
 
-      error "Failed to run tests", nimPath = nimPath, entryPoint = entryPoint, res = res    
+      error "Failed to run tests", nimPath = nimPath, entryPoint = entryPoint, res = res
       error "An error occurred while running tests"
       error "Error from process", error = error
       result = RunTestProjectResult(fullOutput: error)
@@ -148,7 +151,6 @@ proc runTests*(
       # echo "XML CONTENT: ", xmlContent
       result = parseTestResults(xmlContent)
       result.fullOutput = output
-     
   except Exception as e:
     let processOutput = string.fromBytes(process.stdoutStream.read().await)
     error "An error occurred while running tests", error = e.msg

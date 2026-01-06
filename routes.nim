@@ -22,7 +22,7 @@ import
   stew/[byteutils],
   nimexpand,
   testrunner
-  
+
 import macros except error
 
 proc getNphPath(): Option[string] =
@@ -373,7 +373,7 @@ proc toMdLinks(s: string): string =
   for i in countDown(matches.high, matches.low):
     let match = matches[i]
     result[match.boundaries] = fmt"[{s[match.captures[0]]}]({s[match.captures[1]]})"
-  
+
 proc toMarkupContent(suggest: Suggest): MarkupContent =
   result = MarkupContent(kind: "markdown", value: "```nim\n")
   result.value.add suggest.qualifiedPath.join(".")
@@ -398,8 +398,9 @@ proc hover*(
     let ch = ls.getCharacter(uri, line, character)
     if ch.isNone:
       return none(Hover)
-    let suggestions =
-      await nimsuggest.get().highlight(uriToPath(uri), ls.uriToStash(uri), line + 1, ch.get)
+    let suggestions = await nimsuggest.get().highlight(
+      uriToPath(uri), ls.uriToStash(uri), line + 1, ch.get
+    )
     if suggestions.len == 0:
       return none(Hover)
     var suggest = suggestions[0]
@@ -413,29 +414,33 @@ proc hover*(
           else:
             break
       var content = toMarkupContent(suggest)
-      if suggest.symkind == "skMacro" and config.nimExpandMacro.get(NIM_EXPAND_MACRO_BY_DEFAULT):
-        let expanded = await nimsuggest.get
-          .expand(uriToPath(uri), ls.uriToStash(uri), suggest.line, suggest.column)
+      if suggest.symkind == "skMacro" and
+          config.nimExpandMacro.get(NIM_EXPAND_MACRO_BY_DEFAULT):
+        let expanded = await nimsuggest.get.expand(
+          uriToPath(uri), ls.uriToStash(uri), suggest.line, suggest.column
+        )
         if expanded.len > 0 and expanded[0].doc != "":
           # debug "Expanded macro", expanded = expanded[0].doc
           content.value.add &"```nim\n{expanded[0].doc}\n```"
-        else:          
+        else:
           # debug "Couldnt expand the macro. Trying with nim expand", suggest = suggest[]
           let nimPath = config.getNimPath()
-          if nimPath.isSome:  
+          if nimPath.isSome:
             let expanded = await nimExpandMacro(nimPath.get, suggest, uriToPath(uri))
             content.value.add &"```nim\n{expanded}\n```"
-      if suggest.section == ideDef and suggest.symkind in ["skProc"] and config.nimExpandArc.get(NIM_EXPAND_ARC_BY_DEFAULT):
+      if suggest.section == ideDef and suggest.symkind in ["skProc"] and
+          config.nimExpandArc.get(NIM_EXPAND_ARC_BY_DEFAULT):
         debug "#Expanding arc", suggest = suggest[]
         let nimPath = config.getNimPath()
-        if nimPath.isSome:  
+        if nimPath.isSome:
           let expanded = await nimExpandArc(nimPath.get, suggest, uriToPath(uri))
           let arcContent = "#Expanded arc \n" & expanded
           content.value.add &"```nim\n{arcContent}\n```"
-      return some(Hover(
-        contents: some(%content),
-        range: some(toLabelRange(suggest.toUtf16Pos(ls))),
-      ))
+      return some(
+        Hover(
+          contents: some(%content), range: some(toLabelRange(suggest.toUtf16Pos(ls)))
+        )
+      )
 
 proc references*(
     ls: LanguageServer, params: ReferenceParams
@@ -746,7 +751,7 @@ proc format*(
 
   let fullRange = Range(
     start: Position(line: 0, character: 0),
-    `end`: Position(line: uinteger.high, character: uinteger.high)
+    `end`: Position(line: uinteger.high, character: uinteger.high),
   )
   debug "Formatting document", uri = uri, formattedText = formattedText
   some TextEdit(range: fullRange, newText: formattedText)
@@ -795,9 +800,7 @@ proc extractId(id: JsonNode): int =
   if id.kind == JString:
     discard parseInt(id.getStr, result)
 
-proc shutdown*(
-    ls: LanguageServer, input: JsonNode
-): Future[JsonNode] {.async, gcsafe.} =
+proc shutdown*(ls: LanguageServer, input: JsonNode): Future[JsonNode] {.async.} =
   debug "Shutting down"
   await ls.stopNimsuggestProcesses()
   ls.isShutdown = true
@@ -807,7 +810,7 @@ proc shutdown*(
 
 proc exit*(
     p: tuple[ls: LanguageServer, onExit: OnExitCallback], _: JsonNode
-): Future[JsonNode] {.async, gcsafe.} =
+): Future[JsonNode] {.async.} =
   if not p.ls.isShutdown:
     debug "Received an exit request without prior shutdown request"
     await p.ls.stopNimsuggestProcesses()
@@ -815,7 +818,9 @@ proc exit*(
   result = newJNull()
   await p.onExit()
 
-proc startNimbleProcess(ls: LanguageServer, args: seq[string]): Future[AsyncProcessRef] {.async.} =
+proc startNimbleProcess(
+    ls: LanguageServer, args: seq[string]
+): Future[AsyncProcessRef] {.async.} =
   await startProcess(
     "nimble",
     arguments = args,
@@ -825,9 +830,7 @@ proc startNimbleProcess(ls: LanguageServer, args: seq[string]): Future[AsyncProc
     stderrHandle = AsyncProcess.Pipe,
   )
 
-proc tasks*(
-    ls: LanguageServer, conf: JsonNode
-): Future[seq[NimbleTask]] {.async.} =
+proc tasks*(ls: LanguageServer, conf: JsonNode): Future[seq[NimbleTask]] {.async.} =
   let rootPath: string = ls.initializeParams.getRootPath
   debug "Received tasks ", rootPath = rootPath
   delEnv "NIMBLE_DIR"
@@ -846,7 +849,7 @@ proc tasks*(
 proc runTask*(
     ls: LanguageServer, params: RunTaskParams
 ): Future[RunTaskResult] {.async.} =
-  let process = await ls.startNimbleProcess(params.command) 
+  let process = await ls.startNimbleProcess(params.command)
   let res = await process.waitForExit(InfiniteDuration)
   result.command = params.command
   let prefix = "\""
@@ -855,9 +858,9 @@ proc runTask*(
     for line in lines.mitems:
       if line.startsWith(prefix):
         line = line.unescape(prefix)
-      if line != "":  
-        result.output.add line  
-        
+      if line != "":
+        result.output.add line
+
   debug "Ran nimble cmd/task", command = $params.command, output = $result.output
   await process.shutdownChildProcess()
 
@@ -868,7 +871,11 @@ proc listTests*(
   let nimPath = config.getNimPath()
   if nimPath.isNone:
     error "Nim path not found when listing tests"
-    return ListTestsResult(projectInfo: TestProjectInfo(entryPoint: params.entryPoint, suites: initTable[string, TestSuiteInfo]()))
+    return ListTestsResult(
+      projectInfo: TestProjectInfo(
+        entryPoint: params.entryPoint, suites: initTable[string, TestSuiteInfo]()
+      )
+    )
   let workspaceRoot = ls.initializeParams.getRootPath
   let testProjectInfo = await listTests(params.entryPoint, nimPath.get(), workspaceRoot)
   result.projectInfo = testProjectInfo
@@ -882,13 +889,21 @@ proc runTests*(
     error "Nim path not found when running tests"
     return RunTestProjectResult()
   let workspaceRoot = ls.initializeParams.getRootPath
-  await runTests(params.entryPoint, nimPath.get(), params.suiteName, params.testNames.get(@[]), workspaceRoot, ls)
+  await runTests(
+    params.entryPoint,
+    nimPath.get(),
+    params.suiteName,
+    params.testNames.get(@[]),
+    workspaceRoot,
+    ls,
+  )
 
 proc cancelTest*(
     ls: LanguageServer, params: JsonNode
 ): Future[CancelTestResult] {.async.} =
   debug "Cancelling test"
-  if ls.testRunProcess.isSome: #No need to cancel the runTests request. The client should handle it.
+  if ls.testRunProcess.isSome:
+    #No need to cancel the runTests request. The client should handle it.
     await shutdownChildProcess(ls.testRunProcess.get)
     ls.testRunProcess = none(AsyncProcessRef)
     CancelTestResult(cancelled: true)
@@ -918,7 +933,7 @@ proc setTrace*(ls: LanguageServer, params: SetTraceParams) {.async.} =
 
 proc didChange*(
     ls: LanguageServer, params: DidChangeTextDocumentParams
-): Future[void] {.async, gcsafe.} =
+): Future[void] {.async.} =
   with params:
     let uri = textDocument.uri
     if uri notin ls.openFiles:
@@ -938,8 +953,7 @@ proc didChange*(
     ls.scheduleFileCheck(uri)
 
 proc willSaveWaitUntil*(
-    ls: LanguageServer, 
-    params: WillSaveTextDocumentParams
+    ls: LanguageServer, params: WillSaveTextDocumentParams
 ): Future[seq[TextEdit]] {.async.} =
   debug "Received willSaveWaitUntil request"
 
@@ -947,23 +961,22 @@ proc willSaveWaitUntil*(
     uri = params.textDocument.uri
     config = await ls.getWorkspaceConfiguration()
     nphPath = getNphPath()
-  
-  let shouldFormat = 
-    nphPath.isSome and 
-    ls.serverCapabilities.documentFormattingProvider.get(false) and
+
+  let shouldFormat =
+    nphPath.isSome and ls.serverCapabilities.documentFormattingProvider.get(false) and
     config.formatOnSave.get(false)
-    
+
   if shouldFormat:
     debug "Formatting document before save", uri = uri
     let formatTextEdit = await ls.format(nphPath.get(), uri)
     if formatTextEdit.isSome:
       return @[formatTextEdit.get]
-  
+
   return @[]
 
 proc didSave*(
     ls: LanguageServer, params: DidSaveTextDocumentParams
-): Future[void] {.async, gcsafe.} =
+): Future[void] {.async.} =
   let
     uri = params.textDocument.uri
     config = await ls.getWorkspaceConfiguration()
@@ -999,17 +1012,17 @@ proc didSave*(
 
 proc didClose*(
     ls: LanguageServer, params: DidCloseTextDocumentParams
-): Future[void] {.async, gcsafe.} =
+): Future[void] {.async.} =
   await ls.didCloseFile(params.textDocument.uri)
 
 proc didOpen*(
     ls: LanguageServer, params: DidOpenTextDocumentParams
-): Future[void] {.async, gcsafe.} =
+): Future[void] {.async.} =
   await ls.didOpenFile(params.textDocument)
 
 proc didChangeConfiguration*(
     ls: LanguageServer, conf: JsonNode
-): Future[void] {.async, gcsafe.} =
+): Future[void] {.async.} =
   debug "Changed configuration: ", conf = conf
   if ls.usePullConfigurationModel:
     ls.maybeRequestConfigurationFromClient

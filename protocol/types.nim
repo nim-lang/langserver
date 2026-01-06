@@ -1003,8 +1003,8 @@ type
 
   LspExtensionCapability* = enum
     #List of extensions this server support. Useful for clients
-    excRestartSuggest = "RestartSuggest", 
-    excNimbleTask = "NimbleTask",
+    excRestartSuggest = "RestartSuggest"
+    excNimbleTask = "NimbleTask"
     excRunTests = "RunTests"
 
   ProjectError* = object
@@ -1036,21 +1036,21 @@ type
     actionPerformed*: SuggestAction
 
   NimbleTask* = object
-    name*: string 
+    name*: string
     description*: string
 
   RunTaskParams* = object
     command*: seq[string] #command and args
-  
+
   RunTaskResult* = object
     command*: seq[string] #command and args
     output*: seq[string] #output lines
-  
+
   TestInfo* = object
     name*: string
     line*: int
     file*: string
-  
+
   TestSuiteInfo* = object
     name*: string #The suite name, empty if it's a global test
     tests*: seq[TestInfo]
@@ -1061,11 +1061,12 @@ type
     error*: Option[string]
 
   ListTestsParams* = object
-    entryPoint*: string #can be patterns? if empty we could do the same as nimble does or just run `nimble test args`
+    entryPoint*: string
+      #can be patterns? if empty we could do the same as nimble does or just run `nimble test args`
 
   ListTestsResult* = object
     projectInfo*: TestProjectInfo
-  
+
   RunTestResult* = object
     name*: string
     time*: float
@@ -1079,10 +1080,11 @@ type
     skipped*: int
     time*: float
     testResults*: seq[RunTestResult]
-  
+
   RunTestParams* = object
     entryPoint*: string
-    suiteName*: Option[string] #Optional, if provided, only run tests in the suite. Takes precedence over testName
+    suiteName*: Option[string]
+      #Optional, if provided, only run tests in the suite. Takes precedence over testName
     testNames*: Option[seq[string]] #Optional, if provided, only run the specific tests
 
   RunTestProjectResult* = object
