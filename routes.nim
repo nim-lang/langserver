@@ -800,9 +800,7 @@ proc extractId(id: JsonNode): int =
   if id.kind == JString:
     discard parseInt(id.getStr, result)
 
-proc shutdown*(
-    ls: LanguageServer, input: JsonNode
-): Future[JsonNode] {.async.} =
+proc shutdown*(ls: LanguageServer, input: JsonNode): Future[JsonNode] {.async.} =
   debug "Shutting down"
   await ls.stopNimsuggestProcesses()
   ls.isShutdown = true
