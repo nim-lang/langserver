@@ -35,10 +35,6 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-${{ env.cache_nonce }}-
 
-      - name: Install dependencies
-        shell: bash
-        run: nimble -y install -l
-      
       - name: Nimble Test
         shell: bash
         run: nimble test
