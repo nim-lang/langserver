@@ -51,6 +51,6 @@ jobs:
         uses: arnetheduck/nph-action@v1
         with:
           version: 0.6.2
-          options: "*.nim protoocol/"
+          options: "*.nim protoocol/*.nim"
           fail: true
           suggest: true
