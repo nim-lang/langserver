@@ -3,6 +3,7 @@
 nimcache/
 
 *.log
+*.exe
 tests/all
 /nimlangserver
 nimble.develop

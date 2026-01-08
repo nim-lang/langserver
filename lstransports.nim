@@ -246,7 +246,7 @@ proc startStdioLoop*(ls: LanguageServer): Future[void] {.async.} =
     freeShared(ls.stdinContext.value[0].addr)
     await ls.stdinContext.onMainReadSignal.fire()
     if msg == "":
-      error "Client discconected"
+      error "Client disconnected"
       break
     ls.processMessage(msg)
 
