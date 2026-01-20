@@ -45,7 +45,7 @@ type
     ideType
     ideExpand
 
-  NimsuggestCallback* = proc(self: Nimsuggest): void {.gcsafe, raises: [].}
+  NimsuggestCallback* = proc(self: NimSuggest): void {.gcsafe, raises: [].}
   ProjectCallback* = proc(self: Project): void {.gcsafe, raises: [].}
 
   Suggest* = ref object
@@ -117,7 +117,7 @@ type
     lastCmd*: string
     lastCmdDate*: Option[DateTime]
 
-func canHandleUnknown*(ns: Nimsuggest): bool =
+func canHandleUnknown*(ns: NimSuggest): bool =
   nsUnknownFile in ns.capabilities
 
 template benchmark(benchmarkName: string, code: untyped) =
@@ -130,7 +130,7 @@ template benchmark(benchmarkName: string, code: untyped) =
     debug "CPU Time", benchmark = benchmarkName, time = elapsedStr
 
 func nimSymToLSPKind*(suggest: Suggest): CompletionItemKind =
-  case suggest.symKind
+  case suggest.symkind
   of "skConst": CompletionItemKind.Value
   of "skEnumField": CompletionItemKind.Enum
   of "skForVar": CompletionItemKind.Variable
@@ -166,7 +166,7 @@ func nimSymToLSPSymbolKind*(suggest: string): SymbolKind =
   else: SymbolKind.Function
 
 func nimSymDetails*(suggest: Suggest): string =
-  case suggest.symKind
+  case suggest.symkind
   of "skConst":
     "const " & suggest.qualifiedPath.join(".") & ": " & suggest.forth
   of "skEnumField":
@@ -233,7 +233,7 @@ proc parseSuggestDef*(line: string): Option[Suggest] =
     column: parseInt(tokens[6]),
     doc: tokens[7].unescape(),
     forth: tokens[3],
-    symKind: tokens[1],
+    symkind: tokens[1],
     section: parseEnum[IdeCmd]("ide" & capitalizeAscii(tokens[0])),
   )
   if tokens.len == 11:
@@ -352,12 +352,12 @@ proc createNimsuggest*(
   var extraArgs = newSeq[string]()
   if isNimScript:
     extraArgs.add("--import: system/nimscript")
-  #Nimsuggest crashes when including the file. 
+  #NimSuggest crashes when including the file. 
   if isNimble:
     let nimScriptApiPath = getNimScriptAPITemplatePath()
     extraArgs.add("--include: " & nimScriptApiPath)
 
-  let ns = Nimsuggest()
+  let ns = NimSuggest()
   ns.requestQueue = Deque[SuggestCall]()
   ns.root = root
   ns.timeout = timeout
@@ -379,7 +379,7 @@ proc createNimsuggest*(
     if enableLog:
       args.add("--log")
     ns.capabilities = getNimsuggestCapabilities(nimsuggestPath)
-    debug "Nimsuggest Capabilities", capabilities = ns.capabilities
+    debug "NimSuggest Capabilities", capabilities = ns.capabilities
     if nsExceptionInlayHints in ns.capabilities:
       if enableExceptionInlayHints:
         args.add("--exceptionInlayHints:on")
@@ -392,16 +392,16 @@ proc createNimsuggest*(
       stdoutHandle = AsyncProcess.Pipe,
       stderrHandle = AsyncProcess.Pipe,
     )
-    debug "Nimsuggest started with args", args = args
+    debug "NimSuggest started with args", args = args
     asyncSpawn logNsError(result)
     let portLine = await result.process.stdoutStream.readLine(sep = "\n")
-    debug "Nimsuggest port", portLine = portLine
+    debug "NimSuggest port", portLine = portLine
     try:
       ns.port = portLine.parseInt
     except ValueError:
       error "Failed to parse nimsuggest port", portLine = portLine
       let nextLine = await result.process.stdoutStream.readLine(sep = "\n")  
-      error "Nimsuggest nextLine", nextLine = nextLine
+      error "NimSuggest nextLine", nextLine = nextLine
       result.markFailed "Failed to parse nimsuggest port"
     result.ns.complete(ns)
   else:
@@ -415,18 +415,18 @@ proc createNimsuggest*(root: string): Future[Project] {.gcsafe.} =
     "nimsuggest",
     "",
     REQUEST_TIMEOUT,
-    proc(ns: Nimsuggest) =
+    proc(ns: NimSuggest) =
       discard,
     proc(pr: Project) =
       discard,
   )
 
-proc toString*(bytes: openarray[byte]): string =
+proc toString*(bytes: openArray[byte]): string =
   result = newString(bytes.len)
   if bytes.len > 0:
     copyMem(result[0].addr, bytes[0].unsafeAddr, bytes.len)
 
-proc processQueue(self: Nimsuggest): Future[void] {.async.} =
+proc processQueue(self: NimSuggest): Future[void] {.async.} =
   debug "processQueue", size = self.requestQueue.len
   while self.requestQueue.len != 0:
     let req = self.requestQueue.popFirst
@@ -437,7 +437,7 @@ proc processQueue(self: Nimsuggest): Future[void] {.async.} =
     if req.future.finished:
       debug "Call cancelled before executed", command = req.command
     elif self.project.failed:
-      debug "Nimsuggest is not working, returning empty result...", port = self.port
+      debug "NimSuggest is not working, returning empty result...", port = self.port
       req.future.complete @[]
     else:
       benchmark req.commandString:
@@ -496,7 +496,7 @@ proc processQueue(self: Nimsuggest): Future[void] {.async.} =
   self.project.lastCmdDate = some(now())
 
 proc call*(
-    self: Nimsuggest,
+    self: NimSuggest,
     command: string,
     file: string,
     dirtyFile: string,
@@ -520,21 +520,21 @@ proc call*(
 
 template createFullCommand(command: untyped) {.dirty.} =
   proc command*(
-      self: Nimsuggest, file: string, dirtyfile = "", line: int, col: int, tag = ""
+      self: NimSuggest, file: string, dirtyfile = "", line: int, col: int, tag = ""
   ): Future[seq[Suggest]] =
     return self.call(astToStr(command), file, dirtyfile, line, col, tag)
 
 template createFileOnlyCommand(command: untyped) {.dirty.} =
-  proc command*(self: Nimsuggest, file: string, dirtyfile = ""): Future[seq[Suggest]] =
+  proc command*(self: NimSuggest, file: string, dirtyfile = ""): Future[seq[Suggest]] =
     return self.call(astToStr(command), file, dirtyfile, 0, 0)
 
 template createGlobalCommand(command: untyped) {.dirty.} =
-  proc command*(self: Nimsuggest): Future[seq[Suggest]] =
+  proc command*(self: NimSuggest): Future[seq[Suggest]] =
     return self.call(astToStr(command), "-", "", 0, 0)
 
 template createRangeCommand(command: untyped) {.dirty.} =
   proc command*(
-      self: Nimsuggest,
+      self: NimSuggest,
       file: string,
       dirtyfile = "",
       startLine, startCol, endLine, endCol: int,
@@ -568,11 +568,11 @@ createGlobalCommand(recompile)
 createRangeCommand(inlayHints)
 
 proc `mod`*(
-    nimsuggest: Nimsuggest, file: string, dirtyfile = ""
+    nimsuggest: NimSuggest, file: string, dirtyfile = ""
 ): Future[seq[Suggest]] =
   return nimsuggest.call("ideMod", file, dirtyfile, 0, 0)
 
-proc isKnown*(nimsuggest: Nimsuggest, filePath: string): Future[bool] {.async.} =
+proc isKnown*(nimsuggest: NimSuggest, filePath: string): Future[bool] {.async.} =
   let res = await withTimeout(nimsuggest.known(filePath))
   if res.isNone:
     debug "Timeout reached running [isKnown], assuming the file is not known",
