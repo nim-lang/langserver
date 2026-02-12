@@ -11,9 +11,8 @@ type
   UriParseError* = object of Defect
     uri: string
 
-const
-  NIM_SCRIPT_API_TEMPLATE* = staticRead("templates/nimscriptapi.nim") #We add this file to nimsuggest and `nim check` to support nimble files
-
+const NIM_SCRIPT_API_TEMPLATE* = staticRead("templates/nimscriptapi.nim")
+  #We add this file to nimsuggest and `nim check` to support nimble files
 
 proc writeStackTrace*(ex = getCurrentException()) =
   try:
@@ -56,9 +55,7 @@ proc utf16Len*(utf8Str: string): int =
   result = 0
   for rune in utf8Str.runes:
     case rune.int32
-    of 0x0000 .. 0x007F,
-       0x0080 .. 0x07FF,
-       0x0800 .. 0xFFFF:
+    of 0x0000 .. 0x007F, 0x0080 .. 0x07FF, 0x0800 .. 0xFFFF:
       result += 1
     of 0x10000 .. 0x10FFFF:
       result += 2
@@ -331,12 +328,12 @@ proc getNextFreePort*(): Port =
 func isWord*(str: string): bool =
   var str = str.toLower()
   for c in str:
-    if c.int notin {48..57, 97..122}:  # Allow 0-9 and a-z
+    if c.int notin {48 .. 57, 97 .. 122}: # Allow 0-9 and a-z
       return false
   return true
 
 proc getNimScriptAPITemplatePath*(): string =
-  result = getCacheDir("nimlangserver") 
+  result = getCacheDir("nimlangserver")
   createDir(result)
   result = result / "nimscriptapi.nim"
 
@@ -345,10 +342,11 @@ proc getNimScriptAPITemplatePath*(): string =
       writeFile(result, NIM_SCRIPT_API_TEMPLATE)
   debug "NimScriptApiPath", path = result
 
-proc shutdownChildProcess*(p: AsyncProcessRef): Future[void]  {.async.} =
+proc shutdownChildProcess*(p: AsyncProcessRef): Future[void] {.async.} =
   try:
     debug "Shutting down process with pid: ", pid = p.processID()
-    let exitCode = await p.terminateAndWaitForExit(2.seconds)    # debug "Process terminated with exit code: ", exitCode
+    let exitCode = await p.terminateAndWaitForExit(2.seconds)
+      # debug "Process terminated with exit code: ", exitCode
   except CatchableError:
     try:
       let forcedExitCode = await p.killAndWaitForExit(3.seconds)
@@ -360,54 +358,58 @@ proc shutdownChildProcess*(p: AsyncProcessRef): Future[void]  {.async.} =
 macro getField*(obj: object, fld: string): untyped =
   result = newDotExpr(obj, newIdentNode(fld.strVal))
 
-
 proc readAllOutput*(stream: AsyncStreamReader): Future[string] {.async.} =
   result = ""
   while not stream.atEof:
     let data = await stream.read()
     result.add(string.fromBytes(data))
 
-proc readErrorOutputUntilExit*(process: AsyncProcessRef, duration: Duration): Future[tuple[output: string, code: int]] {.async.} =
+proc readErrorOutputUntilExit*(
+    process: AsyncProcessRef, duration: Duration
+): Future[tuple[output: string, code: int]] {.async.} =
   var output = ""
   var res = 0
   while true:
     if not process.stderrStream.atEof:
       let data = await process.stderrStream.read()
       output.add(string.fromBytes(data))
-    
-    let hasExited = try:
-      res = await process.waitForExit(duration)
-      true
-    except AsyncTimeoutError:
-      false
-    
+
+    let hasExited =
+      try:
+        res = await process.waitForExit(duration)
+        true
+      except AsyncTimeoutError:
+        false
+
     if hasExited:
       while not process.stderrStream.atEof:
         let data = await process.stderrStream.read()
         output.add(string.fromBytes(data))
       return (output, res)
 
-
-proc readOutputUntilExit*(process: AsyncProcessRef, duration: Duration): Future[tuple[output: string, error: string, code: int]] {.async.} =
+proc readOutputUntilExit*(
+    process: AsyncProcessRef, duration: Duration
+): Future[tuple[output: string, error: string, code: int]] {.async.} =
   var output = ""
   var error = ""
   var res = 0
   # debug "Starting read output until exit"
-  
+
   while true:
-    let hasExited = try:
-      res = await process.waitForExit(duration)
-      debug "Process exit check", hasExited = true, res = res
-      true
-    except AsyncTimeoutError:
-      debug "Process still running"
-      false
+    let hasExited =
+      try:
+        res = await process.waitForExit(duration)
+        debug "Process exit check", hasExited = true, res = res
+        true
+      except AsyncTimeoutError:
+        debug "Process still running"
+        false
 
     # Quick non-blocking reads
     try:
       if not process.stdoutStream.atEof:
         # debug "Attempting stdout read"
-        let data = await process.stdoutStream.read()  #
+        let data = await process.stdoutStream.read() #
         if data.len > 0:
           # debug "Got stdout data", len = data.len
           output.add(string.fromBytes(data))
@@ -417,14 +419,13 @@ proc readOutputUntilExit*(process: AsyncProcessRef, duration: Duration): Future[
     try:
       if not process.stderrStream.atEof:
         # debug "Attempting stderr read"
-        let data = await process.stderrStream.read() 
+        let data = await process.stderrStream.read()
         if data.len > 0:
           # debug "Got stderr data", len = data.len
           error.add(string.fromBytes(data))
     except CatchableError as e:
       debug "Stderr read error", msg = e.msg
-    
+
     if hasExited:
       # debug "Process has exited, final cleanup", output = output, error = error, code = res
       return (output, error, res)
-    

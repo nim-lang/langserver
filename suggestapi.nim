@@ -343,7 +343,7 @@ proc createNimsuggest*(
     workingDir = getCurrentDir(),
     enableLog: bool = false,
     enableExceptionInlayHints: bool = false,
-): Future[Project] {.async, gcsafe.} =
+): Future[Project] {.async.} =
   result = Project(file: root)
   result.ns = newFuture[NimSuggest]()
   result.errorCallback = some errorCallback
@@ -400,7 +400,7 @@ proc createNimsuggest*(
       ns.port = portLine.parseInt
     except ValueError:
       error "Failed to parse nimsuggest port", portLine = portLine
-      let nextLine = await result.process.stdoutStream.readLine(sep = "\n")  
+      let nextLine = await result.process.stdoutStream.readLine(sep = "\n")
       error "Nimsuggest nextLine", nextLine = nextLine
       result.markFailed "Failed to parse nimsuggest port"
     result.ns.complete(ns)
@@ -431,7 +431,7 @@ proc processQueue(self: Nimsuggest): Future[void] {.async.} =
   while self.requestQueue.len != 0:
     let req = self.requestQueue.popFirst
     self.project.lastCmd = req.commandString
-    
+
     logScope:
       command = req.commandString
     if req.future.finished:
