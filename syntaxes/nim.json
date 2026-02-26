@@ -204,6 +204,11 @@
       "name": "support.type.nim"
     },
     {
+      "comment": "Function call with fmt string operator.",
+      "match": "\\b\\w+\\b(?=\\s+&\")",
+      "name": "support.function.any-method.nim"
+    },
+    {
       "comment": "Function call.",
       "match": "\\b\\w+\\b(?=(\\[([a-zA-Z0-9_,]|\\s)+\\])?\\()",
       "name": "support.function.any-method.nim"
@@ -1076,6 +1081,10 @@
       },
       "patterns": [
         {
+          "match": "\\\\\"",
+          "name": "constant.character.escape.double-quote.nim"
+        },
+        {
           "include": "#string_literal"
         },
         {
@@ -1188,6 +1197,14 @@
         }
       }
     },
+    "fmt_escaped_open_brace": {
+      "match": "\\{\\{",
+      "name": "constant.character.escape.nim"
+    },
+    "fmt_escaped_close_brace": {
+      "match": "\\}\\}",
+      "name": "constant.character.escape.nim"
+    },
     "fmt_interpolation": {
       "begin": "\\{(?!\\{)",
       "beginCaptures": {
@@ -1201,11 +1218,16 @@
           "name": "punctuation.definition.template-expression.end.nim"
         }
       },
+      "applyEndPatternLast": true,
       "patterns": [
         {
           "begin": ":",
           "end": "(?=\\})",
           "name": "meta.template.format-specifier.nim"
+        },
+        {
+          "match": "\\\\\"",
+          "name": "constant.character.escape.double-quote.nim"
         },
         {
           "include": "source.nim"
@@ -1269,14 +1291,17 @@
           "name": "punctuation.definition.string.end.nim"
         }
       },
+      "applyEndPatternLast": true,
       "name": "string.quoted.double.raw.nim",
       "patterns": [
         {
-          "match": "(?<!\")\"(?!\")",
-          "name": "invalid.illegal.nim"
+          "include": "#raw_string_escapes"
         },
         {
-          "include": "#raw_string_escapes"
+          "include": "#fmt_escaped_open_brace"
+        },
+        {
+          "include": "#fmt_escaped_close_brace"
         },
         {
           "include": "#fmt_interpolation"
@@ -1299,8 +1324,15 @@
           "name": "punctuation.definition.string.end.nim"
         }
       },
+      "applyEndPatternLast": true,
       "name": "string.quoted.triple.raw.nim",
       "patterns": [
+        {
+          "include": "#fmt_escaped_open_brace"
+        },
+        {
+          "include": "#fmt_escaped_close_brace"
+        },
         {
           "include": "#fmt_interpolation"
         }
@@ -1322,17 +1354,20 @@
           "name": "punctuation.definition.string.end.nim"
         }
       },
+      "applyEndPatternLast": true,
       "name": "string.quoted.double.nim",
       "patterns": [
         {
-          "match": "\"",
-          "name": "invalid.illegal.nim"
+          "include": "#fmt_escaped_open_brace"
         },
         {
-          "include": "#string_escapes"
+          "include": "#fmt_escaped_close_brace"
         },
         {
           "include": "#fmt_interpolation"
+        },
+        {
+          "include": "#string_escapes"
         }
       ]
     },
@@ -1352,8 +1387,15 @@
           "name": "punctuation.definition.string.end.nim"
         }
       },
+      "applyEndPatternLast": true,
       "name": "string.quoted.triple.raw.nim",
       "patterns": [
+        {
+          "include": "#fmt_escaped_open_brace"
+        },
+        {
+          "include": "#fmt_escaped_close_brace"
+        },
         {
           "include": "#fmt_interpolation"
         }
@@ -1381,17 +1423,20 @@
               "name": "punctuation.definition.string.end.nim"
             }
           },
+          "applyEndPatternLast": true,
           "name": "string.quoted.double.nim",
           "patterns": [
             {
-              "match": "\"",
-              "name": "invalid.illegal.nim"
+              "include": "#fmt_escaped_open_brace"
             },
             {
-              "include": "#string_escapes"
+              "include": "#fmt_escaped_close_brace"
             },
             {
               "include": "#fmt_interpolation"
+            },
+            {
+              "include": "#string_escapes"
             }
           ]
         }
@@ -1411,6 +1456,7 @@
           "name": "punctuation.definition.string.end.nim"
         }
       },
+      "applyEndPatternLast": true,
       "name": "string.quoted.double.nim",
       "patterns": [
         {
