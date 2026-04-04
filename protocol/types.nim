@@ -579,20 +579,19 @@ type
   #   mimeType*: Option[string]
   #   sizes*: OptionalSeq[string]
   #   theme*: Option[McpInitializeParams_serverInfo_Icon_theme]
-    
   McpInitializeParams_serverInfo* = ref object of RootObj
     # icons*: OptionalSeq[McpInitializeParams_serverInfo_Icon]
-    name*: string
     # title*: Option[string]
-    version*: string
     # description*: Option[string]
     # websiteUrl*: Option[string]
+    name*: string
+    version*: string
 
   McpInitializeResult* = ref object of RootObj
     protocolVersion*: string
+    # instructions*: Option[string]
     capabilities*: McpServerCapabilities
     serverInfo*: McpInitializeParams_serverInfo
-    # instructions*: Option[string]
 
   LspInitializeResult* = ref object of RootObj
     capabilities*: LspServerCapabilities
@@ -695,8 +694,8 @@ type
     # completions*: OptionalNode
     # prompts*: OptionalNode
     # resources*: OptionalNode
-    tools*: Option[ToolsOptions]
     # tasks*: OptionalNode
+    tools*: Option[ToolsOptions]
 
   LspServerCapabilities* = ref object of RootObj
     #!!!positionEncoding*: Option[PositionEncodingKind_str]

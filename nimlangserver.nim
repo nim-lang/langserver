@@ -8,16 +8,21 @@ when defined(posix):
   import posix
 
 proc registerMcpRoutes(srv: RpcSocketServer, ls: LanguageServer) =
-  srv.register("initialize", wrapRpc(partial(mcp.initialize, (ls: ls, onExit: ls.onExit))))
+  srv.register(
+    "initialize", wrapRpc(partial(mcp.initialize, (ls: ls, onExit: ls.onExit)))
+  )
 
 proc registerLspRoutes(srv: RpcSocketServer, ls: LanguageServer) =
-  srv.register("initialize", wrapRpc(partial(lsp.initialize, (ls: ls, onExit: ls.onExit))))
-    #use from ls
   srv.register(
-    "textDocument/completion", ls.addRpcToCancellable(wrapRpc(partial(lsp.completion, ls)))
+    "initialize", wrapRpc(partial(lsp.initialize, (ls: ls, onExit: ls.onExit)))
+  ) #use from ls
+  srv.register(
+    "textDocument/completion",
+    ls.addRpcToCancellable(wrapRpc(partial(lsp.completion, ls))),
   )
   srv.register(
-    "textDocument/definition", ls.addRpcToCancellable(wrapRpc(partial(lsp.definition, ls)))
+    "textDocument/definition",
+    ls.addRpcToCancellable(wrapRpc(partial(lsp.definition, ls))),
   )
   srv.register(
     "textDocument/declaration",
@@ -44,18 +49,21 @@ proc registerLspRoutes(srv: RpcSocketServer, ls: LanguageServer) =
     "textDocument/rename", ls.addRpcToCancellable(wrapRpc(partial(lsp.rename, ls)))
   )
   srv.register(
-    "textDocument/inlayHint", ls.addRpcToCancellable(wrapRpc(partial(lsp.inlayHint, ls)))
+    "textDocument/inlayHint",
+    ls.addRpcToCancellable(wrapRpc(partial(lsp.inlayHint, ls))),
   )
   srv.register(
     "textDocument/signatureHelp",
     ls.addRpcToCancellable(wrapRpc(partial(lsp.signatureHelp, ls))),
   )
   srv.register(
-    "textDocument/formatting", ls.addRpcToCancellable(wrapRpc(partial(lsp.formatting, ls)))
+    "textDocument/formatting",
+    ls.addRpcToCancellable(wrapRpc(partial(lsp.formatting, ls))),
   )
   srv.register("workspace/executeCommand", wrapRpc(partial(lsp.executeCommand, ls)))
   srv.register(
-    "workspace/symbol", ls.addRpcToCancellable(wrapRpc(partial(lsp.workspaceSymbol, ls)))
+    "workspace/symbol",
+    ls.addRpcToCancellable(wrapRpc(partial(lsp.workspaceSymbol, ls))),
   )
   srv.register(
     "textDocument/documentHighlight",
@@ -66,7 +74,9 @@ proc registerLspRoutes(srv: RpcSocketServer, ls: LanguageServer) =
   #Extension
   srv.register("extension/macroExpand", wrapRpc(partial(lsp.expand, ls)))
   srv.register("extension/status", wrapRpc(partial(lsp.status, ls)))
-  srv.register("extension/capabilities", wrapRpc(partial(lsp.extensionCapabilities, ls)))
+  srv.register(
+    "extension/capabilities", wrapRpc(partial(lsp.extensionCapabilities, ls))
+  )
   srv.register("extension/suggest", wrapRpc(partial(lsp.extensionSuggest, ls)))
   srv.register("extension/tasks", wrapRpc(partial(lsp.tasks, ls)))
   srv.register("extension/runTask", wrapRpc(partial(lsp.runTask, ls)))
