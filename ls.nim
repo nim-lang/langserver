@@ -25,6 +25,14 @@ import
   chronos/asyncproc,
   stew/byteutils
 
+proc logToFile(msg: string) {.raises: [].} =
+  try:
+    var logFile = open("mcp.log", fmAppend)
+    logFile.writeLine(msg)
+    close(logFile)
+  except:
+    discard
+
 proc getVersionFromNimble(): string =
   #We should static run nimble dump instead
   const content = staticRead("nimlangserver.nimble")
@@ -108,8 +116,13 @@ type
 
   CommandLineParams* = object
     clientProcessId*: Option[int]
+    mode*: Option[ServerMode]
     transport*: Option[TransportMode]
     port*: Port #only for sockets
+
+  ServerMode* = enum
+    lsp = "lsp"
+    mcp = "mcp"
 
   TransportMode* = enum
     stdio = "stdio"
@@ -136,10 +149,16 @@ type
     state*: PendingRequestState
 
   LanguageServer* = ref object
-    clientCapabilities*: ClientCapabilities
-    serverCapabilities*: ServerCapabilities
+    case serverMode*: ServerMode
+    of lsp:
+      lspClientCapabilities*: LspClientCapabilities
+      lspServerCapabilities*: LspServerCapabilities
+      lspInitializeParams*: LspInitializeParams
+    of mcp:
+      mcpClientCapabilities*: McpClientCapabilities
+      mcpServerCapabilities*: McpServerCapabilities
+      mcpInitializeParams*: McpInitializeParams
     extensionCapabilities*: set[LspExtensionCapability]
-    initializeParams*: InitializeParams
     notify*: NotifyAction
     call*: CallAction
     onExit*: OnExitCallback
@@ -210,6 +229,7 @@ proc initLs*(params: CommandLineParams, storageDir: string): LanguageServer =
   LanguageServer(
     workspaceConfiguration: Future[JsonNode](),
     filesWithDiags: initHashSet[string](),
+    serverMode: params.mode.get(),
     transportMode: params.transport.get(),
     openFiles: initTable[string, NlsFileInfo](),
     # idleOpenFiles: initTable[string, NlsFileInfo](),
@@ -251,7 +271,7 @@ func parameterHintsEnabled*(cnf: NlsConfig): bool =
 func inlayHintsEnabled*(cnf: NlsConfig): bool =
   typeHintsEnabled(cnf) or exceptionHintsEnabled(cnf) or parameterHintsEnabled(cnf)
 
-proc supportSignatureHelp*(cc: ClientCapabilities): bool =
+proc supportSignatureHelp*(cc: LspClientCapabilities): bool =
   if cc.isNil:
     return false
   let caps = cc.textDocument
@@ -260,18 +280,21 @@ proc supportSignatureHelp*(cc: ClientCapabilities): bool =
 proc getNimbleDumpInfo*(
     ls: LanguageServer, nimbleFile: string
 ): Future[NimbleDumpInfo] {.async.} =
+  logToFile("-- Started getNimbleDumpInfo --")
+  
   if nimbleFile in ls.nimDumpCache:
     return ls.nimDumpCache.getOrDefault(nimbleFile)
   var process: AsyncProcessRef
   try:
     process = await startProcess(
       "nimble",
-      arguments = @["dump", nimbleFile],
+      arguments = @["dump"],#, nimbleFile],
       options = {UsePath},
       stderrHandle = AsyncProcess.Pipe,
       stdoutHandle = AsyncProcess.Pipe,
     )
     let info = string.fromBytes(process.stdoutStream.read().await)
+    logToFile("info = " & info)
 
     for line in info.splitLines:
       if line.startsWith("srcDir"):
@@ -316,15 +339,21 @@ proc parseWorkspaceConfiguration*(conf: JsonNode): NlsConfig =
 proc getWorkspaceConfiguration*(
     ls: LanguageServer
 ): Future[NlsConfig] {.async: (raises: []).} =
+  logToFile "-- Started getWorkspaceConfiguration --"
   try:
     #this is the root of a lot a problems as there are multiple race conditions here.
     #since most request doenst really rely on the configuration, we can just go ahead and 
     #return a default one until we have the right one. 
     #TODO review and handle project specific confs when received instead of reliying in this func
     if ls.workspaceConfiguration.finished:
-      return parseWorkspaceConfiguration(ls.workspaceConfiguration.read)
+      result = parseWorkspaceConfiguration(ls.workspaceConfiguration.read)
+      logToFile "Early return"
+      logToFile "result.nimsuggestPath = " & result.nimsuggestPath.get("")
+      return result
+    logToFile "Success"
     return NlsConfig()
   except CatchableError as ex:
+    logToFile "Error"
     error "Failed to get workspace configuration", error = ex.msg
     writeStackTrace(ex)
 
@@ -427,15 +456,15 @@ proc addProjectFileToPendingRequest*(
     ls.sendStatusChanged
 
 proc requiresDynamicRegistrationForDidChangeConfiguration(ls: LanguageServer): bool =
-  ls.clientCapabilities.workspace.isSome and
-    ls.clientCapabilities.workspace.get.didChangeConfiguration.isSome and
-    ls.clientCapabilities.workspace.get.didChangeConfiguration.get.dynamicRegistration.get(
+  ls.lspClientCapabilities.workspace.isSome and
+    ls.lspClientCapabilities.workspace.get.didChangeConfiguration.isSome and
+    ls.lspClientCapabilities.workspace.get.didChangeConfiguration.get.dynamicRegistration.get(
       false
     )
 
 proc supportsConfigurationRequest(ls: LanguageServer): bool =
-  ls.clientCapabilities.workspace.isSome and
-    ls.clientCapabilities.workspace.get.configuration.get(false)
+  ls.lspClientCapabilities.workspace.isSome and
+    ls.lspClientCapabilities.workspace.get.configuration.get(false)
 
 proc usePullConfigurationModel*(ls: LanguageServer): bool =
   ls.requiresDynamicRegistrationForDidChangeConfiguration and
@@ -567,21 +596,45 @@ proc getProjectFileAutoGuess*(
     path = dir
     inc up
 
-proc getRootPath*(ip: InitializeParams): string =
+proc getRootPath*(ip: LspInitializeParams): string =
+  logToFile "-- Started getRootPath --"
   if ip.rootUri.isNone or ip.rootUri.get == "":
     if ip.rootPath.isSome and ip.rootPath.get != "":
-      return ip.rootPath.get
+      result = ip.rootPath.get
+      logToFile "Early exit, result = " & result
+      return result
     else:
-      return getCurrentDir().pathToUri.uriToPath
-  return ip.rootUri.get.uriToPath
+      result = getCurrentDir().pathToUri.uriToPath
+      logToFile "Early exit, result = " & result
+      return result
+
+  result = ip.rootUri.get.uriToPath
+  logToFile "result = " & result
+
+proc getRootPath*(ip: McpInitializeParams): string =
+  logToFile "-- Started getRootPath --"
+  result = getCurrentDir().pathToUri.uriToPath
+  logToFile "result = " & result
 
 proc getWorkingDir(ls: LanguageServer, path: string): Future[string] {.async.} =
-  let
-    rootPath = ls.initializeParams.getRootPath
-    pathRelativeToRoot = path.tryRelativeTo(rootPath)
-    mapping = ls.getWorkspaceConfiguration.await().workingDirectoryMapping.get(@[])
+  logToFile "-- Started getWorkingDir --"
+
+  let rootPath = case ls.serverMode
+    of lsp: ls.lspInitializeParams.getRootPath
+    of mcp: ls.mcpInitializeParams.getRootPath
+
+  logToFile "rootPath = " & rootPath
+
+  let pathRelativeToRoot = path.tryRelativeTo(rootPath)
+  logToFile "pathRelativeRoot = " & pathRelativeToRoot.get("")
+
+  let mapping = ls.getWorkspaceConfiguration.await().workingDirectoryMapping.get(@[])
+  for m in mapping:
+    logToFile "m.projectFile = " & m.projectFile 
+    logToFile "m.directory = " & m.directory
 
   result = getCurrentDir()
+  logToFile "result = " & result
 
   for m in mapping:
     if pathRelativeToRoot.isSome and m.projectFile == pathRelativeToRoot.get():
@@ -589,7 +642,7 @@ proc getWorkingDir(ls: LanguageServer, path: string): Future[string] {.async.} =
       break
 
 proc progressSupported(ls: LanguageServer): bool =
-  result = ls.initializeParams.capabilities.window
+  result = ls.lspInitializeParams.capabilities.window
     .get(ClientCapabilities_window()).workDoneProgress
     .get(false)
 
@@ -1019,11 +1072,19 @@ proc createOrRestartNimsuggest*(
 ) {.gcsafe, raises: [].} =
   try:
     debug "Starting createOrRestartNimsuggest", projectFile = projectFile, uri = uri
+    logToFile "Starting createOrRestartNimsuggest"
+    logToFile "projectFile = " & projectFile
+    logToFile "uri = " & uri
     let
       configuration = ls.getWorkspaceConfiguration().waitFor()
       workingDir = ls.getWorkingDir(projectFile).waitFor()
       (nimsuggestPath, version) =
         ls.getNimSuggestPathAndVersion(configuration, workingDir).waitFor()
+
+    logToFile "nimsuggestPath = " & nimsuggestPath
+    logToFile "version = " & version
+
+    let
       timeout = configuration.timeout.get(REQUEST_TIMEOUT)
       restartCallback = proc(ns: Nimsuggest) {.gcsafe, raises: [].} =
         warn "Restarting the server due to requests being to slow",
@@ -1037,6 +1098,10 @@ proc createOrRestartNimsuggest*(
       errorCallback = partial(onErrorCallback, (ls, uri))
 
     debug "Creating new nimsuggest project", projectFile = projectFile
+    logToFile ""
+    logToFile "--== Creating new nimsuggest project ==--"
+    logToFile "projectFile = " & projectFile
+
     let projectNext = waitFor createNimsuggest(
       projectFile,
       nimsuggestPath,
@@ -1049,6 +1114,8 @@ proc createOrRestartNimsuggest*(
       configuration.exceptionHintsEnabled,
     )
 
+    logToFile "projectNext.file = " & projectNext.file
+
     if projectFile in ls.projectFiles:
       var project = ls.projectFiles[projectFile]
       project.stop()
@@ -1058,12 +1125,19 @@ proc createOrRestartNimsuggest*(
       if fut.failed:
         let msg = fut.error.msg
         error "Nimsuggest initialization failed", projectFile = projectFile, error = msg
+        logToFile "Nimsuggest initialization failed"
+        logTofile "projectFile = " & projectFile
+        logTofile "error = " & msg
+
         ls.showMessage(
           fmt "Nimsuggest initialization for {projectFile} failed with: {msg}",
           MessageType.Error,
         )
       else:
         debug "Nimsuggest initialized successfully", projectFile = projectFile
+        logToFile "Nimsuggest initialized successfully"
+        logTofile "projectFile = " & projectFile
+
         ls.showMessage(fmt "Nimsuggest initialized for {projectFile}", MessageType.Info)
         traceAsyncErrors ls.checkProject(uri)
         fut.read().openFiles.incl uri
@@ -1071,6 +1145,9 @@ proc createOrRestartNimsuggest*(
   except CatchableError as ex:
     error "Failed to create/restart nimsuggest",
       projectFile = projectFile, error = ex.msg
+    logToFile "Failed to create/restart nimsuggest"
+    logTofile "projectFile = " & projectFile
+    logTofile "error = " & ex.msg
 
 proc restartAllNimsuggestInstances(ls: LanguageServer) =
   debug "Restarting all nimsuggest instances"
@@ -1100,9 +1177,9 @@ proc maybeRegisterCapabilityDidChangeConfiguration*(ls: LanguageServer) =
 proc handleConfigurationChanges*(
     ls: LanguageServer, oldConfiguration, newConfiguration: NlsConfig
 ) =
-  if ls.clientCapabilities.workspace.isSome and
-      ls.clientCapabilities.workspace.get.inlayHint.isSome and
-      ls.clientCapabilities.workspace.get.inlayHint.get.refreshSupport.get(false) and
+  if ls.lspClientCapabilities.workspace.isSome and
+      ls.lspClientCapabilities.workspace.get.inlayHint.isSome and
+      ls.lspClientCapabilities.workspace.get.inlayHint.get.refreshSupport.get(false) and
       not inlayHintsConfigurationEquals(oldConfiguration, newConfiguration):
     # toggling the exception hints triggers a full nimsuggest restart, since they are controlled by a nimsuggest command line option
     #   --exceptionInlayHints:on|off
@@ -1164,7 +1241,7 @@ proc shouldSpawnNimsuggest*(ls: LanguageServer): Future[bool] {.async.} =
 
 proc getProjectFile*(fileUri: string, ls: LanguageServer): Future[string] {.async.} =
   let
-    rootPath = ls.initializeParams.getRootPath
+    rootPath = ls.lspInitializeParams.getRootPath
     pathRelativeToRoot = fileUri.tryRelativeTo(rootPath)
     mappings = ls.getWorkspaceConfiguration.await().projectMapping.get(@[])
 
