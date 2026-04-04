@@ -1,88 +1,92 @@
 import json_rpc/[servers/socketserver, private/jrpc_sys, jsonmarshal, rpcclient, router]
 import chronicles, chronos
 import std/[syncio, os, json, strutils, strformat]
-import ls, routes, suggestapi, utils, lstransports, asyncprocmonitor
+import ls, suggestapi, utils, lstransports, asyncprocmonitor
+import routes/[lsp, mcp]
 import protocol/types
 when defined(posix):
   import posix
 
-proc registerRoutes(srv: RpcSocketServer, ls: LanguageServer) =
-  srv.register("initialize", wrapRpc(partial(initialize, (ls: ls, onExit: ls.onExit))))
+proc registerMcpRoutes(srv: RpcSocketServer, ls: LanguageServer) =
+  srv.register("initialize", wrapRpc(partial(mcp.initialize, (ls: ls, onExit: ls.onExit))))
+
+proc registerLspRoutes(srv: RpcSocketServer, ls: LanguageServer) =
+  srv.register("initialize", wrapRpc(partial(lsp.initialize, (ls: ls, onExit: ls.onExit))))
     #use from ls
   srv.register(
-    "textDocument/completion", ls.addRpcToCancellable(wrapRpc(partial(completion, ls)))
+    "textDocument/completion", ls.addRpcToCancellable(wrapRpc(partial(lsp.completion, ls)))
   )
   srv.register(
-    "textDocument/definition", ls.addRpcToCancellable(wrapRpc(partial(definition, ls)))
+    "textDocument/definition", ls.addRpcToCancellable(wrapRpc(partial(lsp.definition, ls)))
   )
   srv.register(
     "textDocument/declaration",
-    ls.addRpcToCancellable(wrapRpc(partial(declaration, ls))),
+    ls.addRpcToCancellable(wrapRpc(partial(lsp.declaration, ls))),
   )
   srv.register(
     "textDocument/typeDefinition",
-    ls.addRpcToCancellable(wrapRpc(partial(typeDefinition, ls))),
+    ls.addRpcToCancellable(wrapRpc(partial(lsp.typeDefinition, ls))),
   )
   srv.register(
     "textDocument/documentSymbol",
-    ls.addRpcToCancellable(wrapRpc(partial(documentSymbols, ls))),
+    ls.addRpcToCancellable(wrapRpc(partial(lsp.documentSymbols, ls))),
   )
   srv.register(
-    "textDocument/hover", ls.addRpcToCancellable(wrapRpc(partial(hover, ls)))
+    "textDocument/hover", ls.addRpcToCancellable(wrapRpc(partial(lsp.hover, ls)))
   )
-  srv.register("textDocument/references", wrapRpc(partial(references, ls)))
-  srv.register("textDocument/codeAction", wrapRpc(partial(codeAction, ls)))
+  srv.register("textDocument/references", wrapRpc(partial(lsp.references, ls)))
+  srv.register("textDocument/codeAction", wrapRpc(partial(lsp.codeAction, ls)))
   srv.register(
     "textDocument/prepareRename",
-    ls.addRpcToCancellable(wrapRpc(partial(prepareRename, ls))),
+    ls.addRpcToCancellable(wrapRpc(partial(lsp.prepareRename, ls))),
   )
   srv.register(
-    "textDocument/rename", ls.addRpcToCancellable(wrapRpc(partial(rename, ls)))
+    "textDocument/rename", ls.addRpcToCancellable(wrapRpc(partial(lsp.rename, ls)))
   )
   srv.register(
-    "textDocument/inlayHint", ls.addRpcToCancellable(wrapRpc(partial(inlayHint, ls)))
+    "textDocument/inlayHint", ls.addRpcToCancellable(wrapRpc(partial(lsp.inlayHint, ls)))
   )
   srv.register(
     "textDocument/signatureHelp",
-    ls.addRpcToCancellable(wrapRpc(partial(signatureHelp, ls))),
+    ls.addRpcToCancellable(wrapRpc(partial(lsp.signatureHelp, ls))),
   )
   srv.register(
-    "textDocument/formatting", ls.addRpcToCancellable(wrapRpc(partial(formatting, ls)))
+    "textDocument/formatting", ls.addRpcToCancellable(wrapRpc(partial(lsp.formatting, ls)))
   )
-  srv.register("workspace/executeCommand", wrapRpc(partial(executeCommand, ls)))
+  srv.register("workspace/executeCommand", wrapRpc(partial(lsp.executeCommand, ls)))
   srv.register(
-    "workspace/symbol", ls.addRpcToCancellable(wrapRpc(partial(workspaceSymbol, ls)))
+    "workspace/symbol", ls.addRpcToCancellable(wrapRpc(partial(lsp.workspaceSymbol, ls)))
   )
   srv.register(
     "textDocument/documentHighlight",
-    ls.addRpcToCancellable(wrapRpc(partial(documentHighlight, ls))),
+    ls.addRpcToCancellable(wrapRpc(partial(lsp.documentHighlight, ls))),
   )
-  srv.register("shutdown", wrapRpc(partial(shutdown, ls)))
-  srv.register("exit", wrapRpc(partial(exit, (ls: ls, onExit: ls.onExit))))
+  srv.register("shutdown", wrapRpc(partial(lsp.shutdown, ls)))
+  srv.register("exit", wrapRpc(partial(lsp.exit, (ls: ls, onExit: ls.onExit))))
   #Extension
-  srv.register("extension/macroExpand", wrapRpc(partial(expand, ls)))
-  srv.register("extension/status", wrapRpc(partial(status, ls)))
-  srv.register("extension/capabilities", wrapRpc(partial(extensionCapabilities, ls)))
-  srv.register("extension/suggest", wrapRpc(partial(extensionSuggest, ls)))
-  srv.register("extension/tasks", wrapRpc(partial(tasks, ls)))
-  srv.register("extension/runTask", wrapRpc(partial(runTask, ls)))
-  srv.register("extension/listTests", wrapRpc(partial(listTests, ls)))
-  srv.register("extension/runTests", wrapRpc(partial(runTests, ls)))
-  srv.register("extension/cancelTest", wrapRpc(partial(cancelTest, ls)))
+  srv.register("extension/macroExpand", wrapRpc(partial(lsp.expand, ls)))
+  srv.register("extension/status", wrapRpc(partial(lsp.status, ls)))
+  srv.register("extension/capabilities", wrapRpc(partial(lsp.extensionCapabilities, ls)))
+  srv.register("extension/suggest", wrapRpc(partial(lsp.extensionSuggest, ls)))
+  srv.register("extension/tasks", wrapRpc(partial(lsp.tasks, ls)))
+  srv.register("extension/runTask", wrapRpc(partial(lsp.runTask, ls)))
+  srv.register("extension/listTests", wrapRpc(partial(lsp.listTests, ls)))
+  srv.register("extension/runTests", wrapRpc(partial(lsp.runTests, ls)))
+  srv.register("extension/cancelTest", wrapRpc(partial(lsp.cancelTest, ls)))
   #Notifications
-  srv.register("$/cancelRequest", wrapRpc(partial(cancelRequest, ls)))
-  srv.register("initialized", wrapRpc(partial(initialized, ls)))
-  srv.register("textDocument/didOpen", wrapRpc(partial(didOpen, ls)))
-  srv.register("textDocument/didSave", wrapRpc(partial(didSave, ls)))
-  srv.register("textDocument/didClose", wrapRpc(partial(didClose, ls)))
+  srv.register("$/cancelRequest", wrapRpc(partial(lsp.cancelRequest, ls)))
+  srv.register("initialized", wrapRpc(partial(lsp.initialized, ls)))
+  srv.register("textDocument/didOpen", wrapRpc(partial(lsp.didOpen, ls)))
+  srv.register("textDocument/didSave", wrapRpc(partial(lsp.didSave, ls)))
+  srv.register("textDocument/didClose", wrapRpc(partial(lsp.didClose, ls)))
   srv.register(
-    "workspace/didChangeConfiguration", wrapRpc(partial(didChangeConfiguration, ls))
+    "workspace/didChangeConfiguration", wrapRpc(partial(lsp.didChangeConfiguration, ls))
   )
-  srv.register("textDocument/didChange", wrapRpc(partial(didChange, ls)))
+  srv.register("textDocument/didChange", wrapRpc(partial(lsp.didChange, ls)))
   srv.register(
-    "textDocument/willSaveWaitUntil", wrapRpc(partial(willSaveWaitUntil, ls))
+    "textDocument/willSaveWaitUntil", wrapRpc(partial(lsp.willSaveWaitUntil, ls))
   )
-  srv.register("$/setTrace", wrapRpc(partial(setTrace, ls)))
+  srv.register("$/setTrace", wrapRpc(partial(lsp.setTrace, ls)))
 
 proc showHelp() =
   echo "nimlangserver: The Nim Language Server"
@@ -91,6 +95,8 @@ proc showHelp() =
   echo "Options:"
   echo "  --help, -h               Show this help message"
   echo "  --version, -v            Show version information"
+  echo "  --lsp                    Run in LSP server mode (default)"
+  echo "  --mcp                    Run in MCP server mode"
   echo "  --stdio                  Use stdio transport (default)"
   echo "  --socket                 Use socket transport"
   echo "  --port=<port>            Port to use for socket transport"
@@ -135,6 +141,10 @@ proc handleParams(): CommandLineParams =
       except ValueError:
         stderr.writeLine("Invalid client process ID: ", pidStr)
         quit 1
+    if param == "--lsp":
+      result.mode = some ServerMode.lsp
+    if param == "--mcp":
+      result.mode = some ServerMode.mcp
     if param == "--stdio":
       result.transport = some TransportMode.stdio
     if param == "--socket":
@@ -153,8 +163,10 @@ proc handleParams(): CommandLineParams =
     if result.port == default(Port):
       result.port = getNextFreePort()
     echo &"port={result.port}"
+  if result.mode.isNone:
+    result.mode = some ServerMode.lsp
   if result.transport.isNone:
-    result.transport = some stdio
+    result.transport = some TransportMode.stdio
 
 proc registerProcMonitor(ls: LanguageServer) =
   if ls.cmdLineClientProcessId.isSome:
@@ -195,7 +207,12 @@ proc main*(cmdLineParams: CommandLineParams): LanguageServer =
   of socket:
     result.startSocketServer(cmdLineParams.port)
 
-  result.srv.registerRoutes(result)
+  case result.serverMode
+  of lsp:
+    result.srv.registerLspRoutes(result)
+  of mcp:
+    result.srv.registerMcpRoutes(result)
+
   result.registerProcMonitor()
 
 when isMainModule:
