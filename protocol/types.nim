@@ -85,7 +85,25 @@ type
     kind*: string
     value*: string
 
-  InitializeParams_clientInfo* = ref object of RootObj
+  McpInitializeParams_clientInfo_Icon_theme* = enum
+    light = "light"
+    dark = "dark"
+
+  McpInitializeParams_clientInfo_Icon* = ref object of RootObj
+    src*: string
+    mimeType*: Option[string]
+    sizes*: OptionalSeq[string]
+    theme*: Option[McpInitializeParams_clientInfo_Icon_theme]
+
+  McpInitializeParams_clientInfo* = ref object of RootObj
+    icons*: OptionalSeq[McpInitializeParams_clientInfo_Icon]
+    name*: string
+    title*: Option[string]
+    version*: string
+    description*: Option[string]
+    websiteUrl*: Option[string]
+
+  LspInitializeParams_clientInfo* = ref object of RootObj
     name*: string
     version*: Option[string]
 
@@ -94,14 +112,19 @@ type
   # 'off' | 'messages' | 'verbose'
   TraceValue_str = string
 
-  InitializeParams* = ref object of RootObj
+  McpInitializeParams* = ref object of RootObj
+    protocolVersion*: string
+    capabilities*: McpClientCapabilities
+    clientInfo*: Option[McpInitializeParams_clientInfo]
+
+  LspInitializeParams* = ref object of RootObj
     processId*: OptionalNode # int or float
-    clientInfo*: Option[InitializeParams_clientInfo]
+    clientInfo*: Option[LspInitializeParams_clientInfo]
     locale*: Option[string]
     rootPath*: Option[string]
     rootUri*: Option[DocumentUri]
     initializationOptions*: OptionalNode
-    capabilities*: ClientCapabilities
+    capabilities*: LspClientCapabilities
     trace*: Option[TraceValue_str]
     workspaceFolders*: OptionalSeq[WorkspaceFolder]
 
@@ -525,7 +548,15 @@ type
     markdown*: Option[MarkdownClientCapabilities]
     positionEncodings*: OptionalSeq[PositionEncodingKind_str]
 
-  ClientCapabilities* = ref object of RootObj
+  McpClientCapabilities* = ref object of RootObj
+    workspace*: Option[ClientCapabilities_workspace]
+    textDocument*: Option[TextDocumentClientCapabilities]
+    notebookDocument*: Option[NotebookDocumentClientCapabilities]
+    window*: Option[ClientCapabilities_window]
+    general*: Option[ClientCapabilities_general]
+    experimental*: OptionalNode
+
+  LspClientCapabilities* = ref object of RootObj
     workspace*: Option[ClientCapabilities_workspace]
     textDocument*: Option[TextDocumentClientCapabilities]
     notebookDocument*: Option[NotebookDocumentClientCapabilities]
@@ -539,12 +570,32 @@ type
     uri*: URI
     name*: string
 
-  InitializeResult_serverInfo* = ref object of RootObj
-    name*: string
-    version*: Option[string]
+  # McpInitializeParams_serverInfo_Icon_theme* = enum
+  #   light = "light"
+  #   dark = "dark"
 
-  InitializeResult* = ref object of RootObj
-    capabilities*: ServerCapabilities
+  # McpInitializeParams_serverInfo_Icon* = ref object of RootObj
+  #   src*: string
+  #   mimeType*: Option[string]
+  #   sizes*: OptionalSeq[string]
+  #   theme*: Option[McpInitializeParams_serverInfo_Icon_theme]
+    
+  McpInitializeParams_serverInfo* = ref object of RootObj
+    # icons*: OptionalSeq[McpInitializeParams_serverInfo_Icon]
+    name*: string
+    # title*: Option[string]
+    version*: string
+    # description*: Option[string]
+    # websiteUrl*: Option[string]
+
+  McpInitializeResult* = ref object of RootObj
+    protocolVersion*: string
+    capabilities*: McpServerCapabilities
+    serverInfo*: McpInitializeParams_serverInfo
+    # instructions*: Option[string]
+
+  LspInitializeResult* = ref object of RootObj
+    capabilities*: LspServerCapabilities
     #!!!serverInfo*: Option[InitializeResult_serverInfo]
 
   InitializeError* = ref object of RootObj
@@ -635,7 +686,19 @@ type
   InlayHintOptions* = object
     resolveProvider*: Option[bool]
 
-  ServerCapabilities* = ref object of RootObj
+  ToolsOptions* = object
+    listChanged*: Option[bool]
+
+  McpServerCapabilities* = ref object of RootObj
+    # experimental*: OptionalNode
+    # logging*: OptionalNode
+    # completions*: OptionalNode
+    # prompts*: OptionalNode
+    # resources*: OptionalNode
+    tools*: Option[ToolsOptions]
+    # tasks*: OptionalNode
+
+  LspServerCapabilities* = ref object of RootObj
     #!!!positionEncoding*: Option[PositionEncodingKind_str]
     textDocumentSync*: OptionalNode # TextDocumentSyncOptions or TextDocumentSyncKind_int
     #notebookDocumentSync?: NotebookDocumentSyncOptions | NotebookDocumentSyncRegistrationOptions;
