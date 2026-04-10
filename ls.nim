@@ -339,7 +339,7 @@ proc parseWorkspaceConfiguration*(conf: JsonNode): NlsConfig =
 proc getWorkspaceConfiguration*(
     ls: LanguageServer
 ): Future[NlsConfig] {.async: (raises: []).} =
-  logToFile "-- Started getWorkspaceConfiguration --"
+  # logToFile "-- Started getWorkspaceConfiguration --"
   try:
     #this is the root of a lot a problems as there are multiple race conditions here.
     #since most request doenst really rely on the configuration, we can just go ahead and 
@@ -350,7 +350,6 @@ proc getWorkspaceConfiguration*(
       logToFile "Early return"
       logToFile "result.nimsuggestPath = " & result.nimsuggestPath.get("")
       return result
-    logToFile "Success"
     return NlsConfig()
   except CatchableError as ex:
     logToFile "Error"
@@ -878,6 +877,8 @@ proc didOpenFile*(
 ): Future[void] {.async.} =
   with textDocument:
     debug "New document opened for URI:", uri = uri
+    logToFile "New document opened"
+    logToFile "uri = " & uri
     let
       file = open(ls.uriStorageLocation(uri), fmWrite)
       projectFileFuture = getProjectFile(uriToPath(uri), ls)
@@ -895,8 +896,12 @@ proc didOpenFile*(
     let projectFile = await projectFileFuture
     debug "Document associated with the following projectFile",
       uri = uri, projectFile = projectFile
+    logToFile "Document associated with the following projectFile"
+    logToFile "uri = " & uri
+    logToFile "projectFile = " & projectFile
     if not ls.projectFiles.hasKey(projectFile):
       debug "Will create nimsuggest for this file", uri = uri
+      logToFile "Will create nimsuggest for this file"
       ls.createOrRestartNimsuggest(projectFile, uri)
 
     for line in text.splitLines:
@@ -906,6 +911,7 @@ proc didOpenFile*(
     file.close()
     let ns = await ls.tryGetNimSuggest(uri)
     if ns.isSome:
+      logToFile "ns.get.nimsuggestPath = " & ns.get.nimSuggestPath
       discard ls.warnIfUnknown(ns.get(), uri, projectFile)
 
     let projectFileUri = projectFile.pathToUri
@@ -918,16 +924,22 @@ proc didOpenFile*(
       await didOpenFile(ls, textDocument)
 
       debug "Opening project file", uri = projectFile, file = uri
+      logToFile "Opening project file"
+      logToFile "projectFile = " & projectFile
+      logToFile "uri = " & uri
     ls.showMessage(fmt "Opening {uri}", MessageType.Info)
 
 proc tryGetNimsuggest*(
     ls: LanguageServer, uri: string
 ): Future[Option[Nimsuggest]] {.async.} =
+  logToFile "-- tryGetNimsuggest started --"
   if uri in ls.idleOpenFiles:
     let idleFile = ls.idleOpenFiles[uri]
+    logToFile "idleFile.textDocument.uri = " & idleFile.textDocument.uri
     await didOpenFile(ls, idleFile.textDocument)
 
   if uri notin ls.openFiles:
+    logToFile "uri not in ls.openFiles"
     return none(NimSuggest)
 
   var retryCount = 0
@@ -935,6 +947,7 @@ proc tryGetNimsuggest*(
   while retryCount < maxRetries:
     let ns = await getNimsuggestInner(ls, uri)
     if not ns.isNil:
+      logToFile "ns.nimsuggestPath = " & ns.nimsuggestPath
       return some ns
 
     # If nimsuggest is nil, wait a bit and retry
@@ -944,6 +957,7 @@ proc tryGetNimsuggest*(
       await sleepAsync(10000 * retryCount) # Exponential backoff
 
   debug "Nimsuggest not found after retries", uri = uri
+  logToFile "Nimsuggest not found after retries"
   return none(NimSuggest)
 
 proc checkProject*(ls: LanguageServer, uri: string): Future[void] {.async.} =
@@ -1082,9 +1096,14 @@ proc createOrRestartNimsuggest*(
       workingDir = ls.getWorkingDir(projectFile).waitFor()
       (nimsuggestPath, version) =
         ls.getNimSuggestPathAndVersion(configuration, workingDir).waitFor()
+      protocolVer =
+        case ls.serverMode
+        of mcp: 2 # find references works only with version 2 in MCP mode somehow FIXME
+        of lsp: 0 # 0 means detect the highest supported version
 
     logToFile "nimsuggestPath = " & nimsuggestPath
     logToFile "version = " & version
+    logToFile "protocolVer = " & $protocolVer
 
     let
       timeout = configuration.timeout.get(REQUEST_TIMEOUT)
@@ -1114,6 +1133,7 @@ proc createOrRestartNimsuggest*(
       workingDir,
       configuration.logNimsuggest.get(false),
       configuration.exceptionHintsEnabled,
+      protocolVer = protocolVer,
     )
 
     logToFile "projectNext.file = " & projectNext.file
