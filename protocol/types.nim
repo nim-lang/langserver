@@ -85,6 +85,14 @@ type
     kind*: string
     value*: string
 
+  McpListToolsParams* = ref object of RootObj
+    # cursor*: Option[string]
+    #
+
+  McpCallToolParams* = ref object of RootObj
+    name*: string
+    arguments*: OptionalNode
+
   McpInitializeParams_clientInfo_Icon_theme* = enum
     light = "light"
     dark = "dark"
@@ -685,8 +693,41 @@ type
   InlayHintOptions* = object
     resolveProvider*: Option[bool]
 
-  ToolsOptions* = object
-    listChanged*: Option[bool]
+  McpToolSchema* = object
+    `type`*: string
+    properties*: OptionalNode
+    required*: OptionalSeq[string]
+    # `$schema`*: Option[string]
+    #
+
+  McpTool* = object
+    name*: string
+    title*: Option[string]
+    description*: Option[string]
+    inputSchema*: McpToolSchema
+    outputSchema*: Option[McpToolSchema]
+
+  McpListToolsResult* = ref object of RootObj
+    tools*: seq[McpTool]
+    # nextCursor*: Option[string]
+    #
+
+  McpContentBlockType* = enum
+    TextContent = "text"
+
+  McpContentBlock* = object
+    case `type`*: McpContentBlockType
+    of TextContent:
+      text*: string
+
+  McpCallToolResult* = ref object of RootObj
+    content*: seq[McpContentBlock]
+    structuredContent*: OptionalNode
+    isError*: Option[bool]
+
+  McpToolsOptions* = object
+    # listChanged*: Option[bool]
+    # 
 
   McpServerCapabilities* = ref object of RootObj
     # experimental*: OptionalNode
@@ -695,7 +736,7 @@ type
     # prompts*: OptionalNode
     # resources*: OptionalNode
     # tasks*: OptionalNode
-    tools*: Option[ToolsOptions]
+    tools*: Option[McpToolsOptions]
 
   LspServerCapabilities* = ref object of RootObj
     #!!!positionEncoding*: Option[PositionEncodingKind_str]
