@@ -131,12 +131,12 @@ proc readStdin*(ctx: ptr ReadStdinContext) {.thread.} =
     discard ctx.onStdReadSignal.fireSync()
     discard ctx.onMainReadSignal.waitSync()
 
-proc wrapContentWithContentLenght*(content: string): string =
-  let contentLenght = content.len + 1
-  &"{CONTENT_LENGTH}{contentLenght}{CRLF}{CRLF}{content}\n"
+proc wrapContentWithContentLength*(content: string): string =
+  let contentLength = content.len + 1
+  &"{CONTENT_LENGTH}{contentLength}{CRLF}{CRLF}{content}\n"
 
 proc writeOutput*(ls: LanguageServer, content: JsonNode) =
-  let res = wrapContentWithContentLenght($content)
+  let res = wrapContentWithContentLength($content)
   try:
     case ls.transportMode
     of stdio:
