@@ -260,5 +260,3 @@ proc callTool*(
 proc initialized*(ls: LanguageServer, _: JsonNode) {.async.} =
   debug "Client initialized."
   logToFile "--== Client initialized ==--"
-  # maybeRegisterCapabilityDidChangeConfiguration(ls)
-  # maybeRequestConfigurationFromClient(ls)
