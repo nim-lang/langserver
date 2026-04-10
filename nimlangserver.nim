@@ -8,9 +8,20 @@ when defined(posix):
   import posix
 
 proc registerMcpRoutes(srv: RpcSocketServer, ls: LanguageServer) =
+  # Routes
   srv.register(
     "initialize", wrapRpc(partial(mcp.initialize, (ls: ls, onExit: ls.onExit)))
   )
+
+  srv.register(
+    "tools/list", ls.addRpcToCancellable(wrapRpc(partial(mcp.listTools, ls)))
+  )
+  srv.register(
+    "tools/call", ls.addRpcToCancellable(wrapRpc(partial(mcp.callTool, ls)))
+  )
+
+  # Notifications
+  srv.register("notifications/initialized", wrapRpc(partial(mcp.initialized, ls)))
 
 proc registerLspRoutes(srv: RpcSocketServer, ls: LanguageServer) =
   srv.register(
