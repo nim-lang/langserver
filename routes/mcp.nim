@@ -53,8 +53,7 @@ proc initialize*(
   p.ls.mcpClientCapabilities = params.capabilities
   result = McpInitializeResult(
     protocolVersion: "2025-11-25",
-    capabilities:
-      McpServerCapabilities(tools: some(ToolsOptions(listChanged: some(true)))),
+    capabilities: McpServerCapabilities(tools: some(McpToolsOptions())),
     serverInfo: McpInitializeParams_serverInfo(name: "nimlangserver", version: "1.12.0"),
   )
 
