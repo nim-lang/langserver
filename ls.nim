@@ -1098,8 +1098,12 @@ proc createOrRestartNimsuggest*(
         ls.getNimSuggestPathAndVersion(configuration, workingDir).waitFor()
       protocolVer =
         case ls.serverMode
-        of mcp: 2 # find references works only with version 2 in MCP mode somehow FIXME
-        of lsp: 0 # 0 means detect the highest supported version
+        of mcp:
+          # FIXME: find references works only with version 2 in MCP mode somehow
+          2
+        of lsp:
+          # 0 means detect the highest supported version at runtime
+          0
 
     logToFile "nimsuggestPath = " & nimsuggestPath
     logToFile "version = " & version
