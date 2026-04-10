@@ -1243,7 +1243,12 @@ proc shouldSpawnNimsuggest*(ls: LanguageServer): Future[bool] {.async.} =
 
 proc getProjectFile*(fileUri: string, ls: LanguageServer): Future[string] {.async.} =
   let
-    rootPath = ls.lspInitializeParams.getRootPath
+    rootPath =
+      case ls.serverMode
+      of mcp:
+        ls.mcpInitializeParams.getRootPath()
+      of lsp:
+        ls.lspInitializeParams.getRootPath()
     pathRelativeToRoot = fileUri.tryRelativeTo(rootPath)
     mappings = ls.getWorkspaceConfiguration.await().projectMapping.get(@[])
 
