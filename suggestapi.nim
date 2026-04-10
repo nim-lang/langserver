@@ -20,7 +20,7 @@ import
 const REQUEST_TIMEOUT* = 120000
 const HighestSupportedNimSuggestProtocolVersion = 4
 
-# coppied from Nim repo
+# copied from Nim repo
 type
   PrefixMatch* {.pure.} = enum
     None ## no prefix detected
