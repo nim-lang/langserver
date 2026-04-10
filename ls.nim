@@ -910,8 +910,11 @@ proc didOpenFile*(
 
     let projectFileUri = projectFile.pathToUri
     if projectFileUri notin ls.openFiles:
-      var textDocument = textDocument
-      textDocument.uri = projectFileUri
+      var textDocument = TextDocumentItem(
+        uri: projectFileUri, languageId: "nim", version: 0, text: readFile(projectFile)
+      )
+
+      logToFile "Running didOpenFile on projectFile"
       await didOpenFile(ls, textDocument)
 
       debug "Opening project file", uri = projectFile, file = uri
