@@ -9,13 +9,12 @@ import
   with,
   tables,
   chronicles,
-  asyncprocmonitor,
   json_serialization,
   std/[strscans, times, json, parseutils, strutils],
   regex,
   stew/[byteutils],
   nimexpand,
-  ../[suggestapi, ls, utils],
+  ../[asyncprocmonitor, suggestapi, ls, utils],
   ../protocol/[enums, types]
 
 import macros except error
