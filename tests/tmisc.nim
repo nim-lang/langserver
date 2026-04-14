@@ -20,7 +20,7 @@ suite "Nimlangserver misc":
 
   test "after a period of inactivity, nimsuggest should be stopped":
     let initParams =
-      InitializeParams %* {
+      LspInitializeParams %* {
         "processId": %getCurrentProcessId(),
         "rootUri": fixtureUri("projects/hw/"),
         "capabilities":

@@ -27,7 +27,7 @@ suite "nimble setup":
     let entryPoint = testProjectDir / "src" / "testproject.nim"
     createNimbleProject(testProjectDir)
     let initParams =
-      InitializeParams %* {
+      LspInitializeParams %* {
         "processId": %getCurrentProcessId(),
         "rootUri": fixtureUri("projects/testproject"),
         "capabilities":
@@ -91,7 +91,7 @@ suite "Project Mapping":
 
   test "should use projectMapping fileRegex to find project file":
     let initParams =
-      InitializeParams %* {
+      LspInitializeParams %* {
         "processId": %getCurrentProcessId(),
         "rootUri": fixtureUri("projects"),
         "capabilities":

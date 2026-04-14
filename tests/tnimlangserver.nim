@@ -23,7 +23,7 @@ suite "Nimlangserver":
   waitFor client.connect("localhost", cmdParams.port)
   
   test "initialize from the client should call initialized on the server":
-    let initParams = InitializeParams %* {
+    let initParams = LspInitializeParams %* {
         "processId": %getCurrentProcessId(),
         "rootUri": fixtureUri("projects/hw/"),
         "capabilities": {
@@ -56,7 +56,7 @@ suite "Suggest API selection":
 
   
   waitFor client.connect("localhost", cmdParams.port)
-  let initParams = InitializeParams %* {
+  let initParams = LspInitializeParams %* {
         "processId": %getCurrentProcessId(),
         "rootUri": fixtureUri("projects/hw/"),
         "capabilities": {
@@ -101,7 +101,7 @@ suite "LSP features":
 
   waitFor client.connect("localhost", cmdParams.port)
 
-  let initParams = InitializeParams %* {
+  let initParams = LspInitializeParams %* {
       "processId": %getCurrentProcessId(),
       "rootUri": fixtureUri("projects/hw/"),
       "capabilities": {
@@ -343,7 +343,7 @@ suite "Null configuration:":
   
   waitFor client.connect("localhost", cmdParams.port)
 
-  let initParams = InitializeParams %* {
+  let initParams = LspInitializeParams %* {
       "processId": %getCurrentProcessId(),
       "rootUri": fixtureUri("projects/hw/"),
       "capabilities": {
