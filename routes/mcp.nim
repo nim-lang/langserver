@@ -1,21 +1,8 @@
 import
-  std/
-    [
-      os, sugar, sequtils, tables, strformat, strscans, times, json, parseutils,
-      strutils,
-    ],
-  pkg/[
-    chronos,
-    chronos/asyncproc,
-    json_rpc/server,
-    chronicles,
-    json_serialization,
-    regex,
-    stew/byteutils,
-    with,
-  ],
-  ../[testrunner, nimexpand, asyncprocmonitor, suggestapi, ls, utils],
-  ../protocol/[enums, types]
+  std/[os, sequtils, tables, json],
+  pkg/[chronos, json_rpc/server, chronicles, json_serialization],
+  ../[suggestapi, ls, utils],
+  ../protocol/types
 
 import macros except error
 

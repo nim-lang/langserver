@@ -1,7 +1,7 @@
 import json_rpc/[servers/socketserver, private/jrpc_sys, jsonmarshal, rpcclient, router]
 import chronicles, chronos
 import std/[syncio, os, json, strutils, strformat]
-import ls, suggestapi, utils, lstransports, asyncprocmonitor
+import ls, utils, lstransports, asyncprocmonitor
 import routes/[lsp, mcp]
 import protocol/types
 when defined(posix):
