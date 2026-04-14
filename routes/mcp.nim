@@ -83,64 +83,65 @@ proc listTools*(
   logToFile "params = " & $(%*params)
 
   result = McpListToolsResult(
-    tools: @[
-      McpTool(
-        name: "nimFindReferences",
-        title: some "Find symbol references in .nim files",
-        description:
-          some "Find references of the symbol under cursor in the current workspace.",
-        inputSchema: McpToolSchema(
-          `type`: "object",
-          properties: some %*{
-            "path": {"type": "string"},
-            "line": {"type": "integer"},
-            "column": {"type": "integer"},
-          },
-          required: some @["path", "line", "column"],
-        ),
-        outputSchema: some McpToolSchema(
-          `type`: "object",
-          properties: some %*{
-            "refs": {
-              "type": "array",
-              "items": {
-                "type": "object",
-                "properties": {
-                  "path": {"type": "string"},
-                  "line": {"type": "integer"},
-                  "column": {"type": "integer"},
+    tools:
+      @[
+        McpTool(
+          name: "nimFindReferences",
+          title: some "Find symbol references in .nim files",
+          description:
+            some "Find references of the symbol under cursor in the current workspace.",
+          inputSchema: McpToolSchema(
+            `type`: "object",
+            properties: some %*{
+              "path": {"type": "string"},
+              "line": {"type": "integer"},
+              "column": {"type": "integer"},
+            },
+            required: some @["path", "line", "column"],
+          ),
+          outputSchema: some McpToolSchema(
+            `type`: "object",
+            properties: some %*{
+              "refs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "path": {"type": "string"},
+                    "line": {"type": "integer"},
+                    "column": {"type": "integer"},
+                  },
+                  "required": ["path", "line", "column"],
                 },
-                "required": ["path", "line", "column"],
-              },
-            }
-          },
-          required: some @["refs"],
+              }
+            },
+            required: some @["refs"],
+          ),
         ),
-      ),
-      McpTool(
-        name: "nimExpandMacro",
-        description: some "Expand macro under cursor.",
-        inputSchema: McpToolSchema(
-          `type`: "object",
-          properties: some %*{
-            "path": {"type": "string"},
-            "line": {"type": "integer"},
-            "column": {"type": "integer"},
-          },
-          required: some @["path", "line", "column"],
+        McpTool(
+          name: "nimExpandMacro",
+          description: some "Expand macro under cursor.",
+          inputSchema: McpToolSchema(
+            `type`: "object",
+            properties: some %*{
+              "path": {"type": "string"},
+              "line": {"type": "integer"},
+              "column": {"type": "integer"},
+            },
+            required: some @["path", "line", "column"],
+          ),
         ),
-      ),
-      McpTool(
-        name: "nimDiagnostics",
-        description:
-          some "Get diagnostics for a .nim file, i.e. errors, warnings, hints.",
-        inputSchema: McpToolSchema(
-          `type`: "object",
-          properties: some %*{"path": {"type": "string"}},
-          required: some @["path"],
+        McpTool(
+          name: "nimDiagnostics",
+          description:
+            some "Get diagnostics for a .nim file, i.e. errors, warnings, hints.",
+          inputSchema: McpToolSchema(
+            `type`: "object",
+            properties: some %*{"path": {"type": "string"}},
+            required: some @["path"],
+          ),
         ),
-      ),
-    ]
+      ]
   )
 
   logToFile "result = " & $(%*result)
