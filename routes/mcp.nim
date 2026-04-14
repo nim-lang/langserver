@@ -6,9 +6,6 @@ import
   os,
   sugar,
   sequtils,
-  suggestapi,
-  protocol/enums,
-  protocol/types,
   with,
   tables,
   chronicles,
@@ -18,8 +15,8 @@ import
   regex,
   stew/[byteutils],
   nimexpand,
-  testrunner,
-  ../[ls, utils]
+  ../[suggestapi, ls, utils],
+  ../protocol/[enums, types]
 
 import macros except error
 
