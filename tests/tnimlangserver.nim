@@ -9,7 +9,7 @@ import lspsocketclient
 import unittest2
 
 suite "Nimlangserver":
-  let cmdParams = CommandLineParams(transport: some socket, port: getNextFreePort())
+  let cmdParams = CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
   let ls = main(cmdParams) #we could accesss to the ls here to test against its state
   let client = newLspSocketClient()
   client.registerNotification(
@@ -42,7 +42,7 @@ let helloWorldUri = fixtureUri("projects/hw/hw.nim")
 
   
 suite "Suggest API selection":
-  let cmdParams = CommandLineParams(transport: some socket, port: getNextFreePort())
+  let cmdParams = CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
   let ls = main(cmdParams) #we could accesss to the ls here to test against its state
   let client = newLspSocketClient()
   client.registerNotification(
@@ -87,7 +87,7 @@ suite "Suggest API selection":
     check hover.kind == JNull
 
 suite "LSP features":
-  let cmdParams = CommandLineParams(transport: some socket, port: getNextFreePort())
+  let cmdParams = CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
   let ls = main(cmdParams) #we could accesss to the ls here to test against its state
   let client = newLspSocketClient()
   client.registerNotification(
@@ -328,7 +328,7 @@ suite "LSP features":
     doAssert ls.isShutdown    
 
 suite "Null configuration:":
-  let cmdParams = CommandLineParams(transport: some socket, port: getNextFreePort())
+  let cmdParams = CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
   let ls = main(cmdParams)
   let client = newLspSocketClient()
   client.registerNotification(
