@@ -284,6 +284,7 @@ proc getNimbleDumpInfo*(
 
   if nimbleFile in ls.nimDumpCache:
     return ls.nimDumpCache.getOrDefault(nimbleFile)
+  logToFile("nimbleFile = " & nimbleFile)
   var process: AsyncProcessRef
   try:
     process = await startProcess(
@@ -1098,20 +1099,6 @@ proc createOrRestartNimsuggest*(
       workingDir = ls.getWorkingDir(projectFile).waitFor()
       (nimsuggestPath, version) =
         ls.getNimSuggestPathAndVersion(configuration, workingDir).waitFor()
-      protocolVer =
-        case ls.serverMode
-        of mcp:
-          # FIXME: find references works only with version 2 in MCP mode somehow
-          2
-        of lsp:
-          # 0 means detect the highest supported version at runtime
-          0
-
-    logToFile "nimsuggestPath = " & nimsuggestPath
-    logToFile "version = " & version
-    logToFile "protocolVer = " & $protocolVer
-
-    let
       timeout = configuration.timeout.get(REQUEST_TIMEOUT)
       restartCallback = proc(ns: Nimsuggest) {.gcsafe, raises: [].} =
         warn "Restarting the server due to requests being to slow",
@@ -1139,7 +1126,6 @@ proc createOrRestartNimsuggest*(
       workingDir,
       configuration.logNimsuggest.get(false),
       configuration.exceptionHintsEnabled,
-      protocolVer = protocolVer,
     )
 
     logToFile "projectNext.file = " & projectNext.file
