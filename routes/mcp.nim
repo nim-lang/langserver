@@ -105,26 +105,31 @@ proc listTools*(
           ),
         ),
         McpTool(
-          name: "nimExpandMacro",
-          description: some "Expand macro under cursor.",
+          name: "nimFindSymbols",
+          title: some "Find symbols in .nim files",
+          description: some "Find symbols matching the given search query in the current workspace.",
           inputSchema: McpToolSchema(
+            `type`: "object",
+            properties: some %*{"query": {"type": "string"}},
+            required: some @["query"],
+          ),
+          outputSchema: some McpToolSchema(
             `type`: "object",
             properties: some %*{
-              "path": {"type": "string"},
-              "line": {"type": "integer"},
-              "column": {"type": "integer"},
+              "defs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "path": {"type": "string"},
+                    "line": {"type": "integer"},
+                    "column": {"type": "integer"},
+                  },
+                  "required": ["path", "line", "column"],
+                },
+              }
             },
-            required: some @["path", "line", "column"],
-          ),
-        ),
-        McpTool(
-          name: "nimDiagnostics",
-          description:
-            some "Get diagnostics for a .nim file, i.e. errors, warnings, hints.",
-          inputSchema: McpToolSchema(
-            `type`: "object",
-            properties: some %*{"path": {"type": "string"}},
-            required: some @["path"],
+            required: some @["refs"],
           ),
         ),
       ]
@@ -189,49 +194,45 @@ proc callTool*(
             @[McpContentBlock(`type`: TextContent, text: "Nimsuggest is unavailable")],
           isError: some true,
         )
-    of "nimExpandMacro":
+    of "nimFindSymbols":
       let
-        path = arguments["path"].getStr()
+        query = arguments["query"].getStr()
+        path =
+          if len(ls.projectFiles) > 0:
+            ls.projectFiles.keys.toSeq[0]
+          else:
+            ""
         uri = path.pathToUri()
-        line = arguments["line"].getInt()
-        column = arguments["column"].getInt()
-        text = readFile(path)
 
-      await ls.didOpenFile(
-        TextDocumentItem(uri: uri, languageId: "nim", version: 0, text: text)
-      )
-
+      if uri notin ls.openFiles:
+        await ls.didOpenFile(
+          TextDocumentItem(
+            uri: uri, languageId: "nim", version: 0, text: readFile(path)
+          )
+        )
       let nimsuggest = await ls.tryGetNimsuggest(uri)
 
       if nimsuggest.isSome:
-        let expanded =
-          await nimsuggest.get.expand(path, ls.uriToStash(uri), line, column)
+        let symbols = await nimsuggest.get.globalSymbols(query)
 
-        if expanded.len > 0 and expanded[0].doc != "":
-          let expandedMacro = expanded[0].doc
-          logToFile("expandedMacro = " & expandedMacro)
+        var symbolsJson = newJArray()
 
-          McpCallToolResult(
-            content: @[McpContentBlock(`type`: TextContent, text: expandedMacro)],
-            isError: some false,
-          )
-        else:
-          McpCallToolResult(
-            content:
-              @[McpContentBlock(`type`: TextContent, text: "Could not expand macro")],
-            isError: some true,
-          )
+        for symbol in symbols:
+          symbolsJson.add %*{
+            "path": symbol.filePath, "line": symbol.line, "column": symbol.column
+          }
+
+        McpCallToolResult(
+          content: @[McpContentBlock(`type`: TextContent, text: $symbolsJson)],
+          structuredContent: some symbolsJson,
+          isError: some false,
+        )
       else:
         McpCallToolResult(
           content:
             @[McpContentBlock(`type`: TextContent, text: "Nimsuggest is unavailable")],
           isError: some true,
         )
-    of "nimDiagnostics":
-      McpCallToolResult(
-        content: @[McpContentBlock(`type`: TextContent, text: "Here be diagnostics")],
-        isError: some false,
-      )
     else:
       McpCallToolResult(
         content: @[McpContentBlock(`type`: TextContent, text: "Unknown tool")],
