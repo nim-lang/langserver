@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "nim": {
-      "command": "C:\\Users\\moigagoo\\Projects\\langserver3\\bin\\nimlangserver",
+      "command": "./bin/nimlangserver",
       "args": ["--mcp"]
     }
   }
