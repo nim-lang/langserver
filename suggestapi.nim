@@ -348,7 +348,6 @@ proc createNimsuggest*(
     workingDir = getCurrentDir(),
     enableLog: bool = false,
     enableExceptionInlayHints: bool = false,
-    protocolVer = 0,
 ): Future[Project] {.async.} =
   result = Project(file: root)
   result.ns = newFuture[NimSuggest]()
@@ -376,11 +375,7 @@ proc createNimsuggest*(
     root = root, timeout = timeout, path = nimsuggestPath, workingDir = workingDir
 
   if nimsuggestPath != "":
-    ns.protocolVersion =
-      if protocolVer != 0:
-        protocolVer
-      else:
-        detectNimsuggestVersion(root, nimsuggestPath, workingDir)
+    ns.protocolVersion = detectNimsuggestVersion(root, nimsuggestPath, workingDir)
     if ns.protocolVersion > HighestSupportedNimSuggestProtocolVersion:
       ns.protocolVersion = HighestSupportedNimSuggestProtocolVersion
     var args = @[root, "--v" & $ns.protocolVersion, "--autobind"] & extraArgs
