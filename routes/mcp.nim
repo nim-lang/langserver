@@ -132,6 +132,35 @@ proc listTools*(
             required: some @["syms"],
           ),
         ),
+        McpTool(
+          name: "nimListSymbols",
+          title: some "List symbols in a .nim file",
+          description: some "List all symbols in the given .nim file.",
+          inputSchema: McpToolSchema(
+            `type`: "object",
+            properties: some %*{"path": {"type": "string"}},
+            required: some @["path"],
+          ),
+          outputSchema: some McpToolSchema(
+            `type`: "object",
+            properties: some %*{
+              "syms": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": {"type": "string"},
+                    "path": {"type": "string"},
+                    "line": {"type": "integer"},
+                    "column": {"type": "integer"},
+                  },
+                  "required": ["name", "path", "line", "column"],
+                },
+              }
+            },
+            required: some @["syms"],
+          ),
+        ),
       ]
   )
 
@@ -224,6 +253,45 @@ proc callTool*(
         for symbol in symbols:
           symbolsJson.add %*{
             "path": symbol.filePath, "line": symbol.line, "column": symbol.column
+          }
+
+        let structuredContent = %*{"syms": symbolsJson}
+
+        McpCallToolResult(
+          content: @[McpContentBlock(`type`: TextContent, text: $structuredContent)],
+          structuredContent: some structuredContent,
+          isError: some false,
+        )
+      else:
+        McpCallToolResult(
+          content:
+            @[McpContentBlock(`type`: TextContent, text: "Nimsuggest is unavailable")],
+          isError: some true,
+        )
+    of "nimListSymbols":
+      let
+        path = arguments["path"].getStr()
+        uri = path.pathToUri()
+
+      if uri notin ls.openFiles:
+        await ls.didOpenFile(
+          TextDocumentItem(
+            uri: uri, languageId: "nim", version: 0, text: readFile(path)
+          )
+        )
+
+      let nimsuggest = await ls.tryGetNimsuggest(uri)
+
+      if nimsuggest.isSome:
+        let symbols = await nimsuggest.get.outline(path)
+
+        var symbolsJson = newJArray()
+        for symbol in symbols:
+          symbolsJson.add %*{
+            "name": symbol.name,
+            "path": symbol.filePath,
+            "line": symbol.line,
+            "column": symbol.column,
           }
 
         let structuredContent = %*{"syms": symbolsJson}
