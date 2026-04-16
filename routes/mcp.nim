@@ -116,7 +116,7 @@ proc listTools*(
           outputSchema: some McpToolSchema(
             `type`: "object",
             properties: some %*{
-              "defs": {
+              "syms": {
                 "type": "array",
                 "items": {
                   "type": "object",
@@ -129,7 +129,7 @@ proc listTools*(
                 },
               }
             },
-            required: some @["refs"],
+            required: some @["syms"],
           ),
         ),
       ]
@@ -174,7 +174,6 @@ proc callTool*(
         let references = await nimsuggest.get.use(path, path, line, column)
 
         var usageReferencesJson = newJArray()
-
         for reference in references:
           if reference.section == ideUse:
             usageReferencesJson.add %*{
@@ -183,9 +182,11 @@ proc callTool*(
               "column": reference.column,
             }
 
+        let structuredContent = %*{"refs": usageReferencesJson}
+
         McpCallToolResult(
-          content: @[McpContentBlock(`type`: TextContent, text: $usageReferencesJson)],
-          structuredContent: some usageReferencesJson,
+          content: @[McpContentBlock(`type`: TextContent, text: $structuredContent)],
+          structuredContent: some structuredContent,
           isError: some false,
         )
       else:
@@ -210,21 +211,26 @@ proc callTool*(
             uri: uri, languageId: "nim", version: 0, text: readFile(path)
           )
         )
+      # FIXME This should be implemented with ls.lastNimSuggest
+      # but it is not assigned during initiallization and is therefore `nil`.
+      # As as workaround, we "open" the first available projectFile
+      # and use its nimsuggest instance.
       let nimsuggest = await ls.tryGetNimsuggest(uri)
 
       if nimsuggest.isSome:
         let symbols = await nimsuggest.get.globalSymbols(query)
 
         var symbolsJson = newJArray()
-
         for symbol in symbols:
           symbolsJson.add %*{
             "path": symbol.filePath, "line": symbol.line, "column": symbol.column
           }
 
+        let structuredContent = %*{"syms": symbolsJson}
+
         McpCallToolResult(
-          content: @[McpContentBlock(`type`: TextContent, text: $symbolsJson)],
-          structuredContent: some symbolsJson,
+          content: @[McpContentBlock(`type`: TextContent, text: $structuredContent)],
+          structuredContent: some structuredContent,
           isError: some false,
         )
       else:
