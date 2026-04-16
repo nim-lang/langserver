@@ -122,10 +122,19 @@ proc processContentLength*(
     if error:
       error "Error reading content length", msg = ex.msg
 
-proc readStdin*(ctx: ptr ReadStdinContext) {.thread.} =
+proc readLspStdin*(ctx: ptr ReadStdinContext) {.thread.} =
   let inputStream = newFileStream(stdin)
   while true:
     let str = processContentLength(inputStream) & CRLF
+    ctx.value = cast[cstring](createShared(char, str.len + 1))
+    copymem(ctx.value[0].addr, str[0].addr, str.len)
+    discard ctx.onStdReadSignal.fireSync()
+    discard ctx.onMainReadSignal.waitSync()
+
+proc readMcpStdin*(ctx: ptr ReadStdinContext) {.thread.} =
+  let inputStream = newFileStream(stdin)
+  while true:
+    let str = inputStream.readLine()
     ctx.value = cast[cstring](createShared(char, str.len + 1))
     copymem(ctx.value[0].addr, str[0].addr, str.len)
     discard ctx.onStdReadSignal.fireSync()
@@ -260,7 +269,11 @@ proc startStdioServer*(ls: LanguageServer) =
   ls.stdinContext = createShared(ReadStdinContext)
   ls.stdinContext.onMainReadSignal = ThreadSignalPtr.new().expect("")
   ls.stdinContext.onStdReadSignal = ThreadSignalPtr.new().expect("")
-  createThread(stdinThread, readStdin, ls.stdinContext)
+  case ls.serverMode
+  of lsp:
+    createThread(stdinThread, readLspStdin, ls.stdinContext)
+  of mcp:
+    createThread(stdinThread, readMcpStdin, ls.stdinContext)
   asyncSpawn ls.startStdioLoop()
 
 proc processClientLoop*(
