@@ -19,18 +19,6 @@ proc initialize*(
   logToFile("============================")
   logToFile("--== Started initialize ==--")
 
-  proc onClientProcessExitAsync(): Future[void] {.async.} =
-    debug "onClientProcessExitAsync"
-    await p.ls.stopNimsuggestProcesses
-    await p.onExit()
-
-  proc onClientProcessExit() {.closure, gcsafe.} =
-    try:
-      debug "onClientProcessExit"
-      waitFor onClientProcessExitAsync()
-    except Exception:
-      error "Error in onClientProcessExit ", msg = getCurrentExceptionMsg()
-
   debug "Initialize received..."
   logToFile "Initialize received..."
   p.ls.mcpInitializeParams = params
