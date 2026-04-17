@@ -29,6 +29,26 @@ proc initialize*(
     serverInfo: McpInitializeParams_serverInfo(name: "nimlangserver", version: "1.12.0"),
   )
   logToFile "result = " & $(%*result)
+  debug "Initialize completed. Trying to start nimsuggest instances"
+  logToFile "Initialize completed. Trying to start nimsuggest instances"
+  let ls = p.ls
+  ls.mcpServerCapabilities = result.capabilities
+  let rootPath = getCurrentDir().pathToUri.uriToPath
+  logToFile "rootPath = " & $rootPath
+  if rootPath != "":
+    let nimbleFiles = walkFiles(rootPath / "*.nimble").toSeq
+    logToFile "nimbleFiles = " & $nimbleFiles
+    if nimbleFiles.len > 0:
+      let nimbleFile = nimbleFiles[0]
+      let nimbleDumpInfo = await ls.getNimbleDumpInfo(nimbleFile)
+      logToFile "nimbleDumpInfo = " & $nimbleDumpInfo
+      ls.entryPoints = nimbleDumpInfo.getNimbleEntryPoints(rootPath)
+      logToFile "ls.entryPoints = " & $ls.entryPoints
+      for entryPoint in ls.entryPoints:
+        debug "Starting nimsuggest for entry point ", entry = entryPoint
+        logToFile "Starting nimsuggest for entry point " & entryPoint
+        if entryPoint notin ls.projectFiles:
+          ls.createOrRestartNimsuggest(entryPoint)
 
 proc listTools*(
     ls: LanguageServer, params: McpListToolsParams
