@@ -9,7 +9,7 @@ import macros except error
 import std/times
 proc logToFile(msg: string) =
   var logFile = open("mcp.log", fmAppend)
-  logFile.writeLine($now() & "::" & msg)
+  logFile.writeLine($now() & "\t" & msg)
   close(logFile)
 
 # Routes

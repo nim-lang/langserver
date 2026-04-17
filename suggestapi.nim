@@ -19,7 +19,7 @@ import
 
 proc logToFile(msg: string) =
   var logFile = open("mcp.log", fmAppend)
-  logFile.writeLine(msg)
+  logFile.writeLine($now() & "\t" & msg)
   close(logFile)
 
 const REQUEST_TIMEOUT* = 120000
