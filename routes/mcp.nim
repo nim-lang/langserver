@@ -8,7 +8,7 @@ import macros except error
 
 proc logToFile(msg: string) =
   var logFile = open("mcp.log", fmAppend)
-  logFile.writeLine(msg)
+  logFile.writeLine($now() & "::" & msg)
   close(logFile)
 
 # Routes

@@ -28,7 +28,7 @@ import
 proc logToFile(msg: string) {.raises: [].} =
   try:
     var logFile = open("mcp.log", fmAppend)
-    logFile.writeLine(msg)
+    logFile.writeLine($now() & "::" & msg)
     close(logFile)
   except:
     discard
