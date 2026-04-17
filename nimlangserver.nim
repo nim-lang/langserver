@@ -13,10 +13,8 @@ proc registerMcpRoutes(srv: RpcSocketServer, ls: LanguageServer) =
     "initialize", wrapRpc(partial(mcp.initialize, (ls: ls, onExit: ls.onExit)))
   )
 
-  srv.register(
-    "tools/list", ls.addRpcToCancellable(wrapRpc(partial(mcp.listTools, ls)))
-  )
-  srv.register("tools/call", ls.addRpcToCancellable(wrapRpc(partial(mcp.callTool, ls))))
+  srv.register("tools/list", wrapRpc(partial(mcp.listTools, ls)))
+  srv.register("tools/call", wrapRpc(partial(mcp.callTool, ls)))
 
   # Notifications
   srv.register("notifications/initialized", wrapRpc(partial(mcp.initialized, ls)))
