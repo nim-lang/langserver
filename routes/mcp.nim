@@ -162,7 +162,7 @@ proc callTool*(
     case params.name
     of "nimFindReferences":
       let
-        path = arguments["path"].getStr()
+        path = arguments["path"].getStr().absolutePath
         uri = path.pathToUri()
         line = arguments["line"].getInt()
         column = arguments["column"].getInt()
@@ -220,7 +220,7 @@ proc callTool*(
             uri: uri, languageId: "nim", version: 0, text: readFile(path)
           )
         )
-      # FIXME This should be implemented with ls.lastNimSuggest
+      # This should probably be reimplemented with ls.lastNimSuggest
       # but it is not assigned during initiallization and is therefore `nil`.
       # As as workaround, we "open" the first available projectFile
       # and use its nimsuggest instance.
@@ -250,7 +250,7 @@ proc callTool*(
         )
     of "nimListSymbols":
       let
-        path = arguments["path"].getStr()
+        path = arguments["path"].getStr().absolutePath
         uri = path.pathToUri()
 
       if uri notin ls.openFiles:
