@@ -4,4 +4,5 @@ import
   tprojectsetup,
   textensions,
   tmisc,
-  ttestrunner
+  ttestrunner,
+  test_trace_expand

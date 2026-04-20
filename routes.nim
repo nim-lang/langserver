@@ -93,7 +93,13 @@ proc initialize*(
       workspaceSymbolProvider: some(true),
       executeCommandProvider: some(
         ExecuteCommandOptions(
-          commands: some(@[RESTART_COMMAND, RECOMPILE_COMMAND, CHECK_PROJECT_COMMAND])
+          commands:
+            some(
+              @[
+                RESTART_COMMAND, RECOMPILE_COMMAND, CHECK_PROJECT_COMMAND,
+                TRACE_EXPAND_COMMAND,
+              ]
+            )
         )
       ),
       inlayHintProvider: some(InlayHintOptions(resolveProvider: some(false))),
@@ -250,6 +256,33 @@ proc expand*(
         content: expand[0].doc.fixIdentation(character),
         range: expand[0].createRangeFromSuggest(),
       )
+
+proc traceExpandMacro*(
+    ls: LanguageServer, params: TraceExpandParams
+): Future[TraceExpandResult] {.async.} =
+  with (params.position, params.textDocument):
+    let ns = await ls.tryGetNimsuggest(uri)
+    if ns.isNone:
+      raise newException(CatchableError,
+        "nimsuggest is not available for this file")
+    let ch = ls.getCharacter(uri, line, character)
+    if ch.isNone:
+      raise newException(CatchableError,
+        "Unable to resolve character position")
+    let results =
+      try:
+        await ns.get.traceExpand(uriToPath(uri), ls.uriToStash(uri), line + 1, ch.get)
+      except CatchableError as e:
+        raise newException(CatchableError,
+          "nimsuggest does not support traceExpand: " & e.msg)
+    if results.len == 0:
+      raise newException(CatchableError,
+        "No trace result at this position (not a macro call?)")
+    let tracePath = results[0].doc
+    if tracePath == "":
+      raise newException(CatchableError,
+        "Trace expansion failed: empty trace path")
+    return TraceExpandResult(tracePath: tracePath)
 
 proc status*(
     ls: LanguageServer, params: NimLangServerStatusParams
@@ -631,26 +664,42 @@ proc codeAction*(
 proc executeCommand*(
     ls: LanguageServer, params: ExecuteCommandParams
 ): Future[JsonNode] {.async.} =
-  let projectFile = params.arguments[0].getStr
   case params.command
-  of RESTART_COMMAND:
-    debug "Restarting nimsuggest", projectFile = projectFile
-    ls.createOrRestartNimsuggest(projectFile, projectFile.pathToUri)
-  of CHECK_PROJECT_COMMAND:
-    debug "Checking project", projectFile = projectFile
-    ls.checkProject(projectFile.pathToUri).traceAsyncErrors
-  of RECOMPILE_COMMAND:
-    debug "Clean build", projectFile = projectFile
-    let
-      token = fmt "Compiling {projectFile}"
-      ns = ls.projectFiles.getOrDefault(projectFile).ns
-    if ns != nil:
-      ls.workDoneProgressCreate(token)
-      ls.progress(token, "begin", fmt "Compiling project {projectFile}")
+  of TRACE_EXPAND_COMMAND:
+    debug "Trace expand macro"
+    let args = params.arguments[0]
+    let traceParams = TraceExpandParams(
+      textDocument: TextDocumentIdentifier(uri: args["uri"].getStr),
+      position: Position(
+        line: uinteger(args["line"].getInt),
+        character: uinteger(args["character"].getInt),
+      ),
+    )
+    let traceResult = await ls.traceExpandMacro(traceParams)
+    return %*traceResult
+  else:
+    let projectFile = params.arguments[0].getStr
+    case params.command
+    of RESTART_COMMAND:
+      debug "Restarting nimsuggest", projectFile = projectFile
+      ls.createOrRestartNimsuggest(projectFile, projectFile.pathToUri)
+    of CHECK_PROJECT_COMMAND:
+      debug "Checking project", projectFile = projectFile
+      ls.checkProject(projectFile.pathToUri).traceAsyncErrors
+    of RECOMPILE_COMMAND:
+      debug "Clean build", projectFile = projectFile
+      let
+        token = fmt "Compiling {projectFile}"
+        ns = ls.projectFiles.getOrDefault(projectFile).ns
+      if ns != nil:
+        ls.workDoneProgressCreate(token)
+        ls.progress(token, "begin", fmt "Compiling project {projectFile}")
 
-      ns.await().recompile().addCallback do():
-        ls.progress(token, "end")
-        ls.checkProject(projectFile.pathToUri).traceAsyncErrors
+        ns.await().recompile().addCallback do():
+          ls.progress(token, "end")
+          ls.checkProject(projectFile.pathToUri).traceAsyncErrors
+    else:
+      discard
 
   result = newJNull()
 

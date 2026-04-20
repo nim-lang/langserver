@@ -44,6 +44,7 @@ type
     ideProject
     ideType
     ideExpand
+    ideTraceExpand
 
   NimsuggestCallback* = proc(self: Nimsuggest): void {.gcsafe, raises: [].}
   ProjectCallback* = proc(self: Project): void {.gcsafe, raises: [].}
@@ -566,6 +567,7 @@ createFileOnlyCommand(known)
 createFileOnlyCommand(globalSymbols)
 createGlobalCommand(recompile)
 createRangeCommand(inlayHints)
+createFullCommand(traceExpand)
 
 proc `mod`*(
     nimsuggest: Nimsuggest, file: string, dirtyfile = ""

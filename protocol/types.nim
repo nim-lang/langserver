@@ -966,6 +966,13 @@ type
     range*: Range
     content*: string
 
+  TraceExpandParams* = ref object of RootObj
+    textDocument*: TextDocumentIdentifier
+    position*: Position
+
+  TraceExpandResult* = ref object of RootObj
+    tracePath*: string
+
   InlayHintParams* = ref object of RootObj # TODO: extends WorkDoneProgressParams
     textDocument*: TextDocumentIdentifier
     range*: Range
