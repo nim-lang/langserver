@@ -261,7 +261,21 @@ proc get*[T](params: RequestParamsRx, key: string): T =
   raise newException(KeyError, "Key not found")
 
 proc to*(params: RequestParamsRx, T: typedesc): T =
-  let value = $params.toJson()
+  let value =
+    case params.kind
+    of rpNamed:
+      $params.toJson()
+
+    # Normally, this shouldn't happen as neither LSP nor MCP
+    # use positional params.
+    # But Copilot CLI would send no params to tools/list
+    # method which are parsed as an empty array of positional params.
+    # Since you can't parse an array into a json object,
+    # we simply ignore any positional params and parse an empty
+    # object instead.
+    of rpPositional:
+      $newJObject()
+
   parseJson(value).to(T)
 
 proc head*[T](xs: seq[T]): Option[T] =
