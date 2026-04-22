@@ -673,8 +673,8 @@ type
 
   McpToolSchema* = object
     `type`*: string
-    properties*: OptionalNode
-    required*: OptionalSeq[string]
+    properties*: JsonNode
+    required*: seq[string]
     # `$schema`*: Option[string]
     #
 
