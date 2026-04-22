@@ -25,14 +25,6 @@ import
   chronos/asyncproc,
   stew/byteutils
 
-proc logToFile(msg: string) {.raises: [].} =
-  try:
-    var logFile = open("mcp.log", fmAppend)
-    logFile.writeLine($now() & "\t" & msg)
-    close(logFile)
-  except:
-    discard
-
 proc getVersionFromNimble(): string =
   #We should static run nimble dump instead
   const content = staticRead("nimlangserver.nimble")
@@ -280,11 +272,8 @@ proc supportSignatureHelp*(cc: LspClientCapabilities): bool =
 proc getNimbleDumpInfo*(
     ls: LanguageServer, nimbleFile: string
 ): Future[NimbleDumpInfo] {.async.} =
-  logToFile("-- Started getNimbleDumpInfo --")
-
   if nimbleFile in ls.nimDumpCache:
     return ls.nimDumpCache.getOrDefault(nimbleFile)
-  logToFile("nimbleFile = " & nimbleFile)
   var process: AsyncProcessRef
   try:
     process = await startProcess(
@@ -295,7 +284,6 @@ proc getNimbleDumpInfo*(
       stdoutHandle = AsyncProcess.Pipe,
     )
     let info = string.fromBytes(process.stdoutStream.read().await)
-    logToFile("info = " & info)
 
     for line in info.splitLines:
       if line.startsWith("srcDir"):
@@ -340,20 +328,15 @@ proc parseWorkspaceConfiguration*(conf: JsonNode): NlsConfig =
 proc getWorkspaceConfiguration*(
     ls: LanguageServer
 ): Future[NlsConfig] {.async: (raises: []).} =
-  # logToFile "-- Started getWorkspaceConfiguration --"
   try:
     #this is the root of a lot a problems as there are multiple race conditions here.
     #since most request doenst really rely on the configuration, we can just go ahead and 
     #return a default one until we have the right one. 
     #TODO review and handle project specific confs when received instead of reliying in this func
     if ls.workspaceConfiguration.finished:
-      result = parseWorkspaceConfiguration(ls.workspaceConfiguration.read)
-      logToFile "Early return"
-      logToFile "result.nimsuggestPath = " & result.nimsuggestPath.get("")
-      return result
+      return parseWorkspaceConfiguration(ls.workspaceConfiguration.read)
     return NlsConfig()
   except CatchableError as ex:
-    logToFile "Error"
     error "Failed to get workspace configuration", error = ex.msg
     writeStackTrace(ex)
 
@@ -597,45 +580,28 @@ proc getProjectFileAutoGuess*(
     inc up
 
 proc getRootPath*(ip: LspInitializeParams): string =
-  logToFile "-- Started getRootPath --"
   if ip.rootUri.isNone or ip.rootUri.get == "":
     if ip.rootPath.isSome and ip.rootPath.get != "":
-      result = ip.rootPath.get
-      logToFile "Early exit, result = " & result
-      return result
+      return ip.rootPath.get
     else:
-      result = getCurrentDir().pathToUri.uriToPath
-      logToFile "Early exit, result = " & result
-      return result
+      return getCurrentDir().pathToUri.uriToPath
 
-  result = ip.rootUri.get.uriToPath
-  logToFile "result = " & result
+  ip.rootUri.get.uriToPath
 
 proc getRootPath*(ip: McpInitializeParams): string =
-  logToFile "-- Started getRootPath --"
-  result = getCurrentDir().pathToUri.uriToPath
-  logToFile "result = " & result
+  getCurrentDir().pathToUri.uriToPath
 
 proc getWorkingDir(ls: LanguageServer, path: string): Future[string] {.async.} =
-  logToFile "-- Started getWorkingDir --"
-
   let rootPath =
     case ls.serverMode
     of lsp: ls.lspInitializeParams.getRootPath
     of mcp: ls.mcpInitializeParams.getRootPath
 
-  logToFile "rootPath = " & rootPath
-
-  let pathRelativeToRoot = path.tryRelativeTo(rootPath)
-  logToFile "pathRelativeRoot = " & pathRelativeToRoot.get("")
-
-  let mapping = ls.getWorkspaceConfiguration.await().workingDirectoryMapping.get(@[])
-  for m in mapping:
-    logToFile "m.projectFile = " & m.projectFile
-    logToFile "m.directory = " & m.directory
+  let
+    pathRelativeToRoot = path.tryRelativeTo(rootPath)
+    mapping = ls.getWorkspaceConfiguration.await().workingDirectoryMapping.get(@[])
 
   result = getCurrentDir()
-  logToFile "result = " & result
 
   for m in mapping:
     if pathRelativeToRoot.isSome and m.projectFile == pathRelativeToRoot.get():
@@ -880,8 +846,6 @@ proc didOpenFile*(
 ): Future[void] {.async.} =
   with textDocument:
     debug "New document opened for URI:", uri = uri
-    logToFile "New document opened"
-    logToFile "uri = " & uri
     let
       file = open(ls.uriStorageLocation(uri), fmWrite)
       projectFileFuture = getProjectFile(uriToPath(uri), ls)
@@ -899,12 +863,8 @@ proc didOpenFile*(
     let projectFile = await projectFileFuture
     debug "Document associated with the following projectFile",
       uri = uri, projectFile = projectFile
-    logToFile "Document associated with the following projectFile"
-    logToFile "uri = " & uri
-    logToFile "projectFile = " & projectFile
     if not ls.projectFiles.hasKey(projectFile):
       debug "Will create nimsuggest for this file", uri = uri
-      logToFile "Will create nimsuggest for this file"
       ls.createOrRestartNimsuggest(projectFile, uri)
 
     for line in text.splitLines:
@@ -914,7 +874,6 @@ proc didOpenFile*(
     file.close()
     let ns = await ls.tryGetNimSuggest(uri)
     if ns.isSome:
-      logToFile "ns.get.nimsuggestPath = " & ns.get.nimSuggestPath
       discard ls.warnIfUnknown(ns.get(), uri, projectFile)
 
     let projectFileUri = projectFile.pathToUri
@@ -923,26 +882,19 @@ proc didOpenFile*(
         uri: projectFileUri, languageId: "nim", version: 0, text: readFile(projectFile)
       )
 
-      logToFile "Running didOpenFile on projectFile"
       await didOpenFile(ls, textDocument)
 
       debug "Opening project file", uri = projectFile, file = uri
-      logToFile "Opening project file"
-      logToFile "projectFile = " & projectFile
-      logToFile "uri = " & uri
     ls.showMessage(fmt "Opening {uri}", MessageType.Info)
 
 proc tryGetNimsuggest*(
     ls: LanguageServer, uri: string
 ): Future[Option[Nimsuggest]] {.async.} =
-  logToFile "-- tryGetNimsuggest started --"
   if uri in ls.idleOpenFiles:
     let idleFile = ls.idleOpenFiles[uri]
-    logToFile "idleFile.textDocument.uri = " & idleFile.textDocument.uri
     await didOpenFile(ls, idleFile.textDocument)
 
   if uri notin ls.openFiles:
-    logToFile "uri not in ls.openFiles"
     return none(NimSuggest)
 
   var retryCount = 0
@@ -950,7 +902,6 @@ proc tryGetNimsuggest*(
   while retryCount < maxRetries:
     let ns = await getNimsuggestInner(ls, uri)
     if not ns.isNil:
-      logToFile "ns.nimsuggestPath = " & ns.nimsuggestPath
       return some ns
 
     # If nimsuggest is nil, wait a bit and retry
@@ -960,7 +911,6 @@ proc tryGetNimsuggest*(
       await sleepAsync(10000 * retryCount) # Exponential backoff
 
   debug "Nimsuggest not found after retries", uri = uri
-  logToFile "Nimsuggest not found after retries"
   return none(NimSuggest)
 
 proc checkProject*(ls: LanguageServer, uri: string): Future[void] {.async.} =
@@ -1091,9 +1041,6 @@ proc createOrRestartNimsuggest*(
 ) {.gcsafe, raises: [].} =
   try:
     debug "Starting createOrRestartNimsuggest", projectFile = projectFile, uri = uri
-    logToFile "Starting createOrRestartNimsuggest"
-    logToFile "projectFile = " & projectFile
-    logToFile "uri = " & uri
     let
       configuration = ls.getWorkspaceConfiguration().waitFor()
       workingDir = ls.getWorkingDir(projectFile).waitFor()
@@ -1112,9 +1059,6 @@ proc createOrRestartNimsuggest*(
       errorCallback = partial(onErrorCallback, (ls, uri))
 
     debug "Creating new nimsuggest project", projectFile = projectFile
-    logToFile ""
-    logToFile "--== Creating new nimsuggest project ==--"
-    logToFile "projectFile = " & projectFile
 
     let projectNext = waitFor createNimsuggest(
       projectFile,
@@ -1128,8 +1072,6 @@ proc createOrRestartNimsuggest*(
       configuration.exceptionHintsEnabled,
     )
 
-    logToFile "projectNext.file = " & projectNext.file
-
     if projectFile in ls.projectFiles:
       var project = ls.projectFiles[projectFile]
       project.stop()
@@ -1139,9 +1081,6 @@ proc createOrRestartNimsuggest*(
       if fut.failed:
         let msg = fut.error.msg
         error "Nimsuggest initialization failed", projectFile = projectFile, error = msg
-        logToFile "Nimsuggest initialization failed"
-        logTofile "projectFile = " & projectFile
-        logTofile "error = " & msg
 
         ls.showMessage(
           fmt "Nimsuggest initialization for {projectFile} failed with: {msg}",
@@ -1149,8 +1088,6 @@ proc createOrRestartNimsuggest*(
         )
       else:
         debug "Nimsuggest initialized successfully", projectFile = projectFile
-        logToFile "Nimsuggest initialized successfully"
-        logTofile "projectFile = " & projectFile
 
         ls.showMessage(fmt "Nimsuggest initialized for {projectFile}", MessageType.Info)
         traceAsyncErrors ls.checkProject(uri)
@@ -1159,9 +1096,6 @@ proc createOrRestartNimsuggest*(
   except CatchableError as ex:
     error "Failed to create/restart nimsuggest",
       projectFile = projectFile, error = ex.msg
-    logToFile "Failed to create/restart nimsuggest"
-    logTofile "projectFile = " & projectFile
-    logTofile "error = " & ex.msg
 
 proc restartAllNimsuggestInstances(ls: LanguageServer) =
   debug "Restarting all nimsuggest instances"

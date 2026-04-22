@@ -17,11 +17,6 @@ import
   chronos/asyncproc,
   stew/[byteutils]
 
-proc logToFile(msg: string) =
-  var logFile = open("mcp.log", fmAppend)
-  logFile.writeLine($now() & "\t" & msg)
-  close(logFile)
-
 const REQUEST_TIMEOUT* = 120000
 const HighestSupportedNimSuggestProtocolVersion = 4
 
@@ -515,8 +510,6 @@ proc call*(
       fmt "{command} \"{file}\";\"{dirtyFile}\":{line}:{column}{tag}"
     else:
       fmt "{command} \"{file}\":{line}:{column}{tag}"
-
-  logToFile "commandString = " & commandString
 
   self.requestQueue.addLast(
     SuggestCall(commandString: commandString, future: result, command: command)

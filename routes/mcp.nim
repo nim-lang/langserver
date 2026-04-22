@@ -6,21 +6,11 @@ import
 
 import macros except error
 
-import std/times
-proc logToFile(msg: string) =
-  var logFile = open("mcp.log", fmAppend)
-  logFile.writeLine($now() & "\t" & msg)
-  close(logFile)
-
 # Routes
 proc initialize*(
     p: tuple[ls: LanguageServer, onExit: OnExitCallback], params: McpInitializeParams
 ): Future[McpInitializeResult] {.async.} =
-  logToFile("============================")
-  logToFile("--== Started initialize ==--")
-
   debug "Initialize received..."
-  logToFile "Initialize received..."
   p.ls.mcpInitializeParams = params
   p.ls.mcpClientCapabilities = params.capabilities
   result = McpInitializeResult(
@@ -28,34 +18,24 @@ proc initialize*(
     capabilities: McpServerCapabilities(tools: some(McpToolsOptions())),
     serverInfo: McpInitializeParams_serverInfo(name: "nimlangserver", version: "1.12.0"),
   )
-  logToFile "result = " & $(%*result)
   debug "Initialize completed. Trying to start nimsuggest instances"
-  logToFile "Initialize completed. Trying to start nimsuggest instances"
   let ls = p.ls
   ls.mcpServerCapabilities = result.capabilities
   let rootPath = getCurrentDir().pathToUri.uriToPath
-  logToFile "rootPath = " & $rootPath
   if rootPath != "":
     let nimbleFiles = walkFiles(rootPath / "*.nimble").toSeq
-    logToFile "nimbleFiles = " & $nimbleFiles
     if nimbleFiles.len > 0:
       let nimbleFile = nimbleFiles[0]
       let nimbleDumpInfo = await ls.getNimbleDumpInfo(nimbleFile)
-      logToFile "nimbleDumpInfo = " & $nimbleDumpInfo
       ls.entryPoints = nimbleDumpInfo.getNimbleEntryPoints(rootPath)
-      logToFile "ls.entryPoints = " & $ls.entryPoints
       for entryPoint in ls.entryPoints:
         debug "Starting nimsuggest for entry point ", entry = entryPoint
-        logToFile "Starting nimsuggest for entry point " & entryPoint
         if entryPoint notin ls.projectFiles:
           ls.createOrRestartNimsuggest(entryPoint)
 
 proc listTools*(
     ls: LanguageServer, params: McpListToolsParams
 ): Future[McpListToolsResult] {.async.} =
-  logToFile "--== List tools started ==--"
-  logToFile "params = " & $(%*params)
-
   result = McpListToolsResult(
     tools:
       @[
@@ -154,19 +134,10 @@ proc listTools*(
       ]
   )
 
-  logToFile "result = " & $(%*result)
-
-  logToFile "List tools completed"
-
 proc callTool*(
     ls: LanguageServer, params: McpCallToolParams
 ): Future[McpCallToolResult] {.async.} =
-  logToFile "--== Call tool started ==--"
-
   let arguments = params.arguments.get(JsonNode())
-
-  logToFile "params.name = " & params.name
-  logToFile "arguments = " & $arguments
 
   result =
     case params.name
@@ -187,9 +158,6 @@ proc callTool*(
       let nimsuggest = await ls.tryGetNimsuggest(uri)
 
       if nimsuggest.isSome:
-        logToFile "nimsuggestPath = " & nimsuggest.get.nimsuggestPath
-        logToFile "project.file = " & nimsuggest.get.project.file
-
         let references = await nimsuggest.get.use(path, path, line, column)
 
         var usageReferencesJson = newJArray()
@@ -307,9 +275,6 @@ proc callTool*(
         isError: some true,
       )
 
-  logToFile "result = " & $(%*result)
-
 # Notifications
 proc initialized*(ls: LanguageServer, _: JsonNode) {.async.} =
   debug "Client initialized."
-  logToFile "--== Client initialized ==--"

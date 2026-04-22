@@ -4,14 +4,6 @@ import std/[syncio, os, json, strutils, strformat, streams, oids, sequtils, time
 import ls, utils
 import protocol/types, chronos/threadsync
 
-proc logToFile(msg: string) {.raises: [].} =
-  try:
-    var logFile = open("mcp.log", fmAppend)
-    logFile.writeLine($now() & "\t" & msg)
-    close(logFile)
-  except:
-    discard
-
 type
   LspClientResponse* = object
     jsonrpc*: JsonRPC2
@@ -172,7 +164,6 @@ proc writeOutput*(ls: LanguageServer, content: JsonNode) =
 
 proc runRpc(ls: LanguageServer, req: RequestRx, rpc: RpcProc): Future[void] {.async.} =
   try:
-    logToFile "req.params = " & $req.params
     let res = await rpc(req.params)
     if res.string in ["", "{}"]:
       return #Notification (see wrapRpc). The client doesnt expect a response
