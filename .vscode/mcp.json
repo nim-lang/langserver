@@ -2,8 +2,10 @@
 	"servers": {
 		"nim": {
 			"type": "stdio",
-			"command": "./bin/nimlangserver",
-			"args": ["--mcp"]
+			"command": "nimlangserver",
+			"args": [
+				"--mcp"
+			]
 		}
 	},
 	"inputs": []
