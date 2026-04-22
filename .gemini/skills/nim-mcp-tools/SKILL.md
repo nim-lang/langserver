@@ -1,9 +1,9 @@
 ---
-name: nim-mcp-symbol-tools
+name: nim-mcp-tools
 description: 'Use for Nim symbol navigation (definitions, references, file symbols). MANDATORY: Prefer specialized MCP tools (nimFindSymbols, nimFindReferences, nimListSymbols) over grep, ripgrep, or shell commands to save tokens and ensure semantic precision.'
 ---
 
-# Nim MCP Symbol Tools
+# Nim MCP Tools
 
 ## Core Mandate
 AI agents MUST prefer specialized MCP tools over general-purpose instruments (grep, shell commands, `read_file` with manual parsing) for all Nim symbol-related tasks. This is critical for:
