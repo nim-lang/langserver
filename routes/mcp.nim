@@ -6,6 +6,240 @@ import
 
 import macros except error
 
+# Tools
+
+proc nimFindReferences(): McpTool =
+  McpTool(
+    name: "nimFindReferences",
+    title: some "Find symbol references in .nim files",
+    description:
+      some "Find references of the symbol under cursor in the current workspace.",
+    inputSchema: McpToolSchema(
+      `type`: "object",
+      properties: some %*{
+        "path": {"type": "string"},
+        "line": {"type": "integer"},
+        "column": {"type": "integer"},
+      },
+      required: some @["path", "line", "column"],
+    ),
+    outputSchema: some McpToolSchema(
+      `type`: "object",
+      properties: some %*{
+        "refs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": {"type": "string"},
+              "line": {"type": "integer"},
+              "column": {"type": "integer"},
+            },
+            "required": ["path", "line", "column"],
+          },
+        }
+      },
+      required: some @["refs"],
+    ),
+  )
+
+proc nimFindSymbols(): McpTool =
+  McpTool(
+    name: "nimFindSymbols",
+    title: some "Find symbols in .nim files",
+    description:
+      some "Find symbols matching the given search query in the current workspace.",
+    inputSchema: McpToolSchema(
+      `type`: "object",
+      properties: some %*{"query": {"type": "string"}},
+      required: some @["query"],
+    ),
+    outputSchema: some McpToolSchema(
+      `type`: "object",
+      properties: some %*{
+        "syms": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": {"type": "string"},
+              "line": {"type": "integer"},
+              "column": {"type": "integer"},
+              "kind": {"type": "string"},
+            },
+            "required": ["path", "line", "column", "kind"],
+          },
+        }
+      },
+      required: some @["syms"],
+    ),
+  )
+
+proc nimListSymbols(): McpTool =
+  McpTool(
+    name: "nimListSymbols",
+    title: some "List symbols in a .nim file",
+    description: some "List all symbols in the given .nim file.",
+    inputSchema: McpToolSchema(
+      `type`: "object",
+      properties: some %*{"path": {"type": "string"}},
+      required: some @["path"],
+    ),
+    outputSchema: some McpToolSchema(
+      `type`: "object",
+      properties: some %*{
+        "syms": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {"type": "string"},
+              "path": {"type": "string"},
+              "line": {"type": "integer"},
+              "column": {"type": "integer"},
+              "kind": {"type": "string"},
+            },
+            "required": ["name", "path", "line", "column", "kind"],
+          },
+        }
+      },
+      required: some @["syms"],
+    ),
+  )
+
+proc callNimFindReferences(
+    ls: LanguageServer, params: McpCallToolParams
+): Future[McpCallToolResult] {.async.} =
+  let
+    arguments = params.arguments.get(JsonNode())
+    path = arguments["path"].getStr().absolutePath
+    uri = path.pathToUri()
+    line = arguments["line"].getInt()
+    column = arguments["column"].getInt()
+
+  if uri notin ls.openFiles:
+    await ls.didOpenFile(
+      TextDocumentItem(uri: uri, languageId: "nim", version: 0, text: readFile(path))
+    )
+
+  let nimsuggest = await ls.tryGetNimsuggest(uri)
+
+  if nimsuggest.isSome:
+    let references = await nimsuggest.get.use(path, path, line, column)
+
+    var usageReferencesJson = newJArray()
+    for reference in references:
+      if reference.section == ideUse:
+        usageReferencesJson.add %*{
+          "path": reference.filePath, "line": reference.line, "column": reference.column
+        }
+
+    let structuredContent = %*{"refs": usageReferencesJson}
+
+    McpCallToolResult(
+      content: @[McpContentBlock(`type`: TextContent, text: $structuredContent)],
+      structuredContent: some structuredContent,
+      isError: some false,
+    )
+  else:
+    McpCallToolResult(
+      content:
+        @[McpContentBlock(`type`: TextContent, text: "Nimsuggest is unavailable")],
+      isError: some true,
+    )
+
+proc callNimFindSymbols(
+    ls: LanguageServer, params: McpCallToolParams
+): Future[McpCallToolResult] {.async.} =
+  let
+    arguments = params.arguments.get(JsonNode())
+    query = arguments["query"].getStr()
+    path =
+      if len(ls.projectFiles) > 0:
+        ls.projectFiles.keys.toSeq[0]
+      else:
+        ""
+    uri = path.pathToUri()
+
+  if uri notin ls.openFiles:
+    await ls.didOpenFile(
+      TextDocumentItem(uri: uri, languageId: "nim", version: 0, text: readFile(path))
+    )
+
+  # This should probably be reimplemented with ls.lastNimSuggest
+  # but it is not assigned during initiallization and is therefore `nil`.
+  # As as workaround, we "open" the first available projectFile
+  # and use its nimsuggest instance.
+  let nimsuggest = await ls.tryGetNimsuggest(uri)
+
+  if nimsuggest.isSome:
+    let symbols = await nimsuggest.get.globalSymbols(query)
+
+    var symbolsJson = newJArray()
+    for symbol in symbols:
+      symbolsJson.add %*{
+        "path": symbol.filePath,
+        "line": symbol.line,
+        "column": symbol.column,
+        "kind": symbol.symkind[2 ..^ 1], # trim leading "sk", e.g. "skConst" -> "Const"
+      }
+
+    let structuredContent = %*{"syms": symbolsJson}
+
+    McpCallToolResult(
+      content: @[McpContentBlock(`type`: TextContent, text: $structuredContent)],
+      structuredContent: some structuredContent,
+      isError: some false,
+    )
+  else:
+    McpCallToolResult(
+      content:
+        @[McpContentBlock(`type`: TextContent, text: "Nimsuggest is unavailable")],
+      isError: some true,
+    )
+
+proc callNimListSymbols(
+    ls: LanguageServer, params: McpCallToolParams
+): Future[McpCallToolResult] {.async.} =
+  let
+    arguments = params.arguments.get(JsonNode())
+    path = arguments["path"].getStr().absolutePath
+    uri = path.pathToUri()
+
+  if uri notin ls.openFiles:
+    await ls.didOpenFile(
+      TextDocumentItem(uri: uri, languageId: "nim", version: 0, text: readFile(path))
+    )
+
+  let nimsuggest = await ls.tryGetNimsuggest(uri)
+
+  if nimsuggest.isSome:
+    let symbols = await nimsuggest.get.outline(path)
+
+    var symbolsJson = newJArray()
+    for symbol in symbols:
+      symbolsJson.add %*{
+        "name": symbol.name,
+        "path": symbol.filePath,
+        "line": symbol.line,
+        "column": symbol.column,
+        "kind": symbol.symkind[2 ..^ 1], # trim leading "sk"
+      }
+
+    let structuredContent = %*{"syms": symbolsJson}
+
+    McpCallToolResult(
+      content: @[McpContentBlock(`type`: TextContent, text: $structuredContent)],
+      structuredContent: some structuredContent,
+      isError: some false,
+    )
+  else:
+    McpCallToolResult(
+      content:
+        @[McpContentBlock(`type`: TextContent, text: "Nimsuggest is unavailable")],
+      isError: some true,
+    )
+
 # Routes
 proc initialize*(
     p: tuple[ls: LanguageServer, onExit: OnExitCallback], params: McpInitializeParams
@@ -36,244 +270,23 @@ proc initialize*(
 proc listTools*(
     ls: LanguageServer, params: McpListToolsParams
 ): Future[McpListToolsResult] {.async.} =
-  result = McpListToolsResult(
-    tools:
-      @[
-        McpTool(
-          name: "nimFindReferences",
-          title: some "Find symbol references in .nim files",
-          description:
-            some "Find references of the symbol under cursor in the current workspace.",
-          inputSchema: McpToolSchema(
-            `type`: "object",
-            properties: some %*{
-              "path": {"type": "string"},
-              "line": {"type": "integer"},
-              "column": {"type": "integer"},
-            },
-            required: some @["path", "line", "column"],
-          ),
-          outputSchema: some McpToolSchema(
-            `type`: "object",
-            properties: some %*{
-              "refs": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "path": {"type": "string"},
-                    "line": {"type": "integer"},
-                    "column": {"type": "integer"},
-                  },
-                  "required": ["path", "line", "column"],
-                },
-              }
-            },
-            required: some @["refs"],
-          ),
-        ),
-        McpTool(
-          name: "nimFindSymbols",
-          title: some "Find symbols in .nim files",
-          description: some "Find symbols matching the given search query in the current workspace.",
-          inputSchema: McpToolSchema(
-            `type`: "object",
-            properties: some %*{"query": {"type": "string"}},
-            required: some @["query"],
-          ),
-          outputSchema: some McpToolSchema(
-            `type`: "object",
-            properties: some %*{
-              "syms": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "path": {"type": "string"},
-                    "line": {"type": "integer"},
-                    "column": {"type": "integer"},
-                    "kind": {"type": "string"},
-                  },
-                  "required": ["path", "line", "column", "kind"],
-                },
-              }
-            },
-            required: some @["syms"],
-          ),
-        ),
-        McpTool(
-          name: "nimListSymbols",
-          title: some "List symbols in a .nim file",
-          description: some "List all symbols in the given .nim file.",
-          inputSchema: McpToolSchema(
-            `type`: "object",
-            properties: some %*{"path": {"type": "string"}},
-            required: some @["path"],
-          ),
-          outputSchema: some McpToolSchema(
-            `type`: "object",
-            properties: some %*{
-              "syms": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "name": {"type": "string"},
-                    "path": {"type": "string"},
-                    "line": {"type": "integer"},
-                    "column": {"type": "integer"},
-                    "kind": {"type": "string"},
-                  },
-                  "required": ["name", "path", "line", "column", "kind"],
-                },
-              }
-            },
-            required: some @["syms"],
-          ),
-        ),
-      ]
-  )
+  McpListToolsResult(tools: @[nimFindReferences(), nimFindSymbols(), nimListSymbols()])
 
 proc callTool*(
     ls: LanguageServer, params: McpCallToolParams
 ): Future[McpCallToolResult] {.async.} =
-  let arguments = params.arguments.get(JsonNode())
-
-  result =
-    case params.name
-    of "nimFindReferences":
-      let
-        path = arguments["path"].getStr().absolutePath
-        uri = path.pathToUri()
-        line = arguments["line"].getInt()
-        column = arguments["column"].getInt()
-
-      if uri notin ls.openFiles:
-        await ls.didOpenFile(
-          TextDocumentItem(
-            uri: uri, languageId: "nim", version: 0, text: readFile(path)
-          )
-        )
-
-      let nimsuggest = await ls.tryGetNimsuggest(uri)
-
-      if nimsuggest.isSome:
-        let references = await nimsuggest.get.use(path, path, line, column)
-
-        var usageReferencesJson = newJArray()
-        for reference in references:
-          if reference.section == ideUse:
-            usageReferencesJson.add %*{
-              "path": reference.filePath,
-              "line": reference.line,
-              "column": reference.column,
-            }
-
-        let structuredContent = %*{"refs": usageReferencesJson}
-
-        McpCallToolResult(
-          content: @[McpContentBlock(`type`: TextContent, text: $structuredContent)],
-          structuredContent: some structuredContent,
-          isError: some false,
-        )
-      else:
-        McpCallToolResult(
-          content:
-            @[McpContentBlock(`type`: TextContent, text: "Nimsuggest is unavailable")],
-          isError: some true,
-        )
-    of "nimFindSymbols":
-      let
-        query = arguments["query"].getStr()
-        path =
-          if len(ls.projectFiles) > 0:
-            ls.projectFiles.keys.toSeq[0]
-          else:
-            ""
-        uri = path.pathToUri()
-
-      if uri notin ls.openFiles:
-        await ls.didOpenFile(
-          TextDocumentItem(
-            uri: uri, languageId: "nim", version: 0, text: readFile(path)
-          )
-        )
-      # This should probably be reimplemented with ls.lastNimSuggest
-      # but it is not assigned during initiallization and is therefore `nil`.
-      # As as workaround, we "open" the first available projectFile
-      # and use its nimsuggest instance.
-      let nimsuggest = await ls.tryGetNimsuggest(uri)
-
-      if nimsuggest.isSome:
-        let symbols = await nimsuggest.get.globalSymbols(query)
-
-        var symbolsJson = newJArray()
-        for symbol in symbols:
-          symbolsJson.add %*{
-            "path": symbol.filePath,
-            "line": symbol.line,
-            "column": symbol.column,
-            "kind": symbol.symkind[2 ..^ 1], # trim leading "sk"
-          }
-
-        let structuredContent = %*{"syms": symbolsJson}
-
-        McpCallToolResult(
-          content: @[McpContentBlock(`type`: TextContent, text: $structuredContent)],
-          structuredContent: some structuredContent,
-          isError: some false,
-        )
-      else:
-        McpCallToolResult(
-          content:
-            @[McpContentBlock(`type`: TextContent, text: "Nimsuggest is unavailable")],
-          isError: some true,
-        )
-    of "nimListSymbols":
-      let
-        path = arguments["path"].getStr().absolutePath
-        uri = path.pathToUri()
-
-      if uri notin ls.openFiles:
-        await ls.didOpenFile(
-          TextDocumentItem(
-            uri: uri, languageId: "nim", version: 0, text: readFile(path)
-          )
-        )
-
-      let nimsuggest = await ls.tryGetNimsuggest(uri)
-
-      if nimsuggest.isSome:
-        let symbols = await nimsuggest.get.outline(path)
-
-        var symbolsJson = newJArray()
-        for symbol in symbols:
-          symbolsJson.add %*{
-            "name": symbol.name,
-            "path": symbol.filePath,
-            "line": symbol.line,
-            "column": symbol.column,
-            "kind": symbol.symkind[2 ..^ 1], # trim leading "sk"
-          }
-
-        let structuredContent = %*{"syms": symbolsJson}
-
-        McpCallToolResult(
-          content: @[McpContentBlock(`type`: TextContent, text: $structuredContent)],
-          structuredContent: some structuredContent,
-          isError: some false,
-        )
-      else:
-        McpCallToolResult(
-          content:
-            @[McpContentBlock(`type`: TextContent, text: "Nimsuggest is unavailable")],
-          isError: some true,
-        )
-    else:
-      McpCallToolResult(
-        content: @[McpContentBlock(`type`: TextContent, text: "Unknown tool")],
-        isError: some true,
-      )
+  case params.name
+  of "nimFindReferences":
+    await callNimFindReferences(ls, params)
+  of "nimFindSymbols":
+    await callNimFindSymbols(ls, params)
+  of "nimListSymbols":
+    await callNimListSymbols(ls, params)
+  else:
+    McpCallToolResult(
+      content: @[McpContentBlock(`type`: TextContent, text: "Unknown tool")],
+      isError: some true,
+    )
 
 # Notifications
 proc initialized*(ls: LanguageServer, _: JsonNode) {.async.} =
