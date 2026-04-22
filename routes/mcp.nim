@@ -112,8 +112,9 @@ proc listTools*(
                     "path": {"type": "string"},
                     "line": {"type": "integer"},
                     "column": {"type": "integer"},
+                    "kind": {"type": "string"},
                   },
-                  "required": ["path", "line", "column"],
+                  "required": ["path", "line", "column", "kind"],
                 },
               }
             },
@@ -141,8 +142,9 @@ proc listTools*(
                     "path": {"type": "string"},
                     "line": {"type": "integer"},
                     "column": {"type": "integer"},
+                    "kind": {"type": "string"},
                   },
-                  "required": ["name", "path", "line", "column"],
+                  "required": ["name", "path", "line", "column", "kind"],
                 },
               }
             },
@@ -240,7 +242,10 @@ proc callTool*(
         var symbolsJson = newJArray()
         for symbol in symbols:
           symbolsJson.add %*{
-            "path": symbol.filePath, "line": symbol.line, "column": symbol.column
+            "path": symbol.filePath,
+            "line": symbol.line,
+            "column": symbol.column,
+            "kind": $nimSymToLSPSymbolKind(symbol.symkind),
           }
 
         let structuredContent = %*{"syms": symbolsJson}
@@ -280,6 +285,7 @@ proc callTool*(
             "path": symbol.filePath,
             "line": symbol.line,
             "column": symbol.column,
+            "kind": $nimSymToLSPSymbolKind(symbol.symkind),
           }
 
         let structuredContent = %*{"syms": symbolsJson}
