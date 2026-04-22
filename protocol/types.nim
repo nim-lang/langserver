@@ -86,8 +86,6 @@ type
     value*: string
 
   McpListToolsParams* = ref object of RootObj
-    # cursor*: Option[string]
-    #
 
   McpCallToolParams* = ref object of RootObj
     name*: string
@@ -578,26 +576,12 @@ type
     uri*: URI
     name*: string
 
-  # McpInitializeParams_serverInfo_Icon_theme* = enum
-  #   light = "light"
-  #   dark = "dark"
-
-  # McpInitializeParams_serverInfo_Icon* = ref object of RootObj
-  #   src*: string
-  #   mimeType*: Option[string]
-  #   sizes*: OptionalSeq[string]
-  #   theme*: Option[McpInitializeParams_serverInfo_Icon_theme]
   McpInitializeParams_serverInfo* = ref object of RootObj
-    # icons*: OptionalSeq[McpInitializeParams_serverInfo_Icon]
-    # title*: Option[string]
-    # description*: Option[string]
-    # websiteUrl*: Option[string]
     name*: string
     version*: string
 
   McpInitializeResult* = ref object of RootObj
     protocolVersion*: string
-    # instructions*: Option[string]
     capabilities*: McpServerCapabilities
     serverInfo*: McpInitializeParams_serverInfo
 
@@ -709,8 +693,6 @@ type
 
   McpListToolsResult* = ref object of RootObj
     tools*: seq[McpTool]
-    # nextCursor*: Option[string]
-    #
 
   McpContentBlockType* = enum
     TextContent = "text"
@@ -726,16 +708,8 @@ type
     isError*: Option[bool]
 
   McpToolsOptions* = object
-    # listChanged*: Option[bool]
-    # 
 
   McpServerCapabilities* = ref object of RootObj
-    # experimental*: OptionalNode
-    # logging*: OptionalNode
-    # completions*: OptionalNode
-    # prompts*: OptionalNode
-    # resources*: OptionalNode
-    # tasks*: OptionalNode
     tools*: Option[McpToolsOptions]
 
   LspServerCapabilities* = ref object of RootObj
