@@ -10,15 +10,28 @@ AI agents MUST prefer specialized MCP tools over general-purpose instruments (gr
 1. **Token Efficiency**: MCP tools return structured, relevant data, avoiding large file reads or noisy grep outputs.
 2. **Precision**: These tools understand Nim semantics (scopes, imports, overloads) which string-based search cannot.
 
-## Nim Terminology vs MCP `kind` Values
-Nim and the MCP tool use different terminology. AI agents MUST translate between Nim terms used by the user and the generic `kind` values returned by the MCP tools.
+## User Terminology vs MCP `kind`
+Users may ask for symbol categories using looser or non-strict terminology. AI agents MUST map that wording to the exact Nim MCP `kind` values before filtering results from `nimListSymbols(...)` or `nimFindSymbols(...)`.
 
-- In Nim, callable routines may be described as **funcs**, **procs**, or **procedures**. In MCP responses, these are typically reported as `kind == Function`.
-- In Nim, user-defined named structural definitions are **types**. In MCP responses, these are typically reported as `kind == Class`.
-- Therefore, when the user asks for Nim **types**, do **not** look for `kind == Type`; call `nimListSymbols(...)` and filter for `kind == Class`.
-- Likewise, when the user asks for Nim **procs**, **funcs**, or **procedures**, call `nimListSymbols(...)` and filter for `kind == Function`.
+The MCP server returns Nim-oriented kind names derived from nimsuggest symbol kinds with the leading `sk` removed, such as `Const`, `EnumField`, `Field`, `Iterator`, `Converter`, `Let`, `Macro`, `Method`, `Proc`, `Template`, `Type`, `Var`, and `Func`.
 
-Always interpret MCP symbol kinds through Nim terminology before answering.
+Use these terminology mappings when interpreting user requests:
+
+- **function** / **functions**: usually match `Func` and `Proc`
+- **pure function** / **pure functions**: match `Func`
+- **callable** / **routine**: may include `Func`, `Proc`, `Method`, `Iterator`, `Converter`, `Macro`, and `Template`
+- **class** / **classes**: match `Type`
+- **variable** / **variables**: match `Var` and `Let`
+- **property** / **properties**: match `Field`
+- **enum member** / **enum members**: match `EnumField`
+- **constant** / **constants**: match `Const`
+
+Interpret user wording semantically, not literally. For example:
+
+- "list all classes in this module" -> filter for `kind == Type`
+- "list all variables" -> filter for `kind in {Var, Let}`
+- "list all functions" -> filter for `kind in {Func, Proc}` unless the surrounding context clearly asks for all callables
+- "list all pure functions" -> filter for `kind == Func`
 
 ## When to Use
 - **Finding References**: To rename a symbol, update a signature, or find usages.
@@ -36,12 +49,8 @@ Do NOT grep for the name.
 ### 2. List All Symbols in a File
 Do NOT read the whole file to find definitions.
 1. Call `nimListSymbols(path: "path/to/file.nim")`.
-2. If the user asked for a Nim-specific category, filter the returned symbols using the MCP terminology mapping above.
+2. If the user asked for a symbol category, filter by the MCP `kind` values that correspond to the user's terminology.
 3. Use the returned list to navigate or analyze the file structure.
-
-Example mappings:
-- "list all types in this module" -> `nimListSymbols(...)`, then keep only entries where `kind == Class`
-- "list all procs in this module" -> `nimListSymbols(...)`, then keep only entries where `kind == Function`
 
 ### 3. Find Definitions
 1. Call `nimFindSymbols(query: "query")`.
