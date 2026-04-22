@@ -245,7 +245,7 @@ proc callTool*(
             "path": symbol.filePath,
             "line": symbol.line,
             "column": symbol.column,
-            "kind": $nimSymToLSPSymbolKind(symbol.symkind),
+            "kind": symbol.symkind[2 ..^ 1], # trim leading "sk"
           }
 
         let structuredContent = %*{"syms": symbolsJson}
@@ -285,7 +285,7 @@ proc callTool*(
             "path": symbol.filePath,
             "line": symbol.line,
             "column": symbol.column,
-            "kind": $nimSymToLSPSymbolKind(symbol.symkind),
+            "kind": symbol.symkind[2 ..^ 1], # trim leading "sk"
           }
 
         let structuredContent = %*{"syms": symbolsJson}
