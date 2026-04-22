@@ -121,7 +121,7 @@ type
   McpInitializeParams* = ref object of RootObj
     protocolVersion*: string
     capabilities*: McpClientCapabilities
-    clientInfo*: Option[McpInitializeParams_clientInfo]
+    clientInfo*: McpInitializeParams_clientInfo
 
   LspInitializeParams* = ref object of RootObj
     processId*: OptionalNode # int or float
