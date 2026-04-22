@@ -555,12 +555,6 @@ type
     positionEncodings*: OptionalSeq[PositionEncodingKind_str]
 
   McpClientCapabilities* = ref object of RootObj
-    workspace*: Option[ClientCapabilities_workspace]
-    textDocument*: Option[TextDocumentClientCapabilities]
-    notebookDocument*: Option[NotebookDocumentClientCapabilities]
-    window*: Option[ClientCapabilities_window]
-    general*: Option[ClientCapabilities_general]
-    experimental*: OptionalNode
 
   LspClientCapabilities* = ref object of RootObj
     workspace*: Option[ClientCapabilities_workspace]
