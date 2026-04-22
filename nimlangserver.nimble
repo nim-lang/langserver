@@ -5,7 +5,6 @@ version = "1.12.0"
 author = "The core Nim team"
 description = "Nim language server for IDEs"
 license = "MIT"
-binDir = "bin"
 bin = @["nimlangserver"]
 skipDirs = @["tests"]
 
