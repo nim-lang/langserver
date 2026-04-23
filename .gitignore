@@ -1,7 +1,6 @@
 # ignore all executable files
 
 nimcache/
-bin/
 
 *.log
 *.exe
