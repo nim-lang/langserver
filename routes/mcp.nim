@@ -6,6 +6,8 @@ import
 
 import macros except error
 
+const McpProtocolVersion* = "2025-11-25"
+
 # Tool definitions
 
 proc nimFindReferences(): McpTool =
@@ -409,9 +411,10 @@ proc initialize*(
   p.ls.mcpInitializeParams = params
   p.ls.mcpClientCapabilities = params.capabilities
   result = McpInitializeResult(
-    protocolVersion: "2025-11-25",
+    protocolVersion: McpProtocolVersion,
     capabilities: McpServerCapabilities(tools: some(McpToolsOptions())),
-    serverInfo: McpInitializeParams_serverInfo(name: "nimlangserver", version: "1.12.0"),
+    serverInfo:
+      McpInitializeParams_serverInfo(name: "nimlangserver", version: LSPVersion),
   )
   debug "Initialize completed. Trying to start nimsuggest instances"
   let ls = p.ls
