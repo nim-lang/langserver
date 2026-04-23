@@ -368,7 +368,14 @@ proc callNimCheckFile(
   let nimsuggest = await ls.tryGetNimsuggest(uri)
 
   if nimsuggest.isSome:
-    let diagnostics = await nimsuggest.get.chkFile(path, path)
+    # Calling `con` command before `chkFile`;
+    # otherwise, no diagnostics would be listed
+    # for files in directories outside of srcDir
+    discard await nimsuggest.get.con(path, path, 0, 0)
+
+    let diagnostics = await nimsuggest.get.chkFile(path)
+
+    var diagJson: seq[JsonNode]
 
     for diagnostic in diagnostics:
       diagJson.add %*{
