@@ -96,12 +96,11 @@ proc nimListSymbols(): McpTool =
               "type": "object",
               "properties": {
                 "name": {"type": "string"},
-                "path": {"type": "string"},
                 "line": {"type": "integer"},
                 "column": {"type": "integer"},
                 "kind": {"type": "string"},
               },
-              "required": ["name", "path", "line", "column", "kind"],
+              "required": ["name", "line", "column", "kind"],
             },
           }
         },
