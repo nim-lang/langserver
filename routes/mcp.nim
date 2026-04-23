@@ -138,6 +138,37 @@ proc nimCheckProject(): McpTool =
     ),
   )
 
+proc nimCheckFile(): McpTool =
+  McpTool(
+    name: "nimCheckFile",
+    title: some "Check a .nim file",
+    description:
+      some "Get diagnostics (errors, warnings, and hints) for a given .nim file.",
+    inputSchema: McpToolSchema(
+      `type`: "object", properties: %*{"path": {"type": "string"}}, required: @["path"]
+    ),
+    outputSchema: some McpToolSchema(
+      `type`: "object",
+      properties:
+        %*{
+          "diags": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "line": {"type": "integer"},
+                "column": {"type": "integer"},
+                "severity": {"type": "string"},
+                "message": {"type": "string"},
+              },
+              "required": ["line", "column", "severity", "message"],
+            },
+          }
+        },
+      required: @["diags"],
+    ),
+  )
+
 # Tool calls
 
 proc callNimFindReferences(
@@ -318,6 +349,47 @@ proc callNimCheckProject(
       isError: some true,
     )
 
+proc callNimCheckFile(
+    ls: LanguageServer, params: McpCallToolParams
+): Future[McpCallToolResult] {.async.} =
+  let
+    arguments = params.arguments.get(JsonNode())
+    path = arguments["path"].getStr().absolutePath
+    uri = path.pathToUri()
+
+  if uri notin ls.openFiles:
+    await ls.didOpenFile(
+      TextDocumentItem(uri: uri, languageId: "nim", version: 0, text: readFile(path))
+    )
+
+  let nimsuggest = await ls.tryGetNimsuggest(uri)
+
+  if nimsuggest.isSome:
+    let diagnostics = await nimsuggest.get.chkFile(path, path)
+
+    var diagJson = newJArray()
+    for diagnostic in diagnostics:
+      diagJson.add %*{
+        "line": diagnostic.line,
+        "column": diagnostic.column,
+        "severity": diagnostic.forth,
+        "message": diagnostic.doc,
+      }
+
+    let structuredContent = %*{"diags": diagJson}
+
+    McpCallToolResult(
+      content: @[McpContentBlock(`type`: TextContent, text: $structuredContent)],
+      structuredContent: some structuredContent,
+      isError: some false,
+    )
+  else:
+    McpCallToolResult(
+      content:
+        @[McpContentBlock(`type`: TextContent, text: "Nimsuggest is unavailable")],
+      isError: some true,
+    )
+
 # Routes
 proc initialize*(
     p: tuple[ls: LanguageServer, onExit: OnExitCallback], params: McpInitializeParams
@@ -350,7 +422,14 @@ proc listTools*(
 ): Future[McpListToolsResult] {.async.} =
   debug "Call tool received..."
   McpListToolsResult(
-    tools: @[nimFindReferences(), nimFindSymbols(), nimListSymbols(), nimCheckProject()]
+    tools:
+      @[
+        nimFindReferences(),
+        nimFindSymbols(),
+        nimListSymbols(),
+        nimCheckProject(),
+        nimCheckFile(),
+      ]
   )
 
 proc callTool*(
@@ -366,6 +445,8 @@ proc callTool*(
     await callNimListSymbols(ls, params)
   of "nimCheckProject":
     await callNimCheckProject(ls, params)
+  of "nimCheckFile":
+    await callNimCheckFile(ls, params)
   else:
     McpCallToolResult(
       content: @[McpContentBlock(`type`: TextContent, text: "Unknown tool")],
