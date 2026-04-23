@@ -605,7 +605,7 @@ proc getWorkingDir(ls: LanguageServer, path: string): Future[string] {.async.} =
 
   for m in mapping:
     if pathRelativeToRoot.isSome and m.projectFile == pathRelativeToRoot.get():
-      result = rootPath.string / m.directory
+      result = rootPath / m.directory
       break
 
 proc progressSupported(ls: LanguageServer): bool =
@@ -1205,7 +1205,7 @@ proc getProjectFile*(fileUri: string, ls: LanguageServer): Future[string] {.asyn
       ls.showMessage(
         fmt"RegEx matched `{mapping.fileRegex}` for file `{fileUri}`", MessageType.Info
       )
-      result = string(rootPath) / mapping.projectFile
+      result = rootPath / mapping.projectFile
       if fileExists(result):
         trace "getProjectFile?",
           project = result, uri = fileUri, matchedRegex = mapping.fileRegex
