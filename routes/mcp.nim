@@ -325,7 +325,8 @@ proc callNimCheckProject(
   if nimsuggest.isSome:
     let diagnostics = await nimsuggest.get.chk(path)
 
-    var diagJson = newJArray()
+    var diagJson: seq[JsonNode]
+
     for diagnostic in diagnostics:
       diagJson.add %*{
         "path": diagnostic.filePath,
@@ -335,7 +336,9 @@ proc callNimCheckProject(
         "message": diagnostic.doc,
       }
 
-    let structuredContent = %*{"diags": diagJson}
+    # nimsuggest would return duplicate diagnostics
+    # so we deduplicate them before returning
+    let structuredContent = %*{"diags": deduplicate(diagJson)}
 
     McpCallToolResult(
       content: @[McpContentBlock(`type`: TextContent, text: $structuredContent)],
@@ -367,7 +370,6 @@ proc callNimCheckFile(
   if nimsuggest.isSome:
     let diagnostics = await nimsuggest.get.chkFile(path, path)
 
-    var diagJson = newJArray()
     for diagnostic in diagnostics:
       diagJson.add %*{
         "line": diagnostic.line,
@@ -376,7 +378,9 @@ proc callNimCheckFile(
         "message": diagnostic.doc,
       }
 
-    let structuredContent = %*{"diags": diagJson}
+    # nimsuggest would return duplicate diagnostics
+    # so we deduplicate them before returning
+    let structuredContent = %*{"diags": deduplicate(diagJson)}
 
     McpCallToolResult(
       content: @[McpContentBlock(`type`: TextContent, text: $structuredContent)],
