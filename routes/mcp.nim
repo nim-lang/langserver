@@ -4,8 +4,6 @@ import
   ../[suggestapi, ls, utils],
   ../protocol/types
 
-import macros except error
-
 const McpProtocolVersion* = "2025-11-25"
 
 # Tool definitions
