@@ -173,3 +173,93 @@ suite "TraceExpandMacro":
       fail()
     else:
       check gotTracePath
+
+# CTFS magic bytes: 0xC0 0xDE 0x72 0xAC 0xE2
+const CtfsMagic: array[5, byte] = [0xC0'u8, 0xDE, 0x72, 0xAC, 0xE2]
+const TraceNimsuggestPath = currentSourcePath().parentDir().parentDir() /
+  ".." / "codetracer-nim" / "bin" / "nimsuggest_trace"
+
+# Module-level resolved path for the trace-enabled nimsuggest, used by the
+# workspace/configuration route handler below.
+let resolvedTraceNimsuggestPath* = normalizedPath(absolutePath(TraceNimsuggestPath))
+
+proc traceConfigHandler(params: JsonNode): Future[JsonNode] {.async, gcsafe.} =
+  ## Route handler for workspace/configuration that returns config with the
+  ## trace-enabled nimsuggest binary path.
+  {.cast(gcsafe).}:
+    return %*[{"nimsuggestPath": resolvedTraceNimsuggestPath}]
+
+suite "TraceExpandMacro end-to-end (trace-enabled nimsuggest)":
+  # This suite requires the trace-enabled nimsuggest binary.
+  # It verifies the full round-trip: LSP request -> nimsuggest traceExpand
+  # -> .ct file on disk with valid CTFS magic bytes.
+
+  if not fileExists(resolvedTraceNimsuggestPath):
+    echo "SKIP: trace-enabled nimsuggest not found at: " &
+      resolvedTraceNimsuggestPath
+    test "end-to-end: macro file returns .ct path with valid CTFS magic (SKIPPED)":
+      skip()
+  else:
+    let cmdParams2 = CommandLineParams(transport: some socket, port: getNextFreePort())
+    let ls2 = main(cmdParams2)
+    let client2 = newLspSocketClient()
+
+    # Register workspace/configuration as a ROUTE (not notification) so the
+    # server receives a response containing our custom nimsuggestPath pointing
+    # to the trace-enabled nimsuggest binary.
+    client2.register("workspace/configuration", traceConfigHandler)
+
+    client2.registerNotification(
+      "window/showMessage",
+      "window/workDoneProgress/create",
+      "extension/statusUpdate",
+      "textDocument/publishDiagnostics",
+      "$/progress",
+    )
+    waitFor client2.connect("localhost", cmdParams2.port)
+
+    let initParams2 =
+      InitializeParams %* {
+        "processId": %getCurrentProcessId(),
+        "rootUri": fixtureUri("projects/macrotest/"),
+        "capabilities": {
+          "window": {"workDoneProgress": true},
+          "workspace": {"configuration": true},
+        },
+      }
+    let initResult2 = waitFor client2.initialize(initParams2)
+    client2.notify("initialized", newJObject())
+
+    test "end-to-end: macro file returns .ct path with valid CTFS magic":
+      let macroFile = "projects/macrotest/macrotest.nim"
+      client2.notify("textDocument/didOpen", %createDidOpenParams(macroFile))
+
+      let absFile = macroFile.fixtureUri.uriToPath
+      check waitFor client2.waitForNotificationMessage(
+        fmt "Nimsuggest initialized for {absFile}"
+      )
+
+      # Position (6, 0) is `myMacro:` - the macro invocation
+      let traceParams = %*{
+        "textDocument": {"uri": fixtureUri(macroFile)},
+        "position": {"line": 6, "character": 0},
+      }
+
+      let res = waitFor client2.call("nim/traceExpandMacro", traceParams)
+      check res.kind == JObject
+      check res.hasKey("tracePath")
+
+      let tracePath = res["tracePath"].getStr
+      check tracePath.endsWith(".ct")
+      check tracePath.len > 3
+
+      # Verify the .ct file exists on disk
+      check fileExists(tracePath)
+
+      # Verify the file starts with valid CTFS magic bytes
+      let f = open(tracePath, fmRead)
+      defer: f.close()
+      var header: array[5, byte]
+      let bytesRead = f.readBytes(header, 0, 5)
+      check bytesRead == 5
+      check header == CtfsMagic
