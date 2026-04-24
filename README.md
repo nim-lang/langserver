@@ -2,6 +2,13 @@
 
 Nim Language Server, or `nimlangserver`, is a language server for Nim.
 
+`nimlangserver` can run in two server modes:
+
+- **LSP server** for editors and IDEs.
+- **MCP server** for AI tools and coding agents such as GitHub Copilot, Claude Code, and Gemini.
+
+LSP is the default mode. Running `nimlangserver` is equivalent to `nimlangserver --lsp`.
+
 ## Installation
 
 **IMPORTANT** you might want to use latest build of the `nimlangserver` and/or build it from source.
@@ -18,7 +25,7 @@ _NB:_ `nimlangserver` requires `nimsuggest` version that supports `--v3`:
 You can install the latest release into `$HOME/.nimble/bin` using e.g.:
 
 ```sh
-nimble install nimlangserver
+nimble install -g nimlangserver
 ```
 
 ### From Source
@@ -27,20 +34,55 @@ nimble install nimlangserver
 nimble build
 ```
 
-### VSCode
+## Server modes and transports
+
+`nimlangserver` supports two transports in both modes:
+
+- `--stdio` (default)
+- `--socket`
+
+To use socket transport, start `nimlangserver` with `--socket`. You can set the port using `--port=<port>`. If you don't specify a port, `nimlangserver` will automatically find an open port and print it to the console.
+
+## LSP server
+
+### Setup
+
+**IMPORTANT** if you're a Windows user, do youself a favor and set up your development environment in [WSL](https://learn.microsoft.com/en-us/windows/wsl/), i.e. clone and edit your projects in the WSL file system. If you use VSCode, use it with [WSL extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-wsl), and run terminal-based editors like Neovim or Helix directly in the WSL shell. Even though nimlangserver does compile and work natively on Windows, you will enjoy better performance and stability in WSL mode.
+
+By default, `nimlangserver` starts in LSP mode over stdio:
+
+```bash
+nimlangserver
+```
+
+These commands are equivalent:
+
+```bash
+nimlangserver
+nimlangserver --lsp
+nimlangserver --lsp --stdio
+```
+
+To run the LSP server over a socket instead:
+
+```bash
+nimlangserver --lsp --socket --port=6000
+```
+
+#### VSCode
 
 - [vscode-nim](https://github.com/nim-lang/vscode-nim) has support for `nimlangserver`. Follow the instructions at:
   https://github.com/nim-lang/vscode-nim#using
 
-### Sublime Text
+#### Sublime Text
 
 Install [LSP-nimlangserver](https://packagecontrol.io/packages/LSP-nimlangserver) from Package Control.
 
-### Zed Editor
+#### Zed Editor
 
 Install [Nim Extenstion](https://github.com/foxoman/zed-nim) from the Zed Editor extensions.
 
-### Helix
+#### Helix
 
 Just install the langserver with Nimble and make sure it's on your PATH.
 
@@ -59,7 +101,7 @@ Configured language servers:
     Indent queries: ✓
 ```
 
-### Neovim
+#### Neovim
 
 - [lsp](https://neovim.io/doc/user/lsp.html) Neovim has built-in LSP support. Although, you might want to use something like [lsp-config](https://github.com/neovim/nvim-lspconfig) to take care of the boilerplate code for the most LSP configurations. Install `lsp-config` using your favourite plugin manager an place the following code into your `init.vim` config:
 
@@ -79,9 +121,7 @@ EOF
 
 Change configuration to your liking (most probably you don't need to provide any settings at all, defaults should work fine for the majority of the users). You might also want to read `lsp-config` documentation to setup key bindings, autocompletion and so on.
 
-**IMPORTANT** you might want to use latest build of the `nimlangserver` and/or build it from source.
-
-### VIM/Neovim
+#### VIM/Neovim
 
 - [coc.nvim](https://github.com/neoclide/coc.nvim) supports both classical VIM as well as Neovim. It also supports vscode-like `coc-settings.json` for LSP configuration. Install the plugin via your favourite plugin manager, create `coc-settings.json` alongside your `init.vim` and add the following contents to it:
 
@@ -104,7 +144,41 @@ Change configuration to your liking (most probably you don't need to provide any
 
 Of course, change the configuration to your liking. You might also want to read `coc.nvim` documentation to setup key bindings, autocompletion and so on.
 
-## Configuration Options
+#### Emacs
+
+- Install [lsp-mode](https://github.com/emacs-lsp/lsp-mode) and `nim-mode` from melpa and add the following to your config:
+
+```elisp
+(add-hook 'nim-mode-hook #'lsp)
+```
+
+### Usage
+
+`nimlangserver` supports the following LSP features:
+
+- Initialize
+- Completions
+- Hover
+- Goto definition
+- Goto declaration
+- Goto type definition
+- Document symbols
+- Find references
+- Code actions
+- Prepare rename
+- Rename symbols
+- Inlay hints
+- Signature help
+- Document formatting (Requires `nph` to be available in the PATH.)
+- Execute command
+- Workspace symbols
+- Document highlight
+- Shutdown
+- Exit
+
+### Configuration
+
+LSP configuration is normally supplied by the client/editor via `nim.*` settings.
 
 - `nim.projectMapping` - configure how `nimsuggest` should be started. Here it is sample configuration for `VScode`. We don't want `nimlangserver` to start `nimsuggest` for each file and this configuration will allow configuring pair `projectFile`/`fileRegex` so when one of the regexp in the list matches current file then `nimls` will use `root` to start `nimsuggest`. In case there are no matches `nimlangserver` will try to guess the most suitable project root.
 
@@ -141,7 +215,7 @@ Note when in a nimble project, `nimble` will drive the entry points for `nimsugg
 - `nim.useNimCheck` - use `nim check` instead of `nimsuggest` for linting. Defaults to `true`.
 - `nim.maxNimsuggestProcesses` - the maximum number of `nimsuggest` processes to keep alive. 0 means unlimited. If not specified the default is 0.
 
-### Inlay Hints
+#### Inlay Hints
 
 Inlay hints are visual snippets displayed by the editor inside your code.
 
@@ -208,37 +282,11 @@ To enable inlay hints in Helix, add this langserver configuration to your `langu
 inlayHints = { typeHints = true, exceptionHints = true, parameterHints = true }
 ```
 
-## Features
-
-`nimlangserver` supports the following LSP features:
-
-- Initialize
-- Completions
-- Hover
-- Goto definition
-- Goto declaration
-- Goto type definition
-- Document symbols
-- Find references
-- Code actions
-- Prepare rename
-- Rename symbols
-- Inlay hints
-- Signature help
-- Document formatting (Requires `nph` to be available in the PATH.)
-- Execute command
-- Workspace symbols
-- Document highlight
-- Shutdown
-- Exit
-
-You can install `nimlangserver` using the instructions for your text editor below:
-
 ### Extension methods
 
-In addition to the standard `LSP` methods, `nimlangserver` provides additional nim specific methods.
+In addition to the standard `LSP` methods, `nimlangserver` provides additional Nim specific methods.
 
-### `extension/macroExpand`
+#### `extension/macroExpand`
 
 - Request:
 
@@ -302,31 +350,85 @@ Result: {
 }
 ```
 
-### VSCode
+### Test Runner
 
-Install the `vscode-nim` extension from [here](https://github.com/nim-lang/vscode-nim)
+In order to list and run tests the test library `unittest2 >= 0.2.4` must be used. An entry point for the tests must be provided via the vsc extension `nim.test.entryPoint` or `testEntryPoint` in future versions of `nimble`.
 
-### Emacs
+## MCP server
 
-- Install [lsp-mode](https://github.com/emacs-lsp/lsp-mode) and `nim-mode` from melpa and add the following to your
-  config:
+### Setup
 
-```elisp
-(add-hook 'nim-mode-hook #'lsp)
+`nimlangserver` can also run as an MCP server and expose Nim-aware tools to AI assistants and coding agents such as GitHub Copilot, Claude Code, and Gemini. This lets those tools inspect Nim code semantically instead of relying only on plain text search.
+
+To use `nimlangserver`'s MCP server in a Nim project, add the MCP config for the AI agent you use. This repository ships ready-to-use project configs for Copilot, Claude Code, and Gemini, and ready-to-use Nim MCP skill files for Copilot, Claude Code, and Gemini.
+
+1. Install or build `nimlangserver`.
+2. Open the Nim project root in your AI tool.
+3. Copy the matching config file from this repository into your project.
+
+Common setups:
+
+- **GitHub Copilot CLI**: create `.mcp.json` in your project root and copy the contents of this repository's `.mcp.json`.
+- **Claude Code**: create `.mcp.json` in your project root and copy the contents of this repository's `.mcp.json`.
+- **VS Code / GitHub Copilot**: create `.vscode/mcp.json` in your project and copy the contents of this repository's `.vscode/mcp.json`.
+- **Gemini CLI**: create `.gemini/settings.json` in your project and copy the contents of this repository's `.gemini/settings.json`.
+
+All of these configs use `nimlangserver --mcp` over stdio, which is the mode currently covered by the MCP tests.
+
+### Usage
+
+The provided configs start `nimlangserver` in MCP mode for you. The effective command is:
+
+```bash
+nimlangserver --mcp --stdio
 ```
 
-## Transport
+For example, the Copilot CLI project config in `.mcp.json` is:
 
-`nimlangserver` supports two transport modes:
+```json
+{
+  "mcpServers": {
+    "nim": {
+      "type": "stdio",
+      "command": "nimlangserver",
+      "args": ["--mcp"]
+    }
+  }
+}
+```
 
-- stdio
-- socket
+The current MCP tool set is:
 
-To use socket mode, start `nimlangserver` with the `--socket` flag. You can set the port using the `--port` flag. If you don't specify the port, `nimlangserver` will automatically find an open port and print it in the console.
+- `nimFindReferences`
+- `nimFindSymbols`
+- `nimListSymbols`
+- `nimCheckProject`
+- `nimCheckFile`
 
-## Test Runner
+### Nim-specific skills for AI agents
 
-In order to list and run tests the test library `unittest2 >= 0.2.4` must be used. An entry point for the tests must be provided via the vsc extension `nim.test.entryPoint` or `testEntryPoint` in future versions of `nimble`
+This repository also ships ready-to-use Nim MCP skills, so enabling Nim-specific tool usage is mostly a matter of copying them into your project or agent workspace.
+
+Available skill files:
+
+- GitHub Copilot: `.github/skills/nim-mcp-tools/SKILL.md`
+- Claude Code: `.claude/skills/nim-mcp-tools/SKILL.md`
+- Gemini: `.gemini/skills/nim-mcp-tools/SKILL.md`
+
+When these skills are enabled, the agent can do Nim-aware symbol lookup and diagnostics with structured results instead of relying on grep or generic text search.
+
+### Example
+
+```bash
+cd /path/to/project
+cp /path/to/langserver/.mcp.json .
+mkdir -p .github/skills/nim-mcp-tools
+cp /path/to/langserver/.github/skills/nim-mcp-tools/SKILL.md .github/skills/nim-mcp-tools/SKILL.md
+```
+
+## Contributor Guide
+
+For internal architecture, package layout, MCP tool development, and debugging notes, see [CONTRIBUTING.md](./CONTRIBUTING.md).
 
 ## Related Projects
 
