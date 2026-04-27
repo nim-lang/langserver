@@ -215,14 +215,21 @@ proc callNimFindReferences(
 proc callNimFindSymbols(
     ls: LanguageServer, params: McpCallToolParams
 ): Future[McpCallToolResult] {.async.} =
+  if len(ls.projectFiles) == 0:
+    return McpCallToolResult(
+      content:
+        @[
+          McpContentBlock(
+            `type`: TextContent, text: "Tool works only in Nimble projects"
+          )
+        ],
+      isError: some true,
+    )
+
   let
     arguments = params.arguments.get(JsonNode())
     query = arguments["query"].getStr()
-    path =
-      if len(ls.projectFiles) > 0:
-        ls.projectFiles.keys.toSeq[0]
-      else:
-        ""
+    path = ls.projectFiles.keys.toSeq[0]
     uri = path.pathToUri()
 
   if uri notin ls.openFiles:
@@ -307,12 +314,19 @@ proc callNimListSymbols(
 proc callNimCheckProject(
     ls: LanguageServer, params: McpCallToolParams
 ): Future[McpCallToolResult] {.async.} =
+  if len(ls.projectFiles) == 0:
+    return McpCallToolResult(
+      content:
+        @[
+          McpContentBlock(
+            `type`: TextContent, text: "Tool works only in Nimble projects"
+          )
+        ],
+      isError: some true,
+    )
+
   let
-    path =
-      if len(ls.projectFiles) > 0:
-        ls.projectFiles.keys.toSeq[0]
-      else:
-        ""
+    path = ls.projectFiles.keys.toSeq[0]
     uri = path.pathToUri()
 
   if uri notin ls.openFiles:
