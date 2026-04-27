@@ -104,23 +104,13 @@ proc initialize*(
     #TODO do the test on the action
     if docCaps.rename.isSome and docCaps.rename.get().prepareSupport.get(false):
       result.capabilities.renameProvider = %*{"prepareProvider": true}
+
   debug "Initialize completed. Trying to start nimsuggest instances"
 
   let ls = p.ls
   ls.lspServerCapabilities = result.capabilities
   let rootPath = ls.lspInitializeParams.getRootPath
-  if rootPath != "":
-    let nimbleFiles = walkFiles(rootPath / "*.nimble").toSeq
-    if nimbleFiles.len > 0:
-      let nimbleFile = nimbleFiles[0]
-      let nimbleDumpInfo = await ls.getNimbleDumpInfo(nimbleFile)
-      ls.entryPoints =
-        nimbleDumpInfo.getNimbleEntryPoints(ls.lspInitializeParams.getRootPath)
-      # ls.showMessage(fmt "Found entry point {ls.entryPoints}?", MessageType.Info)
-      for entryPoint in ls.entryPoints:
-        debug "Starting nimsuggest for entry point ", entry = entryPoint
-        if entryPoint notin ls.projectFiles:
-          ls.createOrRestartNimsuggest(entryPoint)
+  await ls.initNimsuggestInstances(rootPath)
 
 proc toCompletionItem(suggest: Suggest): CompletionItem =
   with suggest:

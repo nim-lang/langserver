@@ -780,6 +780,20 @@ proc createOrRestartNimsuggest*(
   ls: LanguageServer, projectFile: string, uri = ""
 ) {.gcsafe, raises: [].}
 
+proc initNimsuggestInstances*(ls: LanguageServer, rootPath: string) {.async.} =
+  if rootPath == "":
+    return
+
+  let nimbleFiles = walkFiles(rootPath / "*.nimble").toSeq
+  if nimbleFiles.len > 0:
+    let nimbleFile = nimbleFiles[0]
+    let nimbleDumpInfo = await ls.getNimbleDumpInfo(nimbleFile)
+    ls.entryPoints = nimbleDumpInfo.getNimbleEntryPoints(rootPath)
+    for entryPoint in ls.entryPoints:
+      debug "Starting nimsuggest for entry point ", entry = entryPoint
+      if entryPoint notin ls.projectFiles:
+        ls.createOrRestartNimsuggest(entryPoint)
+
 proc getNimsuggestInner(ls: LanguageServer, uri: string): Future[Nimsuggest] {.async.} =
   assert uri in ls.openFiles, "File not open"
 

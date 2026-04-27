@@ -432,16 +432,7 @@ proc initialize*(
   let ls = p.ls
   ls.mcpServerCapabilities = result.capabilities
   let rootPath = getCurrentDir().pathToUri.uriToPath
-  if rootPath != "":
-    let nimbleFiles = walkFiles(rootPath / "*.nimble").toSeq
-    if nimbleFiles.len > 0:
-      let nimbleFile = nimbleFiles[0]
-      let nimbleDumpInfo = await ls.getNimbleDumpInfo(nimbleFile)
-      ls.entryPoints = nimbleDumpInfo.getNimbleEntryPoints(rootPath)
-      for entryPoint in ls.entryPoints:
-        debug "Starting nimsuggest for entry point ", entry = entryPoint
-        if entryPoint notin ls.projectFiles:
-          ls.createOrRestartNimsuggest(entryPoint)
+  await ls.initNimsuggestInstances(rootPath)
 
 proc listTools*(
     ls: LanguageServer, params: McpListToolsParams
