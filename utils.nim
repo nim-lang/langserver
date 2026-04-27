@@ -192,7 +192,7 @@ proc callSoon*(cb: proc() {.gcsafe.}) {.gcsafe.} =
       {.cast(raises: []).}:
         cb()
     except CatchableError:
-      discard #TODO handle  
+      discard #TODO handle
 
   callSoon do(data: pointer) {.gcsafe.}:
     cbWrapper()
@@ -274,6 +274,7 @@ proc to*(params: RequestParamsRx, T: typedesc): T =
     # we simply ignore any positional params and parse an empty
     # object instead.
     of rpPositional:
+      doAssert len(params.positional) == 0
       $newJObject()
 
   parseJson(value).to(T)
