@@ -372,6 +372,7 @@ Common setups:
 - **Claude Code**: create `.mcp.json` in your project root and copy the contents of this repository's `.mcp.json`.
 - **VS Code / GitHub Copilot**: create `.vscode/mcp.json` in your project and copy the contents of this repository's `.vscode/mcp.json`.
 - **Gemini CLI**: create `.gemini/settings.json` in your project and copy the contents of this repository's `.gemini/settings.json`.
+- **OpenCode**: create `opencode.json` in your project root and copy the contents of this repository's `opencode.json`.
 
 All of these configs use `nimlangserver --mcp` over stdio, which is the mode currently covered by the MCP tests.
 
@@ -392,6 +393,21 @@ For example, the Copilot CLI project config in `.mcp.json` is:
       "type": "stdio",
       "command": "nimlangserver",
       "args": ["--mcp"]
+    }
+  }
+}
+```
+
+The OpenCode project config in `opencode.json` is:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "nim": {
+      "type": "local",
+      "command": ["nimlangserver", "--mcp"],
+      "enabled": true
     }
   }
 }
