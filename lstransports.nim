@@ -83,7 +83,7 @@ proc wrapRpc*[T](fn: proc(params: T): Future[auto] {.gcsafe, raises: [].}): Rpc 
         JsonString("{}") #Client doesnt expect a response. Handled in processMessage
     else:
       let res = await fn(val)
-      return JsonString($(%*res))
+      return JsonString($((%*res).withoutNulls))
 
 proc wrapRpc*[T](
     fn: proc(params: T, id: int): Future[auto] {.gcsafe, raises: [].}
@@ -96,7 +96,7 @@ proc wrapRpc*[T](
     except KeyError:
       error "IdRequest not found in the request params", params = params
     let res = await fn(val, idRequest)
-    return JsonString($(%*res))
+    return JsonString($((%*res).withoutNulls))
 
 proc addRpcToCancellable*(ls: LanguageServer, rpc: Rpc): Rpc =
   return proc(params: RequestParamsRx): Future[JsonString] {.gcsafe, raises: [].} =
