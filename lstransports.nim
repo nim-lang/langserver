@@ -42,6 +42,7 @@ proc toJson*(params: RequestParamsRx): JsonNode =
 
 func withoutNulls(n: JsonNode): JsonNode =
   ## Return a JObject or JArray without any null nodes.
+  ## If a JNull node is passed in, it is returned as is.
 
   doAssert n.kind in [JObject, JArray, JNull]
 
@@ -69,7 +70,7 @@ func withoutNulls(n: JsonNode): JsonNode =
       else:
         result.add(v)
   of JNull:
-    result = newJObject()
+    result = newJNull()
   else:
     # This never happens because of the assertion above
     discard
