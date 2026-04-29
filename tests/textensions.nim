@@ -112,7 +112,7 @@ suite "Nimlangserver extensions":
 
     let runTestsParams = RunTestParams(entryPoint: "tests/projects/testrunner/tests/sampletests.nim".absolutePath)
     let runTestsRes = client.call("extension/runTests", jsonutils.toJson(runTestsParams)).waitFor().jsonTo(
-        RunTestProjectResult
+        RunTestProjectResult, Joptions(allowMissingKeys: true)
       )
     check runTestsRes.suites.len == 4
     check runTestsRes.suites[0].name == "Sample Tests"
@@ -135,7 +135,7 @@ suite "Nimlangserver extensions":
     let suiteName = "Sample Suite"
     let runTestsParams = RunTestParams(entryPoint: "tests/projects/testrunner/tests/sampletests.nim".absolutePath, suiteName: some suiteName)
     let runTestsRes = client.call("extension/runTests", jsonutils.toJson(runTestsParams)).waitFor().jsonTo(
-        RunTestProjectResult
+        RunTestProjectResult, Joptions(allowMissingKeys: true)
       )
     check runTestsRes.suites.len == 1
     check runTestsRes.suites[0].name == suiteName
@@ -154,7 +154,7 @@ suite "Nimlangserver extensions":
 
     let testName = "Sample Test"
     let runTestsParams = RunTestParams(entryPoint: "tests/projects/testrunner/tests/sampletests.nim".absolutePath, testNames: some @[testName])
-    let runTestsRes = client.call("extension/runTests", jsonutils.toJson(runTestsParams)).waitFor().jsonTo(RunTestProjectResult)
+    let runTestsRes = client.call("extension/runTests", jsonutils.toJson(runTestsParams)).waitFor().jsonTo(RunTestProjectResult, Joptions(allowMissingKeys: true))
 
     check runTestsRes.suites.len == 1
     check runTestsRes.suites[0].tests == 1
@@ -172,7 +172,7 @@ suite "Nimlangserver extensions":
 
       let testNames = @["Sample Test", "Sample Test 2"]
       let runTestsParams = RunTestParams(entryPoint: "tests/projects/testrunner/tests/sampletests.nim".absolutePath, testNames: some testNames)
-      let runTestsRes = client.call("extension/runTests", jsonutils.toJson(runTestsParams)).waitFor().jsonTo(RunTestProjectResult)
+      let runTestsRes = client.call("extension/runTests", jsonutils.toJson(runTestsParams)).waitFor().jsonTo(RunTestProjectResult, Joptions(allowMissingKeys: true))
 
     check runTestsRes.suites.len == 1
   #   check runTestsRes.suites[0].tests == 2
@@ -189,7 +189,7 @@ suite "Nimlangserver extensions":
     let initializeResult = waitFor client.initialize(initParams)
 
     let runTestsParams = RunTestParams(entryPoint: "tests/projects/testrunner/tests/failingtest.nim".absolutePath)
-    let runTestsRes = client.call("extension/runTests", jsonutils.toJson(runTestsParams)).waitFor().jsonTo(RunTestProjectResult)
+    let runTestsRes = client.call("extension/runTests", jsonutils.toJson(runTestsParams)).waitFor().jsonTo(RunTestProjectResult, Joptions(allowMissingKeys: true))
 
     check runTestsRes.suites.len == 1
     check runTestsRes.suites[0].name == "Failing Tests"
