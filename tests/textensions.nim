@@ -91,7 +91,7 @@ suite "Nimlangserver extensions":
 
     let listTestsParams = ListTestsParams(entryPoint: "tests/projects/testrunner/tests/sampletests.nim".absolutePath)
     let tests = client.call("extension/listTests", jsonutils.toJson(listTestsParams)).waitFor().jsonTo(
-        ListTestsResult
+        ListTestsResult, Joptions(allowMissingKeys: true)
       )
     let testProjectInfo = tests.projectInfo
     check testProjectInfo.suites.len == 3
