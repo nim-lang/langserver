@@ -40,6 +40,40 @@ proc toJson*(params: RequestParamsRx): JsonNode =
     for p in params.positional:
       result.add parseJson($p)
 
+func withoutNulls(n: JsonNode): JsonNode =
+  ## Return a JObject or JArray without any null nodes.
+
+  doAssert n.kind in [JObject, JArray, JNull]
+
+  case n.kind
+  of JObject:
+    result = newJObject()
+
+    for k, v in n:
+      case v.kind
+      of JNull:
+        discard
+      of JObject, JArray:
+        result[k] = v.withoutNulls
+      else:
+        result[k] = v
+  of JArray:
+    result = newJArray()
+
+    for v in n:
+      case v.kind
+      of JNull:
+        discard
+      of JObject, JArray:
+        result.add(v.withoutNulls)
+      else:
+        result.add(v)
+  of JNull:
+    result = newJObject()
+  else:
+    # This never happens because of the assertion above
+    discard
+
 proc wrapRpc*[T](fn: proc(params: T): Future[auto] {.gcsafe, raises: [].}): Rpc =
   return proc(params: RequestParamsRx): Future[JsonString] {.gcsafe, async.} =
     var val = params.to(T)
