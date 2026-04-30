@@ -144,7 +144,9 @@ proc register*(client: LspSocketClient, name: string, rpc: Rpc) =
 proc initialize*(
     client: LspSocketClient, initParams: InitializeParams
 ): Future[InitializeResult] {.async.} =
-  client.call("initialize", %initParams).await.jsonTo(InitializeResult)
+  client.call("initialize", %initParams).await.jsonTo(
+    InitializeResult, Joptions(allowMissingKeys: true)
+  )
 
 proc createDidOpenParams*(file: string): DidOpenTextDocumentParams =
   return
