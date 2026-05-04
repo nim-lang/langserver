@@ -171,7 +171,7 @@ proc wrapContentWithContentLenght*(content: string): string =
   &"{CONTENT_LENGTH}{contentLenght}{CRLF}{CRLF}{content}\n"
 
 proc writeOutput*(ls: LanguageServer, content: JsonNode) =
-  let res = wrapContentWithContentLenght($content)
+  let res = wrapContentWithContentLenght($content.withoutNulls)
   try:
     case ls.transportMode
     of stdio:
