@@ -171,7 +171,7 @@ proc wrapContentWithContentLenght*(content: string): string =
   &"{CONTENT_LENGTH}{contentLenght}{CRLF}{CRLF}{content}\n"
 
 proc writeOutput*(ls: LanguageServer, content: JsonNode) =
-  let res = wrapContentWithContentLenght($content.withoutNulls)
+  let res = wrapContentWithContentLenght($content)
   try:
     case ls.transportMode
     of stdio:
@@ -258,7 +258,7 @@ proc initActions*(ls: LanguageServer) =
 
   let notifyAction: NotifyAction = proc(name: string, params: JsonNode) =
     genJsonAction()
-    ls.writeOutput(json)
+    ls.writeOutput(json.withoutNulls)
 
   let callAction: CallAction = proc(name: string, params: JsonNode): Future[JsonNode] =
     let id = $genOid()
