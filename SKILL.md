@@ -1,6 +1,6 @@
 ---
 name: nim-mcp-tools
-description: 'Use for Nim symbol navigation and diagnostics. MANDATORY: Prefer specialized MCP tools (nimFindSymbols, nimFindReferences, nimListSymbols, nimCheckFile, nimCheckProject) over grep, ripgrep, or shell commands to save tokens and ensure semantic precision.'
+description: 'Use for Nim symbol navigation and diagnostics. MANDATORY: Use specialized MCP tools (nimFindSymbols, nimFindReferences, nimListSymbols, nimCheckFile, nimCheckProject) first; fall back to grep only on error or user confirmation.'
 ---
 
 # Nim MCP Tools
@@ -105,16 +105,20 @@ Do NOT approximate project diagnostics by grepping build logs or manually scanni
 Use this workflow for requests phrased as checking the current project, workspace, repository, repo, package, codebase, checkout, or module tree for Nim issues.
 
 ## Fallback Policy
-General text search is allowed only after the relevant Nim MCP tool has explicitly failed, returned unusable results, or is unavailable in the environment.
+Specialized Nim MCP tools are the primary instrument. General-purpose tools (grep, ripgrep, shell commands) are secondary and their use is governed by the following rules:
+
+1. **On Error**: If an MCP tool fails due to a technical error (e.g., tool crash, timeout, connection issue), you MUST fall back to `grep_search` or other general-purpose tools to fulfill the request.
+   - State clearly that the MCP tool failed.
+   - Use the narrowest fallback necessary.
+2. **On Empty Results**: If an MCP tool returns no results (empty list), do NOT automatically fall back to grep. Instead, you MUST prompt the user, asking if they would like you to attempt a plain text search using general-purpose tools.
+3. **Availability**: If MCP tools are unavailable in the environment, use general-purpose tools but inform the user.
 
 When falling back:
-
-1. State that the MCP tool failed or was unavailable.
-2. Use the narrowest fallback necessary.
-3. Do not present the fallback as equivalent in precision to `nimFindSymbols`, `nimFindReferences`, `nimListSymbols`, `nimCheckFile`, or `nimCheckProject`.
+- Do not present the fallback results as equivalent in precision to MCP tool results.
 
 ## Critical Constraints
-- **NO GREP**: Never use `grep`, `ripgrep`, or `grep_search` to find Nim symbols or references unless the MCP tools are explicitly failing.
+- **NO GREP BY DEFAULT**: Never use `grep`, `ripgrep`, or `grep_search` to find Nim symbols or references unless the MCP tools have explicitly errored out.
+- **PROMPT ON EMPTY**: If MCP tools return nothing, you MUST ask the user before falling back to grep.
 - **NO MANUAL PARSING**: Do not read large Nim files just to extract symbol locations; use `nimListSymbols` instead.
 - **NO DIY FILE CHECKS**: Do not substitute manual inspection, ad-hoc compiler invocations, or `nimCheckProject` when `nimCheckFile` can return structured diagnostics for the specific file the user asked about.
 - **NO DIY PROJECT CHECKS**: Do not substitute shelling out to ad-hoc Nim commands, parsing compiler output, or manually inspecting many files when `nimCheckProject` can return structured project diagnostics.
