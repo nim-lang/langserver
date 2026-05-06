@@ -11,22 +11,26 @@ AI agents MUST prefer specialized MCP tools over general-purpose instruments (gr
 2. **Precision**: These tools understand Nim semantics (scopes, imports, overloads) which string-based search cannot.
 
 ## Activation Rule
-If the user asks to find, rename, remove, audit, or update a Nim symbol or its usages, this skill MUST be used first and the workflow must start with the Nim MCP symbol tools.
+If the user asks to find, rename, remove, audit, update, standardize naming, or fix issues/project of a Nim symbol or its usages, this skill MUST be used first and the workflow must start with the Nim MCP symbol tools.
 
 If the user asks to check a single Nim file for errors, warnings, hints, diagnostics, issues, problems, or compiler feedback, this skill MUST be used first and the workflow must start with `nimCheckFile`.
 
-If the user asks to check a Nim project for errors, warnings, hints, diagnostics, issues, problems, or compiler feedback, this skill MUST be used first and the workflow must start with `nimCheckProject`.
+If the user asks to check a Nim project for errors, warnings, hints, diagnostics, issues, problems, compiler feedback, or to "fix" it, this skill MUST be used first and the workflow must start with `nimCheckProject`.
 
 This applies to requests phrased as:
 
 - "find all usages/references of `Foo`"
 - "remove all definitions of and references to `Foo`"
 - "rename `Foo` everywhere"
+- "standardize naming for `Foo`"
+- "fix casing for all variables"
 - "where is `Foo` defined?"
 - "list the symbols in this Nim file/module"
 - "check this file/module for errors"
 - "show diagnostics for `foo.nim`"
 - "check this project/workspace/repository/package for errors"
+- "fix issues in this project"
+- "fix the repo"
 - "find Nim diagnostics in the current codebase"
 - "show warnings and hints for this repo"
 - "scan the current module tree for Nim issues"
@@ -63,6 +67,8 @@ Interpret user wording semantically, not literally. For example:
 ## When to Use
 - **Finding References**: To rename a symbol, update a signature, or find usages.
 - **Symbol Discovery**: To find where a symbol is defined by name.
+- **Naming Standardization**: To fix casing or follow style guides (e.g., standardizing to `camelCase`) across the project.
+- **Fixing Project Issues**: To iteratively find and resolve all diagnostics in the project.
 - **File Analysis**: To get an overview of all symbols in a file.
 - **File Diagnostics**: To check one specific Nim file for errors, warnings, and hints.
 - **Project Diagnostics**: To check the current Nim project/workspace/repository/package for errors, warnings, and hints.
@@ -102,6 +108,24 @@ Do NOT approximate project diagnostics by grepping build logs or manually scanni
 3. If the user asked for only a subset (for example, only errors or only warnings), filter the returned diagnostics by severity before presenting them.
 
 Use this workflow for requests phrased as checking the current project, workspace, repository, repo, package, codebase, checkout, or module tree for Nim issues.
+
+### 6. Standardize Naming
+Use this when asked to fix casing, follow a style guide, or rename symbols to the standard `camelCase` (as per standard Nim convention).
+1. Iterate through the project files one by one.
+2. For each file, call `nimListSymbols(path: "path/to/file.nim")` to retrieve the symbols that need to be standardized.
+3. For each symbol found, call `nimFindReferences(path, line, column)` to identify all of its usages and call sites across the project.
+4. Standardize the definition and all identified reference sites to `camelCase` to ensure consistency and adherence to Nim's standard style.
+5. After a file has been processed, call `nimCheckFile(path: "path/to/file.nim")` to verify that the changes are correct and no errors were introduced.
+
+### 7. Fix Project Issues
+Use this when asked to "fix issues", "fix project", or "fix the repo".
+1. Call `nimCheckProject()` to find all diagnostics in the project.
+2. Analyze the diagnostics and resolve the identified issues.
+3. Repeat steps 1 and 2 until `nimCheckProject()` returns no more issues.
+4. **Limit**: If issues remain after 3 iterations, you MUST stop and prompt the user, asking if they would like you to continue.
+5. **Post-Fix Step**: Once all issues are resolved (or the user stops the process), ask the user if they would like you to check for naming consistency.
+6. **Consistency Check**: If the user agrees, use `nimFindSymbols` and `nimFindReferences` to find all variations of symbol usage in the project.
+7. **Standardization Prompt**: Prompt the user if they would like to standardize naming based on the findings.
 
 ## Fallback Policy
 Specialized Nim MCP tools are the primary instrument. General-purpose tools (grep, ripgrep, shell commands) are secondary and their use is governed by the following rules:
