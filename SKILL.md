@@ -98,9 +98,8 @@ Use this workflow for requests phrased as checking a specific file, source file,
 ### 5. Check the Current Nim Project for Diagnostics
 Do NOT approximate project diagnostics by grepping build logs or manually scanning files.
 1. Call `nimCheckProject()`.
-2. Interpret diagnostics with `path: "???"`, `line: 0`, and `column: -1` as top-level diagnostics that do not correspond to a particular file and instead relate to the project as a whole.
-3. Use the returned diagnostics to report errors, warnings, and hints for the current Nim project context.
-4. If the user asked for only a subset (for example, only errors or only warnings), filter the returned diagnostics by severity before presenting them.
+2. Use the returned diagnostics to report errors, warnings, and hints for the current Nim project context.
+3. If the user asked for only a subset (for example, only errors or only warnings), filter the returned diagnostics by severity before presenting them.
 
 Use this workflow for requests phrased as checking the current project, workspace, repository, repo, package, codebase, checkout, or module tree for Nim issues.
 
