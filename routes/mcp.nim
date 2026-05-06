@@ -342,13 +342,15 @@ proc callNimCheckProject(
     var diagJson: seq[JsonNode]
 
     for diagnostic in diagnostics:
-      diagJson.add %*{
-        "path": diagnostic.filePath,
-        "line": diagnostic.line,
-        "column": diagnostic.column,
-        "severity": diagnostic.forth,
-        "message": diagnostic.doc,
-      }
+      # Diagnostics with path ??? are not related to the project
+      if diagnostic.filePath != "???":
+        diagJson.add %*{
+          "path": diagnostic.filePath,
+          "line": diagnostic.line,
+          "column": diagnostic.column,
+          "severity": diagnostic.forth,
+          "message": diagnostic.doc,
+        }
 
     # nimsuggest would return duplicate diagnostics
     # so we deduplicate them before returning
