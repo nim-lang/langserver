@@ -393,11 +393,15 @@ To use `nimlangserver`'s MCP server in a Nim project, add the MCP config for the
 
 ### Usage
 
+Before using the skill, it is recommended to load it with /nim-mcp-tools spash command.
+
 With the skills added, your AI tool will prefer Nim-specific MCP tools to general-purpose ones like `grep` or `sed` when it works with Nim code.
 
 For example, if you ask your AI to find and remove all references of the symbol `foo`, it will invoke `nimFindSymbols` on "foo" to find all definitions of `foo`, then it will invoke `nimFindReferences` on each symbol definition, and finally will perform the deletion.
 
 You can also invoke the tools directly by name, e.g. "Call nimCheckFile on @myfile.nim."
+
+[![MCP mode demo](https://asciinema.org/a/drQhE5irfKriCrba.svg)](https://asciinema.org/a/drQhE5irfKriCrba)
 
 ### Why you should use nimlangserver as MCP server
 
