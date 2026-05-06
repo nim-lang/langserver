@@ -337,7 +337,7 @@ proc callNimCheckProject(
   let nimsuggest = await ls.tryGetNimsuggest(uri)
 
   if nimsuggest.isSome:
-    let diagnostics = await nimsuggest.get.chk(path)
+    let diagnostics = await nimsuggest.get.chk(path, path)
 
     var diagJson: seq[JsonNode]
 
