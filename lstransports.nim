@@ -40,6 +40,41 @@ proc toJson*(params: RequestParamsRx): JsonNode =
     for p in params.positional:
       result.add parseJson($p)
 
+func withoutNulls(n: JsonNode): JsonNode =
+  ## Return a JObject or JArray without any null nodes.
+  ## If a JNull node is passed in, it is returned as is.
+
+  doAssert n.kind in [JObject, JArray, JNull]
+
+  case n.kind
+  of JObject:
+    result = newJObject()
+
+    for k, v in n:
+      case v.kind
+      of JNull:
+        discard
+      of JObject, JArray:
+        result[k] = v.withoutNulls
+      else:
+        result[k] = v
+  of JArray:
+    result = newJArray()
+
+    for v in n:
+      case v.kind
+      of JNull:
+        discard
+      of JObject, JArray:
+        result.add(v.withoutNulls)
+      else:
+        result.add(v)
+  of JNull:
+    result = newJNull()
+  else:
+    # This never happens because of the assertion above
+    discard
+
 proc wrapRpc*[T](fn: proc(params: T): Future[auto] {.gcsafe, raises: [].}): Rpc =
   return proc(params: RequestParamsRx): Future[JsonString] {.gcsafe, async.} =
     var val = params.to(T)
@@ -49,7 +84,7 @@ proc wrapRpc*[T](fn: proc(params: T): Future[auto] {.gcsafe, raises: [].}): Rpc 
         JsonString("{}") #Client doesnt expect a response. Handled in processMessage
     else:
       let res = await fn(val)
-      return JsonString($(%*res))
+      return JsonString($((%*res).withoutNulls))
 
 proc wrapRpc*[T](
     fn: proc(params: T, id: int): Future[auto] {.gcsafe, raises: [].}
@@ -62,7 +97,7 @@ proc wrapRpc*[T](
     except KeyError:
       error "IdRequest not found in the request params", params = params
     let res = await fn(val, idRequest)
-    return JsonString($(%*res))
+    return JsonString($((%*res).withoutNulls))
 
 proc addRpcToCancellable*(ls: LanguageServer, rpc: Rpc): Rpc =
   return proc(params: RequestParamsRx): Future[JsonString] {.gcsafe, raises: [].} =
