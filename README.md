@@ -401,6 +401,8 @@ For example, if you ask your AI to find and remove all references of the symbol 
 
 You can also invoke the tools directly by name, e.g. "Call nimCheckFile on @myfile.nim."
 
+See a quick demo with OpenCode:
+
 [![MCP mode demo](https://asciinema.org/a/drQhE5irfKriCrba.svg)](https://asciinema.org/a/drQhE5irfKriCrba)
 
 ### Why you should use nimlangserver as MCP server
