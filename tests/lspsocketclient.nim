@@ -194,7 +194,7 @@ proc waitForNotification*(
 ): Future[bool] {.async.} =
   let timeout = 10000
   if accTime > timeout:
-    error "Coudlnt match predicate ", calls = client.calls[name]
+    error "Couldn't match predicate ", calls = client.calls[name]
     return false
   try:
     for call in client.calls[name]:
