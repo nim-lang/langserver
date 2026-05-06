@@ -397,15 +397,7 @@ With the skills added, your AI tool will prefer Nim-specific MCP tools to genera
 
 For example, if you ask your AI to find and remove all references of the symbol `foo`, it will invoke `nimFindSymbols` on "foo" to find all definitions of `foo`, then it will invoke `nimFindReferences` on each symbol definition, and finally will perform the deletion.
 
-Here's how this could look like in Gemini CLI:
-
-![](./img/gemini_mcp_1.png)
-![](./img/gemini_mcp_2.png)
-![](./img/gemini_mcp_3.png)
-
-You can also invoke the tools directly by name, e.g. "Call nimCheckFile on @myfile.nim":
-
-![](./img/gemini_mcp_4.png)
+You can also invoke the tools directly by name, e.g. "Call nimCheckFile on @myfile.nim."
 
 ### Why you should use nimlangserver as MCP server
 
@@ -435,9 +427,9 @@ Let's ask OpenCode with GitHub Copilot using Claude Sonnet to find all usages of
 
 ![](./img/opencode_mcp_vs_no_mcp.png)
 
-As you can see, OpenCode without MCP relied on pure text analysis and missed two usages. OpenCode with MCP however correctly called `nimFindSymbols` and `nimFindReferences` and returned all 4 usages.
+As you can see, OpenCode without MCP relied on pure text analysis and missed 3 out of 4 usages. OpenCode with MCP however correctly called `nimFindSymbols` and `nimFindReferences` and returned all 4 usages.
 
-Now, your AI agent may handle this task better without MCP but with it it is _guaranteed_ to get the corect result.
+Of course, your AI agent may handle this specific task better without MCP. But the thing is that with MCP it is _guaranteed_ to get the corect result.
 
 ## Contributor Guide
 
