@@ -230,13 +230,13 @@ nimlangserver offers three kinds of inlay hints:
 
 Here's how inlay hints look like in VSCode
 
-- type hint: ![](./vscode_type_hint.png)
-- exception hint: ![](./vscode_exception_hint.png)
+- type hint: ![](./img/vscode_type_hint.png)
+- exception hint: ![](./img/vscode_exception_hint.png)
 
 Here are the same hints in Helix:
 
-- ![](./helix_type_hint.png)
-- ![](./helix_exception_hint.png)
+- ![](./img/helix_type_hint.png)
+- ![](./img/helix_exception_hint.png)
 
 In VSCode, inlay hints are enabled by default. You can toggle different kinds of hints in the settings:
 
@@ -244,7 +244,7 @@ In VSCode, inlay hints are enabled by default. You can toggle different kinds of
 2. Search **inlay**.
 3. Go to **Nim configuration**.
 
-![](./vscode_settings.png)
+![](./img/vscode_settings.png)
 
 To enable inlay hints in Neovim, configure lspconfig in your `init.vim`:
 
@@ -356,62 +356,9 @@ In order to list and run tests the test library `unittest2 >= 0.2.4` must be use
 
 ## MCP server
 
-### Setup
-
 `nimlangserver` can also run as an MCP server and expose Nim-aware tools to AI assistants and coding agents such as GitHub Copilot, Claude Code, and Gemini. This lets those tools inspect Nim code semantically instead of relying only on plain text search.
 
-To use `nimlangserver`'s MCP server in a Nim project, add the MCP config for the AI agent you use. This repository ships ready-to-use project configs for Copilot, Claude Code, and Gemini, and ready-to-use Nim MCP skill files for Copilot, Claude Code, and Gemini.
-
-1. Install or build `nimlangserver`.
-2. Open the Nim project root in your AI tool.
-3. Copy the matching config file from this repository into your project.
-
-Common setups:
-
-- **GitHub Copilot CLI**: create `.mcp.json` in your project root and copy the contents of this repository's `.mcp.json`.
-- **Claude Code**: create `.mcp.json` in your project root and copy the contents of this repository's `.mcp.json`.
-- **VS Code / GitHub Copilot**: create `.vscode/mcp.json` in your project and copy the contents of this repository's `.vscode/mcp.json`.
-- **Gemini CLI**: create `.gemini/settings.json` in your project and copy the contents of this repository's `.gemini/settings.json`.
-- **OpenCode**: create `opencode.json` in your project root and copy the contents of this repository's `opencode.json`.
-
-All of these configs use `nimlangserver --mcp` over stdio, which is the mode currently covered by the MCP tests.
-
-### Usage
-
-The provided configs start `nimlangserver` in MCP mode for you. The effective command is:
-
-```bash
-nimlangserver --mcp --stdio
-```
-
-For example, the Copilot CLI project config in `.mcp.json` is:
-
-```json
-{
-  "mcpServers": {
-    "nim": {
-      "type": "stdio",
-      "command": "nimlangserver",
-      "args": ["--mcp"]
-    }
-  }
-}
-```
-
-The OpenCode project config in `opencode.json` is:
-
-```json
-{
-  "$schema": "https://opencode.ai/config.json",
-  "mcp": {
-    "nim": {
-      "type": "local",
-      "command": ["nimlangserver", "--mcp"],
-      "enabled": true
-    }
-  }
-}
-```
+- [Presentation at the IFT Townhall meetup →](https://www.youtube.com/live/OZ3PR_U2QMo?si=5BEvawshJpAUY37o&t=2107)
 
 The current MCP tool set is:
 
@@ -421,26 +368,76 @@ The current MCP tool set is:
 - `nimCheckProject`
 - `nimCheckFile`
 
-### Nim-specific skills for AI agents
+### Setup
 
-This repository also ships ready-to-use Nim MCP skills, so enabling Nim-specific tool usage is mostly a matter of copying them into your project or agent workspace.
+To use `nimlangserver`'s MCP server in a Nim project, add the MCP config for the AI agent you use. This repository ships ready-to-use project configs for Copilot, Claude Code, and Gemini, and ready-to-use Nim MCP skill files for Copilot, Claude Code, and Gemini.
 
-Available skill files:
+1. [Install or build `nimlangserver`](#Installation).
+2. Copy the matching config file from this repository to your project:
 
-- GitHub Copilot: `.github/skills/nim-mcp-tools/SKILL.md`
-- Claude Code: `.claude/skills/nim-mcp-tools/SKILL.md`
-- Gemini: `.gemini/skills/nim-mcp-tools/SKILL.md`
+- VSCode / GitHub Copilot: `.vscode/mcp.json`
+- Claude Code: `.mcp.json`
+- GitHub Copilot CLI: `.mcp.json`
+- Gemini CLI: `.gemini/settings.json`
+- OpenCode: `opencode.json`
 
-When these skills are enabled, the agent can do Nim-aware symbol lookup and diagnostics with structured results instead of relying on grep or generic text search.
+3. Copy `SKILL.md` to your project:
 
-### Example
+- VSCode / GitHub Copilot: `.github/skills/nim-mcp-tools`
+- Claude Code: `.claude/skills/nim-mcp-tools`
+- GitHub Copilot CLI: `.github/skills/nim-mcp-tools`
+- Gemini CLI: `.gemini/skills/nim-mcp-tools`
+- OpenCode: `.opencode/skills/nim-mcp-tools`
 
-```bash
-cd /path/to/project
-cp /path/to/langserver/.mcp.json .
-mkdir -p .github/skills/nim-mcp-tools
-cp /path/to/langserver/.github/skills/nim-mcp-tools/SKILL.md .github/skills/nim-mcp-tools/SKILL.md
+4. Open the Nim project root in your AI tool.
+
+### Usage
+
+With the skills added, your AI tool will prefer Nim-specific MCP tools to general-purpose ones like `grep` or `sed` when it works with Nim code.
+
+For example, if you ask your AI to find and remove all references of the symbol `foo`, it will invoke `nimFindSymbols` on "foo" to find all definitions of `foo`, then it will invoke `nimFindReferences` on each symbol definition, and finally will perform the deletion.
+
+Here's how this could look like in Gemini CLI:
+
+![](./img/gemini_mcp_1.png)
+![](./img/gemini_mcp_2.png)
+![](./img/gemini_mcp_3.png)
+
+You can also invoke the tools directly by name, e.g. "Call nimCheckFile on @myfile.nim":
+
+![](./img/gemini_mcp_4.png)
+
+### Why you should use nimlangserver as MCP server
+
+Consider a Nim project with a single source file:
+
+```nim
+proc printThing(thing: string) =
+  echo thing
+
+template doActionWithThing(action: untyped, thing: string): untyped =
+  `action Thing`(thing)
+
+when isMainModule:
+  printThing("Hello")
+  printthing("World")
+  print_thing("Nim is awesome")
+  doActionWithThing(print, "No really, Nim is so cool")
 ```
+
+In this file, `printThing` is used 4 times:
+
+- first, directly
+- then, twice with alternative spelling
+- finally, the call is constructed in a template
+
+Let's ask OpenCode with GitHub Copilot using Claude Sonnet to find all usages of `printThing`, once without MCP server and the other time with it:
+
+![](./img/opencode_mcp_vs_no_mcp.png)
+
+As you can see, OpenCode without MCP relied on pure text analysis and missed two usages. OpenCode with MCP however correctly called `nimFindSymbols` and `nimFindReferences` and returned all 4 usages.
+
+Now, your AI agent may handle this task better without MCP but with it it is _guaranteed_ to get the corect result.
 
 ## Contributor Guide
 
