@@ -27,9 +27,8 @@ proc newMcpInitParams(): McpInitializeParams =
   }
 
 proc checkToolResult(res: McpCallToolResult) =
-  check res.isError == some false
-  check res.structuredContent.isSome
-  check parseJson(res.content[0].text) == res.structuredContent.get()
+  check res.isError == false
+  check parseJson(res.content[0].text) == res.structuredContent
 
 proc newMcpSocketClient(port: Port): Future[McpSocketClient] {.async.} =
   let addresses = resolveTAddress("localhost", port)
@@ -83,12 +82,10 @@ suite "MCP routes":
 
   test "initialize returns MCP capabilities":
     check initializeResult.protocolVersion == McpProtocolVersion
-    check initializeResult.capabilities.tools.isSome
     check initializeResult.serverInfo.name == "nimlangserver"
     check initializeResult.serverInfo.version == LSPVersion
 
     check ls.mcpInitializeParams.protocolVersion == McpProtocolVersion
-    check ls.mcpServerCapabilities.tools.isSome
 
     check ls.entryPoints.len > 0
     check ls.entryPoints.allIt(it == repoMainFile)
@@ -124,15 +121,15 @@ suite "MCP routes":
       checkFile = listToolsResult.tools[4]
 
     check findReferences.inputSchema.required == @["path", "line", "column"]
-    check findReferences.outputSchema.get().required == @["refs"]
+    check findReferences.outputSchema.required == @["refs"]
     check findSymbols.inputSchema.required == @["query"]
-    check findSymbols.outputSchema.get().required == @["syms"]
+    check findSymbols.outputSchema.required == @["syms"]
     check listSymbols.inputSchema.required == @["path"]
-    check listSymbols.outputSchema.get().required == @["syms"]
+    check listSymbols.outputSchema.required == @["syms"]
     check checkProject.inputSchema.required.len == 0
-    check checkProject.outputSchema.get().required == @["diags"]
+    check checkProject.outputSchema.required == @["diags"]
     check checkFile.inputSchema.required == @["path"]
-    check checkFile.outputSchema.get().required == @["diags"]
+    check checkFile.outputSchema.required == @["diags"]
 
   test "callTool nimFindReferences returns structured references":
     let testProjectDir = absolutePath("tests" / "projects" / "mcpproject")
@@ -153,13 +150,13 @@ suite "MCP routes":
         testLs,
         McpCallToolParams(
           name: "nimFindReferences",
-          arguments: some(%*{"path": entryPoint, "line": 3, "column": 10}),
+          arguments: some %*{"path": entryPoint, "line": 3, "column": 10},
         ),
       )
 
       checkToolResult(res)
 
-      let refs = res.structuredContent.get()["refs"].getElems()
+      let refs = res.structuredContent["refs"].getElems()
       check refs.len == 1
 
   test "callTool nimFindSymbols returns matching workspace symbols":
@@ -178,13 +175,12 @@ suite "MCP routes":
       discard waitFor testLs.projectFiles[entryPoint].ns
 
       let res = waitFor mcp.callTool(
-        testLs,
-        McpCallToolParams(name: "nimFindSymbols", arguments: some(%*{"query": "add"})),
+        testLs, McpCallToolParams(name: "nimFindSymbols", arguments: some %*{"query": "add"})
       )
 
       checkToolResult(res)
 
-      let syms = res.structuredContent.get()["syms"].getElems()
+      let syms = res.structuredContent["syms"].getElems()
 
       check syms.anyIt(
         it["path"].getStr() == entryPoint and it["line"].getInt() == 3 and
@@ -208,14 +204,12 @@ suite "MCP routes":
 
       let res = waitFor mcp.callTool(
         testLs,
-        McpCallToolParams(
-          name: "nimListSymbols", arguments: some(%*{"path": entryPoint})
-        ),
+        McpCallToolParams(name: "nimListSymbols", arguments: some %*{"path": entryPoint}),
       )
 
       checkToolResult(res)
 
-      let syms = res.structuredContent.get()["syms"].getElems()
+      let syms = res.structuredContent["syms"].getElems()
       check syms.len == 1
       check syms[0] ==
         %*{"name": "add", "path": entryPoint, "line": 3, "column": 5, "kind": "Proc"}
@@ -240,7 +234,7 @@ suite "MCP routes":
 
       checkToolResult(res)
 
-      let diags = res.structuredContent.get()["diags"].getElems()
+      let diags = res.structuredContent["diags"].getElems()
       check diags.len > 0
       check diags.anyIt(
         it["path"].getStr() == errFile and it["line"].getInt() == 5 and
@@ -265,13 +259,12 @@ suite "MCP routes":
       discard waitFor testLs.projectFiles[entryPoint].ns
 
       let res = waitFor mcp.callTool(
-        testLs,
-        McpCallToolParams(name: "nimCheckFile", arguments: some(%*{"path": errFile})),
+        testLs, McpCallToolParams(name: "nimCheckFile", arguments: some %*{"path": errFile})
       )
 
       checkToolResult(res)
 
-      let diags = res.structuredContent.get()["diags"].getElems()
+      let diags = res.structuredContent["diags"].getElems()
       check diags.len > 0
       check diags.anyIt(
         it["line"].getInt() == 5 and it["severity"].getStr() == "Error" and
@@ -295,13 +288,12 @@ suite "MCP routes":
       discard waitFor testLs.projectFiles[entryPoint].ns
 
       let res = waitFor mcp.callTool(
-        testLs,
-        McpCallToolParams(name: "nimCheckFile", arguments: some(%*{"path": testFile})),
+        testLs, McpCallToolParams(name: "nimCheckFile", arguments: some %*{"path": testFile})
       )
 
       checkToolResult(res)
 
-      let diags = res.structuredContent.get()["diags"].getElems()
+      let diags = res.structuredContent["diags"].getElems()
       check diags.len > 0
       check diags.anyIt(
         it["line"].getInt() == 5 and it["severity"].getStr() == "Error" and
