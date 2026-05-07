@@ -161,6 +161,44 @@ proc nimCheckFile(): McpTool =
     ),
   )
 
+proc nimFindTypeDefinition(): McpTool =
+  McpTool(
+    name: "nimFindTypeDefinition",
+    title: "Find type definition in .nim files",
+    description:
+      "Find the type definition of the symbol under cursor in the current workspace.",
+    inputSchema: McpToolSchema(
+      `type`: "object",
+      properties: %*{
+        "path": {"type": "string"},
+        "line": {"type": "integer"},
+        "column": {"type": "integer"},
+      },
+      required: @["path", "line", "column"],
+    ),
+    outputSchema: McpToolSchema(
+      `type`: "object",
+      properties: %*{
+        "defs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": {"type": "string"},
+              "line": {"type": "integer"},
+              "column": {"type": "integer"},
+              "name": {"type": "string"},
+              "type": {"type": "string"},
+              "kind": {"type": "string"},
+            },
+            "required": ["path", "line", "column", "name", "type", "kind"],
+          },
+        }
+      },
+      required: @["defs"],
+    ),
+  )
+
 # Tool calls
 
 proc callNimFindReferences(
@@ -403,6 +441,51 @@ proc callNimCheckFile(
       isError: true,
     )
 
+proc callNimFindTypeDefinition(
+    ls: LanguageServer, params: McpCallToolParams
+): Future[McpCallToolResult] {.async.} =
+  let
+    arguments = params.arguments.get()
+    path = arguments["path"].getStr().absolutePath
+    uri = path.pathToUri()
+    line = arguments["line"].getInt()
+    column = arguments["column"].getInt()
+
+  if uri notin ls.openFiles:
+    await ls.didOpenFile(
+      TextDocumentItem(uri: uri, languageId: "nim", version: 0, text: readFile(path))
+    )
+
+  let nimsuggest = await ls.tryGetNimsuggest(uri)
+
+  if nimsuggest.isSome:
+    let typeDefs = await nimsuggest.get.`type`(path, path, line, column)
+
+    var typeDefsJson = newJArray()
+    for td in typeDefs:
+      typeDefsJson.add %*{
+        "path": td.filePath,
+        "line": td.line,
+        "column": td.column,
+        "name": td.name,
+        "type": td.forth,
+        "kind": td.symkind[2 ..^ 1],
+      }
+
+    let structuredContent = %*{"defs": typeDefsJson}
+
+    McpCallToolResult(
+      content: @[McpContentBlock(`type`: TextContent, text: $structuredContent)],
+      structuredContent: structuredContent,
+      isError: false,
+    )
+  else:
+    McpCallToolResult(
+      content:
+        @[McpContentBlock(`type`: TextContent, text: "Nimsuggest is unavailable")],
+      isError: true,
+    )
+
 # Routes
 proc initialize*(
     p: tuple[ls: LanguageServer, onExit: OnExitCallback], params: McpInitializeParams
@@ -433,6 +516,7 @@ proc listTools*(
       nimListSymbols(),
       nimCheckProject(),
       nimCheckFile(),
+      nimFindTypeDefinition(),
     ]
   )
 
@@ -451,6 +535,8 @@ proc callTool*(
     await callNimCheckProject(ls, params)
   of "nimCheckFile":
     await callNimCheckFile(ls, params)
+  of "nimFindTypeDefinition":
+    await callNimFindTypeDefinition(ls, params)
   else:
     McpCallToolResult(
       content: @[McpContentBlock(`type`: TextContent, text: "Unknown tool")],

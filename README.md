@@ -367,6 +367,7 @@ The current MCP tool set is:
 - `nimListSymbols`
 - `nimCheckProject`
 - `nimCheckFile`
+- `nimFindTypeDefinition`
 
 ### Setup
 
