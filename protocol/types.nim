@@ -675,15 +675,13 @@ type
     `type`*: string
     properties*: JsonNode
     required*: seq[string]
-    # `$schema`*: Option[string]
-    #
 
   McpTool* = object
     name*: string
-    title*: Option[string]
-    description*: Option[string]
+    title*: string
+    description*: string
     inputSchema*: McpToolSchema
-    outputSchema*: Option[McpToolSchema]
+    outputSchema*: McpToolSchema
 
   McpListToolsResult* = ref object of RootObj
     tools*: seq[McpTool]
@@ -698,13 +696,13 @@ type
 
   McpCallToolResult* = ref object of RootObj
     content*: seq[McpContentBlock]
-    structuredContent*: OptionalNode
-    isError*: Option[bool]
+    structuredContent*: JsonNode
+    isError*: bool
 
   McpToolsOptions* = object
 
   McpServerCapabilities* = ref object of RootObj
-    tools*: Option[McpToolsOptions]
+    tools*: McpToolsOptions
 
   LspServerCapabilities* = ref object of RootObj
     #!!!positionEncoding*: Option[PositionEncodingKind_str]
