@@ -442,6 +442,8 @@ Of course, your AI agent may handle this specific task better without MCP. But t
 
 For internal architecture, package layout, MCP tool development, and debugging notes, see [CONTRIBUTING.md](./CONTRIBUTING.md).
 
+To get familiar with the code structure, use DeepWiki: [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/nim-lang/langserver)
+
 ## Related Projects
 
 - [nimlsp](https://github.com/PMunch/nimlsp)

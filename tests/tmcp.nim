@@ -178,7 +178,8 @@ suite "MCP routes":
       discard waitFor testLs.projectFiles[entryPoint].ns
 
       let res = waitFor mcp.callTool(
-        testLs, McpCallToolParams(name: "nimFindSymbols", arguments: some %*{"query": "add"})
+        testLs,
+        McpCallToolParams(name: "nimFindSymbols", arguments: some %*{"query": "add"}),
       )
 
       checkToolResult(res)
@@ -207,7 +208,9 @@ suite "MCP routes":
 
       let res = waitFor mcp.callTool(
         testLs,
-        McpCallToolParams(name: "nimListSymbols", arguments: some %*{"path": entryPoint}),
+        McpCallToolParams(
+          name: "nimListSymbols", arguments: some %*{"path": entryPoint}
+        ),
       )
 
       checkToolResult(res)
@@ -262,7 +265,8 @@ suite "MCP routes":
       discard waitFor testLs.projectFiles[entryPoint].ns
 
       let res = waitFor mcp.callTool(
-        testLs, McpCallToolParams(name: "nimCheckFile", arguments: some %*{"path": errFile})
+        testLs,
+        McpCallToolParams(name: "nimCheckFile", arguments: some %*{"path": errFile}),
       )
 
       checkToolResult(res)
@@ -291,7 +295,8 @@ suite "MCP routes":
       discard waitFor testLs.projectFiles[entryPoint].ns
 
       let res = waitFor mcp.callTool(
-        testLs, McpCallToolParams(name: "nimCheckFile", arguments: some %*{"path": testFile})
+        testLs,
+        McpCallToolParams(name: "nimCheckFile", arguments: some %*{"path": testFile}),
       )
 
       checkToolResult(res)
