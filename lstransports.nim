@@ -273,7 +273,7 @@ proc initActions*(ls: LanguageServer) =
 
   let notifyAction: NotifyAction = proc(name: string, params: JsonNode) =
     genJsonAction()
-    ls.writeOutput(json)
+    ls.writeOutput(json.withoutNulls)
 
   let callAction: CallAction = proc(name: string, params: JsonNode): Future[JsonNode] =
     let id = $genOid()
