@@ -1,27 +1,21 @@
 import
-  strformat,
-  chronos,
-  chronos/asyncproc,
-  json_rpc/server,
-  os,
-  sugar,
-  sequtils,
-  suggestapi,
-  protocol/enums,
-  protocol/types,
-  with,
-  tables,
-  strutils,
-  ./utils,
-  chronicles,
-  asyncprocmonitor,
-  json_serialization,
-  std/[strscans, times, json, parseutils, strutils],
-  ls,
-  regex,
-  stew/[byteutils],
-  nimexpand,
-  testrunner
+  std/
+    [
+      os, sugar, sequtils, tables, strformat, strscans, times, json, parseutils,
+      strutils,
+    ],
+  pkg/[
+    chronos,
+    chronos/asyncproc,
+    json_rpc/server,
+    chronicles,
+    json_serialization,
+    regex,
+    stew/byteutils,
+    with,
+  ],
+  ../[testrunner, nimexpand, asyncprocmonitor, suggestapi, ls, utils],
+  ../protocol/[enums, types]
 
 import macros except error
 
@@ -34,8 +28,8 @@ proc getNphPath(): Option[string] =
 
 #routes
 proc initialize*(
-    p: tuple[ls: LanguageServer, onExit: OnExitCallback], params: InitializeParams
-): Future[InitializeResult] {.async.} =
+    p: tuple[ls: LanguageServer, onExit: OnExitCallback], params: LspInitializeParams
+): Future[LspInitializeResult] {.async.} =
   proc onClientProcessExitAsync(): Future[void] {.async.} =
     debug "onClientProcessExitAsync"
     await p.ls.stopNimsuggestProcesses
@@ -63,10 +57,10 @@ proc initialize*(
           hookAsyncProcMonitor(pidInt, onClientProcessExit)
       else:
         hookAsyncProcMonitor(pidInt, onClientProcessExit)
-  p.ls.initializeParams = params
-  p.ls.clientCapabilities = params.capabilities
-  result = InitializeResult(
-    capabilities: ServerCapabilities(
+  p.ls.lspInitializeParams = params
+  p.ls.lspClientCapabilities = params.capabilities
+  result = LspInitializeResult(
+    capabilities: LspServerCapabilities(
       textDocumentSync: some(
         %TextDocumentSyncOptions(
           openClose: some(true),
@@ -110,23 +104,13 @@ proc initialize*(
     #TODO do the test on the action
     if docCaps.rename.isSome and docCaps.rename.get().prepareSupport.get(false):
       result.capabilities.renameProvider = %*{"prepareProvider": true}
+
   debug "Initialize completed. Trying to start nimsuggest instances"
 
   let ls = p.ls
-  ls.serverCapabilities = result.capabilities
-  let rootPath = ls.initializeParams.getRootPath
-  if rootPath != "":
-    let nimbleFiles = walkFiles(rootPath / "*.nimble").toSeq
-    if nimbleFiles.len > 0:
-      let nimbleFile = nimbleFiles[0]
-      let nimbleDumpInfo = await ls.getNimbleDumpInfo(nimbleFile)
-      ls.entryPoints =
-        nimbleDumpInfo.getNimbleEntryPoints(ls.initializeParams.getRootPath)
-      # ls.showMessage(fmt "Found entry point {ls.entryPoints}?", MessageType.Info)
-      for entryPoint in ls.entryPoints:
-        debug "Starting nimsuggest for entry point ", entry = entryPoint
-        if entryPoint notin ls.projectFiles:
-          ls.createOrRestartNimsuggest(entryPoint)
+  ls.lspServerCapabilities = result.capabilities
+  let rootPath = ls.lspInitializeParams.getRootPath
+  await ls.initNimsuggestInstances(rootPath)
 
 proc toCompletionItem(suggest: Suggest): CompletionItem =
   with suggest:
@@ -153,7 +137,7 @@ proc completion*(
       await nimsuggest.get.sug(uriToPath(uri), ls.uriToStash(uri), line + 1, ch.get)
     result = completions.map(toCompletionItem)
 
-    if ls.clientCapabilities.supportSignatureHelp() and
+    if ls.lspClientCapabilities.supportSignatureHelp() and
         nsCon in nimSuggest.get.capabilities:
       #show only unique overloads if we support signatureHelp
       var unique = initTable[string, CompletionItem]()
@@ -474,7 +458,7 @@ proc prepareRename*(
     if def.len == 0:
       return newJNull()
     # Check if the symbol belongs to the project
-    let projectDir = ls.initializeParams.getRootPath
+    let projectDir = ls.lspInitializeParams.getRootPath
     if def[0].filePath.isRelTo(projectDir):
       return %def[0].toLocation().range
 
@@ -492,7 +476,7 @@ proc rename*(
     )
   )
   # Build up list of edits that the client needs to perform for each file
-  let projectDir = ls.initializeParams.getRootPath
+  let projectDir = ls.lspInitializeParams.getRootPath
   var edits = newJObject()
   for reference in references:
     # Only rename symbols in the project.
@@ -689,7 +673,7 @@ proc signatureHelp*(
   #   result.capabilities.signatureHelpProvider = SignatureHelpOptions(
   #           triggerCharacters: some(@["(", ","])
   #   )
-  if not ls.clientCapabilities.supportSignatureHelp():
+  if not ls.lspClientCapabilities.supportSignatureHelp():
     #Some clients doesnt support signatureHelp
     return none[SignatureHelp]()
   with (params.position, params.textDocument):
@@ -825,13 +809,13 @@ proc startNimbleProcess(
     "nimble",
     arguments = args,
     options = {UsePath},
-    workingDir = ls.initializeParams.getRootPath,
+    workingDir = ls.lspInitializeParams.getRootPath,
     stdoutHandle = AsyncProcess.Pipe,
     stderrHandle = AsyncProcess.Pipe,
   )
 
 proc tasks*(ls: LanguageServer, conf: JsonNode): Future[seq[NimbleTask]] {.async.} =
-  let rootPath: string = ls.initializeParams.getRootPath
+  let rootPath: string = ls.lspInitializeParams.getRootPath
   debug "Received tasks ", rootPath = rootPath
   delEnv "NIMBLE_DIR"
   let process = await ls.startNimbleProcess(@["tasks"])
@@ -876,7 +860,7 @@ proc listTests*(
         entryPoint: params.entryPoint, suites: initTable[string, TestSuiteInfo]()
       )
     )
-  let workspaceRoot = ls.initializeParams.getRootPath
+  let workspaceRoot = ls.lspInitializeParams.getRootPath
   let testProjectInfo = await listTests(params.entryPoint, nimPath.get(), workspaceRoot)
   result.projectInfo = testProjectInfo
 
@@ -888,7 +872,7 @@ proc runTests*(
   if nimPath.isNone:
     error "Nim path not found when running tests"
     return RunTestProjectResult()
-  let workspaceRoot = ls.initializeParams.getRootPath
+  let workspaceRoot = ls.lspInitializeParams.getRootPath
   await runTests(
     params.entryPoint,
     nimPath.get(),
@@ -963,7 +947,7 @@ proc willSaveWaitUntil*(
     nphPath = getNphPath()
 
   let shouldFormat =
-    nphPath.isSome and ls.serverCapabilities.documentFormattingProvider.get(false) and
+    nphPath.isSome and ls.lspServerCapabilities.documentFormattingProvider.get(false) and
     config.formatOnSave.get(false)
 
   if shouldFormat:

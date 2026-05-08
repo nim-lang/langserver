@@ -12,7 +12,7 @@ import testhelpers
 import unittest2
 
 suite "nimble setup":
-  let cmdParams = CommandLineParams(transport: some socket, port: getNextFreePort())
+  let cmdParams = CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
   let ls = main(cmdParams) #we could accesss to the ls here to test against its state
   let client = newLspSocketClient()
   waitFor client.connect("localhost", cmdParams.port)
@@ -27,7 +27,7 @@ suite "nimble setup":
     let entryPoint = testProjectDir / "src" / "testproject.nim"
     createNimbleProject(testProjectDir)
     let initParams =
-      InitializeParams %* {
+      LspInitializeParams %* {
         "processId": %getCurrentProcessId(),
         "rootUri": fixtureUri("projects/testproject"),
         "capabilities":
@@ -78,7 +78,7 @@ suite "nimble setup":
     check ls.projectFiles.len == 1
 
 suite "Project Mapping":
-  let cmdParams = CommandLineParams(transport: some socket, port: getNextFreePort())
+  let cmdParams = CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
   let ls = main(cmdParams) #we could accesss to the ls here to test against its state
   let client = newLspSocketClient()
   waitFor client.connect("localhost", cmdParams.port)
@@ -91,7 +91,7 @@ suite "Project Mapping":
 
   test "should use projectMapping fileRegex to find project file":
     let initParams =
-      InitializeParams %* {
+      LspInitializeParams %* {
         "processId": %getCurrentProcessId(),
         "rootUri": fixtureUri("projects"),
         "capabilities":

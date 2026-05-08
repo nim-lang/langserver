@@ -20,7 +20,7 @@ import
 const REQUEST_TIMEOUT* = 120000
 const HighestSupportedNimSuggestProtocolVersion = 4
 
-# coppied from Nim repo
+# copied from Nim repo
 type
   PrefixMatch* {.pure.} = enum
     None ## no prefix detected
@@ -510,6 +510,7 @@ proc call*(
       fmt "{command} \"{file}\";\"{dirtyFile}\":{line}:{column}{tag}"
     else:
       fmt "{command} \"{file}\":{line}:{column}{tag}"
+
   self.requestQueue.addLast(
     SuggestCall(commandString: commandString, future: result, command: command)
   )

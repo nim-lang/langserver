@@ -9,7 +9,7 @@ import lspsocketclient
 import unittest2
 
 suite "Nimlangserver":
-  let cmdParams = CommandLineParams(transport: some socket, port: getNextFreePort())
+  let cmdParams = CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
   let ls = main(cmdParams) #we could accesss to the ls here to test against its state
   let client = newLspSocketClient()
   client.registerNotification(
@@ -23,7 +23,7 @@ suite "Nimlangserver":
   waitFor client.connect("localhost", cmdParams.port)
   
   test "initialize from the client should call initialized on the server":
-    let initParams = InitializeParams %* {
+    let initParams = LspInitializeParams %* {
         "processId": %getCurrentProcessId(),
         "rootUri": fixtureUri("projects/hw/"),
         "capabilities": {
@@ -42,7 +42,7 @@ let helloWorldUri = fixtureUri("projects/hw/hw.nim")
 
   
 suite "Suggest API selection":
-  let cmdParams = CommandLineParams(transport: some socket, port: getNextFreePort())
+  let cmdParams = CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
   let ls = main(cmdParams) #we could accesss to the ls here to test against its state
   let client = newLspSocketClient()
   client.registerNotification(
@@ -56,7 +56,7 @@ suite "Suggest API selection":
 
   
   waitFor client.connect("localhost", cmdParams.port)
-  let initParams = InitializeParams %* {
+  let initParams = LspInitializeParams %* {
         "processId": %getCurrentProcessId(),
         "rootUri": fixtureUri("projects/hw/"),
         "capabilities": {
@@ -87,7 +87,7 @@ suite "Suggest API selection":
     check hover.kind == JNull
 
 suite "LSP features":
-  let cmdParams = CommandLineParams(transport: some socket, port: getNextFreePort())
+  let cmdParams = CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
   let ls = main(cmdParams) #we could accesss to the ls here to test against its state
   let client = newLspSocketClient()
   client.registerNotification(
@@ -101,7 +101,7 @@ suite "LSP features":
 
   waitFor client.connect("localhost", cmdParams.port)
 
-  let initParams = InitializeParams %* {
+  let initParams = LspInitializeParams %* {
       "processId": %getCurrentProcessId(),
       "rootUri": fixtureUri("projects/hw/"),
       "capabilities": {
@@ -328,7 +328,7 @@ suite "LSP features":
     doAssert ls.isShutdown    
 
 suite "Null configuration:":
-  let cmdParams = CommandLineParams(transport: some socket, port: getNextFreePort())
+  let cmdParams = CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
   let ls = main(cmdParams)
   let client = newLspSocketClient()
   client.registerNotification(
@@ -343,7 +343,7 @@ suite "Null configuration:":
   
   waitFor client.connect("localhost", cmdParams.port)
 
-  let initParams = InitializeParams %* {
+  let initParams = LspInitializeParams %* {
       "processId": %getCurrentProcessId(),
       "rootUri": fixtureUri("projects/hw/"),
       "capabilities": {

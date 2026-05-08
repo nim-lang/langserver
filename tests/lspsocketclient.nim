@@ -37,7 +37,7 @@ method call*(
   reqJson["id"] = %id.num
   reqJson["method"] = %name
   reqJson["params"] = params
-  let reqContent = wrapContentWithContentLenght($reqJson)
+  let reqContent = wrapContentWithContentLength($reqJson)
   var jsonBytes = reqContent
   if client.transport.isNil:
     raise newException(
@@ -57,7 +57,7 @@ proc runRpc(client: LspSocketClient, rpc: Rpc, serverReq: JsonNode) {.async.} =
   reqJson["jsonrpc"] = %"2.0"
   reqJson["id"] = %id
   reqJson["result"] = res
-  let reqContent = wrapContentWithContentLenght($reqJson)
+  let reqContent = wrapContentWithContentLength($reqJson)
   discard await client.transport.write(reqContent.string)
 
 proc processMessage(client: LspSocketClient, msg: string) {.raises: [].} =
@@ -142,10 +142,10 @@ proc register*(client: LspSocketClient, name: string, rpc: Rpc) =
 
 #Calls
 proc initialize*(
-    client: LspSocketClient, initParams: InitializeParams
-): Future[InitializeResult] {.async.} =
+    client: LspSocketClient, initParams: LspInitializeParams
+): Future[LspInitializeResult] {.async.} =
   client.call("initialize", %initParams).await.jsonTo(
-    InitializeResult, Joptions(allowMissingKeys: true)
+    LspInitializeResult, Joptions(allowMissingKeys: true)
   )
 
 proc createDidOpenParams*(file: string): DidOpenTextDocumentParams =

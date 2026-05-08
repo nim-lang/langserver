@@ -1,0 +1,12 @@
+{
+	"servers": {
+		"nim": {
+			"type": "stdio",
+			"command": "nimlangserver",
+			"args": [
+				"--mcp"
+			]
+		}
+	},
+	"inputs": []
+}

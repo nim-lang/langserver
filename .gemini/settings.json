@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "nim": {
+      "command": "nimlangserver",
+      "args": ["--mcp"]
+    }
+  }
+}

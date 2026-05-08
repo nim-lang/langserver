@@ -9,7 +9,7 @@ import chronos/asyncproc
 import unittest2
 
 suite "Nimlangserver misc":
-  let cmdParams = CommandLineParams(transport: some socket, port: getNextFreePort())
+  let cmdParams = CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
   let ls = main(cmdParams) #we could accesss to the ls here to test against its state
   let client = newLspSocketClient()
   waitFor client.connect("localhost", cmdParams.port)
@@ -20,7 +20,7 @@ suite "Nimlangserver misc":
 
   test "after a period of inactivity, nimsuggest should be stopped":
     let initParams =
-      InitializeParams %* {
+      LspInitializeParams %* {
         "processId": %getCurrentProcessId(),
         "rootUri": fixtureUri("projects/hw/"),
         "capabilities":

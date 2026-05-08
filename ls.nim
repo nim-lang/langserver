@@ -108,8 +108,13 @@ type
 
   CommandLineParams* = object
     clientProcessId*: Option[int]
+    mode*: Option[ServerMode]
     transport*: Option[TransportMode]
     port*: Port #only for sockets
+
+  ServerMode* = enum
+    lsp = "lsp"
+    mcp = "mcp"
 
   TransportMode* = enum
     stdio = "stdio"
@@ -136,10 +141,16 @@ type
     state*: PendingRequestState
 
   LanguageServer* = ref object
-    clientCapabilities*: ClientCapabilities
-    serverCapabilities*: ServerCapabilities
+    case serverMode*: ServerMode
+    of lsp:
+      lspClientCapabilities*: LspClientCapabilities
+      lspServerCapabilities*: LspServerCapabilities
+      lspInitializeParams*: LspInitializeParams
+    of mcp:
+      mcpClientCapabilities*: McpClientCapabilities
+      mcpServerCapabilities*: McpServerCapabilities
+      mcpInitializeParams*: McpInitializeParams
     extensionCapabilities*: set[LspExtensionCapability]
-    initializeParams*: InitializeParams
     notify*: NotifyAction
     call*: CallAction
     onExit*: OnExitCallback
@@ -210,6 +221,7 @@ proc initLs*(params: CommandLineParams, storageDir: string): LanguageServer =
   LanguageServer(
     workspaceConfiguration: Future[JsonNode](),
     filesWithDiags: initHashSet[string](),
+    serverMode: params.mode.get(),
     transportMode: params.transport.get(),
     openFiles: initTable[string, NlsFileInfo](),
     # idleOpenFiles: initTable[string, NlsFileInfo](),
@@ -251,7 +263,7 @@ func parameterHintsEnabled*(cnf: NlsConfig): bool =
 func inlayHintsEnabled*(cnf: NlsConfig): bool =
   typeHintsEnabled(cnf) or exceptionHintsEnabled(cnf) or parameterHintsEnabled(cnf)
 
-proc supportSignatureHelp*(cc: ClientCapabilities): bool =
+proc supportSignatureHelp*(cc: LspClientCapabilities): bool =
   if cc.isNil:
     return false
   let caps = cc.textDocument
@@ -427,15 +439,15 @@ proc addProjectFileToPendingRequest*(
     ls.sendStatusChanged
 
 proc requiresDynamicRegistrationForDidChangeConfiguration(ls: LanguageServer): bool =
-  ls.clientCapabilities.workspace.isSome and
-    ls.clientCapabilities.workspace.get.didChangeConfiguration.isSome and
-    ls.clientCapabilities.workspace.get.didChangeConfiguration.get.dynamicRegistration.get(
+  ls.lspClientCapabilities.workspace.isSome and
+    ls.lspClientCapabilities.workspace.get.didChangeConfiguration.isSome and
+    ls.lspClientCapabilities.workspace.get.didChangeConfiguration.get.dynamicRegistration.get(
       false
     )
 
 proc supportsConfigurationRequest(ls: LanguageServer): bool =
-  ls.clientCapabilities.workspace.isSome and
-    ls.clientCapabilities.workspace.get.configuration.get(false)
+  ls.lspClientCapabilities.workspace.isSome and
+    ls.lspClientCapabilities.workspace.get.configuration.get(false)
 
 proc usePullConfigurationModel*(ls: LanguageServer): bool =
   ls.requiresDynamicRegistrationForDidChangeConfiguration and
@@ -567,17 +579,25 @@ proc getProjectFileAutoGuess*(
     path = dir
     inc up
 
-proc getRootPath*(ip: InitializeParams): string =
+proc getRootPath*(ip: LspInitializeParams): string =
   if ip.rootUri.isNone or ip.rootUri.get == "":
     if ip.rootPath.isSome and ip.rootPath.get != "":
       return ip.rootPath.get
     else:
       return getCurrentDir().pathToUri.uriToPath
-  return ip.rootUri.get.uriToPath
+
+  ip.rootUri.get.uriToPath
+
+proc getRootPath*(ip: McpInitializeParams): string =
+  getCurrentDir().pathToUri.uriToPath
 
 proc getWorkingDir(ls: LanguageServer, path: string): Future[string] {.async.} =
+  let rootPath =
+    case ls.serverMode
+    of lsp: ls.lspInitializeParams.getRootPath
+    of mcp: ls.mcpInitializeParams.getRootPath
+
   let
-    rootPath = ls.initializeParams.getRootPath
     pathRelativeToRoot = path.tryRelativeTo(rootPath)
     mapping = ls.getWorkspaceConfiguration.await().workingDirectoryMapping.get(@[])
 
@@ -585,11 +605,11 @@ proc getWorkingDir(ls: LanguageServer, path: string): Future[string] {.async.} =
 
   for m in mapping:
     if pathRelativeToRoot.isSome and m.projectFile == pathRelativeToRoot.get():
-      result = rootPath.string / m.directory
+      result = rootPath / m.directory
       break
 
 proc progressSupported(ls: LanguageServer): bool =
-  result = ls.initializeParams.capabilities.window
+  result = ls.lspInitializeParams.capabilities.window
     .get(ClientCapabilities_window()).workDoneProgress
     .get(false)
 
@@ -760,6 +780,20 @@ proc createOrRestartNimsuggest*(
   ls: LanguageServer, projectFile: string, uri = ""
 ) {.gcsafe, raises: [].}
 
+proc initNimsuggestInstances*(ls: LanguageServer, rootPath: string) {.async.} =
+  if rootPath == "":
+    return
+
+  let nimbleFiles = walkFiles(rootPath / "*.nimble").toSeq
+  if nimbleFiles.len > 0:
+    let nimbleFile = nimbleFiles[0]
+    let nimbleDumpInfo = await ls.getNimbleDumpInfo(nimbleFile)
+    ls.entryPoints = nimbleDumpInfo.getNimbleEntryPoints(rootPath)
+    for entryPoint in ls.entryPoints:
+      debug "Starting nimsuggest for entry point ", entry = entryPoint
+      if entryPoint notin ls.projectFiles:
+        ls.createOrRestartNimsuggest(entryPoint)
+
 proc getNimsuggestInner(ls: LanguageServer, uri: string): Future[Nimsuggest] {.async.} =
   assert uri in ls.openFiles, "File not open"
 
@@ -858,8 +892,10 @@ proc didOpenFile*(
 
     let projectFileUri = projectFile.pathToUri
     if projectFileUri notin ls.openFiles:
-      var textDocument = textDocument
-      textDocument.uri = projectFileUri
+      var textDocument = TextDocumentItem(
+        uri: projectFileUri, languageId: "nim", version: 0, text: readFile(projectFile)
+      )
+
       await didOpenFile(ls, textDocument)
 
       debug "Opening project file", uri = projectFile, file = uri
@@ -1037,6 +1073,7 @@ proc createOrRestartNimsuggest*(
       errorCallback = partial(onErrorCallback, (ls, uri))
 
     debug "Creating new nimsuggest project", projectFile = projectFile
+
     let projectNext = waitFor createNimsuggest(
       projectFile,
       nimsuggestPath,
@@ -1058,12 +1095,14 @@ proc createOrRestartNimsuggest*(
       if fut.failed:
         let msg = fut.error.msg
         error "Nimsuggest initialization failed", projectFile = projectFile, error = msg
+
         ls.showMessage(
           fmt "Nimsuggest initialization for {projectFile} failed with: {msg}",
           MessageType.Error,
         )
       else:
         debug "Nimsuggest initialized successfully", projectFile = projectFile
+
         ls.showMessage(fmt "Nimsuggest initialized for {projectFile}", MessageType.Info)
         traceAsyncErrors ls.checkProject(uri)
         fut.read().openFiles.incl uri
@@ -1100,9 +1139,9 @@ proc maybeRegisterCapabilityDidChangeConfiguration*(ls: LanguageServer) =
 proc handleConfigurationChanges*(
     ls: LanguageServer, oldConfiguration, newConfiguration: NlsConfig
 ) =
-  if ls.clientCapabilities.workspace.isSome and
-      ls.clientCapabilities.workspace.get.inlayHint.isSome and
-      ls.clientCapabilities.workspace.get.inlayHint.get.refreshSupport.get(false) and
+  if ls.lspClientCapabilities.workspace.isSome and
+      ls.lspClientCapabilities.workspace.get.inlayHint.isSome and
+      ls.lspClientCapabilities.workspace.get.inlayHint.get.refreshSupport.get(false) and
       not inlayHintsConfigurationEquals(oldConfiguration, newConfiguration):
     # toggling the exception hints triggers a full nimsuggest restart, since they are controlled by a nimsuggest command line option
     #   --exceptionInlayHints:on|off
@@ -1164,7 +1203,12 @@ proc shouldSpawnNimsuggest*(ls: LanguageServer): Future[bool] {.async.} =
 
 proc getProjectFile*(fileUri: string, ls: LanguageServer): Future[string] {.async.} =
   let
-    rootPath = ls.initializeParams.getRootPath
+    rootPath =
+      case ls.serverMode
+      of mcp:
+        ls.mcpInitializeParams.getRootPath()
+      of lsp:
+        ls.lspInitializeParams.getRootPath()
     pathRelativeToRoot = fileUri.tryRelativeTo(rootPath)
     mappings = ls.getWorkspaceConfiguration.await().projectMapping.get(@[])
 
@@ -1175,7 +1219,7 @@ proc getProjectFile*(fileUri: string, ls: LanguageServer): Future[string] {.asyn
       ls.showMessage(
         fmt"RegEx matched `{mapping.fileRegex}` for file `{fileUri}`", MessageType.Info
       )
-      result = string(rootPath) / mapping.projectFile
+      result = rootPath / mapping.projectFile
       if fileExists(result):
         trace "getProjectFile?",
           project = result, uri = fileUri, matchedRegex = mapping.fileRegex

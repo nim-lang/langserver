@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "nim": {
+      "type": "stdio",
+      "command": "nimlangserver",
+      "args": ["--mcp"]
+    }
+  }
+}
