@@ -1,0 +1,224 @@
+{
+  "manifest_version": "0.3",
+  "name": "nimlangserver",
+  "display_name": "Nim Language Server",
+  "version": "1.14.0",
+  "description": "MCP server providing symbol navigation, diagnostics, and type resolution for Nim projects",
+  "icon": "nim-logo.png",
+  "keywords": ["Nim", "nim-lang"],
+  "license": "MIT",
+  "author": {
+    "name": "Nim core team"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nim-lang/langserver"
+  },
+  "homepage": "https://github.com/nim-lang/langserver",
+  "server": {
+    "type": "binary",
+    "entry_point": "nimlangserver",
+    "mcp_config": {
+      "command": "${__dirname}/nimlangserver",
+      "args": ["--mcp"],
+      "platform_overrides": {
+        "darwin": {
+          "command": "${__dirname}/nimlangserver-darwin"
+        },
+        "win32": {
+          "command": "${__dirname}/nimlangserver.exe"
+        }
+      }
+    }
+  },
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"]
+  },
+  "tools": [
+    {
+      "name": "nimFindReferences",
+      "description": "Find references of the symbol under cursor in the current workspace."
+    },
+    {
+      "name": "nimFindSymbols",
+      "description": "Find symbols matching the given search query in the current workspace."
+    },
+    {
+      "name": "nimListSymbols",
+      "description": "List all symbols in the given .nim file."
+    },
+    {
+      "name": "nimCheckProject",
+      "description": "Get diagnostics (errors, warnings, and hints) for the current workspace."
+    },
+    {
+      "name": "nimCheckFile",
+      "description": "Get diagnostics (errors, warnings, and hints) for a given .nim file."
+    }
+  ],
+  "_meta": {
+    "com.github.nim-lang.nimlangserver": {
+      "static_responses": {
+        "tools/list": {
+          "tools": [
+            {
+              "name": "nimFindReferences",
+              "title": "Find symbol references in .nim files",
+              "description": "Find references of the symbol under cursor in the current workspace.",
+              "inputSchema": {
+                "type": "object",
+                "properties": {
+                  "path": { "type": "string" },
+                  "line": { "type": "integer" },
+                  "column": { "type": "integer" }
+                },
+                "required": ["path", "line", "column"]
+              },
+              "outputSchema": {
+                "type": "object",
+                "properties": {
+                  "refs": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "path": { "type": "string" },
+                        "line": { "type": "integer" },
+                        "column": { "type": "integer" }
+                      },
+                      "required": ["path", "line", "column"]
+                    }
+                  }
+                },
+                "required": ["refs"]
+              }
+            },
+            {
+              "name": "nimFindSymbols",
+              "title": "Find symbols in .nim files",
+              "description": "Find symbols matching the given search query in the current workspace.",
+              "inputSchema": {
+                "type": "object",
+                "properties": { "query": { "type": "string" } },
+                "required": ["query"]
+              },
+              "outputSchema": {
+                "type": "object",
+                "properties": {
+                  "syms": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "path": { "type": "string" },
+                        "line": { "type": "integer" },
+                        "column": { "type": "integer" },
+                        "kind": { "type": "string" }
+                      },
+                      "required": ["path", "line", "column", "kind"]
+                    }
+                  }
+                },
+                "required": ["syms"]
+              }
+            },
+            {
+              "name": "nimListSymbols",
+              "title": "List symbols in a .nim file",
+              "description": "List all symbols in the given .nim file.",
+              "inputSchema": {
+                "type": "object",
+                "properties": { "path": { "type": "string" } },
+                "required": ["path"]
+              },
+              "outputSchema": {
+                "type": "object",
+                "properties": {
+                  "syms": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "name": { "type": "string" },
+                        "line": { "type": "integer" },
+                        "column": { "type": "integer" },
+                        "kind": { "type": "string" }
+                      },
+                      "required": ["name", "line", "column", "kind"]
+                    }
+                  }
+                },
+                "required": ["syms"]
+              }
+            },
+            {
+              "name": "nimCheckProject",
+              "title": "Check the current workspace",
+              "description": "Get diagnostics (errors, warnings, and hints) for the current workspace.",
+              "inputSchema": {
+                "type": "object",
+                "properties": {},
+                "required": []
+              },
+              "outputSchema": {
+                "type": "object",
+                "properties": {
+                  "diags": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "path": { "type": "string" },
+                        "line": { "type": "integer" },
+                        "column": { "type": "integer" },
+                        "severity": { "type": "string" },
+                        "message": { "type": "string" }
+                      },
+                      "required": [
+                        "path",
+                        "line",
+                        "column",
+                        "severity",
+                        "message"
+                      ]
+                    }
+                  }
+                },
+                "required": ["diags"]
+              }
+            },
+            {
+              "name": "nimCheckFile",
+              "title": "Check a .nim file",
+              "description": "Get diagnostics (errors, warnings, and hints) for a given .nim file.",
+              "inputSchema": {
+                "type": "object",
+                "properties": { "path": { "type": "string" } },
+                "required": ["path"]
+              },
+              "outputSchema": {
+                "type": "object",
+                "properties": {
+                  "diags": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "line": { "type": "integer" },
+                        "column": { "type": "integer" },
+                        "severity": { "type": "string" },
+                        "message": { "type": "string" }
+                      },
+                      "required": ["line", "column", "severity", "message"]
+                    }
+                  }
+                },
+                "required": ["diags"]
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}
