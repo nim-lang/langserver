@@ -69,10 +69,10 @@ jobs:
             builder: ubuntu-22.04
           - target:
               os: macos
-            builder: macos-14
+            builder: macos-15
           - target:
               os: windows
-            builder: windows-2019
+            builder: windows-2025
     defaults:
       run:
         shell: bash
@@ -96,7 +96,7 @@ jobs:
           echo "C:\\mingw32\\bin" >> $GITHUB_PATH
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Nimble
         uses: nim-lang/setup-nimble-action@v1
@@ -106,7 +106,7 @@ jobs:
 
       - name: Restore nimble dependencies from cache
         id: nimble_deps
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.nimble
@@ -145,14 +145,14 @@ jobs:
 
       - name: Upload the Nim Language Server Binaries (.zip)
         if: matrix.target.archive_format == 'zip'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: nimlangserver-${{ matrix.target.name }}-${{ matrix.target.cpu }}.zip
           path: nimlangserver-${{ matrix.target.name }}-${{ matrix.target.cpu }}.zip
 
       - name: Upload the Nim Language Server Binaries (.tar.gz)
         if: matrix.target.archive_format == 'tgz'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: nimlangserver-${{ matrix.target.name }}-${{ matrix.target.cpu }}.tar.gz
           path: nimlangserver-${{ matrix.target.name }}-${{ matrix.target.cpu }}.tar.gz
@@ -163,7 +163,7 @@ jobs:
     runs-on: macos-14
     steps:
       - name: Download artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           pattern: nimlangserver-macos-*.zip
 
@@ -190,7 +190,7 @@ jobs:
           7z a -tzip nimlangserver-macos-universal.zip nimlangserver
 
       - name: Upload the Nim Language Server Binaries
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: nimlangserver-macos-universal.zip
           path: nimlangserver-macos-universal.zip
@@ -204,7 +204,7 @@ jobs:
       actions: write
     steps:
       - name: Download artefacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
 
       - name: Get version from tag
         id: get_version
