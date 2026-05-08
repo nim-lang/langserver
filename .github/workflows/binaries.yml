@@ -69,10 +69,10 @@ jobs:
             builder: ubuntu-22.04
           - target:
               os: macos
-            builder: macos-14
+            builder: macos-15
           - target:
               os: windows
-            builder: windows-2019
+            builder: windows-2025
     defaults:
       run:
         shell: bash
