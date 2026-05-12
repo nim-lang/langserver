@@ -4,7 +4,7 @@
   "display_name": "Nim Language Server",
   "version": "1.14.0",
   "description": "MCP server providing symbol navigation, diagnostics, and type resolution for Nim projects",
-  "icon": "nim-logo.png",
+  "icon": "img/nim-logo.png",
   "keywords": ["Nim", "nim-lang"],
   "license": "MIT",
   "author": {
