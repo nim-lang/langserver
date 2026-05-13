@@ -169,7 +169,7 @@ Of course, change the configuration to your liking. You might also want to read 
 - Rename symbols
 - Inlay hints
 - Signature help
-- Document formatting (Requires `nph` to be available in the PATH.)
+- Document formatting (Requires `nph` or `nimpretty` to be available in the PATH.)
 - Execute command
 - Workspace symbols
 - Document highlight
@@ -210,7 +210,8 @@ Note when in a nimble project, `nimble` will drive the entry points for `nimsugg
 - `nim.logNimsuggest` - enable logging for `nimsuggest`.
 - `nim.inlayHints` - configure inlay hints.
 - `nim.notificationVerbosity` - configure the verbosity of notifications. Can be set to `"none"`, `"error"`, `"warning"`, or `"info"`.
-- `nim.formatOnSave` - format the file on save. Requires `nph` to be available in the PATH.
+- `nim.formatOnSave` - format the file on save. Requires `nph` or `nimpretty` to be available in the PATH.
+- `nim.formatter` - the formatter to use. Can be `"nph"` (default) or `"nimpretty"`.
 - `nim.nimsuggestIdleTimeout` - the timeout in ms after which an idle `nimsuggest` will be stopped. If not specified the default is 120 seconds.
 - `nim.useNimCheck` - use `nim check` instead of `nimsuggest` for linting. Defaults to `true`.
 - `nim.maxNimsuggestProcesses` - the maximum number of `nimsuggest` processes to keep alive. 0 means unlimited. If not specified the default is 0.

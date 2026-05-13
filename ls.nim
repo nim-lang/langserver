@@ -77,6 +77,10 @@ type
     nvWarning = "warning"
     nvInfo = "info"
 
+  NlsFormatter* = enum
+    nfNph = "nph"
+    nfNimpretty = "nimpretty"
+
   NlsConfig* = ref object of RootObj
     projectMapping*: OptionalSeq[NlsNimsuggestConfig]
     workingDirectoryMapping*: OptionalSeq[NlsWorkingDirectoryMaping]
@@ -90,6 +94,7 @@ type
     inlayHints*: Option[NlsInlayHintsConfig]
     notificationVerbosity*: Option[NlsNotificationVerbosity]
     formatOnSave*: Option[bool]
+    formatter*: Option[NlsFormatter]
     nimsuggestIdleTimeout*: Option[int] #idle timeout in ms
     useNimCheck*: Option[bool]
     nimExpandArc*: Option[bool]

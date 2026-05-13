@@ -21,10 +21,16 @@ import macros except error
 
 proc getNphPath(): Option[string] =
   let path = findExe "nph"
-  if path == "":
-    none(string)
-  else:
-    some path
+  if path == "": none(string) else: some path
+
+proc getNimprettyPath(): Option[string] =
+  let path = findExe "nimpretty"
+  if path == "": none(string) else: some path
+
+proc getFormatterPath(config: NlsConfig): Option[string] =
+  case config.formatter.get(nfNph)
+  of nfNph: getNphPath()
+  of nfNimpretty: getNimprettyPath()
 
 #routes
 proc initialize*(
@@ -93,7 +99,7 @@ proc initialize*(
       inlayHintProvider: some(InlayHintOptions(resolveProvider: some(false))),
       documentSymbolProvider: some(true),
       codeActionProvider: some(true),
-      documentFormattingProvider: some(getNphPath().isSome),
+      documentFormattingProvider: some(getNphPath().isSome or getNimprettyPath().isSome),
     )
   )
   # Support rename by default, but check if we can also support prepare
@@ -698,34 +704,46 @@ proc signatureHelp*(
       return none[SignatureHelp]()
 
 proc format*(
-    ls: LanguageServer, nphPath, uri: string
+    ls: LanguageServer, formatterPath, uri: string
 ): Future[Option[TextEdit]] {.async.} =
   let filePath = ls.uriStorageLocation(uri)
   if not fileExists(filePath):
-    warn "File doenst exist ", filePath = filePath, uri = uri
+    warn "File doesn't exist: ", filePath = filePath, uri = uri
     return none(TextEdit)
 
-  debug "nph starts", nphPath = nphPath, filePath = filePath
   let process = await startProcess(
-    nphPath,
+    formatterPath,
     arguments = @[filePath],
     options = {UsePath},
     stderrHandle = AsyncProcess.Pipe,
   )
-  let res = await process.waitForExit(InfiniteDuration)
+  defer: await noCancel(process.closeWait())
+  # Start draining stderr before waiting for exit to prevent pipe-full deadlock.
+  let stderrFuture = process.stderrStream.read()
+  let res =
+    try:
+      await process.waitForExit(InfiniteDuration)
+    except CancelledError:
+      # waitForExit cancellation removes the SIGCHLD watcher without calling
+      # waitpid, leaving the process as a zombie. Kill and reap explicitly.
+      discard process.kill()
+      discard await noCancel(stderrFuture)
+      try: discard await noCancel(process.waitForExit(InfiniteDuration))
+      except CatchableError: discard
+      return none(TextEdit)
+  let stderrOutput = string.fromBytes(await stderrFuture)
+  if stderrOutput.len > 0:
+    debug "formatter stderr output", output = stderrOutput
   if res != 0:
-    let err = string.fromBytes(process.stderrStream.read().await)
-    error "There was an error trying to format the document. ", err = err
-    ls.showMessage(&"Error formating {uri}:{err}", MessageType.Error)
+    error "There was an error trying to format the document.", err = stderrOutput
+    ls.showMessage(&"Error formatting {uri}:{stderrOutput}", MessageType.Error)
     return none(TextEdit)
 
-  #if enough time has passed since last modification, we skip the formatting:   
-  let lastModified = getLastModificationTime(filePath)
-  let timeSinceLastModified = getTime() - lastModified
-  let cond = timeSinceLastModified >= initDuration(seconds = 2)
+  #if enough time has passed since last modification, we skip the formatting:
+  let timeSinceLastModified = getTime() - getLastModificationTime(filePath)
 
   if timeSinceLastModified >= initDuration(seconds = 2):
-    error "Skipping formatting because the file was modifyed long ago"
+    error "Skipping formatting because the file was modified seconds ago", seconds = timeSinceLastModified
     return none(TextEdit)
 
   let formattedText = readFile(filePath)
@@ -746,7 +764,12 @@ proc formatting*(
   with (params.textDocument):
     asyncSpawn ls.addProjectFileToPendingRequest(id.uint, uri)
     debug "Received Formatting request "
-    let formatTextEdit = await ls.format(getNphPath().get(), uri)
+    let
+      config = await ls.getWorkspaceConfiguration()
+      formatterPath = config.getFormatterPath()
+    if formatterPath.isNone:
+      return @[]
+    let formatTextEdit = await ls.format(formatterPath.get(), uri)
     if formatTextEdit.isSome:
       return @[formatTextEdit.get]
 
@@ -944,15 +967,16 @@ proc willSaveWaitUntil*(
   let
     uri = params.textDocument.uri
     config = await ls.getWorkspaceConfiguration()
-    nphPath = getNphPath()
+    formatterPath = config.getFormatterPath()
 
   let shouldFormat =
-    nphPath.isSome and ls.lspServerCapabilities.documentFormattingProvider.get(false) and
+    formatterPath.isSome and
+    ls.lspServerCapabilities.documentFormattingProvider.get(false) and
     config.formatOnSave.get(false)
 
   if shouldFormat:
     debug "Formatting document before save", uri = uri
-    let formatTextEdit = await ls.format(nphPath.get(), uri)
+    let formatTextEdit = await ls.format(formatterPath.get(), uri)
     if formatTextEdit.isSome:
       return @[formatTextEdit.get]
 
