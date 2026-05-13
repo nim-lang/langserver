@@ -163,7 +163,7 @@ jobs:
     runs-on: macos-14
     steps:
       - name: Download artifacts
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           pattern: nimlangserver-macos-*.zip
 
@@ -204,19 +204,19 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Download linux-amd64 binary
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: nimlangserver-linux-amd64.tar.gz
           path: dl/linux-amd64
 
       - name: Download macos-universal binary
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: nimlangserver-macos-universal.zip
           path: dl/macos-universal
 
       - name: Download windows-amd64 binary
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: nimlangserver-windows-amd64.zip
           path: dl/windows-amd64
@@ -248,7 +248,7 @@ jobs:
       contents: write
     steps:
       - name: Download artefacts
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
 
       - name: Get version from tag
         id: get_version
@@ -282,7 +282,7 @@ jobs:
         run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
 
       - name: Download MCPB bundle
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: nimlangserver.mcpb
           path: mcpb-artifact
