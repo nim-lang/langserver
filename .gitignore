@@ -10,3 +10,5 @@ nimble.develop
 nimble.paths
 nimbledeps
 dprint.json
+
+docs/
