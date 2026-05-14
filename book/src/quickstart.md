@@ -7,6 +7,16 @@
 
 LSP is the default mode. Running `nimlangserver` is equivalent to `nimlangserver --lsp`.
 
+## Demo
+
+LSP:
+
+[![asciicast](https://asciinema.org/a/1051138.svg)](https://asciinema.org/a/1051138)
+
+MCP:
+
+[![MCP mode demo](https://asciinema.org/a/drQhE5irfKriCrba.svg)](https://asciinema.org/a/drQhE5irfKriCrba)
+
 ## Installation
 
 `nimlangserver` requires Nim >= 1.6.8 and nimble >= 0.16.1.

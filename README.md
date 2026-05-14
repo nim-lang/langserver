@@ -14,6 +14,16 @@ nimble install -g nimlangserver
 
 Requires `nimble >= 0.16.1` and a `nimsuggest` that supports `--v3` (Nim 1.6+ or devel).
 
+## Demo
+
+LSP:
+
+[![asciicast](https://asciinema.org/a/1051138.svg)](https://asciinema.org/a/1051138)
+
+MCP:
+
+[![MCP mode demo](https://asciinema.org/a/drQhE5irfKriCrba.svg)](https://asciinema.org/a/drQhE5irfKriCrba)
+
 ## Related projects
 
 - [nimlsp](https://github.com/PMunch/nimlsp) — an alternative Nim language server with `nimsuggest` embedded directly in the binary.

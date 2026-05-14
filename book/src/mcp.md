@@ -61,7 +61,6 @@ You can also invoke tools directly: _"Call `nimCheckFile` on `@myfile.nim`."_
 
 - [Presentation at the IFT Townhall meetup →](https://www.youtube.com/live/OZ3PR_U2QMo?si=5BEvawshJpAUY37o&t=2107)
 
-[![MCP mode demo](https://asciinema.org/a/drQhE5irfKriCrba.svg)](https://asciinema.org/a/drQhE5irfKriCrba)
 
 ## Why use nimlangserver as an MCP server?
 
