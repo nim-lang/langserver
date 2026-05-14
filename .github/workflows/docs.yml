@@ -1,0 +1,20 @@
+name: Build Docs
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  docs:
+    uses: status-im/nimbus-common-workflow/.github/workflows/docs.yml@main
+    with:
+      mdbook-version: "0.4.51"
+      mdbook-preprocessors: >-
+        [
+          "mdbook-open-on-gh@2.4.1",
+          "mdbook-shiftinclude@0.1.0",
+          "mdbook-toc@0.14.1",
+          "mdbook-admonish@1.14.0"
+        ]
+      docs-command: "nimble docs"
