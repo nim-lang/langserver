@@ -330,8 +330,8 @@ proc getWorkspaceConfiguration*(
 ): Future[NlsConfig] {.async: (raises: []).} =
   try:
     #this is the root of a lot a problems as there are multiple race conditions here.
-    #since most request doenst really rely on the configuration, we can just go ahead and 
-    #return a default one until we have the right one. 
+    #since most request doesn't really rely on the configuration, we can just go ahead and
+    #return a default one until we have the right one.
     #TODO review and handle project specific confs when received instead of reliying in this func
     if ls.workspaceConfiguration.finished:
       return parseWorkspaceConfiguration(ls.workspaceConfiguration.read)
@@ -1074,7 +1074,7 @@ proc createOrRestartNimsuggest*(
 
     debug "Creating new nimsuggest project", projectFile = projectFile
 
-    let projectNext = waitFor createNimsuggest(
+    let projectFut = createNimsuggest(
       projectFile,
       nimsuggestPath,
       version,
@@ -1085,7 +1085,13 @@ proc createOrRestartNimsuggest*(
       configuration.logNimsuggest.get(false),
       configuration.exceptionHintsEnabled,
     )
+    if not waitFor chronos.withTimeout(
+      projectFut, chronos.milliseconds(NIMSUGGEST_STARTUP_TIMEOUT)
+    ):
+      error "Nimsuggest startup timed out", projectFile = projectFile
+      return
 
+    let projectNext = waitFor projectFut
     if projectFile in ls.projectFiles:
       var project = ls.projectFiles[projectFile]
       project.stop()
