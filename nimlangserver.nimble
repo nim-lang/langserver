@@ -8,9 +8,10 @@ license = "MIT"
 bin = @["nimlangserver"]
 skipDirs = @["tests"]
 
-requires "nim == 2.0.8",
-  "chronos >= 4.0.4", "json_rpc >= 0.5.0", "with", "chronicles", "serialization",
-  "json_serialization", "stew", "regex", "unittest2 >= 0.2.4"
+requires "nim >= 2.2.10",
+  "chronos >= 4.2.2", "json_rpc >= 0.6.0", "with >= 0.5.0", "chronicles >= 0.12.2",
+  "serialization >= 0.5.2", "json_serialization >= 0.4.4", "stew >= 0.5.0",
+  "regex >= 0.26.3", "unittest2 >= 0.2.5"
 
 --path:
   "."
