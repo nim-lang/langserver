@@ -9,7 +9,7 @@ import
   platform/js/
     [jsNodeFs, jsNodePath, jsNodeCp, jsNodeUtil, jsNodeOs, jsNodeNet, jsPromise]
 
-import nimutils
+import nimUtils
 from tools/nimBinTools import getNimbleExecPath, getBinPath
 import spec
 import nimLsp

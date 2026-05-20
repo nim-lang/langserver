@@ -43,7 +43,7 @@
         "vscode-test": "^1.4.0"
     },
     "engines": {
-        "vscode": "^1.27.0"
+        "vscode": "^1.99.0"
     },
     "activationEvents": [
         "onLanguage:nim",
@@ -491,6 +491,17 @@
         "breakpoints": [
             {
                 "language": "nim"
+            }
+        ],
+        "mcpServerDefinitionProviders": [
+            {
+                "id": "nimlangserver",
+                "label": "Nim Language Server"
+            }
+        ],
+        "chatSkills": [
+            {
+                "path": "./skills/nim-mcp-tools/SKILL.md"
             }
         ],
         "snippets": [

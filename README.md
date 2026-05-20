@@ -14,6 +14,7 @@ This extension adds language support for the Nim language to VS Code, including:
 * Problem Matchers for nim compiler and test output
 * Nim check result reported in `Nim` output channel (great for macro development)
   ![output channel demo](images/nim_vscode_output_demo.gif "Demo of macro evaluation in the output channel")</details>
+* MCP server that allows Copilot to navigate the code more effectively.
 
 ## Using
 

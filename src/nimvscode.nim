@@ -735,6 +735,27 @@ proc activate*(ctx: VscodeExtensionContext): void {.async.} =
   ctx.subscriptions.add(nimbleWatcher)
   initializeTests(ctx, nimUtils.ext)
 
+  # Register nimlangserver as an MCP server provider.
+  let
+    mcpProvider = McpServerDefinitionProvider{
+      provideMcpServerDefinitions: proc(): seq[McpStdioServerDefinition] =
+        @[
+          newMcpStdioServerDefinition(
+            vscode,
+            "Nim Language Server",
+            "nimlangserver",
+            @["--mcp".cstring]
+          )
+        ]
+    }
+
+  ctx.subscriptions.add(
+    vscode.lm.registerMcpServerDefinitionProvider(
+      "nimlangserver",
+      mcpProvider
+    )
+  )
+
 proc deactivate*(): void {.async.} =
   let provider = nimUtils.ext.config.getStr("provider")
   if provider == "lsp":

@@ -539,6 +539,7 @@ type
     languages*: VscodeLanguages
     debug*: VscodeDebug
     tests*: VscodeTests
+    lm*: VscodeLm
 
   VscodeTextEditorOptions* = ref object of JsObject
     viewColumn*: VscodeViewColumn
@@ -573,6 +574,16 @@ type
 
   EventEmitter* = ref object of JsObject
     fire*: proc(data: JsObject)
+
+  McpStdioServerDefinition* = ref object of JsObject
+    label*: cstring
+    command*: cstring
+    args*: seq[cstring]
+
+  McpServerDefinitionProvider* = ref object of JsObject
+   provideMcpServerDefinitions*: proc(): seq[McpStdioServerDefinition]
+
+  VscodeLm* = ref object of JsObject
 
   # TreeDataProvider* = ref object of JsObject
   #   onDidChangeTreeData*: EventEmitter
@@ -1257,3 +1268,16 @@ proc createTestController*(
 ): VscodeTestController {.importcpp: "#.createTestController(@)".}
 
 proc isCancellationRequested*(token: VscodeCancellationToken): bool {.importcpp: "#.isCancellationRequested".}
+
+proc newMcpStdioServerDefinition*(
+  vscode: Vscode,
+  label: cstring,
+  command: cstring,
+  args: seq[cstring]
+): McpStdioServerDefinition {.importcpp: "new #.McpStdioServerDefinition(@)".}
+
+proc registerMcpServerDefinitionProvider*(
+  lm: VscodeLm,
+  id: cstring,
+  provider: McpServerDefinitionProvider
+): VscodeDisposable {.importcpp: "#.registerMcpServerDefinitionProvider(#, #)".}
