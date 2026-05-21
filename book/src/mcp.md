@@ -8,40 +8,43 @@
 
 ## Setup
 
-To use `nimlangserver` as an MCP server in a Nim project:
+### VSCode
+
+MCP support is bundled with the [vscode-nim](https://github.com/nim-lang/vscode-nim) extension. Installing the extension gives you a working LSP server, a working MCP server, and the accompanying skill — no additional configuration needed.
+
+### Other agents
 
 1. [Install `nimlangserver`](./quickstart.md#installation).
 2. Copy the matching MCP config file from this repository to your project:
 
-   | Agent                   | Config file             |
-   | ----------------------- | ----------------------- |
-   | VSCode / GitHub Copilot | `.vscode/mcp.json`      |
-   | Claude Code             | `.mcp.json`             |
-   | GitHub Copilot CLI      | `.mcp.json`             |
-   | Gemini CLI              | `.gemini/settings.json` |
-   | OpenCode                | `opencode.json`         |
+   | Agent              | Config file             |
+   | ------------------ | ----------------------- |
+   | Claude Code        | `.mcp.json`             |
+   | GitHub Copilot CLI | `.mcp.json`             |
+   | Gemini CLI         | `.gemini/settings.json` |
+   | OpenCode           | `opencode.json`         |
 
 3. Copy the `SKILL.md` file to your project:
 
-   | Agent                   | Destination                       |
-   | ----------------------- | --------------------------------- |
-   | VSCode / GitHub Copilot | `.github/skills/nim-mcp-tools/`   |
-   | Claude Code             | `.claude/skills/nim-mcp-tools/`   |
-   | GitHub Copilot CLI      | `.github/skills/nim-mcp-tools/`   |
-   | Gemini CLI              | `.gemini/skills/nim-mcp-tools/`   |
-   | OpenCode                | `.opencode/skills/nim-mcp-tools/` |
+   | Agent              | Destination                       |
+   | ------------------ | --------------------------------- |
+   | Claude Code        | `.claude/skills/nim-mcp-tools/`   |
+   | GitHub Copilot CLI | `.github/skills/nim-mcp-tools/`   |
+   | Gemini CLI         | `.gemini/skills/nim-mcp-tools/`   |
+   | OpenCode           | `.opencode/skills/nim-mcp-tools/` |
 
 4. Open the Nim project root in your AI tool.
 
 ## Available tools
 
-| Tool                | Description                                          |
-| ------------------- | ---------------------------------------------------- |
-| `nimFindReferences` | Find all references to a symbol at a given position. |
-| `nimFindSymbols`    | Search workspace symbols by name query.              |
-| `nimListSymbols`    | List all symbols defined in a file.                  |
-| `nimCheckProject`   | Run diagnostics for the whole project.               |
-| `nimCheckFile`      | Run diagnostics for a single file.                   |
+| Tool                      | Description                                          |
+| ------------------------- | ---------------------------------------------------- |
+| `nimFindReferences`       | Find all references to a symbol at a given position. |
+| `nimFindSymbols`          | Search workspace symbols by name query.              |
+| `nimFindTypeDefinition`   | Go to the type definition of a symbol.               |
+| `nimListSymbols`          | List all symbols defined in a file.                  |
+| `nimCheckProject`         | Run diagnostics for the whole project.               |
+| `nimCheckFile`            | Run diagnostics for a single file.                   |
 
 ## Usage
 

@@ -10,7 +10,7 @@
 
 ### VSCode
 
-Install the [vscode-nim](https://github.com/nim-lang/vscode-nim) extension and follow its [setup instructions](https://github.com/nim-lang/vscode-nim#using).
+Install the [vscode-nim](https://github.com/nim-lang/vscode-nim) extension and follow its [setup instructions](https://github.com/nim-lang/vscode-nim#using). The extension bundles both the LSP server and the [MCP server](./mcp.md), including the accompanying skill.
 
 ### Sublime Text
 

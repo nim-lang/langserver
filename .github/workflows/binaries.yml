@@ -145,14 +145,14 @@ jobs:
 
       - name: Upload the Nim Language Server Binaries (.zip)
         if: matrix.target.archive_format == 'zip'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: nimlangserver-${{ matrix.target.name }}-${{ matrix.target.cpu }}.zip
           path: nimlangserver-${{ matrix.target.name }}-${{ matrix.target.cpu }}.zip
 
       - name: Upload the Nim Language Server Binaries (.tar.gz)
         if: matrix.target.archive_format == 'tgz'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: nimlangserver-${{ matrix.target.name }}-${{ matrix.target.cpu }}.tar.gz
           path: nimlangserver-${{ matrix.target.name }}-${{ matrix.target.cpu }}.tar.gz
@@ -163,7 +163,7 @@ jobs:
     runs-on: macos-14
     steps:
       - name: Download artifacts
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           pattern: nimlangserver-macos-*.zip
 
@@ -190,21 +190,65 @@ jobs:
           7z a -tzip nimlangserver-macos-universal.zip nimlangserver
 
       - name: Upload the Nim Language Server Binaries
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: nimlangserver-macos-universal.zip
           path: nimlangserver-macos-universal.zip
 
+  create-mcpb-bundle:
+    name: Create MCPB Bundle
+    needs: [build, create-macos-universal-binary]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Download linux-amd64 binary
+        uses: actions/download-artifact@v8
+        with:
+          name: nimlangserver-linux-amd64.tar.gz
+          path: dl/linux-amd64
+
+      - name: Download macos-universal binary
+        uses: actions/download-artifact@v8
+        with:
+          name: nimlangserver-macos-universal.zip
+          path: dl/macos-universal
+
+      - name: Download windows-amd64 binary
+        uses: actions/download-artifact@v8
+        with:
+          name: nimlangserver-windows-amd64.zip
+          path: dl/windows-amd64
+
+      - name: Extract and place binaries into repo root
+        run: |
+          tar -xzf dl/linux-amd64/nimlangserver-linux-amd64.tar.gz nimlangserver
+          unzip -o dl/macos-universal/nimlangserver-macos-universal.zip nimlangserver
+          mv nimlangserver nimlangserver-darwin
+          unzip -o dl/windows-amd64/nimlangserver-windows-amd64.zip nimlangserver.exe
+
+      - name: Install mcpb
+        run: npm install -g @anthropic-ai/mcpb
+
+      - name: Build MCPB bundle
+        run: mcpb pack . nimlangserver.mcpb
+
+      - name: Upload MCPB bundle as workflow artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: nimlangserver.mcpb
+          path: nimlangserver.mcpb
+
   create-github-release:
     name: Create Github Release
-    needs: [build, create-macos-universal-binary]
+    needs: [build, create-macos-universal-binary, create-mcpb-bundle]
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      actions: write
     steps:
       - name: Download artefacts
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
 
       - name: Get version from tag
         id: get_version
@@ -221,8 +265,73 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           generateReleaseNotes: true
 
+  publish-mcp-registry:
+    name: Publish to MCP Registry
+    needs: [create-mcpb-bundle]
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    permissions:
+      id-token: write
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Get version from tag
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Download MCPB bundle
+        uses: actions/download-artifact@v8
+        with:
+          name: nimlangserver.mcpb
+          path: mcpb-artifact
+
+      - name: Compute SHA-256 of MCPB bundle
+        id: sha256
+        run: |
+          echo "SHA256=$(sha256sum mcpb-artifact/nimlangserver.mcpb | awk '{print $1}')" >> $GITHUB_OUTPUT
+
+      - name: Update server.json
+        run: |
+          VERSION="${{ steps.get_version.outputs.VERSION }}"
+          SHA="${{ steps.sha256.outputs.SHA256 }}"
+          jq --arg v "${VERSION#v}" \
+             --arg url "https://github.com/nim-lang/langserver/releases/download/${VERSION}/nimlangserver.mcpb" \
+             --arg sha "$SHA" \
+            '.version = $v | .packages[0].identifier = $url | .packages[0].fileSha256 = $sha' \
+            server.json > server.tmp && mv server.tmp server.json
+
+      - name: Commit updated server.json
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add server.json
+          git commit -m "chore: update server.json for ${{ steps.get_version.outputs.VERSION }}"
+          git push origin HEAD:master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install mcp-publisher
+        run: |
+          curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" \
+            | tar xz mcp-publisher
+
+      - name: Authenticate to MCP Registry
+        run: ./mcp-publisher login github-oidc
+
+      - name: Publish to MCP Registry
+        run: ./mcp-publisher publish
+
+  cleanup-artifacts:
+    name: Delete workflow artifacts
+    needs: [create-github-release, publish-mcp-registry]
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
       - name: Delete artefacts
-        uses: geekyeggo/delete-artifact@v5
+        uses: geekyeggo/delete-artifact@v6
         with:
           failOnError: false
           name: "nimlangserver-*"

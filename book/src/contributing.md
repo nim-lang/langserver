@@ -200,9 +200,23 @@ proc callNimMyTool(
 
 ### A reusable Copilot prompt
 
-If you want to automate the mechanical part with Copilot, use this prompt:
+If you want to automate the mechanical part with Copilot, use this prompt template. Replace the content between `---` markers with your tool description:
 
-> Add a new MCP tool to `routes/mcp.nim` and `tests/tmcp.nim`. Follow the existing `nimFindReferences` / `nimCheckFile` pattern. Reuse the closest matching handler in `routes/lsp.nim` to choose the correct backend method from `suggestapi.nim`. Return machine-readable data in `structuredContent` and mirror it as JSON text in `content`.
+> Add a new MCP tool to `routes/mcp.nim` and `tests/tmcp.nim`.
+>
+> ---
+> Describe the tool here: what it does, what it returns, what nimsuggest backend command it should use (check `routes/lsp.nim` and `suggestapi.nim` for the closest analogue), what its input and output schemas look like.
+> ---
+>
+> Follow the existing `nimFindReferences` / `nimCheckFile` pattern.
+> Reuse the closest matching handler in `routes/lsp.nim` to choose the correct backend method from `suggestapi.nim`.
+> Return machine-readable data in `structuredContent` and mirror it as JSON text in `content`.
+>
+> After implementing the tool:
+>
+> 1. **Identify real-life AI agent use cases.** Think about what coding tasks this tool enables or improves when used by an AI agent (e.g., "find the origin of a symbol", "resolve a type mismatch during debugging"). Add these to the "When to Use" section and the Activation Rule in `SKILL.md`.
+> 2. **Add workflow instructions to `SKILL.md`.** Describe step-by-step how an AI agent should use this tool, both standalone and in combination with other tools (e.g., `nimCheckFile` + `nimFindTypeDefinition`). Cover the new workflows in the Workflows section.
+> 3. **List the tool in `README.md`.** Add the tool name to the "The current MCP tool set is:" list in the MCP server section.
 
 ## Debugging guide
 

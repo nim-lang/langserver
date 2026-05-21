@@ -110,7 +110,7 @@ suite "MCP routes":
     check listToolsResult.tools.mapIt(it.name) ==
       @[
         "nimFindReferences", "nimFindSymbols", "nimListSymbols", "nimCheckProject",
-        "nimCheckFile",
+        "nimCheckFile", "nimFindTypeDefinition",
       ]
 
     let
@@ -119,6 +119,7 @@ suite "MCP routes":
       listSymbols = listToolsResult.tools[2]
       checkProject = listToolsResult.tools[3]
       checkFile = listToolsResult.tools[4]
+      findTypeDefinition = listToolsResult.tools[5]
 
     check findReferences.inputSchema.required == @["path", "line", "column"]
     check findReferences.outputSchema.required == @["refs"]
@@ -130,6 +131,8 @@ suite "MCP routes":
     check checkProject.outputSchema.required == @["diags"]
     check checkFile.inputSchema.required == @["path"]
     check checkFile.outputSchema.required == @["diags"]
+    check findTypeDefinition.inputSchema.required == @["path", "line", "column"]
+    check findTypeDefinition.outputSchema.required == @["defs"]
 
   test "callTool nimFindReferences returns structured references":
     let testProjectDir = absolutePath("tests" / "projects" / "mcpproject")
@@ -175,7 +178,8 @@ suite "MCP routes":
       discard waitFor testLs.projectFiles[entryPoint].ns
 
       let res = waitFor mcp.callTool(
-        testLs, McpCallToolParams(name: "nimFindSymbols", arguments: some %*{"query": "add"})
+        testLs,
+        McpCallToolParams(name: "nimFindSymbols", arguments: some %*{"query": "add"}),
       )
 
       checkToolResult(res)
@@ -204,7 +208,9 @@ suite "MCP routes":
 
       let res = waitFor mcp.callTool(
         testLs,
-        McpCallToolParams(name: "nimListSymbols", arguments: some %*{"path": entryPoint}),
+        McpCallToolParams(
+          name: "nimListSymbols", arguments: some %*{"path": entryPoint}
+        ),
       )
 
       checkToolResult(res)
@@ -259,7 +265,8 @@ suite "MCP routes":
       discard waitFor testLs.projectFiles[entryPoint].ns
 
       let res = waitFor mcp.callTool(
-        testLs, McpCallToolParams(name: "nimCheckFile", arguments: some %*{"path": errFile})
+        testLs,
+        McpCallToolParams(name: "nimCheckFile", arguments: some %*{"path": errFile}),
       )
 
       checkToolResult(res)
@@ -288,7 +295,8 @@ suite "MCP routes":
       discard waitFor testLs.projectFiles[entryPoint].ns
 
       let res = waitFor mcp.callTool(
-        testLs, McpCallToolParams(name: "nimCheckFile", arguments: some %*{"path": testFile})
+        testLs,
+        McpCallToolParams(name: "nimCheckFile", arguments: some %*{"path": testFile}),
       )
 
       checkToolResult(res)
@@ -298,4 +306,35 @@ suite "MCP routes":
       check diags.anyIt(
         it["line"].getInt() == 5 and it["severity"].getStr() == "Error" and
           it["message"].getStr().contains("type mismatch")
+      )
+
+  test "callTool nimFindTypeDefinition returns type definition":
+    let testProjectDir = absolutePath("tests" / "projects" / "mcpproject")
+
+    cd testProjectDir:
+      let
+        testLs = newTestLs(cmdParams)
+        entryPoint = absolutePath("src" / "mcpproject.nim")
+
+      defer:
+        waitFor testLs.stopNimsuggestProcesses()
+
+      discard
+        waitFor mcp.initialize((ls: testLs, onExit: testLs.onExit), newMcpInitParams())
+      discard waitFor testLs.projectFiles[entryPoint].ns
+
+      let res = waitFor mcp.callTool(
+        testLs,
+        McpCallToolParams(
+          name: "nimFindTypeDefinition",
+          arguments: some %*{"path": entryPoint, "line": 3, "column": 10},
+        ),
+      )
+
+      checkToolResult(res)
+
+      let defs = res.structuredContent["defs"].getElems()
+      check defs.len > 0
+      check defs.anyIt(
+        it["name"].getStr() == "int" or it["type"].getStr().contains("int")
       )
