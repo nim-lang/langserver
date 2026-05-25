@@ -1,0 +1,3 @@
+nimTitle	nimlangserver	nimlangserver.html	module nimlangserver		0
+nim	tickLs	nimlangserver.html#tickLs,LanguageServer	proc tickLs(ls: LanguageServer; time = 1.seconds): Future[void]		209
+nim	main	nimlangserver.html#main,CommandLineParams	proc main(cmdLineParams: CommandLineParams): LanguageServer		214

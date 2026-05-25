@@ -1,0 +1,22 @@
+nimTitle	lstransports	lstransports.html	module lstransports		0
+nim	LspClientResponse	lstransports.html#LspClientResponse	object LspClientResponse		8
+nim	Rpc	lstransports.html#Rpc	type Rpc		13
+nim	readValue	lstransports.html#readValue,JsonReader,OptionalNode	proc readValue(r: var JsonReader; val: var OptionalNode)		18
+nim	writeValue	lstransports.html#writeValue,JsonWriter,OptionalNode	proc writeValue(w: var JsonWriter; value: OptionalNode)		25
+nim	toJson	lstransports.html#toJson,RequestParamsRx	proc toJson(params: RequestParamsRx): JsonNode		33
+nim	wrapRpc	lstransports.html#wrapRpc,proc(T)	proc wrapRpc[T](fn: proc (params: T): Future[auto] {.gcsafe, raises: [].}): Rpc		78
+nim	wrapRpc	lstransports.html#wrapRpc,proc(T,int)	proc wrapRpc[T](fn: proc (params: T; id: int): Future[auto] {.gcsafe, raises: [].}): Rpc		89
+nim	addRpcToCancellable	lstransports.html#addRpcToCancellable,LanguageServer,Rpc	proc addRpcToCancellable(ls: LanguageServer; rpc: Rpc): Rpc		102
+nim	processContentLength	lstransports.html#processContentLength,FileStream	proc processContentLength(inputStream: FileStream): string		128
+nim	processContentLength	lstransports.html#processContentLength,StreamTransport,bool	proc processContentLength(transport: StreamTransport; error: bool = true): InternalRaisesFuture[\n    string, void]		142
+nim	readLspStdin	lstransports.html#readLspStdin,ptr.ReadStdinContext	proc readLspStdin(ctx: ptr ReadStdinContext)		160
+nim	readMcpStdin	lstransports.html#readMcpStdin,ptr.ReadStdinContext	proc readMcpStdin(ctx: ptr ReadStdinContext)		169
+nim	wrapContentWithContentLength	lstransports.html#wrapContentWithContentLength,string	proc wrapContentWithContentLength(content: string): string		178
+nim	writeOutput	lstransports.html#writeOutput,LanguageServer,JsonNode	proc writeOutput(ls: LanguageServer; content: JsonNode)		182
+nim	initActions	lstransports.html#initActions,LanguageServer	proc initActions(ls: LanguageServer)		259
+nim	startStdioLoop	lstransports.html#startStdioLoop,LanguageServer	proc startStdioLoop(ls: LanguageServer): Future[void]		292
+nim	startStdioServer	lstransports.html#startStdioServer,LanguageServer	proc startStdioServer(ls: LanguageServer)		303
+nim	processClientLoop	lstransports.html#processClientLoop,LanguageServer,StreamServer,StreamTransport	proc processClientLoop(ls: LanguageServer; server: StreamServer;\n                  transport: StreamTransport): InternalRaisesFuture[void, void]		322
+nim	startSocketServer	lstransports.html#startSocketServer,LanguageServer,Port	proc startSocketServer(ls: LanguageServer; port: Port)		333
+nimgrp	wraprpc	lstransports.html#wrapRpc-procs-all	proc		78
+nimgrp	processcontentlength	lstransports.html#processContentLength-procs-all	proc		128

@@ -1,0 +1,6 @@
+nimTitle	mcp	routes/mcp.html	module routes/mcp		0
+nim	McpProtocolVersion	routes/mcp.html#McpProtocolVersion	const McpProtocolVersion		7
+nim	initialize	routes/mcp.html#initialize,tuple[LanguageServer,OnExitCallback],McpInitializeParams	proc initialize(p: tuple[ls: LanguageServer, onExit: OnExitCallback];\n           params: McpInitializeParams): Future[McpInitializeResult]		492
+nim	listTools	routes/mcp.html#listTools,LanguageServer,McpListToolsParams	proc listTools(ls: LanguageServer; params: McpListToolsParams): Future[\n    McpListToolsResult]		510
+nim	callTool	routes/mcp.html#callTool,LanguageServer,McpCallToolParams	proc callTool(ls: LanguageServer; params: McpCallToolParams): Future[\n    McpCallToolResult]		525
+nim	initialized	routes/mcp.html#initialized,LanguageServer,JsonNode	proc initialized(ls: LanguageServer; _: JsonNode): Future[void]		547

@@ -1,0 +1,41 @@
+nimTitle	utils	utils.html	module utils		0
+nim	UriParseError	utils.html#UriParseError	object UriParseError		11
+nim	NIM_SCRIPT_API_TEMPLATE	utils.html#NIM_SCRIPT_API_TEMPLATE	const NIM_SCRIPT_API_TEMPLATE		14
+nim	writeStackTrace	utils.html#writeStackTrace	proc writeStackTrace(ex = getCurrentException())		17
+nim	createUTFMapping	utils.html#createUTFMapping,string	proc createUTFMapping(line: string): FingerTable		28
+nim	utf16Len	utils.html#utf16Len,string	proc utf16Len(utf8Str: string): int		54
+nim	utf16to8	utils.html#utf16to8,FingerTable,int	proc utf16to8(fingerTable: FingerTable; utf16pos: int): int		65
+nim	utf8to16	utils.html#utf8to16,FingerTable,int	proc utf8to16(fingerTable: FingerTable; utf8pos: int): int		73
+nim	uriToPath	utils.html#uriToPath,string	proc uriToPath(uri: string): string		117
+nim	pathToUri	utils.html#pathToUri,string	proc pathToUri(path: string): string		143
+nim	catchOrQuit	utils.html#catchOrQuit,Exception	proc catchOrQuit(error: Exception)		166
+nim	traceAsyncErrors	utils.html#traceAsyncErrors,Future	proc traceAsyncErrors(fut: Future)		173
+nim	groupBy	utils.html#groupBy.i,openArray[T],proc(T)	iterator groupBy[T, U](s: openArray[T]; f: proc (a: T): U {.gcsafe, raises: [].}): tuple[\n    k: U, v: seq[T]]		178
+nim	callSoon	utils.html#callSoon,proc)	proc callSoon(cb: proc () {.gcsafe.})		189
+nim	addCallback	utils.html#addCallback,FutureBase,proc)	proc addCallback(future: FutureBase; cb: proc () {.closure, gcsafe, raises: [].})		200
+nim	addCallback	utils.html#addCallback,Future[T],proc(Future[T])	proc addCallback[T](future: Future[T];\n               cb: proc (future: Future[T]) {.closure, gcsafe.})		225
+nim	isRelTo	utils.html#isRelTo,string,string	proc isRelTo(path, base: string): bool		243
+nim	tryRelativeTo	utils.html#tryRelativeTo,string,string	proc tryRelativeTo(path, base: string): Option[string]		250
+nim	get	utils.html#get,RequestParamsRx,string	proc get[T](params: RequestParamsRx; key: string): T		256
+nim	to	utils.html#to,RequestParamsRx,typedesc	proc to(params: RequestParamsRx; T: typedesc): T:type		263
+nim	head	utils.html#head,seq[T]	proc head[T](xs: seq[T]): Option[T]		282
+nim	partial	utils.html#partial,proc(A,B),A	proc partial[A, B, C](fn: proc (a: A; b: B): C {.gcsafe, raises: [], nimcall.}; a: A): proc (\n    b: B): C {.gcsafe, raises: [].}		288
+nim	partial	utils.html#partial,proc(A,B),A_2	proc partial[A, B](fn: proc (a: A; b: B): void {.gcsafe, raises: [], nimcall.}; a: A): proc (\n    b: B): void {.gcsafe, raises: [].}		294
+nim	partial	utils.html#partial,proc(A,B,C),A	proc partial[A, B, C, D](fn: proc (a: A; b: B; c: C): D {.gcsafe, raises: [], nimcall.};\n                    a: A): proc (b: B; c: C): D {.gcsafe, raises: [].}		300
+nim	ensureStorageDir	utils.html#ensureStorageDir	proc ensureStorageDir(): string		306
+nim	either	utils.html#either,Future[T],Future[T]	proc either[T](fut1, fut2: Future[T]): Future[T]		310
+nim	map	utils.html#map,Future[T],proc(T)	proc map[T, U](f: Future[T]; fn: proc (t: T): U {.raises: [], gcsafe.}): Future[U]		321
+nim	map	utils.html#map,Future[void],proc)	proc map[U](f: Future[void]; fn: proc (): U {.raises: [], gcsafe.}): Future[U]		326
+nim	withTimeout	utils.html#withTimeout,Future[T],int	proc withTimeout[T](fut: Future[T]; timeout: int = 500): Future[Option[T]]		330
+nim	getNextFreePort	utils.html#getNextFreePort	proc getNextFreePort(): Port		336
+nim	isWord	utils.html#isWord,string	proc isWord(str: string): bool		343
+nim	getNimScriptAPITemplatePath	utils.html#getNimScriptAPITemplatePath	proc getNimScriptAPITemplatePath(): string		350
+nim	shutdownChildProcess	utils.html#shutdownChildProcess,AsyncProcessRef	proc shutdownChildProcess(p: AsyncProcessRef): Future[void]		360
+nim	getField	utils.html#getField.m,,string	macro getField(obj: object; fld: string): untyped		373
+nim	readAllOutput	utils.html#readAllOutput,AsyncStreamReader	proc readAllOutput(stream: AsyncStreamReader): Future[string]		376
+nim	readErrorOutputUntilExit	utils.html#readErrorOutputUntilExit,AsyncProcessRef,Duration	proc readErrorOutputUntilExit(process: AsyncProcessRef; duration: Duration): Future[\n    tuple[output: string, code: int]]		384
+nim	readOutputUntilExit	utils.html#readOutputUntilExit,AsyncProcessRef,Duration	proc readOutputUntilExit(process: AsyncProcessRef; duration: Duration): Future[\n    tuple[output: string, error: string, code: int]]		407
+nimgrp	addcallback	utils.html#addCallback-procs-all	proc		200
+nimgrp	map	utils.html#map-procs-all	proc		319
+nimgrp	partial	utils.html#partial-procs-all	proc		288
+heading	isRelativeTo version that do not throws	utils.html#isrelativeto-version-that-do-not-throws	 isRelativeTo version that do not throws		0

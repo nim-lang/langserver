@@ -1,0 +1,4 @@
+nimTitle	nimcheck	nimcheck.html	module nimcheck		0
+nim	CheckStacktrace	nimcheck.html#CheckStacktrace	object CheckStacktrace		9
+nim	CheckResult	nimcheck.html#CheckResult	object CheckResult		15
+nim	nimCheck	nimcheck.html#nimCheck,string,string	proc nimCheck(filePath: string; nimPath: string): Future[seq[CheckResult]]		75

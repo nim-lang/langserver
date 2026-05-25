@@ -1,0 +1,3 @@
+nimTitle	asyncprocmonitor	asyncprocmonitor.html	module asyncprocmonitor		0
+nim	Callback	asyncprocmonitor.html#Callback	type Callback		10
+nim	hookAsyncProcMonitor	asyncprocmonitor.html#hookAsyncProcMonitor,int,Callback	proc hookAsyncProcMonitor(pid: int; cb: Callback)		19

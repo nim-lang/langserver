@@ -1,0 +1,65 @@
+nimTitle	suggestapi	suggestapi.html	module suggestapi		0
+nim	REQUEST_TIMEOUT	suggestapi.html#REQUEST_TIMEOUT	const REQUEST_TIMEOUT		20
+nim	PrefixMatch	suggestapi.html#PrefixMatch	enum PrefixMatch		25
+nim	ideNone	suggestapi.html#ideNone	IdeCmd.ideNone		31
+nim	ideSug	suggestapi.html#ideSug	IdeCmd.ideSug		31
+nim	ideCon	suggestapi.html#ideCon	IdeCmd.ideCon		31
+nim	ideDef	suggestapi.html#ideDef	IdeCmd.ideDef		31
+nim	ideUse	suggestapi.html#ideUse	IdeCmd.ideUse		31
+nim	ideDus	suggestapi.html#ideDus	IdeCmd.ideDus		31
+nim	ideChk	suggestapi.html#ideChk	IdeCmd.ideChk		31
+nim	ideMod	suggestapi.html#ideMod	IdeCmd.ideMod		31
+nim	ideHighlight	suggestapi.html#ideHighlight	IdeCmd.ideHighlight		31
+nim	ideOutline	suggestapi.html#ideOutline	IdeCmd.ideOutline		31
+nim	ideKnown	suggestapi.html#ideKnown	IdeCmd.ideKnown		31
+nim	ideMsg	suggestapi.html#ideMsg	IdeCmd.ideMsg		31
+nim	ideProject	suggestapi.html#ideProject	IdeCmd.ideProject		31
+nim	ideType	suggestapi.html#ideType	IdeCmd.ideType		31
+nim	ideExpand	suggestapi.html#ideExpand	IdeCmd.ideExpand		31
+nim	IdeCmd	suggestapi.html#IdeCmd	enum IdeCmd		31
+nim	NimsuggestCallback	suggestapi.html#NimsuggestCallback	type NimsuggestCallback		48
+nim	ProjectCallback	suggestapi.html#ProjectCallback	type ProjectCallback		49
+nim	Suggest	suggestapi.html#Suggest	type Suggest		51
+nim	SuggestCall	suggestapi.html#SuggestCall	type SuggestCall		71
+nim	sihkType	suggestapi.html#sihkType	SuggestInlayHintKind.sihkType		76
+nim	sihkParameter	suggestapi.html#sihkParameter	SuggestInlayHintKind.sihkParameter		76
+nim	sihkException	suggestapi.html#sihkException	SuggestInlayHintKind.sihkException		76
+nim	SuggestInlayHintKind	suggestapi.html#SuggestInlayHintKind	enum SuggestInlayHintKind		76
+nim	SuggestInlayHint	suggestapi.html#SuggestInlayHint	type SuggestInlayHint		81
+nim	NimsuggestImpl	suggestapi.html#NimsuggestImpl	object NimsuggestImpl		91
+nim	NimSuggest	suggestapi.html#NimSuggest	type NimSuggest		108
+nim	Project	suggestapi.html#Project	type Project		110
+nim	canHandleUnknown	suggestapi.html#canHandleUnknown,NimSuggest	proc canHandleUnknown(ns: NimSuggest): bool		120
+nim	nimSymToLSPKind	suggestapi.html#nimSymToLSPKind,Suggest	proc nimSymToLSPKind(suggest: Suggest): CompletionItemKind		132
+nim	nimSymToLSPSymbolKind	suggestapi.html#nimSymToLSPSymbolKind,string	proc nimSymToLSPSymbolKind(suggest: string): SymbolKind		151
+nim	nimSymDetails	suggestapi.html#nimSymDetails,Suggest	proc nimSymDetails(suggest: Suggest): string		168
+nim	parseQualifiedPath	suggestapi.html#parseQualifiedPath,string	proc parseQualifiedPath(input: string): seq[string]		203
+nim	parseSuggestDef	suggestapi.html#parseSuggestDef,string	proc parseSuggestDef(line: string): Option[Suggest]		224
+nim	parseSuggestInlayHint	suggestapi.html#parseSuggestInlayHint,string	proc parseSuggestInlayHint(line: string): SuggestInlayHint		244
+nim	name	suggestapi.html#name,Suggest	proc name(sug: Suggest): string		260
+nim	stop	suggestapi.html#stop,Project	proc stop(self: Project)		269
+nim	doWithTimeout	suggestapi.html#doWithTimeout,Future[T],int,string	proc doWithTimeout[T](fut: Future[T]; timeout: int; s: string): owned(Future[bool])		274
+nim	getNimsuggestCapabilities	suggestapi.html#getNimsuggestCapabilities,string	proc getNimsuggestCapabilities(nimsuggestPath: string): set[NimSuggestCapability]		307
+nim	createNimsuggest	suggestapi.html#createNimsuggest,string,string,string,int,NimsuggestCallback,ProjectCallback,bool,bool	proc createNimsuggest(root: string; nimsuggestPath: string; version: string;\n                 timeout: int; timeoutCallback: NimsuggestCallback;\n                 errorCallback: ProjectCallback; workingDir = getCurrentDir();\n                 enableLog: bool = false;\n                 enableExceptionInlayHints: bool = false): Future[Project]		346
+nim	createNimsuggest	suggestapi.html#createNimsuggest,string	proc createNimsuggest(root: string): Future[Project]		412
+nim	toString	suggestapi.html#toString,openArray[byte]	proc toString(bytes: openArray[byte]): string		424
+nim	call	suggestapi.html#call,NimSuggest,string,string,string,int,int,string	proc call(self: NimSuggest; command: string; file: string; dirtyFile: string;\n     line: int; column: int; tag = ""): Future[seq[Suggest]]		498
+nim	sug	suggestapi.html#sug,NimSuggest,string,string,int,int,string	proc sug(self: NimSuggest; file: string; dirtyfile = ""; line: int; col: int;\n    tag = ""): Future[seq[Suggest]]		554
+nim	con	suggestapi.html#con,NimSuggest,string,string,int,int,string	proc con(self: NimSuggest; file: string; dirtyfile = ""; line: int; col: int;\n    tag = ""): Future[seq[Suggest]]		555
+nim	def	suggestapi.html#def,NimSuggest,string,string,int,int,string	proc def(self: NimSuggest; file: string; dirtyfile = ""; line: int; col: int;\n    tag = ""): Future[seq[Suggest]]		556
+nim	declaration	suggestapi.html#declaration,NimSuggest,string,string,int,int,string	proc declaration(self: NimSuggest; file: string; dirtyfile = ""; line: int; col: int;\n            tag = ""): Future[seq[Suggest]]		557
+nim	use	suggestapi.html#use,NimSuggest,string,string,int,int,string	proc use(self: NimSuggest; file: string; dirtyfile = ""; line: int; col: int;\n    tag = ""): Future[seq[Suggest]]		558
+nim	expand	suggestapi.html#expand,NimSuggest,string,string,int,int,string	proc expand(self: NimSuggest; file: string; dirtyfile = ""; line: int; col: int;\n       tag = ""): Future[seq[Suggest]]		559
+nim	highlight	suggestapi.html#highlight,NimSuggest,string,string,int,int,string	proc highlight(self: NimSuggest; file: string; dirtyfile = ""; line: int; col: int;\n          tag = ""): Future[seq[Suggest]]		560
+nim	`type`	suggestapi.html#type,NimSuggest,string,string,int,int,string	proc `type`(self: NimSuggest; file: string; dirtyfile = ""; line: int; col: int;\n       tag = ""): Future[seq[Suggest]]		561
+nim	chk	suggestapi.html#chk,NimSuggest,string,string	proc chk(self: NimSuggest; file: string; dirtyfile = ""): Future[seq[Suggest]]		562
+nim	chkFile	suggestapi.html#chkFile,NimSuggest,string,string	proc chkFile(self: NimSuggest; file: string; dirtyfile = ""): Future[seq[Suggest]]		563
+nim	changed	suggestapi.html#changed,NimSuggest,string,string	proc changed(self: NimSuggest; file: string; dirtyfile = ""): Future[seq[Suggest]]		564
+nim	outline	suggestapi.html#outline,NimSuggest,string,string	proc outline(self: NimSuggest; file: string; dirtyfile = ""): Future[seq[Suggest]]		565
+nim	known	suggestapi.html#known,NimSuggest,string,string	proc known(self: NimSuggest; file: string; dirtyfile = ""): Future[seq[Suggest]]		566
+nim	globalSymbols	suggestapi.html#globalSymbols,NimSuggest,string,string	proc globalSymbols(self: NimSuggest; file: string; dirtyfile = ""): Future[\n    seq[Suggest]]		567
+nim	recompile	suggestapi.html#recompile,NimSuggest	proc recompile(self: NimSuggest): Future[seq[Suggest]]		568
+nim	inlayHints	suggestapi.html#inlayHints,NimSuggest,string,string,int,int,int,int,string	proc inlayHints(self: NimSuggest; file: string; dirtyfile = "";\n           startLine, startCol, endLine, endCol: int; extra: string): Future[\n    seq[Suggest]]		569
+nim	`mod`	suggestapi.html#mod,NimSuggest,string,string	proc `mod`(nimsuggest: NimSuggest; file: string; dirtyfile = ""): Future[seq[Suggest]]		571
+nim	isKnown	suggestapi.html#isKnown,NimSuggest,string	proc isKnown(nimsuggest: NimSuggest; filePath: string): Future[bool]		576
+nimgrp	createnimsuggest	suggestapi.html#createNimsuggest-procs-all	proc		336

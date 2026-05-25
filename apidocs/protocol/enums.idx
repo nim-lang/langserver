@@ -1,0 +1,36 @@
+nimTitle	enums	protocol/enums.html	module protocol/enums		0
+nim	RequestFailed	protocol/enums.html#RequestFailed	ErrorCode.RequestFailed		1
+nim	ServerCancelled	protocol/enums.html#ServerCancelled	ErrorCode.ServerCancelled		1
+nim	ContentModified	protocol/enums.html#ContentModified	ErrorCode.ContentModified		1
+nim	RequestCancelled	protocol/enums.html#RequestCancelled	ErrorCode.RequestCancelled		1
+nim	ParseError	protocol/enums.html#ParseError	ErrorCode.ParseError		1
+nim	InternalError	protocol/enums.html#InternalError	ErrorCode.InternalError		1
+nim	InvalidParams	protocol/enums.html#InvalidParams	ErrorCode.InvalidParams		1
+nim	MethodNotFound	protocol/enums.html#MethodNotFound	ErrorCode.MethodNotFound		1
+nim	InvalidRequest	protocol/enums.html#InvalidRequest	ErrorCode.InvalidRequest		1
+nim	ServerErrorStart	protocol/enums.html#ServerErrorStart	ErrorCode.ServerErrorStart		1
+nim	ServerNotInitialized	protocol/enums.html#ServerNotInitialized	ErrorCode.ServerNotInitialized		1
+nim	UnknownErrorCode	protocol/enums.html#UnknownErrorCode	ErrorCode.UnknownErrorCode		1
+nim	ServerErrorEnd	protocol/enums.html#ServerErrorEnd	ErrorCode.ServerErrorEnd		1
+nim	ErrorCode	protocol/enums.html#ErrorCode	enum ErrorCode		1
+nim	DiagnosticSeverity	protocol/enums.html#DiagnosticSeverity	enum DiagnosticSeverity		18
+nim	DiagnosticTag	protocol/enums.html#DiagnosticTag	enum DiagnosticTag		24
+nim	SymbolKind	protocol/enums.html#SymbolKind	enum SymbolKind		28
+nim	CompletionItemKind	protocol/enums.html#CompletionItemKind	enum CompletionItemKind		56
+nim	TextDocumentSyncKind	protocol/enums.html#TextDocumentSyncKind	enum TextDocumentSyncKind		83
+nim	MessageType	protocol/enums.html#MessageType	enum MessageType		88
+nim	FileChangeType	protocol/enums.html#FileChangeType	enum FileChangeType		95
+nim	WatchKind	protocol/enums.html#WatchKind	enum WatchKind		100
+nim	TextDocumentSaveReason	protocol/enums.html#TextDocumentSaveReason	enum TextDocumentSaveReason		105
+nim	CompletionTriggerKind	protocol/enums.html#CompletionTriggerKind	enum CompletionTriggerKind		110
+nim	InsertTextFormat	protocol/enums.html#InsertTextFormat	enum InsertTextFormat		115
+nim	DocumentHighlightKind	protocol/enums.html#DocumentHighlightKind	enum DocumentHighlightKind		119
+nim	SignatureHelpTriggerKind	protocol/enums.html#SignatureHelpTriggerKind	enum SignatureHelpTriggerKind		124
+nim	InitializeErrorCodes	protocol/enums.html#InitializeErrorCodes	enum InitializeErrorCodes		129
+nim	NotebookCellKind	protocol/enums.html#NotebookCellKind	enum NotebookCellKind		132
+nim	SymbolTag	protocol/enums.html#SymbolTag	enum SymbolTag		136
+nim	InlayHintKind	protocol/enums.html#InlayHintKind	enum InlayHintKind		139
+nim	CompletionItemTag	protocol/enums.html#CompletionItemTag	enum CompletionItemTag		143
+nim	InsertTextMode	protocol/enums.html#InsertTextMode	enum InsertTextMode		146
+nim	CodeActionTriggerKind	protocol/enums.html#CodeActionTriggerKind	enum CodeActionTriggerKind		150
+nim	PrepareSupportDefaultBehavior	protocol/enums.html#PrepareSupportDefaultBehavior	enum PrepareSupportDefaultBehavior		154

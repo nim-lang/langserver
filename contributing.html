@@ -1,0 +1,485 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Contributor&#x27;s Guide - Nim Language Server</title>
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon.svg">
+        <link rel="shortcut icon" href="favicon.png">
+        <link rel="stylesheet" href="css/variables.css">
+        <link rel="stylesheet" href="css/general.css">
+        <link rel="stylesheet" href="css/chrome.css">
+        <link rel="stylesheet" href="css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="highlight-css" href="highlight.css">
+        <link rel="stylesheet" id="tomorrow-night-css" href="tomorrow-night.css">
+        <link rel="stylesheet" id="ayu-highlight-css" href="ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="open-in.css">
+        <link rel="stylesheet" href="mdbook-admonish.css">
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "";
+            const default_light_theme = "light";
+            const default_dark_theme = "navy";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="toc.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            html.classList.remove('sidebar-visible');
+            html.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+            </noscript>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Nim Language Server</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/nim-lang/langserver/" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="contributor-guide"><a class="header" href="#contributor-guide">Contributor Guide</a></h1>
+<p>This guide is for contributors working on <code>nimlangserver</code> itself. It focuses on the internal architecture, how the package is organized, how MCP tools are wired, and where to look when something goes wrong.</p>
+<p>Older architecture notes have been merged into this guide so contributors have a single obvious entry point.</p>
+<div id="admonition-explore-the-codebase-with-deepwiki" class="admonition admonish-tip">
+<div class="admonition-title">
+<p>Explore the codebase with DeepWiki</p>
+<p><a class="admonition-anchor-link" href="#admonition-explore-the-codebase-with-deepwiki"></a></p>
+</div>
+<div>
+<p><a href="https://deepwiki.com/nim-lang/langserver">DeepWiki</a> provides an AI-generated, searchable overview of the <code>nimlangserver</code> codebase. It's a great starting point for new contributors who want to understand the structure before diving into the source.</p>
+<p><a href="https://deepwiki.com/nim-lang/langserver"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki" /></a></p>
+</div>
+</div>
+<p>The generated <a href="/apidocs/theindex.html">API index</a> is also a useful reference when navigating the codebase.</p>
+<h2 id="contents"><a class="header" href="#contents">Contents</a></h2>
+<ul>
+<li><a href="#architecture-at-a-glance">Architecture at a glance</a></li>
+<li><a href="#requestdata-flow">Request/data flow</a></li>
+<li><a href="#historical-architecture-notes">Historical architecture notes</a></li>
+<li><a href="#package-structure">Package structure</a></li>
+<li><a href="#how-to-add-a-new-mcp-tool">How to add a new MCP tool</a></li>
+<li><a href="#describe-the-tool-here-what-it-does-what-it-returns-what-nimsuggest-backend-command-it-should-use-check-routeslspnim-and-suggestapinim-for-the-closest-analogue-what-its-input-and-output-schemas-look-like">Describe the tool here: what it does, what it returns, what nimsuggest backend command it should use (check <code>routes/lsp.nim</code> and <code>suggestapi.nim</code> for the closest analogue), what its input and output schemas look like.</a></li>
+<li><a href="#debugging-guide">Debugging guide</a></li>
+<li><a href="#running-tests">Running tests</a></li>
+<li><a href="#test-runner">Test runner</a></li>
+</ul>
+<h2 id="architecture-at-a-glance"><a class="header" href="#architecture-at-a-glance">Architecture at a glance</a></h2>
+<pre><code class="language-text">Client
+├─ LSP client (editor)
+│  └─ JSON-RPC over stdio or socket, with Content-Length framing
+└─ MCP client
+   └─ JSON-RPC over stdio or socket
+
+nimlangserver.nim
+└─ builds LanguageServer state, starts transport, registers routes
+   ├─ registerLspRoutes()  -&gt; routes/lsp.nim
+   └─ registerMcpRoutes()  -&gt; routes/mcp.nim
+
+lstransports.nim
+└─ transport-specific I/O loops
+   ├─ stdio reader threads
+   ├─ socket server
+   ├─ JSON-RPC request/response dispatch
+   └─ writeOutput() framing
+
+ls.nim
+└─ shared server state and orchestration
+   ├─ workspace/config parsing
+   ├─ file shadow copies + UTF-16/UTF-8 mapping
+   ├─ project-file discovery
+   ├─ nimsuggest lifecycle and reuse
+   ├─ diagnostics/status/progress helpers
+   └─ maintenance loop (tickLs -&gt; tick)
+
+Backends
+├─ suggestapi.nim   -&gt; long-lived nimsuggest processes and command queue
+├─ nimcheck.nim     -&gt; `nim check` diagnostics path
+├─ nimexpand.nim    -&gt; macro / ARC expansion helpers
+└─ testrunner.nim   -&gt; unittest2 discovery and execution
+</code></pre>
+<h2 id="requestdata-flow"><a class="header" href="#requestdata-flow">Request/data flow</a></h2>
+<h3 id="lsp-flow"><a class="header" href="#lsp-flow">LSP flow</a></h3>
+<ol>
+<li><code>nimlangserver.nim</code> parses CLI flags, creates <code>LanguageServer</code>, starts stdio or socket transport, and registers LSP routes.</li>
+<li><code>routes/lsp.nim.initialize</code> stores client capabilities and eagerly starts <code>nimsuggest</code> for nimble entry points.</li>
+<li><code>lstransports.nim</code> reads JSON-RPC messages, looks up the registered route, and invokes the handler.</li>
+<li>Route handlers use <code>ls.nim</code> helpers such as <code>didOpenFile</code>, <code>getProjectFile</code>, and <code>tryGetNimsuggest</code>.</li>
+<li><code>suggestapi.nim</code> sends the actual command to <code>nimsuggest</code>, parses the tab-separated result, and returns structured objects.</li>
+<li>The route maps those objects into LSP types from <code>protocol/types.nim</code>, and <code>lstransports.nim</code> serializes the response back to the client.</li>
+</ol>
+<h3 id="mcp-flow"><a class="header" href="#mcp-flow">MCP flow</a></h3>
+<p>The MCP flow is the same shared pipeline with a thinner route layer:</p>
+<ol>
+<li><code>nimlangserver.nim</code> registers <code>initialize</code>, <code>tools/list</code>, <code>tools/call</code>, and <code>notifications/initialized</code> from <code>routes/mcp.nim</code>.</li>
+<li><code>routes/mcp.nim.initialize</code> stores MCP capabilities and eagerly starts <code>nimsuggest</code> for the current working directory's nimble entry points.</li>
+<li><code>tools/call</code> dispatches by tool name, usually opens the target file if needed, obtains a <code>nimsuggest</code> instance via <code>tryGetNimsuggest</code>, and converts the result into <code>McpCallToolResult</code>.</li>
+<li><code>structuredContent</code> is the authoritative machine-readable result; <code>content</code> mirrors it as JSON text for clients that only read text blocks.</li>
+</ol>
+<h3 id="important-design-notes"><a class="header" href="#important-design-notes">Important design notes</a></h3>
+<ul>
+<li><code>LanguageServer</code> is a shared state object for both modes. The <code>serverMode</code> field switches the shape of the initialize params/capabilities stored inside it.</li>
+<li><code>lstransports.nim</code> is shared by both modes. The main behavioral difference is framing:
+<ul>
+<li>LSP stdio uses <code>Content-Length</code>.</li>
+<li>MCP stdio writes one JSON object per line.</li>
+</ul>
+</li>
+<li>MCP currently treats the current working directory as the workspace root (<code>getRootPath(McpInitializeParams)</code> returns <code>getCurrentDir()</code>), so start the server from the workspace you want to inspect.</li>
+<li><code>tickLs</code> in <code>nimlangserver.nim</code> keeps running after initialization and calls <code>ls.tick()</code> to prune completed requests and stop idle <code>nimsuggest</code> processes.</li>
+</ul>
+<h2 id="historical-architecture-notes"><a class="header" href="#historical-architecture-notes">Historical architecture notes</a></h2>
+<ul>
+<li><code>nimlangserver</code> is still best thought of as a fairly thin proxy between a client and one or more long-lived <code>nimsuggest</code> processes. In normal operation there is one <code>nimsuggest</code> instance per project/configuration pair, and requests are routed to the matching instance.</li>
+<li>Project discovery is implemened through <code>ls.nim:getProjectFileAutoGuess</code>, <code>ls.nim:getNimbleDumpInfo</code>, and the <code>nimble dump</code>-based entry-point discovery path.</li>
+<li>If no better project root is found, the opened file may become its own project file. That fallback is still an important behavior to remember when debugging odd workspace-root or include-file issues.</li>
+<li>In stdio mode the input side is handled by a dedicated reader thread in <code>lstransports.nim</code>, while request processing and output happen on the main async side.</li>
+<li>File editing is not delegated directly to <code>nimsuggest</code>. <code>nimlangserver</code> mirrors open file contents into temporary shadow files and passes those paths to backend operations. When debugging stale or surprising results, inspect <code>ls.nim:didOpenFile</code>, stash-path helpers, and the code paths that decide whether a file is treated as dirty.</li>
+</ul>
+<h2 id="package-structure"><a class="header" href="#package-structure">Package structure</a></h2>
+<ul>
+<li><code>nimlangserver.nim</code>: program entry point, CLI flag parsing, route registration, transport startup, process-monitor setup, and the maintenance loop.</li>
+<li><code>ls.nim</code>: core server state (<code>LanguageServer</code>), configuration parsing, project discovery, open-file shadow state, diagnostics plumbing, <code>nimsuggest</code> lifecycle, and shared helpers used by both LSP and MCP.</li>
+<li><code>lstransports.nim</code>: JSON-RPC decoding/encoding, stdio and socket loops, <code>wrapRpc</code>, request cancellation bookkeeping, and outbound request/notification helpers.</li>
+<li><code>routes/lsp.nim</code>: LSP method handlers and Nim-specific extension methods. This is the best reference for which <code>nimsuggest</code> command powers which feature.</li>
+<li><code>routes/mcp.nim</code>: MCP initialize/list/call handlers plus the current MCP tool implementations. Most MCP work happens here.</li>
+<li><code>suggestapi.nim</code>: <code>nimsuggest</code> process startup, capability detection, request queueing, timeout handling, stderr capture, and parsing of <code>nimsuggest</code> responses into <code>Suggest</code> values.</li>
+<li><code>nimcheck.nim</code>: <code>nim check --listFullPaths</code> integration used when configuration chooses compiler-based diagnostics instead of <code>nimsuggest</code> diagnostics.</li>
+<li><code>nimexpand.nim</code>: fallback support for macro expansion and ARC expansion via <code>nim c --expandMacro</code> / <code>--expandArc</code>.</li>
+<li><code>testrunner.nim</code>: test discovery and execution for the custom LSP test routes.</li>
+<li><code>asyncprocmonitor.nim</code>: watches a client PID and shuts the server down when that process disappears.</li>
+<li><code>utils.nim</code>: URI/path helpers, UTF conversion helpers, future helpers, process shutdown utilities, temp storage helpers, and JSON-RPC param conversion helpers.</li>
+<li><code>protocol/types.nim</code>: data model types for JSON-RPC, LSP, and MCP payloads.</li>
+<li><code>protocol/enums.nim</code>: protocol enums used by the type layer.</li>
+<li><code>templates/nimscriptapi.nim</code>: compatibility shim injected for <code>.nims</code> / <code>.nimble</code> handling.</li>
+<li><code>tests/tmcp.nim</code>: MCP route coverage. Start here when changing MCP behavior.</li>
+<li><code>tests/tnimlangserver.nim</code>, <code>tests/textensions.nim</code>, <code>tests/tmisc.nim</code>, <code>tests/tsuggestapi.nim</code>, <code>tests/ttestrunner.nim</code>: coverage for LSP/server helpers, extensions, misc behavior, raw <code>nimsuggest</code> integration, and test execution.</li>
+<li><code>tests/projects/</code>: fixture workspaces used by the tests.</li>
+</ul>
+<h2 id="how-to-add-a-new-mcp-tool"><a class="header" href="#how-to-add-a-new-mcp-tool">How to add a new MCP tool</a></h2>
+<p>Most of the work is in <code>routes/mcp.nim</code>:</p>
+<ol>
+<li>Add a tool-definition proc that returns <code>McpTool</code>.</li>
+<li>Add a <code>call...</code> proc that:
+<ul>
+<li>reads and validates <code>params.arguments</code></li>
+<li>opens the file with <code>ls.didOpenFile(...)</code> if the tool works on a path and the file is not already open</li>
+<li>gets a <code>nimsuggest</code> instance with <code>await ls.tryGetNimsuggest(uri)</code></li>
+<li>calls the relevant backend method</li>
+<li>maps the result into <code>structuredContent</code></li>
+<li>mirrors that JSON into <code>content</code></li>
+</ul>
+</li>
+<li>Register the new tool in <code>listTools</code>.</li>
+<li>Dispatch it in <code>callTool</code>.</li>
+<li>Add coverage in <code>tests/tmcp.nim</code>.</li>
+</ol>
+<h3 id="how-to-choose-the-backend-command"><a class="header" href="#how-to-choose-the-backend-command">How to choose the backend command</a></h3>
+<p>The fastest way to choose the correct <code>nimsuggest</code> command is to look for an analogous LSP handler in <code>routes/lsp.nim</code>, then follow the call into <code>suggestapi.nim</code>.</p>
+<p>Common mappings already used in the codebase:</p>
+<ul>
+<li>Symbol references at a cursor location: <code>nimFindReferences</code>, LSP <code>textDocument/references</code> -&gt; <code>use(...)</code></li>
+<li>Workspace symbol search: <code>nimFindSymbols</code>, LSP <code>workspace/symbol</code> -&gt; <code>globalSymbols(query)</code></li>
+<li>Symbols in one file: <code>nimListSymbols</code>, LSP <code>textDocument/documentSymbol</code> -&gt; <code>outline(path)</code></li>
+<li>Whole-project diagnostics: <code>nimCheckProject</code>, LSP project checking -&gt; <code>chk(path)</code></li>
+<li>One-file diagnostics: <code>nimCheckFile</code>, LSP file checking -&gt; <code>chkFile(path)</code> and sometimes a warm-up <code>con(...)</code></li>
+<li>Go to definition: LSP <code>textDocument/definition</code> -&gt; <code>def(...)</code></li>
+<li>Go to declaration: LSP <code>textDocument/declaration</code> -&gt; <code>declaration(...)</code></li>
+<li>Completion: LSP <code>textDocument/completion</code> -&gt; <code>sug(...)</code></li>
+</ul>
+<p>If you are unsure, <code>routes/lsp.nim</code> is usually the best oracle because it already encodes the intended user-facing behavior.</p>
+<h3 id="skeleton"><a class="header" href="#skeleton">Skeleton</a></h3>
+<pre><code class="language-nim">proc nimMyTool(): McpTool =
+  McpTool(
+    name: "nimMyTool",
+    title: some "Describe the tool briefly",
+    description: some "Describe what it returns.",
+    inputSchema: McpToolSchema(
+      `type`: "object",
+      properties: %*{"path": {"type": "string"}},
+      required: @["path"],
+    ),
+    outputSchema: some McpToolSchema(
+      `type`: "object",
+      properties: %*{"items": {"type": "array"}},
+      required: @["items"],
+    ),
+  )
+
+proc callNimMyTool(
+    ls: LanguageServer, params: McpCallToolParams
+  ): Future[McpCallToolResult] {.async.} =
+  let
+    arguments = params.arguments.get(JsonNode())
+    path = arguments["path"].getStr().absolutePath
+    uri = path.pathToUri()
+
+  if uri notin ls.openFiles:
+    await ls.didOpenFile(
+      TextDocumentItem(uri: uri, languageId: "nim", version: 0, text: readFile(path))
+    )
+
+  let nimsuggest = await ls.tryGetNimsuggest(uri)
+  if nimsuggest.isNone:
+    return McpCallToolResult(
+      content: @[McpContentBlock(`type`: TextContent, text: "Nimsuggest is unavailable")],
+      isError: some true,
+    )
+
+  let items = await nimsuggest.get.someCommand(...)
+  let structuredContent = %*{"items": items.mapIt(...)}
+  return McpCallToolResult(
+    content: @[McpContentBlock(`type`: TextContent, text: $structuredContent)],
+    structuredContent: some structuredContent,
+    isError: some false,
+  )
+</code></pre>
+<h3 id="testing-checklist"><a class="header" href="#testing-checklist">Testing checklist</a></h3>
+<ul>
+<li>Add a happy-path case to <code>tests/tmcp.nim</code>.</li>
+<li>If the tool has edge cases, add a fixture under <code>tests/projects/</code>.</li>
+<li>Assert both <code>structuredContent</code> and the mirrored text payload; <code>checkToolResult</code> already does that.</li>
+</ul>
+<h3 id="a-reusable-copilot-prompt"><a class="header" href="#a-reusable-copilot-prompt">A reusable Copilot prompt</a></h3>
+<p>If you want to automate the mechanical part with Copilot, use this prompt template. Replace the content between <code>---</code> markers with your tool description:</p>
+<blockquote>
+<p>Add a new MCP tool to <code>routes/mcp.nim</code> and <code>tests/tmcp.nim</code>.</p>
+<hr />
+<h2 id="describe-the-tool-here-what-it-does-what-it-returns-what-nimsuggest-backend-command-it-should-use-check-routeslspnim-and-suggestapinim-for-the-closest-analogue-what-its-input-and-output-schemas-look-like"><a class="header" href="#describe-the-tool-here-what-it-does-what-it-returns-what-nimsuggest-backend-command-it-should-use-check-routeslspnim-and-suggestapinim-for-the-closest-analogue-what-its-input-and-output-schemas-look-like">Describe the tool here: what it does, what it returns, what nimsuggest backend command it should use (check <code>routes/lsp.nim</code> and <code>suggestapi.nim</code> for the closest analogue), what its input and output schemas look like.</a></h2>
+<p>Follow the existing <code>nimFindReferences</code> / <code>nimCheckFile</code> pattern.
+Reuse the closest matching handler in <code>routes/lsp.nim</code> to choose the correct backend method from <code>suggestapi.nim</code>.
+Return machine-readable data in <code>structuredContent</code> and mirror it as JSON text in <code>content</code>.</p>
+<p>After implementing the tool:</p>
+<ol>
+<li><strong>Identify real-life AI agent use cases.</strong> Think about what coding tasks this tool enables or improves when used by an AI agent (e.g., "find the origin of a symbol", "resolve a type mismatch during debugging"). Add these to the "When to Use" section and the Activation Rule in <code>SKILL.md</code>.</li>
+<li><strong>Add workflow instructions to <code>SKILL.md</code>.</strong> Describe step-by-step how an AI agent should use this tool, both standalone and in combination with other tools (e.g., <code>nimCheckFile</code> + <code>nimFindTypeDefinition</code>). Cover the new workflows in the Workflows section.</li>
+<li><strong>List the tool in <code>README.md</code>.</strong> Add the tool name to the "The current MCP tool set is:" list in the MCP server section.</li>
+</ol>
+</blockquote>
+<h2 id="debugging-guide"><a class="header" href="#debugging-guide">Debugging guide</a></h2>
+<h3 id="where-logs-go"><a class="header" href="#where-logs-go">Where logs go</a></h3>
+<ul>
+<li>Server logs use <code>chronicles</code> macros such as <code>debug</code>, <code>info</code>, <code>warn</code>, and <code>error</code>.</li>
+<li>Unhandled exceptions are written by <code>writeStackTrace</code>, which prints to <code>stderr</code>.</li>
+<li><code>nimsuggest</code> stderr is captured in <code>suggestapi.nim:logNsError</code> and re-emitted as <code>NimSuggest Error (stderr)</code> before the project is marked failed.</li>
+</ul>
+<p>In practice:</p>
+<ul>
+<li><strong>LSP over stdio:</strong> look at your editor's language-server log / trace output. The README already shows enabling verbose server tracing in <code>coc.nvim</code>.</li>
+<li><strong>MCP over stdio:</strong> redirect <code>stderr</code> when launching the server so the JSON stream on <code>stdout</code> stays clean.</li>
+<li><strong>Socket mode:</strong> run the server in a terminal and watch <code>stderr</code> directly.</li>
+</ul>
+<p>Example:</p>
+<pre><code class="language-bash">nimble build
+./nimlangserver --mcp --stdio 2&gt;mcp.stderr.log
+</code></pre>
+<h3 id="useful-places-to-put-breakpoints-or-temporary-logs"><a class="header" href="#useful-places-to-put-breakpoints-or-temporary-logs">Useful places to put breakpoints or temporary logs</a></h3>
+<ul>
+<li>For route registration or selected mode, start in <code>nimlangserver.nim</code>.</li>
+<li>For raw JSON-RPC parsing or framing issues, start in <code>lstransports.nim</code>.</li>
+<li>For project-file detection or workspace-root issues, start in <code>ls.nim:getProjectFile</code> and <code>ls.nim:getProjectFileAutoGuess</code>.</li>
+<li>For open-file shadowing or stash paths, start in <code>ls.nim:didOpenFile</code> and <code>ls.nim:uriToStash</code>.</li>
+<li>For <code>nimsuggest</code> startup, restart loops, or timeouts, start in <code>ls.nim:createOrRestartNimsuggest</code>, <code>suggestapi.nim:createNimsuggest</code>, and <code>suggestapi.nim:processQueue</code>.</li>
+<li>For MCP tool dispatch, start in <code>routes/mcp.nim:callTool</code>.</li>
+<li>For LSP feature behavior, start in the matching handler in <code>routes/lsp.nim</code>.</li>
+<li>For the diagnostics path, start in <code>ls.nim:checkFile</code>, <code>ls.nim:checkProject</code>, and <code>nimcheck.nim</code>.</li>
+</ul>
+<h3 id="ad-hoc-file-logging"><a class="header" href="#ad-hoc-file-logging">Ad-hoc file logging</a></h3>
+<p>For local debugging, a tiny helper can be convenient when you want logs that are completely separate from the JSON-RPC stream:</p>
+<pre><code class="language-nim">import std/[os, syncio]
+
+proc logToFile(msg: string) =
+  let f = open(getCurrentDir() / "mcp.log", fmAppend)
+  defer:
+    f.close()
+  f.writeLine(msg)
+  f.flushFile()
+</code></pre>
+<p>This is useful while iterating on MCP handlers because it does not interfere with the protocol stream. It should stay a local debugging aid rather than a committed dependency.</p>
+<h2 id="running-tests"><a class="header" href="#running-tests">Running tests</a></h2>
+<p>The main test command is:</p>
+<pre><code class="language-bash">nimble test
+</code></pre>
+<p>When you change MCP behavior, <code>tests/tmcp.nim</code> is the most relevant file to read first, even if you still run the full suite.</p>
+<h2 id="test-runner"><a class="header" href="#test-runner">Test runner</a></h2>
+<p><code>nimlangserver</code> exposes LSP routes that let editors list and run <code>unittest2</code> tests directly from the UI. For this to work, the project must use <code>unittest2 &gt;= 0.2.4</code>, and a test entry point must be provided — either via the VSCode extension setting <code>nim.test.entryPoint</code>, or via <code>testEntryPoint</code> in future versions of <code>nimble</code>.</p>
+<p>The implementation lives in <code>testrunner.nim</code>.</p>
+<footer id="open-on-gh">Found a bug? <a href="https://github.com/nim-lang/langserver//edit/main/book/src/contributing.md">Edit this page on GitHub.</a></footer>
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="cli.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="cli.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr.min.js"></script>
+        <script src="mark.min.js"></script>
+        <script src="searcher.js"></script>
+
+        <script src="clipboard.min.js"></script>
+        <script src="highlight.js"></script>
+        <script src="book.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+    </div>
+    </body>
+</html>

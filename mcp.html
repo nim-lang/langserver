@@ -1,0 +1,306 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>MCP Server - Nim Language Server</title>
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon.svg">
+        <link rel="shortcut icon" href="favicon.png">
+        <link rel="stylesheet" href="css/variables.css">
+        <link rel="stylesheet" href="css/general.css">
+        <link rel="stylesheet" href="css/chrome.css">
+        <link rel="stylesheet" href="css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="highlight-css" href="highlight.css">
+        <link rel="stylesheet" id="tomorrow-night-css" href="tomorrow-night.css">
+        <link rel="stylesheet" id="ayu-highlight-css" href="ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="open-in.css">
+        <link rel="stylesheet" href="mdbook-admonish.css">
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "";
+            const default_light_theme = "light";
+            const default_dark_theme = "navy";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="toc.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            html.classList.remove('sidebar-visible');
+            html.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+            </noscript>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Nim Language Server</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/nim-lang/langserver/" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="mcp-server"><a class="header" href="#mcp-server">MCP Server</a></h1>
+<p><code>nimlangserver</code> can run as an <a href="https://modelcontextprotocol.io/">MCP (Model Context Protocol)</a> server, exposing Nim-aware tools to AI assistants and coding agents such as GitHub Copilot, Claude Code, and Gemini. This lets AI tools inspect Nim code semantically instead of relying on plain-text search.</p>
+<h2 id="contents"><a class="header" href="#contents">Contents</a></h2>
+<ul>
+<li><a href="#setup">Setup</a></li>
+<li><a href="#available-tools">Available tools</a></li>
+<li><a href="#usage">Usage</a></li>
+<li><a href="#why-use-nimlangserver-as-an-mcp-server">Why use nimlangserver as an MCP server?</a></li>
+</ul>
+<h2 id="setup"><a class="header" href="#setup">Setup</a></h2>
+<h3 id="vscode"><a class="header" href="#vscode">VSCode</a></h3>
+<p>MCP support is bundled with the <a href="https://github.com/nim-lang/vscode-nim">vscode-nim</a> extension. Installing the extension gives you a working LSP server, a working MCP server, and the accompanying skill — no additional configuration needed.</p>
+<h3 id="other-agents"><a class="header" href="#other-agents">Other agents</a></h3>
+<ol>
+<li>
+<p><a href="./quickstart.html#installation">Install <code>nimlangserver</code></a>.</p>
+</li>
+<li>
+<p>Copy the matching MCP config file from this repository to your project:</p>
+<div class="table-wrapper"><table><thead><tr><th>Agent</th><th>Config file</th></tr></thead><tbody>
+<tr><td>Claude Code</td><td><code>.mcp.json</code></td></tr>
+<tr><td>GitHub Copilot CLI</td><td><code>.mcp.json</code></td></tr>
+<tr><td>Gemini CLI</td><td><code>.gemini/settings.json</code></td></tr>
+<tr><td>OpenCode</td><td><code>opencode.json</code></td></tr>
+</tbody></table>
+</div></li>
+<li>
+<p>Copy the <code>SKILL.md</code> file to your project:</p>
+<div class="table-wrapper"><table><thead><tr><th>Agent</th><th>Destination</th></tr></thead><tbody>
+<tr><td>Claude Code</td><td><code>.claude/skills/nim-mcp-tools/</code></td></tr>
+<tr><td>GitHub Copilot CLI</td><td><code>.github/skills/nim-mcp-tools/</code></td></tr>
+<tr><td>Gemini CLI</td><td><code>.gemini/skills/nim-mcp-tools/</code></td></tr>
+<tr><td>OpenCode</td><td><code>.opencode/skills/nim-mcp-tools/</code></td></tr>
+</tbody></table>
+</div></li>
+<li>
+<p>Open the Nim project root in your AI tool.</p>
+</li>
+</ol>
+<h2 id="available-tools"><a class="header" href="#available-tools">Available tools</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Tool</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>nimFindReferences</code></td><td>Find all references to a symbol at a given position.</td></tr>
+<tr><td><code>nimFindSymbols</code></td><td>Search workspace symbols by name query.</td></tr>
+<tr><td><code>nimFindTypeDefinition</code></td><td>Go to the type definition of a symbol.</td></tr>
+<tr><td><code>nimListSymbols</code></td><td>List all symbols defined in a file.</td></tr>
+<tr><td><code>nimCheckProject</code></td><td>Run diagnostics for the whole project.</td></tr>
+<tr><td><code>nimCheckFile</code></td><td>Run diagnostics for a single file.</td></tr>
+</tbody></table>
+</div>
+<h2 id="usage"><a class="header" href="#usage">Usage</a></h2>
+<p>Before using the MCP tools, load the skill with the <code>/nim-mcp-tools</code> slash command in your AI tool.</p>
+<p>With the skill loaded, your AI tool will automatically prefer Nim-specific MCP tools over general-purpose tools like <code>grep</code> when working with Nim code.</p>
+<p><strong>Example:</strong> if you ask your AI to find and remove all references to a symbol <code>foo</code>, it will:</p>
+<ol>
+<li>Call <code>nimFindSymbols("foo")</code> to locate all definitions.</li>
+<li>Call <code>nimFindReferences</code> on each definition.</li>
+<li>Perform the deletion.</li>
+</ol>
+<p>You can also invoke tools directly: <em>"Call <code>nimCheckFile</code> on <code>@myfile.nim</code>."</em></p>
+<h3 id="demo"><a class="header" href="#demo">Demo</a></h3>
+<ul>
+<li><a href="https://www.youtube.com/live/OZ3PR_U2QMo?si=5BEvawshJpAUY37o&amp;t=2107">Presentation at the IFT Townhall meetup →</a></li>
+</ul>
+<h2 id="why-use-nimlangserver-as-an-mcp-server"><a class="header" href="#why-use-nimlangserver-as-an-mcp-server">Why use nimlangserver as an MCP server?</a></h2>
+<p>Nim's identifier resolution is not purely textual — the same symbol can be spelled differently (<code>printThing</code>, <code>printthing</code>, <code>print_thing</code>) and can be called indirectly through templates or macros. Plain text search misses these cases.</p>
+<p>Consider:</p>
+<pre><code class="language-nim">proc printThing(thing: string) =
+  echo thing
+
+template doActionWithThing(action: untyped, thing: string): untyped =
+  `action Thing`(thing)
+
+when isMainModule:
+  printThing("Hello")
+  printthing("World")
+  print_thing("Nim is awesome")
+  doActionWithThing(print, "No really, Nim is so cool")
+</code></pre>
+<p><code>printThing</code> is used 4 times: directly, twice with alternative spelling, and once through a template. Without MCP, an AI relying on text search misses 3 of those 4 usages. With MCP and <code>nimFindSymbols</code> + <code>nimFindReferences</code>, all 4 are found reliably.</p>
+<p><img src="./img/opencode_mcp_vs_no_mcp.png" alt="" /></p>
+<p>With MCP, the result is <em>guaranteed</em> to be correct because it uses the same semantic analysis that the compiler uses.</p>
+<footer id="open-on-gh">Found a bug? <a href="https://github.com/nim-lang/langserver//edit/main/book/src/mcp.md">Edit this page on GitHub.</a></footer>
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="lsp.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="cli.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="lsp.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="cli.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr.min.js"></script>
+        <script src="mark.min.js"></script>
+        <script src="searcher.js"></script>
+
+        <script src="clipboard.min.js"></script>
+        <script src="highlight.js"></script>
+        <script src="book.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+    </div>
+    </body>
+</html>

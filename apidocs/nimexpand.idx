@@ -1,0 +1,5 @@
+nimTitle	nimexpand	nimexpand.html	module nimexpand		0
+nim	extractMacroExpansion	nimexpand.html#extractMacroExpansion,string,int	proc extractMacroExpansion(output: string; targetLine: int): string		9
+nim	nimExpandMacro	nimexpand.html#nimExpandMacro,string,Suggest,string	proc nimExpandMacro(nimPath: string; suggest: Suggest; filePath: string): Future[\n    string]		30
+nim	extractArcExpansion	nimexpand.html#extractArcExpansion,string,string	proc extractArcExpansion(output: string; procName: string): string		49
+nim	nimExpandArc	nimexpand.html#nimExpandArc,string,Suggest,string	proc nimExpandArc(nimPath: string; suggest: Suggest; filePath: string): Future[string]		66

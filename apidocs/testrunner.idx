@@ -1,0 +1,8 @@
+nimTitle	testrunner	testrunner.html	module testrunner		0
+nim	extractTestInfo	testrunner.html#extractTestInfo,string	proc extractTestInfo(rawOutput: string): TestProjectInfo		11
+nim	getFullPath	testrunner.html#getFullPath,string,string	proc getFullPath(entryPoint: string; workspaceRoot: string): string		34
+nim	parseTestResult	testrunner.html#parseTestResult,XmlNode	proc parseTestResult(node: XmlNode): RunTestResult		50
+nim	parseTestSuite	testrunner.html#parseTestSuite,XmlNode	proc parseTestSuite(node: XmlNode): RunTestSuiteResult		57
+nim	parseTestResults	testrunner.html#parseTestResults,string	proc parseTestResults(xmlContent: string): RunTestProjectResult		62
+nim	listTests	testrunner.html#listTests,string,string,string	proc listTests(entryPoint: string; nimPath: string; workspaceRoot: string): Future[\n    TestProjectInfo]		72
+nim	runTests	testrunner.html#runTests,string,string,Option[string],seq[string],string,LanguageServer	proc runTests(entryPoint: string; nimPath: string; suiteName: Option[string];\n         testNames: seq[string]; workspaceRoot: string; ls: LanguageServer): Future[\n    RunTestProjectResult]		111
