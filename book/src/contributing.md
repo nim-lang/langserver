@@ -10,7 +10,7 @@ Older architecture notes have been merged into this guide so contributors have a
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/nim-lang/langserver)
 ```
 
-The generated [API index](/apidocs/theindex.html) is also a useful reference when navigating the codebase.
+The generated [API index](../apidocs/theindex.html) is also a useful reference when navigating the codebase.
 
 ## Contents
 
