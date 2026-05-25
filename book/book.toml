@@ -1,0 +1,28 @@
+[book]
+title = "Nim Language Server"
+authors = [
+  "Nim Core Team",
+]
+language = "en"
+multilingual = false
+src = "src"
+
+[preprocessor.toc]
+command = "mdbook-toc"
+renderer = ["html"]
+max-level = 2
+
+[preprocessor.open-on-gh]
+command = "mdbook-open-on-gh"
+renderer = ["html"]
+git-branch = "master"
+
+[preprocessor.admonish]
+command = "mdbook-admonish"
+assets_version = "3.0.1" # do not edit: managed by `mdbook-admonish install`
+
+[preprocessor.shiftinclude]
+
+[output.html]
+git-repository-url = "https://github.com/nim-lang/langserver/"
+additional-css = ["open-in.css", "mdbook-admonish.css"]

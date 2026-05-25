@@ -4,6 +4,18 @@ This guide is for contributors working on `nimlangserver` itself. It focuses on 
 
 Older architecture notes have been merged into this guide so contributors have a single obvious entry point.
 
+```admonish tip title="Explore the codebase with DeepWiki"
+[DeepWiki](https://deepwiki.com/nim-lang/langserver) provides an AI-generated, searchable overview of the `nimlangserver` codebase. It's a great starting point for new contributors who want to understand the structure before diving into the source.
+
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/nim-lang/langserver)
+```
+
+The generated [API index](/apidocs/theindex.html) is also a useful reference when navigating the codebase.
+
+## Contents
+
+<!-- toc -->
+
 ## Architecture at a glance
 
 ```text
@@ -264,3 +276,9 @@ nimble test
 ```
 
 When you change MCP behavior, `tests/tmcp.nim` is the most relevant file to read first, even if you still run the full suite.
+
+## Test runner
+
+`nimlangserver` exposes LSP routes that let editors list and run `unittest2` tests directly from the UI. For this to work, the project must use `unittest2 >= 0.2.4`, and a test entry point must be provided — either via the VSCode extension setting `nim.test.entryPoint`, or via `testEntryPoint` in future versions of `nimble`.
+
+The implementation lives in `testrunner.nim`.
