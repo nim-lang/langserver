@@ -110,7 +110,7 @@ proc initialize*(
   let ls = p.ls
   ls.lspServerCapabilities = result.capabilities
   let rootPath = ls.lspInitializeParams.getRootPath
-  await ls.initNimsuggestInstances(rootPath)
+  asyncSpawn ls.initNimsuggestInstances(rootPath)
 
 proc toCompletionItem(suggest: Suggest): CompletionItem =
   with suggest:
