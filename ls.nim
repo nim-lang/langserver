@@ -355,7 +355,16 @@ proc showMessage*(
 ) {.raises: [].} =
   try:
     proc notify() =
-      ls.notify("window/showMessage", %*{"type": typ.int, "message": message})
+      case ls.serverMode
+      of lsp:
+        ls.notify("window/showMessage", %*{"type": typ.int, "message": message})
+      of mcp:
+        let level =
+          case typ
+          of MessageType.Error: "error"
+          of MessageType.Warning: "warning"
+          else: "info"
+        ls.notify("notifications/message", %*{"level": level, "data": message})
 
     let verbosity = ls.getWorkspaceConfiguration.waitFor.notificationVerbosity.get(
       NlsNotificationVerbosity.nvInfo
