@@ -499,11 +499,11 @@ proc initialize*(
     serverInfo:
       McpInitializeParams_serverInfo(name: "nimlangserver", version: LSPVersion),
   )
-  debug "Initialize completed. Trying to start nimsuggest instances"
+  debug "Initialize completed. Spawning nimsuggest instance startup"
   let ls = p.ls
   ls.mcpServerCapabilities = result.capabilities
   let rootPath = getCurrentDir().pathToUri.uriToPath
-  await ls.initNimsuggestInstances(rootPath)
+  asyncSpawn ls.initNimsuggestInstances(rootPath)
 
 proc listTools*(
     ls: LanguageServer, params: McpListToolsParams
