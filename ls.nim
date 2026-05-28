@@ -356,16 +356,7 @@ proc showMessage*(
 ) {.raises: [].} =
   try:
     proc notify() =
-      case ls.serverMode
-      of lsp:
-        ls.notify("window/showMessage", %*{"type": typ.int, "message": message})
-      of mcp:
-        let level =
-          case typ
-          of MessageType.Error: "error"
-          of MessageType.Warning: "warning"
-          else: "info"
-        ls.notify("notifications/message", %*{"level": level, "data": message})
+      ls.notify("window/showMessage", %*{"type": typ.int, "message": message})
 
     let verbosity = ls.getWorkspaceConfiguration.waitFor.notificationVerbosity.get(
       NlsNotificationVerbosity.nvInfo
@@ -710,21 +701,20 @@ proc toDiagnostic(suggest: Suggest): Diagnostic =
         else:
           column + 1
 
-    let node =
-      %*{
-        "uri": pathToUri(filepath),
-        "range": range(line - 1, column, line - 1, endColumn),
-        "severity":
-          case forth
-          of "Error": DiagnosticSeverity.Error.int
-          of "Hint": DiagnosticSeverity.Hint.int
-          of "Warning": DiagnosticSeverity.Warning.int
-          else: DiagnosticSeverity.Error.int
-        ,
-        "message": doc,
-        "source": "nim",
-        "code": "nimsuggest chk",
-      }
+    let node = %*{
+      "uri": pathToUri(filepath),
+      "range": range(line - 1, column, line - 1, endColumn),
+      "severity":
+        case forth
+        of "Error": DiagnosticSeverity.Error.int
+        of "Hint": DiagnosticSeverity.Hint.int
+        of "Warning": DiagnosticSeverity.Warning.int
+        else: DiagnosticSeverity.Error.int
+      ,
+      "message": doc,
+      "source": "nim",
+      "code": "nimsuggest chk",
+    }
     return node.to(Diagnostic)
 
 proc toDiagnostic(checkResult: CheckResult): Diagnostic =
@@ -737,26 +727,25 @@ proc toDiagnostic(checkResult: CheckResult): Diagnostic =
       else:
         checkResult.column + 1
 
-  let node =
-    %*{
-      "uri": pathToUri(checkResult.file),
-      "range": range(
-        checkResult.line - 1,
-        max(0, checkResult.column),
-        checkResult.line - 1,
-        max(0, endColumn),
-      ),
-      "severity":
-        case checkResult.severity
-        of "Error": DiagnosticSeverity.Error.int
-        of "Hint": DiagnosticSeverity.Hint.int
-        of "Warning": DiagnosticSeverity.Warning.int
-        else: DiagnosticSeverity.Error.int
-      ,
-      "message": checkResult.msg,
-      "source": "nim",
-      "code": "nim check",
-    }
+  let node = %*{
+    "uri": pathToUri(checkResult.file),
+    "range": range(
+      checkResult.line - 1,
+      max(0, checkResult.column),
+      checkResult.line - 1,
+      max(0, endColumn),
+    ),
+    "severity":
+      case checkResult.severity
+      of "Error": DiagnosticSeverity.Error.int
+      of "Hint": DiagnosticSeverity.Hint.int
+      of "Warning": DiagnosticSeverity.Warning.int
+      else: DiagnosticSeverity.Error.int
+    ,
+    "message": checkResult.msg,
+    "source": "nim",
+    "code": "nim check",
+  }
   return node.to(Diagnostic)
 
 proc sendDiagnostics*(
