@@ -501,10 +501,12 @@ proc initialize*(
   )
   debug "Initialize completed. Trying to start nimsuggest instances"
 
-  let ls = p.ls
+  let
+    ls = p.ls
+    rootPath = getCurrentDir().pathToUri.uriToPath
+
   ls.mcpServerCapabilities = result.capabilities
-  let rootPath = getCurrentDir().pathToUri.uriToPath
-  asyncSpawn ls.initNimsuggestInstances(rootPath)
+  ls.nimSuggestInit = ls.initNimsuggestInstances(rootPath)
 
 proc listTools*(
     ls: LanguageServer, params: McpListToolsParams
@@ -525,6 +527,9 @@ proc callTool*(
     ls: LanguageServer, params: McpCallToolParams
 ): Future[McpCallToolResult] {.async.} =
   debug "Call tool received...", name = params.name
+
+  await ls.nimsuggestInit
+  
   case params.name
   of "nimFindReferences":
     await callNimFindReferences(ls, params)
