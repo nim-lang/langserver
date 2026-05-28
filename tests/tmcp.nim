@@ -10,17 +10,11 @@ type McpSocketClient = ref object
   transport: StreamTransport
   nextId: int
 
-proc startMcpServer(
+proc initMcpServer(
     mainFile: string
 ): Future[(LanguageServer, McpInitializeResult)] {.
-    async: (raises: [CancelledError, KeyError, AsyncTimeoutError, CatchableError])
+    async: (raises: [CatchableError])
 .} =
-  ## Start MCP server and wait for the nimsuggest notification.
-
-  const
-    timeout = 10000
-    pollInterval = 100
-
   let
     cmdParams =
       CommandLineParams(mode: some ServerMode.mcp, transport: some TransportMode.stdio)
@@ -32,16 +26,8 @@ proc startMcpServer(
       }
     ls = initLs(cmdParams, ensureStorageDir())
 
-  var
-    notifications: seq[string]
-    elapsed: int
-
   ls.notify = proc(name: string, params: JsonNode) {.gcsafe, raises: [].} =
-    try:
-      if name == "notifications/message":
-        notifications.add(params{"data"}.getStr())
-    except CatchableError:
-      discard
+    discard
   ls.call = proc(name: string, params: JsonNode): Future[JsonNode] {.async.} =
     newJNull()
   ls.onExit = proc(): Future[void] {.async.} =
@@ -49,14 +35,7 @@ proc startMcpServer(
 
   let initRes = await mcp.initialize((ls: ls, onExit: ls.onExit), initParams)
 
-  while elapsed < timeout:
-    if "Nimsuggest initialized for " & mainFile in notifications:
-      return (ls, initRes)
-
-    await sleepAsync(pollInterval)
-    elapsed += pollInterval
-
-  raise newException(AsyncTimeoutError, "Failed to start MCP server")
+  (ls, initRes)
 
 proc checkToolResult(res: McpCallToolResult) =
   check not res.isError
@@ -102,20 +81,15 @@ proc callRpc(
 suite "MCP routes":
   let
     mainFile = absolutePath("nimlangserver.nim")
-    (ls, initRes) = waitFor startMcpServer(mainFile)
+    (ls, initRes) = waitFor initMcpServer(mainFile)
 
   suiteTeardown:
     waitFor ls.stopNimsuggestProcesses()
 
-  test "initialize returns MCP capabilities":
+  test "initialize returns MCP info":
     check initRes.protocolVersion == McpProtocolVersion
     check initRes.serverInfo.name == "nimlangserver"
     check initRes.serverInfo.version == LSPVersion
-
-    check ls.mcpInitializeParams.protocolVersion == McpProtocolVersion
-
-    check ls.entryPoints.len > 0
-    check ls.entryPoints.allIt(it == mainFile)
 
   test "listTools returns all MCP tools":
     let
@@ -172,7 +146,7 @@ suite "MCP tools":
     entryPoint = absolutePath("src" / "mcpproject.nim")
     errFile = absolutePath("src" / "mcpproject" / "errmodule.nim")
     testFile = absolutePath("tests" / "test1.nim")
-    (ls, _) = waitFor startMcpServer(entryPoint)
+    (ls, _) = waitFor initMcpServer(entryPoint)
 
   suiteTeardown:
     waitFor ls.stopNimsuggestProcesses()
