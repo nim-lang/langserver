@@ -201,7 +201,6 @@ type
   NimbleDumpInfo* = object
     srcDir*: string
     name*: string
-    nimDir*: Option[string]
     nimblePath*: Option[string]
     entryPoints*: seq[string] #when it's empty, means the nimble version doesnt dump it.
 
@@ -290,8 +289,6 @@ proc getNimbleDumpInfo*(
         result.srcDir = line[(1 + line.find '"') ..^ 2]
       if line.startsWith("name"):
         result.name = line[(1 + line.find '"') ..^ 2]
-      if line.startsWith("nimDir"):
-        result.nimDir = some line[(1 + line.find '"') ..^ 2]
       if line.startsWith("nimblePath"):
         result.nimblePath = some line[(1 + line.find '"') ..^ 2]
       if line.startsWith("entryPoints"):
@@ -499,12 +496,33 @@ proc getNimVersion(nimDir: string): string =
     if line.startsWith(NimCompilerVersion):
       return line
 
+proc getNimbleNimDir*(
+    ls: LanguageServer, nimbleFile: string
+): Future[Option[string]] {.async.} =
+  var process: AsyncProcessRef
+  try:
+    process = await startProcess(
+      "nimble",
+      arguments = @["getnimdir", nimbleFile],
+      options = {UsePath},
+      stderrHandle = AsyncProcess.Pipe,
+      stdoutHandle = AsyncProcess.Pipe,
+    )
+    let info = string.fromBytes(process.stdoutStream.read().await)
+    let line = info.strip
+    if line.len > 0 and line.dirExists:
+      result = some line
+  except OSError, IOError:
+    debug "Failed to get nimble nimdir", nimbleFile = nimbleFile
+  finally:
+    await shutdownChildProcess(process)
+
 proc getNimSuggestPathAndVersion(
     ls: LanguageServer, conf: NlsConfig, workingDir: string
 ): Future[(string, string)] {.async.} =
   #Attempting to see if the project is using a custom Nim version, if it's the case this will be slower than usual
-  let nimbleDumpInfo = await ls.getNimbleDumpInfo("")
-  let nimDir = nimbleDumpInfo.nimDir.get ""
+  let nimDirOpt = await ls.getNimbleNimDir("")
+  let nimDir = nimDirOpt.get ""
 
   var nimsuggestPath = expandTilde(conf.nimsuggestPath.get(""))
   var nimVersion = ""
