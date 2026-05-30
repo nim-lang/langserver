@@ -1,7 +1,7 @@
 ---
-
 name: nim-mcp-tools
 description: 'Use for Nim symbol navigation, diagnostics, and type resolution. MANDATORY: Use specialized MCP tools (nimFindSymbols, nimFindReferences, nimListSymbols, nimCheckFile, nimCheckProject, nimFindTypeDefinition) first; fall back to grep only on error or user confirmation.'
+---
 
 # Nim MCP Tools
 
