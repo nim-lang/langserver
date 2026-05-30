@@ -30,21 +30,21 @@ MCP support is bundled with the [vscode-nim](https://github.com/nim-lang/vscode-
    | ------------------ | --------------------------------- |
    | Claude Code        | `.claude/skills/nim-mcp-tools/`   |
    | GitHub Copilot CLI | `.github/skills/nim-mcp-tools/`   |
-   | Gemini CLI         | `.gemini/skills/nim-mcp-tools/`   |
+   | Gemini CLI         | `.gemini/skills/`                 |
    | OpenCode           | `.opencode/skills/nim-mcp-tools/` |
 
 4. Open the Nim project root in your AI tool.
 
 ## Available tools
 
-| Tool                      | Description                                          |
-| ------------------------- | ---------------------------------------------------- |
-| `nimFindReferences`       | Find all references to a symbol at a given position. |
-| `nimFindSymbols`          | Search workspace symbols by name query.              |
-| `nimFindTypeDefinition`   | Go to the type definition of a symbol.               |
-| `nimListSymbols`          | List all symbols defined in a file.                  |
-| `nimCheckProject`         | Run diagnostics for the whole project.               |
-| `nimCheckFile`            | Run diagnostics for a single file.                   |
+| Tool                    | Description                                          |
+| ----------------------- | ---------------------------------------------------- |
+| `nimFindReferences`     | Find all references to a symbol at a given position. |
+| `nimFindSymbols`        | Search workspace symbols by name query.              |
+| `nimFindTypeDefinition` | Go to the type definition of a symbol.               |
+| `nimListSymbols`        | List all symbols defined in a file.                  |
+| `nimCheckProject`       | Run diagnostics for the whole project.               |
+| `nimCheckFile`          | Run diagnostics for a single file.                   |
 
 ## Usage
 
@@ -63,7 +63,6 @@ You can also invoke tools directly: _"Call `nimCheckFile` on `@myfile.nim`."_
 ### Demo
 
 - [Presentation at the IFT Townhall meetup →](https://www.youtube.com/live/OZ3PR_U2QMo?si=5BEvawshJpAUY37o&t=2107)
-
 
 ## Why use nimlangserver as an MCP server?
 
