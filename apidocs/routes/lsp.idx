@@ -1,42 +1,42 @@
 nimTitle	lsp	routes/lsp.html	module routes/lsp		0
 nim	initialize	routes/lsp.html#initialize,tuple[LanguageServer,OnExitCallback],LspInitializeParams	proc initialize(p: tuple[ls: LanguageServer, onExit: OnExitCallback];\n           params: LspInitializeParams): Future[LspInitializeResult]		32
-nim	completion	routes/lsp.html#completion,LanguageServer,CompletionParams,int	proc completion(ls: LanguageServer; params: CompletionParams; id: int): Future[\n    seq[CompletionItem]]		127
-nim	toLocation	routes/lsp.html#toLocation,Suggest	proc toLocation(suggest: Suggest): Location		149
-nim	definition	routes/lsp.html#definition,LanguageServer,TextDocumentPositionParams,int	proc definition(ls: LanguageServer; params: TextDocumentPositionParams; id: int): Future[\n    seq[Location]]		155
-nim	declaration	routes/lsp.html#declaration,LanguageServer,TextDocumentPositionParams,int	proc declaration(ls: LanguageServer; params: TextDocumentPositionParams; id: int): Future[\n    seq[Location]]		171
-nim	expandAll	routes/lsp.html#expandAll,LanguageServer,TextDocumentPositionParams	proc expandAll(ls: LanguageServer; params: TextDocumentPositionParams): Future[\n    ExpandResult]		187
-nim	expand	routes/lsp.html#expand,LanguageServer,ExpandTextDocumentPositionParams	proc expand(ls: LanguageServer; params: ExpandTextDocumentPositionParams): Future[\n    ExpandResult]		214
-nim	status	routes/lsp.html#status,LanguageServer,NimLangServerStatusParams	proc status(ls: LanguageServer; params: NimLangServerStatusParams): Future[\n    NimLangServerStatus]		240
-nim	extensionCapabilities	routes/lsp.html#extensionCapabilities,LanguageServer,JsonNode	proc extensionCapabilities(ls: LanguageServer; _: JsonNode): Future[seq[string]]		246
-nim	extensionSuggest	routes/lsp.html#extensionSuggest,LanguageServer,SuggestParams	proc extensionSuggest(ls: LanguageServer; params: SuggestParams): Future[\n    SuggestResult]		251
-nim	typeDefinition	routes/lsp.html#typeDefinition,LanguageServer,TextDocumentPositionParams,int	proc typeDefinition(ls: LanguageServer; params: TextDocumentPositionParams; id: int): Future[\n    seq[Location]]		289
-nim	toSymbolInformation	routes/lsp.html#toSymbolInformation,Suggest	proc toSymbolInformation(suggest: Suggest): SymbolInformation		303
-nim	documentSymbols	routes/lsp.html#documentSymbols,LanguageServer,DocumentSymbolParams,int	proc documentSymbols(ls: LanguageServer; params: DocumentSymbolParams; id: int): Future[\n    seq[SymbolInformation]]		314
-nim	hover	routes/lsp.html#hover,LanguageServer,HoverParams,int	proc hover(ls: LanguageServer; params: HoverParams; id: int): Future[Option[Hover]]		375
-nim	references	routes/lsp.html#references,LanguageServer,ReferenceParams	proc references(ls: LanguageServer; params: ReferenceParams): Future[seq[Location]]		431
-nim	prepareRename	routes/lsp.html#prepareRename,LanguageServer,PrepareRenameParams,int	proc prepareRename(ls: LanguageServer; params: PrepareRenameParams; id: int): Future[\n    JsonNode]		447
-nim	rename	routes/lsp.html#rename,LanguageServer,RenameParams,int	proc rename(ls: LanguageServer; params: RenameParams; id: int): Future[WorkspaceEdit]		469
-nim	inlayHint	routes/lsp.html#inlayHint,LanguageServer,InlayHintParams,int	proc inlayHint(ls: LanguageServer; params: InlayHintParams; id: int): Future[\n    seq[InlayHint]]		543
-nim	codeAction	routes/lsp.html#codeAction,LanguageServer,CodeActionParams	proc codeAction(ls: LanguageServer; params: CodeActionParams): Future[seq[CodeAction]]		582
-nim	executeCommand	routes/lsp.html#executeCommand,LanguageServer,ExecuteCommandParams	proc executeCommand(ls: LanguageServer; params: ExecuteCommandParams): Future[\n    JsonNode]		617
-nim	signatureHelp	routes/lsp.html#signatureHelp,LanguageServer,SignatureHelpParams,int	proc signatureHelp(ls: LanguageServer; params: SignatureHelpParams; id: int): Future[\n    Option[SignatureHelp]]		664
-nim	format	routes/lsp.html#format,LanguageServer,string,string	proc format(ls: LanguageServer; nphPath, uri: string): Future[Option[TextEdit]]		702
-nim	formatting	routes/lsp.html#formatting,LanguageServer,DocumentFormattingParams,int	proc formatting(ls: LanguageServer; params: DocumentFormattingParams; id: int): Future[\n    seq[TextEdit]]		745
-nim	workspaceSymbol	routes/lsp.html#workspaceSymbol,LanguageServer,WorkspaceSymbolParams,int	proc workspaceSymbol(ls: LanguageServer; params: WorkspaceSymbolParams; id: int): Future[\n    seq[SymbolInformation]]		755
-nim	documentHighlight	routes/lsp.html#documentHighlight,LanguageServer,TextDocumentPositionParams,int	proc documentHighlight(ls: LanguageServer; params: TextDocumentPositionParams;\n                  id: int): Future[seq[DocumentHighlight]]		767
-nim	shutdown	routes/lsp.html#shutdown,LanguageServer,JsonNode	proc shutdown(ls: LanguageServer; input: JsonNode): Future[JsonNode]		787
-nim	exit	routes/lsp.html#exit,tuple[LanguageServer,OnExitCallback],JsonNode	proc exit(p: tuple[ls: LanguageServer, onExit: OnExitCallback]; _: JsonNode): Future[\n    JsonNode]		797
-nim	tasks	routes/lsp.html#tasks,LanguageServer,JsonNode	proc tasks(ls: LanguageServer; conf: JsonNode): Future[seq[NimbleTask]]		817
-nim	runTask	routes/lsp.html#runTask,LanguageServer,RunTaskParams	proc runTask(ls: LanguageServer; params: RunTaskParams): Future[RunTaskResult]		835
-nim	listTests	routes/lsp.html#listTests,LanguageServer,ListTestsParams	proc listTests(ls: LanguageServer; params: ListTestsParams): Future[ListTestsResult]		853
-nim	runTests	routes/lsp.html#runTests,LanguageServer,RunTestParams	proc runTests(ls: LanguageServer; params: RunTestParams): Future[RunTestProjectResult]		869
-nim	cancelTest	routes/lsp.html#cancelTest,LanguageServer,JsonNode	proc cancelTest(ls: LanguageServer; params: JsonNode): Future[CancelTestResult]		887
-nim	initialized	routes/lsp.html#initialized,LanguageServer,JsonNode	proc initialized(ls: LanguageServer; _: JsonNode): Future[void]		898
-nim	cancelRequest	routes/lsp.html#cancelRequest,LanguageServer,CancelParams	proc cancelRequest(ls: LanguageServer; params: CancelParams): Future[void]		903
-nim	setTrace	routes/lsp.html#setTrace,LanguageServer,SetTraceParams	proc setTrace(ls: LanguageServer; params: SetTraceParams): Future[void]		915
-nim	didChange	routes/lsp.html#didChange,LanguageServer,DidChangeTextDocumentParams	proc didChange(ls: LanguageServer; params: DidChangeTextDocumentParams): Future[void]		920
-nim	willSaveWaitUntil	routes/lsp.html#willSaveWaitUntil,LanguageServer,WillSaveTextDocumentParams	proc willSaveWaitUntil(ls: LanguageServer; params: WillSaveTextDocumentParams): Future[\n    seq[TextEdit]]		941
-nim	didSave	routes/lsp.html#didSave,LanguageServer,DidSaveTextDocumentParams	proc didSave(ls: LanguageServer; params: DidSaveTextDocumentParams): Future[void]		963
-nim	didClose	routes/lsp.html#didClose,LanguageServer,DidCloseTextDocumentParams	proc didClose(ls: LanguageServer; params: DidCloseTextDocumentParams): Future[void]		999
-nim	didOpen	routes/lsp.html#didOpen,LanguageServer,DidOpenTextDocumentParams	proc didOpen(ls: LanguageServer; params: DidOpenTextDocumentParams): Future[void]		1004
-nim	didChangeConfiguration	routes/lsp.html#didChangeConfiguration,LanguageServer,JsonNode	proc didChangeConfiguration(ls: LanguageServer; conf: JsonNode): Future[void]		1009
+nim	completion	routes/lsp.html#completion,LanguageServer,CompletionParams,int	proc completion(ls: LanguageServer; params: CompletionParams; id: int): Future[\n    seq[CompletionItem]]		129
+nim	toLocation	routes/lsp.html#toLocation,Suggest	proc toLocation(suggest: Suggest): Location		151
+nim	definition	routes/lsp.html#definition,LanguageServer,TextDocumentPositionParams,int	proc definition(ls: LanguageServer; params: TextDocumentPositionParams; id: int): Future[\n    seq[Location]]		157
+nim	declaration	routes/lsp.html#declaration,LanguageServer,TextDocumentPositionParams,int	proc declaration(ls: LanguageServer; params: TextDocumentPositionParams; id: int): Future[\n    seq[Location]]		173
+nim	expandAll	routes/lsp.html#expandAll,LanguageServer,TextDocumentPositionParams	proc expandAll(ls: LanguageServer; params: TextDocumentPositionParams): Future[\n    ExpandResult]		189
+nim	expand	routes/lsp.html#expand,LanguageServer,ExpandTextDocumentPositionParams	proc expand(ls: LanguageServer; params: ExpandTextDocumentPositionParams): Future[\n    ExpandResult]		216
+nim	status	routes/lsp.html#status,LanguageServer,NimLangServerStatusParams	proc status(ls: LanguageServer; params: NimLangServerStatusParams): Future[\n    NimLangServerStatus]		242
+nim	extensionCapabilities	routes/lsp.html#extensionCapabilities,LanguageServer,JsonNode	proc extensionCapabilities(ls: LanguageServer; _: JsonNode): Future[seq[string]]		248
+nim	extensionSuggest	routes/lsp.html#extensionSuggest,LanguageServer,SuggestParams	proc extensionSuggest(ls: LanguageServer; params: SuggestParams): Future[\n    SuggestResult]		253
+nim	typeDefinition	routes/lsp.html#typeDefinition,LanguageServer,TextDocumentPositionParams,int	proc typeDefinition(ls: LanguageServer; params: TextDocumentPositionParams; id: int): Future[\n    seq[Location]]		291
+nim	toSymbolInformation	routes/lsp.html#toSymbolInformation,Suggest	proc toSymbolInformation(suggest: Suggest): SymbolInformation		305
+nim	documentSymbols	routes/lsp.html#documentSymbols,LanguageServer,DocumentSymbolParams,int	proc documentSymbols(ls: LanguageServer; params: DocumentSymbolParams; id: int): Future[\n    seq[SymbolInformation]]		316
+nim	hover	routes/lsp.html#hover,LanguageServer,HoverParams,int	proc hover(ls: LanguageServer; params: HoverParams; id: int): Future[Option[Hover]]		377
+nim	references	routes/lsp.html#references,LanguageServer,ReferenceParams	proc references(ls: LanguageServer; params: ReferenceParams): Future[seq[Location]]		433
+nim	prepareRename	routes/lsp.html#prepareRename,LanguageServer,PrepareRenameParams,int	proc prepareRename(ls: LanguageServer; params: PrepareRenameParams; id: int): Future[\n    JsonNode]		449
+nim	rename	routes/lsp.html#rename,LanguageServer,RenameParams,int	proc rename(ls: LanguageServer; params: RenameParams; id: int): Future[WorkspaceEdit]		471
+nim	inlayHint	routes/lsp.html#inlayHint,LanguageServer,InlayHintParams,int	proc inlayHint(ls: LanguageServer; params: InlayHintParams; id: int): Future[\n    seq[InlayHint]]		545
+nim	codeAction	routes/lsp.html#codeAction,LanguageServer,CodeActionParams	proc codeAction(ls: LanguageServer; params: CodeActionParams): Future[seq[CodeAction]]		584
+nim	executeCommand	routes/lsp.html#executeCommand,LanguageServer,ExecuteCommandParams	proc executeCommand(ls: LanguageServer; params: ExecuteCommandParams): Future[\n    JsonNode]		619
+nim	signatureHelp	routes/lsp.html#signatureHelp,LanguageServer,SignatureHelpParams,int	proc signatureHelp(ls: LanguageServer; params: SignatureHelpParams; id: int): Future[\n    Option[SignatureHelp]]		666
+nim	format	routes/lsp.html#format,LanguageServer,string,string	proc format(ls: LanguageServer; nphPath, uri: string): Future[Option[TextEdit]]		704
+nim	formatting	routes/lsp.html#formatting,LanguageServer,DocumentFormattingParams,int	proc formatting(ls: LanguageServer; params: DocumentFormattingParams; id: int): Future[\n    seq[TextEdit]]		747
+nim	workspaceSymbol	routes/lsp.html#workspaceSymbol,LanguageServer,WorkspaceSymbolParams,int	proc workspaceSymbol(ls: LanguageServer; params: WorkspaceSymbolParams; id: int): Future[\n    seq[SymbolInformation]]		757
+nim	documentHighlight	routes/lsp.html#documentHighlight,LanguageServer,TextDocumentPositionParams,int	proc documentHighlight(ls: LanguageServer; params: TextDocumentPositionParams;\n                  id: int): Future[seq[DocumentHighlight]]		769
+nim	shutdown	routes/lsp.html#shutdown,LanguageServer,JsonNode	proc shutdown(ls: LanguageServer; input: JsonNode): Future[JsonNode]		789
+nim	exit	routes/lsp.html#exit,tuple[LanguageServer,OnExitCallback],JsonNode	proc exit(p: tuple[ls: LanguageServer, onExit: OnExitCallback]; _: JsonNode): Future[\n    JsonNode]		799
+nim	tasks	routes/lsp.html#tasks,LanguageServer,JsonNode	proc tasks(ls: LanguageServer; conf: JsonNode): Future[seq[NimbleTask]]		819
+nim	runTask	routes/lsp.html#runTask,LanguageServer,RunTaskParams	proc runTask(ls: LanguageServer; params: RunTaskParams): Future[RunTaskResult]		837
+nim	listTests	routes/lsp.html#listTests,LanguageServer,ListTestsParams	proc listTests(ls: LanguageServer; params: ListTestsParams): Future[ListTestsResult]		855
+nim	runTests	routes/lsp.html#runTests,LanguageServer,RunTestParams	proc runTests(ls: LanguageServer; params: RunTestParams): Future[RunTestProjectResult]		871
+nim	cancelTest	routes/lsp.html#cancelTest,LanguageServer,JsonNode	proc cancelTest(ls: LanguageServer; params: JsonNode): Future[CancelTestResult]		889
+nim	initialized	routes/lsp.html#initialized,LanguageServer,JsonNode	proc initialized(ls: LanguageServer; _: JsonNode): Future[void]		900
+nim	cancelRequest	routes/lsp.html#cancelRequest,LanguageServer,CancelParams	proc cancelRequest(ls: LanguageServer; params: CancelParams): Future[void]		905
+nim	setTrace	routes/lsp.html#setTrace,LanguageServer,SetTraceParams	proc setTrace(ls: LanguageServer; params: SetTraceParams): Future[void]		917
+nim	didChange	routes/lsp.html#didChange,LanguageServer,DidChangeTextDocumentParams	proc didChange(ls: LanguageServer; params: DidChangeTextDocumentParams): Future[void]		922
+nim	willSaveWaitUntil	routes/lsp.html#willSaveWaitUntil,LanguageServer,WillSaveTextDocumentParams	proc willSaveWaitUntil(ls: LanguageServer; params: WillSaveTextDocumentParams): Future[\n    seq[TextEdit]]		943
+nim	didSave	routes/lsp.html#didSave,LanguageServer,DidSaveTextDocumentParams	proc didSave(ls: LanguageServer; params: DidSaveTextDocumentParams): Future[void]		965
+nim	didClose	routes/lsp.html#didClose,LanguageServer,DidCloseTextDocumentParams	proc didClose(ls: LanguageServer; params: DidCloseTextDocumentParams): Future[void]		1001
+nim	didOpen	routes/lsp.html#didOpen,LanguageServer,DidOpenTextDocumentParams	proc didOpen(ls: LanguageServer; params: DidOpenTextDocumentParams): Future[void]		1006
+nim	didChangeConfiguration	routes/lsp.html#didChangeConfiguration,LanguageServer,JsonNode	proc didChangeConfiguration(ls: LanguageServer; conf: JsonNode): Future[void]		1012
