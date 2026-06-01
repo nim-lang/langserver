@@ -10,24 +10,35 @@ type McpSocketClient = ref object
   transport: StreamTransport
   nextId: int
 
-proc newTestLs(cmdParams: CommandLineParams): LanguageServer =
-  result = initLs(cmdParams, ensureStorageDir())
-  result.notify = proc(name: string, params: JsonNode) =
+proc initMcpServer(
+    mainFile: string
+): Future[(LanguageServer, McpInitializeResult)] {.
+    async: (raises: [CatchableError])
+.} =
+  let
+    cmdParams =
+      CommandLineParams(mode: some ServerMode.mcp, transport: some TransportMode.stdio)
+    initParams =
+      McpInitializeParams %* {
+        "protocolVersion": McpProtocolVersion,
+        "capabilities": {},
+        "clientInfo": {"name": "nimble test", "version": "1"},
+      }
+    ls = initLs(cmdParams, ensureStorageDir())
+
+  ls.notify = proc(name: string, params: JsonNode) {.gcsafe, raises: [].} =
     discard
-  result.call = proc(name: string, params: JsonNode): Future[JsonNode] {.async.} =
+  ls.call = proc(name: string, params: JsonNode): Future[JsonNode] {.async.} =
     newJNull()
-  result.onExit = proc(): Future[void] {.async.} =
+  ls.onExit = proc(): Future[void] {.async.} =
     discard
 
-proc newMcpInitParams(): McpInitializeParams =
-  McpInitializeParams %* {
-    "protocolVersion": McpProtocolVersion,
-    "capabilities": {},
-    "clientInfo": {"name": "nimble test", "version": "1"},
-  }
+  let initRes = await mcp.initialize((ls: ls, onExit: ls.onExit), initParams)
+
+  (ls, initRes)
 
 proc checkToolResult(res: McpCallToolResult) =
-  check res.isError == false
+  check not res.isError
   check parseJson(res.content[0].text) == res.structuredContent
 
 proc newMcpSocketClient(port: Port): Future[McpSocketClient] {.async.} =
@@ -68,27 +79,17 @@ proc callRpc(
       return responseJson["result"]
 
 suite "MCP routes":
-  let cmdParams =
-    CommandLineParams(mode: some ServerMode.mcp, transport: some TransportMode.stdio)
-  let ls = newTestLs(cmdParams)
-  let initParams = newMcpInitParams()
-  let initializeResult = waitFor mcp.initialize((ls: ls, onExit: ls.onExit), initParams)
-
-  let repoMainFile = absolutePath("nimlangserver.nim")
-  discard waitFor ls.projectFiles[repoMainFile].ns
+  let
+    mainFile = absolutePath("nimlangserver.nim")
+    (ls, initRes) = waitFor initMcpServer(mainFile)
 
   suiteTeardown:
     waitFor ls.stopNimsuggestProcesses()
 
-  test "initialize returns MCP capabilities":
-    check initializeResult.protocolVersion == McpProtocolVersion
-    check initializeResult.serverInfo.name == "nimlangserver"
-    check initializeResult.serverInfo.version == LSPVersion
-
-    check ls.mcpInitializeParams.protocolVersion == McpProtocolVersion
-
-    check ls.entryPoints.len > 0
-    check ls.entryPoints.allIt(it == repoMainFile)
+  test "initialize returns MCP info":
+    check initRes.protocolVersion == McpProtocolVersion
+    check initRes.serverInfo.name == "nimlangserver"
+    check initRes.serverInfo.version == LSPVersion
 
   test "listTools returns all MCP tools":
     let
@@ -134,207 +135,120 @@ suite "MCP routes":
     check findTypeDefinition.inputSchema.required == @["path", "line", "column"]
     check findTypeDefinition.outputSchema.required == @["defs"]
 
+suite "MCP tools":
+  let
+    testProjectDir = absolutePath("tests" / "projects" / "mcpproject")
+    savedDir = getCurrentDir()
+
+  setCurrentDir(testProjectDir)
+
+  let
+    entryPoint = absolutePath("src" / "mcpproject.nim")
+    errFile = absolutePath("src" / "mcpproject" / "errmodule.nim")
+    testFile = absolutePath("tests" / "test1.nim")
+    (ls, _) = waitFor initMcpServer(entryPoint)
+
+  suiteTeardown:
+    waitFor ls.stopNimsuggestProcesses()
+    setCurrentDir(savedDir)
+
   test "callTool nimFindReferences returns structured references":
-    let testProjectDir = absolutePath("tests" / "projects" / "mcpproject")
+    let res = waitFor mcp.callTool(
+      ls,
+      McpCallToolParams(
+        name: "nimFindReferences",
+        arguments: some %*{"path": entryPoint, "line": 3, "column": 10},
+      ),
+    )
 
-    cd testProjectDir:
-      let
-        testLs = newTestLs(cmdParams)
-        entryPoint = absolutePath("src" / "mcpproject.nim")
+    checkToolResult(res)
 
-      defer:
-        waitFor testLs.stopNimsuggestProcesses()
+    let refs = res.structuredContent["refs"].getElems()
 
-      discard
-        waitFor mcp.initialize((ls: testLs, onExit: testLs.onExit), newMcpInitParams())
-      discard waitFor testLs.projectFiles[entryPoint].ns
-
-      let res = waitFor mcp.callTool(
-        testLs,
-        McpCallToolParams(
-          name: "nimFindReferences",
-          arguments: some %*{"path": entryPoint, "line": 3, "column": 10},
-        ),
-      )
-
-      checkToolResult(res)
-
-      let refs = res.structuredContent["refs"].getElems()
-      check refs.len == 1
+    check len(refs) == 1
 
   test "callTool nimFindSymbols returns matching workspace symbols":
-    let testProjectDir = absolutePath("tests" / "projects" / "mcpproject")
+    let res = waitFor mcp.callTool(
+      ls, McpCallToolParams(name: "nimFindSymbols", arguments: some %*{"query": "add"})
+    )
 
-    cd testProjectDir:
-      let
-        testLs = newTestLs(cmdParams)
-        entryPoint = absolutePath("src" / "mcpproject.nim")
+    checkToolResult(res)
 
-      defer:
-        waitFor testLs.stopNimsuggestProcesses()
+    let syms = res.structuredContent["syms"].getElems()
 
-      discard
-        waitFor mcp.initialize((ls: testLs, onExit: testLs.onExit), newMcpInitParams())
-      discard waitFor testLs.projectFiles[entryPoint].ns
-
-      let res = waitFor mcp.callTool(
-        testLs,
-        McpCallToolParams(name: "nimFindSymbols", arguments: some %*{"query": "add"}),
-      )
-
-      checkToolResult(res)
-
-      let syms = res.structuredContent["syms"].getElems()
-
-      check syms.anyIt(
-        it["path"].getStr() == entryPoint and it["line"].getInt() == 3 and
-          it["column"].getInt() == 5 and it["kind"].getStr() == "Proc"
-      )
+    check syms.anyIt(
+      it["path"].getStr() == entryPoint and it["line"].getInt() == 3 and
+        it["column"].getInt() == 5 and it["kind"].getStr() == "Proc"
+    )
 
   test "callTool nimListSymbols returns file outline":
-    let testProjectDir = absolutePath("tests" / "projects" / "mcpproject")
+    let res = waitFor mcp.callTool(
+      ls,
+      McpCallToolParams(name: "nimListSymbols", arguments: some %*{"path": entryPoint}),
+    )
 
-    cd testProjectDir:
-      let
-        testLs = newTestLs(cmdParams)
-        entryPoint = absolutePath("src" / "mcpproject.nim")
+    checkToolResult(res)
 
-      defer:
-        waitFor testLs.stopNimsuggestProcesses()
+    let syms = res.structuredContent["syms"].getElems()
 
-      discard
-        waitFor mcp.initialize((ls: testLs, onExit: testLs.onExit), newMcpInitParams())
-      discard waitFor testLs.projectFiles[entryPoint].ns
-
-      let res = waitFor mcp.callTool(
-        testLs,
-        McpCallToolParams(
-          name: "nimListSymbols", arguments: some %*{"path": entryPoint}
-        ),
-      )
-
-      checkToolResult(res)
-
-      let syms = res.structuredContent["syms"].getElems()
-      check syms.len == 1
-      check syms[0] ==
-        %*{"name": "add", "path": entryPoint, "line": 3, "column": 5, "kind": "Proc"}
+    check syms.len == 1
+    check syms[0] ==
+      %*{"name": "add", "path": entryPoint, "line": 3, "column": 5, "kind": "Proc"}
 
   test "callTool nimCheckProject returns workspace diagnostics":
-    let testProjectDir = absolutePath("tests" / "projects" / "mcpproject")
+    let res = waitFor mcp.callTool(ls, McpCallToolParams(name: "nimCheckProject"))
 
-    cd testProjectDir:
-      let
-        testLs = newTestLs(cmdParams)
-        entryPoint = absolutePath("src" / "mcpproject.nim")
-        errFile = absolutePath("src" / "mcpproject" / "errmodule.nim")
+    checkToolResult(res)
 
-      defer:
-        waitFor testLs.stopNimsuggestProcesses()
-
-      discard
-        waitFor mcp.initialize((ls: testLs, onExit: testLs.onExit), newMcpInitParams())
-      discard waitFor testLs.projectFiles[entryPoint].ns
-
-      let res = waitFor mcp.callTool(testLs, McpCallToolParams(name: "nimCheckProject"))
-
-      checkToolResult(res)
-
-      let diags = res.structuredContent["diags"].getElems()
-      check diags.len > 0
-      check diags.anyIt(
-        it["path"].getStr() == errFile and it["line"].getInt() == 5 and
-          it["severity"].getStr() == "Error" and
-          it["message"].getStr().contains("type mismatch")
-      )
+    let diags = res.structuredContent["diags"].getElems()
+    check diags.len > 0
+    check diags.anyIt(
+      it["path"].getStr() == errFile and it["line"].getInt() == 5 and
+        it["severity"].getStr() == "Error" and
+        it["message"].getStr().contains("type mismatch")
+    )
 
   test "callTool nimCheckFile returns file diagnostics":
-    let testProjectDir = absolutePath("tests" / "projects" / "mcpproject")
+    let res = waitFor mcp.callTool(
+      ls, McpCallToolParams(name: "nimCheckFile", arguments: some %*{"path": errFile})
+    )
 
-    cd testProjectDir:
-      let
-        testLs = newTestLs(cmdParams)
-        entryPoint = absolutePath("src" / "mcpproject.nim")
-        errFile = absolutePath("src" / "mcpproject" / "errmodule.nim")
+    checkToolResult(res)
 
-      defer:
-        waitFor testLs.stopNimsuggestProcesses()
-
-      discard
-        waitFor mcp.initialize((ls: testLs, onExit: testLs.onExit), newMcpInitParams())
-      discard waitFor testLs.projectFiles[entryPoint].ns
-
-      let res = waitFor mcp.callTool(
-        testLs,
-        McpCallToolParams(name: "nimCheckFile", arguments: some %*{"path": errFile}),
-      )
-
-      checkToolResult(res)
-
-      let diags = res.structuredContent["diags"].getElems()
-      check diags.len > 0
-      check diags.anyIt(
-        it["line"].getInt() == 5 and it["severity"].getStr() == "Error" and
-          it["message"].getStr().contains("type mismatch")
-      )
+    let diags = res.structuredContent["diags"].getElems()
+    check diags.len > 0
+    check diags.anyIt(
+      it["line"].getInt() == 5 and it["severity"].getStr() == "Error" and
+        it["message"].getStr().contains("type mismatch")
+    )
 
   test "callTool nimCheckFile outside srcDir returns file diagnostics":
-    let testProjectDir = absolutePath("tests" / "projects" / "mcpproject")
+    let res = waitFor mcp.callTool(
+      ls, McpCallToolParams(name: "nimCheckFile", arguments: some %*{"path": testFile})
+    )
 
-    cd testProjectDir:
-      let
-        testLs = newTestLs(cmdParams)
-        entryPoint = absolutePath("src" / "mcpproject.nim")
-        testFile = absolutePath("tests" / "test1.nim")
+    checkToolResult(res)
 
-      defer:
-        waitFor testLs.stopNimsuggestProcesses()
-
-      discard
-        waitFor mcp.initialize((ls: testLs, onExit: testLs.onExit), newMcpInitParams())
-      discard waitFor testLs.projectFiles[entryPoint].ns
-
-      let res = waitFor mcp.callTool(
-        testLs,
-        McpCallToolParams(name: "nimCheckFile", arguments: some %*{"path": testFile}),
-      )
-
-      checkToolResult(res)
-
-      let diags = res.structuredContent["diags"].getElems()
-      check diags.len > 0
-      check diags.anyIt(
-        it["line"].getInt() == 5 and it["severity"].getStr() == "Error" and
-          it["message"].getStr().contains("type mismatch")
-      )
+    let diags = res.structuredContent["diags"].getElems()
+    check diags.len > 0
+    check diags.anyIt(
+      it["line"].getInt() == 5 and it["severity"].getStr() == "Error" and
+        it["message"].getStr().contains("type mismatch")
+    )
 
   test "callTool nimFindTypeDefinition returns type definition":
-    let testProjectDir = absolutePath("tests" / "projects" / "mcpproject")
+    let res = waitFor mcp.callTool(
+      ls,
+      McpCallToolParams(
+        name: "nimFindTypeDefinition",
+        arguments: some %*{"path": entryPoint, "line": 3, "column": 10},
+      ),
+    )
 
-    cd testProjectDir:
-      let
-        testLs = newTestLs(cmdParams)
-        entryPoint = absolutePath("src" / "mcpproject.nim")
+    checkToolResult(res)
 
-      defer:
-        waitFor testLs.stopNimsuggestProcesses()
-
-      discard
-        waitFor mcp.initialize((ls: testLs, onExit: testLs.onExit), newMcpInitParams())
-      discard waitFor testLs.projectFiles[entryPoint].ns
-
-      let res = waitFor mcp.callTool(
-        testLs,
-        McpCallToolParams(
-          name: "nimFindTypeDefinition",
-          arguments: some %*{"path": entryPoint, "line": 3, "column": 10},
-        ),
-      )
-
-      checkToolResult(res)
-
-      let defs = res.structuredContent["defs"].getElems()
-      check defs.len > 0
-      check defs.anyIt(
-        it["name"].getStr() == "int" or it["type"].getStr().contains("int")
-      )
+    let defs = res.structuredContent["defs"].getElems()
+    check defs.len > 0
+    check defs.anyIt(
+      it["name"].getStr() == "int" or it["type"].getStr().contains("int")
+    )

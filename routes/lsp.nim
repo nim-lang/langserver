@@ -107,10 +107,12 @@ proc initialize*(
 
   debug "Initialize completed. Trying to start nimsuggest instances"
 
-  let ls = p.ls
+  let
+    ls = p.ls
+    rootPath = ls.lspInitializeParams.getRootPath
+
   ls.lspServerCapabilities = result.capabilities
-  let rootPath = ls.lspInitializeParams.getRootPath
-  await ls.initNimsuggestInstances(rootPath)
+  ls.nimSuggestInit = ls.initNimsuggestInstances(rootPath)
 
 proc toCompletionItem(suggest: Suggest): CompletionItem =
   with suggest:
@@ -1002,6 +1004,7 @@ proc didClose*(
 proc didOpen*(
     ls: LanguageServer, params: DidOpenTextDocumentParams
 ): Future[void] {.async.} =
+  await ls.nimsuggestInit
   await ls.didOpenFile(params.textDocument)
 
 proc didChangeConfiguration*(

@@ -163,6 +163,7 @@ type
     inlayHintsRefreshRequest*: Future[JsonNode]
     didChangeConfigurationRegistrationRequest*: Future[JsonNode]
     filesWithDiags*: HashSet[string]
+    nimsuggestInit*: Future[void]
     lastNimsuggest*: Future[Nimsuggest]
     childNimsuggestProcessesStopped*: bool
     isShutdown*: bool
