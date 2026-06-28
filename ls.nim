@@ -304,10 +304,11 @@ proc getNimbleDumpInfo*(
       nimbleFile = result.nimblePath.get
     if nimbleFile != "":
       ls.nimDumpCache[nimbleFile] = result
-  except OSError, IOError:
+  except OSError, IOError, AsyncProcessError:
     debug "Failed to get nimble dump info", nimbleFile = nimbleFile
   finally:
-    await shutdownChildProcess(process)
+    if process != nil:
+      await shutdownChildProcess(process)
 
 proc parseWorkspaceConfiguration*(conf: JsonNode): NlsConfig =
   try:
