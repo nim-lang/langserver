@@ -1103,6 +1103,7 @@ proc createOrRestartNimsuggest*(
         )
       else:
         debug "Nimsuggest initialized successfully", projectFile = projectFile
+        ls.failTable.del(projectFile)
 
         ls.showMessage(fmt "Nimsuggest initialized for {projectFile}", MessageType.Info)
         traceAsyncErrors ls.checkProject(uri)
