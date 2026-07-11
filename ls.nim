@@ -430,14 +430,19 @@ proc sendStatusChanged*(ls: LanguageServer) {.raises: [].} =
 proc addProjectFileToPendingRequest*(
     ls: LanguageServer, id: uint, uri: string
 ) {.async.} =
-  if id in ls.pendingRequests:
-    var projectFile = uri.uriToPath()
-    if projectFile notin ls.projectFiles:
-      if uri in ls.openFiles:
-        projectFile = await ls.openFiles[uri].projectFile
+  try:
+    if id in ls.pendingRequests:
+      var projectFile = uri.uriToPath()
+      if projectFile notin ls.projectFiles:
+        if uri in ls.openFiles:
+          projectFile = await ls.openFiles[uri].projectFile
 
-    ls.pendingRequests[id].projectFile = some projectFile
-    ls.sendStatusChanged
+      ls.pendingRequests[id].projectFile = some projectFile
+      ls.sendStatusChanged
+  except CancelledError:
+    discard
+  except CatchableError as e:
+    error "addProjectFileToPendingRequest failed", uri = uri, msg = e.msg
 
 proc requiresDynamicRegistrationForDidChangeConfiguration(ls: LanguageServer): bool =
   ls.lspClientCapabilities.workspace.isSome and
