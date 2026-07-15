@@ -190,6 +190,9 @@ proc writeOutput*(ls: LanguageServer, content: JsonNode) =
   try:
     case ls.transportMode
     of stdio:
+      # writing to a closed FILE is a SIGSEGV in libc, not a CatchableError
+      if ls.outStream.isNil:
+        return
       ls.outStream.write(res)
       ls.outStream.flush()
     of socket:
@@ -260,7 +263,9 @@ proc initActions*(ls: LanguageServer) =
   let onExit: OnExitCallback = proc() {.async.} =
     case ls.transportMode
     of stdio:
-      ls.outStream.close()
+      if not ls.outStream.isNil:
+        ls.outStream.close()
+        ls.outStream = nil
       freeShared(ls.stdinContext)
     of socket:
       ls.srv.close()
