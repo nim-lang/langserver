@@ -47,3 +47,17 @@ suite "Nimlangserver misc":
     check waitFor client.waitForNotificationMessage(
       fmt"Nimsuggest for {hwAbsFile} was stopped because it was idle for too long",
     )
+
+suite "Nimlangserver transport teardown":
+  test "writeOutput drops writes after the stdio stream is torn down":
+    # Regression test for #418: an in-flight runRpc continuation resuming after
+    # onExit closed ls.outStream wrote to a closed FILE and SIGSEGV'd inside
+    # libc fwrite. Test approach: the real crash needs a stdio teardown racing
+    # an async write and cannot be reproduced in-process without taking the
+    # test runner down with it, so we exercise the guarded state instead —
+    # after onExit, outStream is nil and a late writeOutput must be a no-op
+    # (pre-fix this dereferences a nil stream and dies).
+    let ls = LanguageServer(serverMode: lsp, transportMode: stdio)
+    doAssert ls.outStream.isNil
+    ls.writeOutput(%*{"jsonrpc": "2.0", "id": 1, "result": newJNull()})
+    check ls.outStream.isNil
