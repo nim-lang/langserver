@@ -48,6 +48,51 @@ suite "Nimlangserver misc":
       fmt"Nimsuggest for {hwAbsFile} was stopped because it was idle for too long",
     )
 
+suite "Nimlangserver idle nimsuggest cleanup":
+  let cmdParams = CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
+  let ls = main(cmdParams)
+  let client = newLspSocketClient()
+  waitFor client.connect("localhost", cmdParams.port)
+  client.registerNotification(
+    "window/showMessage", "window/workDoneProgress/create", "workspace/configuration",
+    "extension/statusUpdate", "textDocument/publishDiagnostics", "$/progress",
+  )
+
+  test "idle nimsuggest is removed even when an open file was already evicted":
+    # Regression test for #420: a URI evicted from ls.openFiles while the
+    # nimsuggest still tracks it made removeIdleNimsuggests raise KeyError,
+    # skipping project.stop()/projectFiles.del so the project was re-selected
+    # for removal on every tick.
+    let initParams =
+      LspInitializeParams %* {
+        "processId": %getCurrentProcessId(),
+        "rootUri": fixtureUri("projects/hw/"),
+        "capabilities":
+          {"window": {"workDoneProgress": true}, "workspace": {"configuration": true}},
+      }
+    discard waitFor client.initialize(initParams)
+    let conf = NlsConfig(nimsuggestIdleTimeout: some 1000)
+    ls.workspaceConfiguration.complete(% @[conf])
+    discard waitFor ls.workspaceConfiguration
+
+    let helloWorldFile = "projects/hw/hw.nim"
+    let hwAbsFile = uriToPath(helloWorldFile.fixtureUri())
+    client.notify("textDocument/didOpen", %createDidOpenParams(helloWorldFile))
+    check waitFor client.waitForNotificationMessage(
+      fmt"Nimsuggest initialized for {hwAbsFile}"
+    )
+
+    ls.openFiles.del(helloWorldFile.fixtureUri())
+
+    var removed = false
+    for attempt in 0 ..< 5:
+      waitFor sleepAsync(1100)
+      waitFor ls.removeIdleNimsuggests()
+      if hwAbsFile notin ls.projectFiles:
+        removed = true
+        break
+    check removed
+
 suite "Nimlangserver transport teardown":
   test "writeOutput drops writes after the stdio stream is torn down":
     # Regression test for #418: an in-flight runRpc continuation resuming after
