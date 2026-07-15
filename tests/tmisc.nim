@@ -48,6 +48,26 @@ suite "Nimlangserver misc":
       fmt"Nimsuggest for {hwAbsFile} was stopped because it was idle for too long",
     )
 
+suite "Nimlangserver pending requests":
+  test "cancelled projectFile future does not escape addProjectFileToPendingRequest":
+    # Regression test for #419: addProjectFileToPendingRequest is asyncSpawn'd,
+    # so an escaping CancelledError (nimsuggest restart or $/cancelRequest
+    # cancelling the awaited projectFile future) is re-raised into the event
+    # loop, escapes runForever and hits main's `except Exception: quit(1)`.
+    # The spawned task must swallow cancellation instead of failing.
+    let ls = LanguageServer(serverMode: lsp, transportMode: socket)
+    let uri = "file:///tmp/tpending419.nim"
+    let projectFileFut = newFuture[string]("projectFile")
+    ls.openFiles[uri] = NlsFileInfo(projectFile: projectFileFut)
+    ls.pendingRequests[1'u] = PendingRequest(id: 1, name: "textDocument/definition")
+
+    let fut = ls.addProjectFileToPendingRequest(1'u, uri)
+    projectFileFut.cancelSoon()
+    waitFor sleepAsync(10)
+
+    check fut.finished
+    check fut.completed
+
 suite "Nimlangserver idle nimsuggest cleanup":
   let cmdParams = CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
   let ls = main(cmdParams)
