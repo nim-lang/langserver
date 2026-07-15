@@ -1,5 +1,5 @@
 import
-  ../suggestapi, os, std/asyncnet, strutils, chronos, options
+  ../suggestapi, os, std/asyncnet, strutils, chronos, chronos/asyncproc, options
 import unittest2
 
 const inputLine = "def	skProc	hw.a	proc (){.noSideEffect, gcsafe.}	hw/hw.nim	1	5	\"\"	100"
@@ -65,3 +65,31 @@ suite "Nimsuggest tests":
   #     res2 = nimSuggest.chk(helloWorldFile, helloWorldFile)
   #   doAssert res1.waitFor.len == 2
   #   doAssert res2.waitFor.len == 0
+
+suite "Nimsuggest error handling":
+  test "a dying nimsuggest fires the error callback exactly once":
+    # Regression test for #428: markFailed fired errorCallback on every call,
+    # so one crash triggered it once per failure path (closed socket in
+    # processQueue + stderr EOF in logNsError) and the server restarted the
+    # same project twice, concurrently. Suspend the child before issuing a
+    # command so the command is in flight when the process is killed and both
+    # paths run deterministically.
+    let helloWorldFile = getCurrentDir() / "tests/projects/hw/hw.nim"
+    let project = createNimsuggest(helloWorldFile).waitFor
+    let ns = project.ns.waitFor
+    var errorCount = 0
+    project.errorCallback = some(
+      proc(pr: Project) {.gcsafe, raises: [].} =
+        inc errorCount
+    )
+
+    discard project.process.suspend()
+    let fut = ns.def(helloWorldFile, helloWorldFile, 2, 10)
+    waitFor sleepAsync(200)
+    discard project.process.kill()
+
+    expect CatchableError:
+      discard waitFor fut
+    waitFor sleepAsync(300)
+
+    check errorCount == 1
