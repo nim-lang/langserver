@@ -13,10 +13,10 @@ nim	readLspStdin	lstransports.html#readLspStdin,ptr.ReadStdinContext	proc readLs
 nim	readMcpStdin	lstransports.html#readMcpStdin,ptr.ReadStdinContext	proc readMcpStdin(ctx: ptr ReadStdinContext)		169
 nim	wrapContentWithContentLength	lstransports.html#wrapContentWithContentLength,string	proc wrapContentWithContentLength(content: string): string		178
 nim	writeOutput	lstransports.html#writeOutput,LanguageServer,JsonNode	proc writeOutput(ls: LanguageServer; content: JsonNode)		182
-nim	initActions	lstransports.html#initActions,LanguageServer	proc initActions(ls: LanguageServer)		259
-nim	startStdioLoop	lstransports.html#startStdioLoop,LanguageServer	proc startStdioLoop(ls: LanguageServer): Future[void]		292
-nim	startStdioServer	lstransports.html#startStdioServer,LanguageServer	proc startStdioServer(ls: LanguageServer)		303
-nim	processClientLoop	lstransports.html#processClientLoop,LanguageServer,StreamServer,StreamTransport	proc processClientLoop(ls: LanguageServer; server: StreamServer;\n                  transport: StreamTransport): InternalRaisesFuture[void, void]		322
-nim	startSocketServer	lstransports.html#startSocketServer,LanguageServer,Port	proc startSocketServer(ls: LanguageServer; port: Port)		333
+nim	initActions	lstransports.html#initActions,LanguageServer	proc initActions(ls: LanguageServer)		262
+nim	startStdioLoop	lstransports.html#startStdioLoop,LanguageServer	proc startStdioLoop(ls: LanguageServer): Future[void]		297
+nim	startStdioServer	lstransports.html#startStdioServer,LanguageServer	proc startStdioServer(ls: LanguageServer)		308
+nim	processClientLoop	lstransports.html#processClientLoop,LanguageServer,StreamServer,StreamTransport	proc processClientLoop(ls: LanguageServer; server: StreamServer;\n                  transport: StreamTransport): InternalRaisesFuture[void, void]		327
+nim	startSocketServer	lstransports.html#startSocketServer,LanguageServer,Port	proc startSocketServer(ls: LanguageServer; port: Port)		338
 nimgrp	wraprpc	lstransports.html#wrapRpc-procs-all	proc		78
 nimgrp	processcontentlength	lstransports.html#processContentLength-procs-all	proc		128
