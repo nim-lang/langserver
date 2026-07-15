@@ -261,6 +261,8 @@ proc name*(sug: Suggest): string =
   return sug.qualifiedPath[^1]
 
 proc markFailed(self: Project, errMessage: string) {.raises: [].} =
+  if self.failed:
+    return
   self.failed = true
   self.errorMessage = errMessage
   if self.errorCallback.isSome:
