@@ -101,7 +101,7 @@ nim	stopNimsuggestProcesses	ls.html#stopNimsuggestProcesses,LanguageServer	proc 
 nim	stopNimsuggestProcessesP	ls.html#stopNimsuggestProcessesP,LanguageServer	proc stopNimsuggestProcessesP(ls: LanguageServer)		1194
 nim	shouldSpawnNimsuggest	ls.html#shouldSpawnNimsuggest,LanguageServer	proc shouldSpawnNimsuggest(ls: LanguageServer): Future[bool]		1197
 nim	removeIdleNimsuggests	ls.html#removeIdleNimsuggests,LanguageServer	proc removeIdleNimsuggests(ls: LanguageServer): Future[void]		1290
-nim	tick	ls.html#tick,LanguageServer	proc tick(ls: LanguageServer): Future[void]		1320
+nim	tick	ls.html#tick,LanguageServer	proc tick(ls: LanguageServer): Future[void]		1321
 nimgrp	toutf16pos	ls.html#toUtf16Pos-procs-all	proc		645
 nimgrp	inlayexceptionhintsconfigurationequals	ls.html#inlayExceptionHintsConfigurationEquals-procs-all	proc		457
 nimgrp	getrootpath	ls.html#getRootPath-procs-all	proc		583
