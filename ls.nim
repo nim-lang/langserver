@@ -1313,7 +1313,8 @@ proc removeIdleNimsuggests*(ls: LanguageServer) {.async.} =
     let ns = await project.ns
     for uri in ns.openFiles:
       debug "Removing idle nimsuggest open file", uri = uri
-      await ls.makeIdleFile(ls.openFiles[uri])
+      ls.openFiles.withValue(uri, info):
+        await ls.makeIdleFile(info[])
     project.stop()
     ls.projectFiles.del(project.file)
 
