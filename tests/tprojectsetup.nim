@@ -8,7 +8,7 @@ import
 import json_rpc/[rpcclient]
 import chronicles
 import lspsocketclient
-import testhelpers
+import thelpers
 import unittest2
 
 suite "nimble setup":

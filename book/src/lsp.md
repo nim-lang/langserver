@@ -103,7 +103,7 @@ Install [lsp-mode](https://github.com/emacs-lsp/lsp-mode) and `nim-mode` from ME
 - Rename symbols
 - Inlay hints
 - Signature help
-- Document formatting (requires `nph` on `PATH`)
+- Document formatting (requires `nph` or `nimpretty` on `PATH`)
 - Execute command
 - Workspace symbols
 - Document highlight
@@ -127,7 +127,9 @@ LSP configuration is supplied by the client/editor via `nim.*` settings.
 | `nim.logNimsuggest`           | Enable `nimsuggest` logging.                                                                                                     |
 | `nim.inlayHints`              | Configure inlay hints.                                                                                                           |
 | `nim.notificationVerbosity`   | Notification verbosity: `"none"`, `"error"`, `"warning"`, or `"info"`.                                                           |
-| `nim.formatOnSave`            | Format on save (requires `nph` on `PATH`).                                                                                       |
+| `nim.formatOnSave`            | Format on save (requires `nph` or `nimpretty` on `PATH`).                                                                                       |
+| `nim.formatOnSave`            | Format the file on save. Requires `nph` or `nimpretty` to be available in the PATH. |
+| `nim.formatter`               | The formatter to use. Can be `"nph"` (default) or `"nimpretty"`. |
 | `nim.nimsuggestIdleTimeout`   | Timeout in ms before an idle `nimsuggest` is stopped. Default: 120 seconds.                                                      |
 | `nim.useNimCheck`             | Use `nim check` instead of `nimsuggest` for linting. Default: `true`.                                                            |
 | `nim.maxNimsuggestProcesses`  | Maximum number of live `nimsuggest` processes. `0` means unlimited. Default: `0`.                                                |

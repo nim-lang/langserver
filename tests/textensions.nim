@@ -6,7 +6,7 @@ import json_rpc/[rpcclient]
 import chronicles
 import lspsocketclient
 import chronos/asyncproc
-import testhelpers
+import thelpers
 import unittest2
 
 suite "Nimlangserver extensions":

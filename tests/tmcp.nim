@@ -1,7 +1,7 @@
 import ../[nimlangserver, ls, lstransports, utils]
 import ../protocol/types
 import ../routes/mcp
-import ./testhelpers
+import ./thelpers
 import std/[json, jsonutils, options, os, sequtils, strutils, tables]
 import chronos
 import unittest2

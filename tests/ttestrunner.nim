@@ -1,5 +1,5 @@
 import std/[os, osproc, strscans, tables, sequtils, enumerate, strutils, options]
-import testhelpers
+import thelpers
 import testrunner
 import chronos
 import ls
