@@ -1,7 +1,7 @@
 import
   std/[os, sequtils, tables, json],
   pkg/[chronos, json_rpc/server, chronicles, json_serialization],
-  ../[suggestapi, ls, utils],
+  ../[suggestapi, trackapi, ls, utils],
   ../protocol/types
 
 const McpProtocolVersion* = "2025-11-25"
@@ -214,6 +214,26 @@ proc callNimFindReferences(
   if uri notin ls.openFiles:
     await ls.didOpenFile(
       TextDocumentItem(uri: uri, languageId: "nim", version: 0, text: readFile(path))
+    )
+
+  let config = await ls.getWorkspaceConfiguration()
+
+  if config.useNimTrack.get(false):
+    let projectFile = await ls.openFiles[uri].projectFile
+    let refs = await track(projectFile, path, line, column, tmUsages)
+
+    var usageReferencesJson = newJArray()
+    for reference in refs:
+      usageReferencesJson.add %*{
+        "path": reference.filePath, "line": reference.line, "column": reference.column
+      }
+
+    let structuredContent = %*{"refs": usageReferencesJson}
+
+    return McpCallToolResult(
+      content: @[McpContentBlock(`type`: TextContent, text: $structuredContent)],
+      structuredContent: structuredContent,
+      isError: false,
     )
 
   let nimsuggest = await ls.tryGetNimsuggest(uri)
