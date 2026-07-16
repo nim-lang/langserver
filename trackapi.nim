@@ -8,16 +8,15 @@ import
   std/options,
   suggestapi
 
-type
-  TrackMode* = enum
-    tmDef = "def"
-    tmUsages = "usages"
-    tmDefUsages = "defusages"
+type TrackMode* = enum
+  tmDef = "def"
+  tmUsages = "usages"
+  tmDefUsages = "defusages"
 
 proc parseTrackOutput(raw: string): seq[Suggest] =
   for line in raw.splitLines:
     if line.len == 0 or line.startsWith("Hint:") or
-       not (line.startsWith("def\t") or line.startsWith("use\t")):
+        not (line.startsWith("def\t") or line.startsWith("use\t")):
       continue
     let tokens = line.split('\t')
     if tokens.len < 8:
@@ -33,9 +32,7 @@ proc parseTrackOutput(raw: string): seq[Suggest] =
     )
 
 proc track*(
-    projectFile, file: string,
-    line, col: int,
-    mode: TrackMode
+    projectFile, file: string, line, col: int, mode: TrackMode
 ): Future[seq[Suggest]] {.async.} =
   let
     workingDir = projectFile.parentDir()

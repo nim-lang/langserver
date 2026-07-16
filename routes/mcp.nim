@@ -15,29 +15,31 @@ proc nimFindReferences(): McpTool =
     description: "Find references of the symbol under cursor in the current workspace.",
     inputSchema: McpToolSchema(
       `type`: "object",
-      properties: %*{
-        "path": {"type": "string"},
-        "line": {"type": "integer"},
-        "column": {"type": "integer"},
-      },
+      properties:
+        %*{
+          "path": {"type": "string"},
+          "line": {"type": "integer"},
+          "column": {"type": "integer"},
+        },
       required: @["path", "line", "column"],
     ),
     outputSchema: McpToolSchema(
       `type`: "object",
-      properties: %*{
-        "refs": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "properties": {
-              "path": {"type": "string"},
-              "line": {"type": "integer"},
-              "column": {"type": "integer"},
+      properties:
+        %*{
+          "refs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {"type": "string"},
+                "line": {"type": "integer"},
+                "column": {"type": "integer"},
+              },
+              "required": ["path", "line", "column"],
             },
-            "required": ["path", "line", "column"],
-          },
-        }
-      },
+          }
+        },
       required: @["refs"],
     ),
   )
@@ -55,21 +57,22 @@ proc nimFindSymbols(): McpTool =
     ),
     outputSchema: McpToolSchema(
       `type`: "object",
-      properties: %*{
-        "syms": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "properties": {
-              "path": {"type": "string"},
-              "line": {"type": "integer"},
-              "column": {"type": "integer"},
-              "kind": {"type": "string"},
+      properties:
+        %*{
+          "syms": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {"type": "string"},
+                "line": {"type": "integer"},
+                "column": {"type": "integer"},
+                "kind": {"type": "string"},
+              },
+              "required": ["path", "line", "column", "kind"],
             },
-            "required": ["path", "line", "column", "kind"],
-          },
-        }
-      },
+          }
+        },
       required: @["syms"],
     ),
   )
@@ -84,21 +87,22 @@ proc nimListSymbols(): McpTool =
     ),
     outputSchema: McpToolSchema(
       `type`: "object",
-      properties: %*{
-        "syms": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "properties": {
-              "name": {"type": "string"},
-              "line": {"type": "integer"},
-              "column": {"type": "integer"},
-              "kind": {"type": "string"},
+      properties:
+        %*{
+          "syms": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {"type": "string"},
+                "line": {"type": "integer"},
+                "column": {"type": "integer"},
+                "kind": {"type": "string"},
+              },
+              "required": ["name", "line", "column", "kind"],
             },
-            "required": ["name", "line", "column", "kind"],
-          },
-        }
-      },
+          }
+        },
       required: @["syms"],
     ),
   )
@@ -112,22 +116,23 @@ proc nimCheckProject(): McpTool =
     inputSchema: McpToolSchema(`type`: "object", properties: %*{}, required: @[]),
     outputSchema: McpToolSchema(
       `type`: "object",
-      properties: %*{
-        "diags": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "properties": {
-              "path": {"type": "string"},
-              "line": {"type": "integer"},
-              "column": {"type": "integer"},
-              "severity": {"type": "string"},
-              "message": {"type": "string"},
+      properties:
+        %*{
+          "diags": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {"type": "string"},
+                "line": {"type": "integer"},
+                "column": {"type": "integer"},
+                "severity": {"type": "string"},
+                "message": {"type": "string"},
+              },
+              "required": ["path", "line", "column", "severity", "message"],
             },
-            "required": ["path", "line", "column", "severity", "message"],
-          },
-        }
-      },
+          }
+        },
       required: @["diags"],
     ),
   )
@@ -142,21 +147,22 @@ proc nimCheckFile(): McpTool =
     ),
     outputSchema: McpToolSchema(
       `type`: "object",
-      properties: %*{
-        "diags": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "properties": {
-              "line": {"type": "integer"},
-              "column": {"type": "integer"},
-              "severity": {"type": "string"},
-              "message": {"type": "string"},
+      properties:
+        %*{
+          "diags": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "line": {"type": "integer"},
+                "column": {"type": "integer"},
+                "severity": {"type": "string"},
+                "message": {"type": "string"},
+              },
+              "required": ["line", "column", "severity", "message"],
             },
-            "required": ["line", "column", "severity", "message"],
-          },
-        }
-      },
+          }
+        },
       required: @["diags"],
     ),
   )
@@ -169,32 +175,34 @@ proc nimFindTypeDefinition(): McpTool =
       "Find the type definition of the symbol under cursor in the current workspace.",
     inputSchema: McpToolSchema(
       `type`: "object",
-      properties: %*{
-        "path": {"type": "string"},
-        "line": {"type": "integer"},
-        "column": {"type": "integer"},
-      },
+      properties:
+        %*{
+          "path": {"type": "string"},
+          "line": {"type": "integer"},
+          "column": {"type": "integer"},
+        },
       required: @["path", "line", "column"],
     ),
     outputSchema: McpToolSchema(
       `type`: "object",
-      properties: %*{
-        "defs": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "properties": {
-              "path": {"type": "string"},
-              "line": {"type": "integer"},
-              "column": {"type": "integer"},
-              "name": {"type": "string"},
-              "type": {"type": "string"},
-              "kind": {"type": "string"},
+      properties:
+        %*{
+          "defs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {"type": "string"},
+                "line": {"type": "integer"},
+                "column": {"type": "integer"},
+                "name": {"type": "string"},
+                "type": {"type": "string"},
+                "kind": {"type": "string"},
+              },
+              "required": ["path", "line", "column", "name", "type", "kind"],
             },
-            "required": ["path", "line", "column", "name", "type", "kind"],
-          },
-        }
-      },
+          }
+        },
       required: @["defs"],
     ),
   )
@@ -267,9 +275,12 @@ proc callNimFindSymbols(
 ): Future[McpCallToolResult] {.async.} =
   if len(ls.projectFiles) == 0:
     return McpCallToolResult(
-      content: @[
-        McpContentBlock(`type`: TextContent, text: "Tool works only in Nimble projects")
-      ],
+      content:
+        @[
+          McpContentBlock(
+            `type`: TextContent, text: "Tool works only in Nimble projects"
+          )
+        ],
       isError: true,
     )
 
@@ -363,9 +374,12 @@ proc callNimCheckProject(
 ): Future[McpCallToolResult] {.async.} =
   if len(ls.projectFiles) == 0:
     return McpCallToolResult(
-      content: @[
-        McpContentBlock(`type`: TextContent, text: "Tool works only in Nimble projects")
-      ],
+      content:
+        @[
+          McpContentBlock(
+            `type`: TextContent, text: "Tool works only in Nimble projects"
+          )
+        ],
       isError: true,
     )
 
@@ -533,14 +547,15 @@ proc listTools*(
 ): Future[McpListToolsResult] {.async.} =
   debug "Call tool received..."
   McpListToolsResult(
-    tools: @[
-      nimFindReferences(),
-      nimFindSymbols(),
-      nimListSymbols(),
-      nimCheckProject(),
-      nimCheckFile(),
-      nimFindTypeDefinition(),
-    ]
+    tools:
+      @[
+        nimFindReferences(),
+        nimFindSymbols(),
+        nimListSymbols(),
+        nimCheckProject(),
+        nimCheckFile(),
+        nimFindTypeDefinition(),
+      ]
   )
 
 proc callTool*(
@@ -549,7 +564,7 @@ proc callTool*(
   debug "Call tool received...", name = params.name
 
   await ls.nimsuggestInit
-  
+
   case params.name
   of "nimFindReferences":
     await callNimFindReferences(ls, params)

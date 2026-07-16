@@ -1,7 +1,9 @@
 import
-  std/[
-    os, sugar, sequtils, tables, strformat, strscans, times, json, parseutils, strutils
-  ],
+  std/
+    [
+      os, sugar, sequtils, tables, strformat, strscans, times, json, parseutils,
+      strutils,
+    ],
   pkg/[
     chronos,
     chronos/asyncproc,
@@ -452,9 +454,9 @@ proc references*(
       let projectFile = await ls.openFiles[uri].projectFile
       let mode = if includeDeclaration: tmDefUsages else: tmUsages
       let refs = await track(projectFile, uriToPath(uri), line + 1, ch.get, mode)
-      result = refs.filter(suggest => suggest.section != ideDef or includeDeclaration).map(
-          x => x.toUtf16Pos(ls).toLocation
-        )
+      result = refs
+        .filter(suggest => suggest.section != ideDef or includeDeclaration)
+        .map(x => x.toUtf16Pos(ls).toLocation)
       return
     let nimsuggest = await ls.tryGetNimsuggest(uri)
     if nimsuggest.isNone:
