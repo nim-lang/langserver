@@ -96,6 +96,7 @@ type
     nimExpandMacro*: Option[bool]
     maxNimsuggestProcesses*: Option[int]
       #max number of nimsuggest processes to keep alive. zero means unlimited
+    useNimTrack*: Option[bool]
 
   NlsFileInfo* = ref object of RootObj
     projectFile*: Future[string]
