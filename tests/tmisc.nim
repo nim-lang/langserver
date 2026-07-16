@@ -48,6 +48,43 @@ suite "Nimlangserver misc":
       fmt"Nimsuggest for {hwAbsFile} was stopped because it was idle for too long",
     )
 
+suite "Nimlangserver fail count":
+  let cmdParams = CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
+  let ls = main(cmdParams)
+  let client = newLspSocketClient()
+  waitFor client.connect("localhost", cmdParams.port)
+  client.registerNotification(
+    "window/showMessage", "window/workDoneProgress/create", "workspace/configuration",
+    "extension/statusUpdate", "textDocument/publishDiagnostics", "$/progress",
+  )
+
+  test "fail count is reset when a nimsuggest starts successfully":
+    # ls.failTable only ever increments, so a project that crashes and
+    # recovers keeps ratcheting toward MaxFails in getNimsuggest, after which
+    # its requests are silently rerouted or dropped for the rest of the
+    # session. A successful start must clear the count.
+    let initParams =
+      LspInitializeParams %* {
+        "processId": %getCurrentProcessId(),
+        "rootUri": fixtureUri("projects/hw/"),
+        "capabilities":
+          {"window": {"workDoneProgress": true}, "workspace": {"configuration": true}},
+      }
+    discard waitFor client.initialize(initParams)
+    ls.workspaceConfiguration.complete(% @[NlsConfig()])
+    discard waitFor ls.workspaceConfiguration
+
+    let helloWorldFile = "projects/hw/hw.nim"
+    let hwAbsFile = uriToPath(helloWorldFile.fixtureUri())
+    ls.failTable[hwAbsFile] = 5
+
+    client.notify("textDocument/didOpen", %createDidOpenParams(helloWorldFile))
+    check waitFor client.waitForNotificationMessage(
+      fmt"Nimsuggest initialized for {hwAbsFile}"
+    )
+
+    check hwAbsFile notin ls.failTable
+
 suite "Nimlangserver pending requests":
   test "cancelled projectFile future does not escape addProjectFileToPendingRequest":
     # Regression test for #419: addProjectFileToPendingRequest is asyncSpawn'd,
@@ -101,7 +138,6 @@ suite "Nimlangserver idle nimsuggest cleanup":
     check waitFor client.waitForNotificationMessage(
       fmt"Nimsuggest initialized for {hwAbsFile}"
     )
-
     ls.openFiles.del(helloWorldFile.fixtureUri())
 
     var removed = false
