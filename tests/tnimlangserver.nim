@@ -364,3 +364,54 @@ suite "Null configuration:":
     let hoverParams = positionParams("projects/hw/hw.nim".fixtureUri, 2, 0)
     let hover = client.call("textDocument/hover", %hoverParams).waitFor
     doAssert hover.kind == JNull
+
+suite "Nim track mode":
+  let cmdParams = CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
+  let ls = main(cmdParams)
+  let client = newLspSocketClient()
+  client.registerNotification(
+    "window/showMessage",
+    "extension/statusUpdate",
+    "textDocument/publishDiagnostics",
+    "$/progress",
+  )
+  waitFor client.connect("localhost", cmdParams.port)
+
+  let initParams = LspInitializeParams %* {
+    "processId": %getCurrentProcessId(),
+    "rootUri": fixtureUri("projects/hw/"),
+    "capabilities": {"window": {"workDoneProgress": false}}
+  }
+  discard waitFor client.initialize(initParams)
+
+  let conf = NlsConfig(useNimTrack: some true)
+  ls.workspaceConfiguration = newFuture[JsonNode]()
+  ls.workspaceConfiguration.complete(% @[conf])
+
+  client.notify("textDocument/didOpen", %createDidOpenParams("projects/hw/hw.nim"))
+
+  let hwAbsFile = "projects/hw/hw.nim".fixtureUri.uriToPath
+  check waitFor client.waitForNotificationMessage(
+    fmt"Nimsuggest initialized for {hwAbsFile}",
+  )
+
+  let hwUri = fixtureUri("projects/hw/hw.nim")
+
+  test "Definition with nim track":
+    let
+      positionParams = positionParams(hwUri, 1, 6)
+      locations = to(waitFor client.call("textDocument/definition", %positionParams),
+                     seq[Location])
+    check locations.len == 1
+    check locations[0].uri.pathToUri().contains("hw.nim")
+
+  test "References with nim track":
+    let referenceParams = ReferenceParams %* {
+      "context": {"includeDeclaration": false},
+      "position": {"line": 1, "character": 6},
+      "textDocument": {"uri": hwUri}
+    }
+    let locations = to(waitFor client.call("textDocument/references", %referenceParams),
+                       seq[Location])
+    check locations.len >= 1
+
