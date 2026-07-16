@@ -93,15 +93,15 @@ nim	makeIdleFile	ls.html#makeIdleFile,LanguageServer,NlsFileInfo	proc makeIdleFi
 nim	getProjectFile	ls.html#getProjectFile,string,LanguageServer	proc getProjectFile(fileUri: string; ls: LanguageServer): Future[string]		862
 nim	didOpenFile	ls.html#didOpenFile,LanguageServer,TextDocumentItem	proc didOpenFile(ls: LanguageServer; textDocument: TextDocumentItem): Future[void]		866
 nim	checkProject	ls.html#checkProject,LanguageServer,string	proc checkProject(ls: LanguageServer; uri: string): Future[void]		936
-nim	maybeRegisterCapabilityDidChangeConfiguration	ls.html#maybeRegisterCapabilityDidChangeConfiguration,LanguageServer	proc maybeRegisterCapabilityDidChangeConfiguration(ls: LanguageServer)		1125
-nim	handleConfigurationChanges	ls.html#handleConfigurationChanges,LanguageServer,NlsConfig,NlsConfig	proc handleConfigurationChanges(ls: LanguageServer;\n                           oldConfiguration, newConfiguration: NlsConfig)		1145
-nim	maybeRequestConfigurationFromClient	ls.html#maybeRequestConfigurationFromClient,LanguageServer	proc maybeRequestConfigurationFromClient(ls: LanguageServer)		1159
-nim	getCharacter	ls.html#getCharacter,LanguageServer,string,int,int	proc getCharacter(ls: LanguageServer; uri: string; line: int; character: int): Option[\n    int]		1182
-nim	stopNimsuggestProcesses	ls.html#stopNimsuggestProcesses,LanguageServer	proc stopNimsuggestProcesses(ls: LanguageServer): Future[void]		1190
-nim	stopNimsuggestProcessesP	ls.html#stopNimsuggestProcessesP,LanguageServer	proc stopNimsuggestProcessesP(ls: LanguageServer)		1199
-nim	shouldSpawnNimsuggest	ls.html#shouldSpawnNimsuggest,LanguageServer	proc shouldSpawnNimsuggest(ls: LanguageServer): Future[bool]		1202
-nim	removeIdleNimsuggests	ls.html#removeIdleNimsuggests,LanguageServer	proc removeIdleNimsuggests(ls: LanguageServer): Future[void]		1295
-nim	tick	ls.html#tick,LanguageServer	proc tick(ls: LanguageServer): Future[void]		1326
+nim	maybeRegisterCapabilityDidChangeConfiguration	ls.html#maybeRegisterCapabilityDidChangeConfiguration,LanguageServer	proc maybeRegisterCapabilityDidChangeConfiguration(ls: LanguageServer)		1126
+nim	handleConfigurationChanges	ls.html#handleConfigurationChanges,LanguageServer,NlsConfig,NlsConfig	proc handleConfigurationChanges(ls: LanguageServer;\n                           oldConfiguration, newConfiguration: NlsConfig)		1146
+nim	maybeRequestConfigurationFromClient	ls.html#maybeRequestConfigurationFromClient,LanguageServer	proc maybeRequestConfigurationFromClient(ls: LanguageServer)		1160
+nim	getCharacter	ls.html#getCharacter,LanguageServer,string,int,int	proc getCharacter(ls: LanguageServer; uri: string; line: int; character: int): Option[\n    int]		1183
+nim	stopNimsuggestProcesses	ls.html#stopNimsuggestProcesses,LanguageServer	proc stopNimsuggestProcesses(ls: LanguageServer): Future[void]		1191
+nim	stopNimsuggestProcessesP	ls.html#stopNimsuggestProcessesP,LanguageServer	proc stopNimsuggestProcessesP(ls: LanguageServer)		1200
+nim	shouldSpawnNimsuggest	ls.html#shouldSpawnNimsuggest,LanguageServer	proc shouldSpawnNimsuggest(ls: LanguageServer): Future[bool]		1203
+nim	removeIdleNimsuggests	ls.html#removeIdleNimsuggests,LanguageServer	proc removeIdleNimsuggests(ls: LanguageServer): Future[void]		1296
+nim	tick	ls.html#tick,LanguageServer	proc tick(ls: LanguageServer): Future[void]		1327
 nimgrp	toutf16pos	ls.html#toUtf16Pos-procs-all	proc		650
 nimgrp	inlayexceptionhintsconfigurationequals	ls.html#inlayExceptionHintsConfigurationEquals-procs-all	proc		462
 nimgrp	getrootpath	ls.html#getRootPath-procs-all	proc		588
