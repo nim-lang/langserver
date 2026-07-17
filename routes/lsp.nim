@@ -14,11 +14,8 @@ import
     stew/byteutils,
     with,
   ],
-  ../[testrunner, nimexpand, asyncprocmonitor, suggestapi, ls, utils],
+  ../[testrunner, nimexpand, asyncprocmonitor, suggestapi, trackapi, ls, utils],
   ../protocol/[enums, types]
-
-when defined(features.nimlangserver.track):
-  import ../trackapi
 
 import macros except error
 
@@ -160,19 +157,18 @@ proc definition*(
 ): Future[seq[Location]] {.async.} =
   with (params.position, params.textDocument):
     asyncSpawn ls.addProjectFileToPendingRequest(id.uint, uri)
-    when defined(features.nimlangserver.track):
-      let config = await ls.getWorkspaceConfiguration()
-      if config.useNimTrack.get(false):
-        if uri notin ls.openFiles or ls.openFiles[uri].changed:
-          return @[]
-        let ch = ls.getCharacter(uri, line, character)
-        if ch.isNone:
-          return @[]
-        let projectFile = await ls.openFiles[uri].projectFile
-        result = (await track(projectFile, uriToPath(uri), line + 1, ch.get, tmDef)).map(
-          x => x.toUtf16Pos(ls).toLocation
-        )
-        return
+    let config = await ls.getWorkspaceConfiguration()
+    if config.useNimTrack.get(false):
+      if uri notin ls.openFiles or ls.openFiles[uri].changed:
+        return @[]
+      let ch = ls.getCharacter(uri, line, character)
+      if ch.isNone:
+        return @[]
+      let projectFile = await ls.openFiles[uri].projectFile
+      result = (await track(projectFile, uriToPath(uri), line + 1, ch.get, tmDef)).map(
+        x => x.toUtf16Pos(ls).toLocation
+      )
+      return
     let ns = await ls.tryGetNimsuggest(uri)
     if ns.isNone:
       return @[]
@@ -448,21 +444,20 @@ proc references*(
     ls: LanguageServer, params: ReferenceParams
 ): Future[seq[Location]] {.async.} =
   with (params.position, params.textDocument, params.context):
-    when defined(features.nimlangserver.track):
-      let config = await ls.getWorkspaceConfiguration()
-      if config.useNimTrack.get(false):
-        if uri notin ls.openFiles or ls.openFiles[uri].changed:
-          return @[]
-        let ch = ls.getCharacter(uri, line, character)
-        if ch.isNone:
-          return @[]
-        let projectFile = await ls.openFiles[uri].projectFile
-        let mode = if includeDeclaration: tmDefUsages else: tmUsages
-        let refs = await track(projectFile, uriToPath(uri), line + 1, ch.get, mode)
-        result = refs
-          .filter(suggest => suggest.section != ideDef or includeDeclaration)
-          .map(x => x.toUtf16Pos(ls).toLocation)
-        return
+    let config = await ls.getWorkspaceConfiguration()
+    if config.useNimTrack.get(false):
+      if uri notin ls.openFiles or ls.openFiles[uri].changed:
+        return @[]
+      let ch = ls.getCharacter(uri, line, character)
+      if ch.isNone:
+        return @[]
+      let projectFile = await ls.openFiles[uri].projectFile
+      let mode = if includeDeclaration: tmDefUsages else: tmUsages
+      let refs = await track(projectFile, uriToPath(uri), line + 1, ch.get, mode)
+      result = refs
+        .filter(suggest => suggest.section != ideDef or includeDeclaration)
+        .map(x => x.toUtf16Pos(ls).toLocation)
+      return
     let nimsuggest = await ls.tryGetNimsuggest(uri)
     if nimsuggest.isNone:
       return @[]

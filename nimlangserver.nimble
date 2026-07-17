@@ -8,9 +8,6 @@ license = "MIT"
 bin = @["nimlangserver"]
 skipDirs = @["tests"]
 
-feature "track":
-  requires "nim#head"
-
 requires "nim >= 2.2.10",
   "chronos >= 4.2.2", "json_rpc >= 0.6.0", "with >= 0.5.0", "chronicles >= 0.12.2",
   "serialization >= 0.5.2", "json_serialization >= 0.4.4", "stew >= 0.5.0",
@@ -20,7 +17,9 @@ requires "nim >= 2.2.10",
   "."
 
 task test, "run tests":
-  selfExec ["r", commandLineParams.join(" "), "tests/all.nim"].join(" ")
+  --run
+  --silent
+  setCommand("c", "tests/all.nim")
 
 task book, "Generate book":
   exec "mdbook build book -d ../docs"

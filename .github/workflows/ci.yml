@@ -37,11 +37,11 @@ jobs:
 
       - name: Install dependencies
         shell: bash
-        run: nimble --features:track install -ly
+        run: nimble -y install -l
       
       - name: Nimble Test
         shell: bash
-        run: nimble test -d:features.nimlangserver.track
+        run: nimble test
 
   lint:
     name: Lint
