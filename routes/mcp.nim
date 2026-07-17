@@ -1,8 +1,11 @@
 import
   std/[os, sequtils, tables, json],
   pkg/[chronos, json_rpc/server, chronicles, json_serialization],
-  ../[suggestapi, trackapi, ls, utils],
+  ../[suggestapi, ls, utils],
   ../protocol/types
+
+when defined(feature.nimlangserver.track):
+  import ../trackapi
 
 const McpProtocolVersion* = "2025-11-25"
 
@@ -224,25 +227,26 @@ proc callNimFindReferences(
       TextDocumentItem(uri: uri, languageId: "nim", version: 0, text: readFile(path))
     )
 
-  let config = await ls.getWorkspaceConfiguration()
+  when defined(feature.nimlangserver.track):
+    let config = await ls.getWorkspaceConfiguration()
 
-  if config.useNimTrack.get(false):
-    let projectFile = await ls.openFiles[uri].projectFile
-    let refs = await track(projectFile, path, line, column, tmUsages)
+    if config.useNimTrack.get(false):
+      let projectFile = await ls.openFiles[uri].projectFile
+      let refs = await track(projectFile, path, line, column, tmUsages)
 
-    var usageReferencesJson = newJArray()
-    for reference in refs:
-      usageReferencesJson.add %*{
-        "path": reference.filePath, "line": reference.line, "column": reference.column
-      }
+      var usageReferencesJson = newJArray()
+      for reference in refs:
+        usageReferencesJson.add %*{
+          "path": reference.filePath, "line": reference.line, "column": reference.column
+        }
 
-    let structuredContent = %*{"refs": usageReferencesJson}
+      let structuredContent = %*{"refs": usageReferencesJson}
 
-    return McpCallToolResult(
-      content: @[McpContentBlock(`type`: TextContent, text: $structuredContent)],
-      structuredContent: structuredContent,
-      isError: false,
-    )
+      return McpCallToolResult(
+        content: @[McpContentBlock(`type`: TextContent, text: $structuredContent)],
+        structuredContent: structuredContent,
+        isError: false,
+      )
 
   let nimsuggest = await ls.tryGetNimsuggest(uri)
 

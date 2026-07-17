@@ -5,7 +5,6 @@ import
   strutils,
   strformat,
   chronicles,
-  std/options,
   suggestapi
 
 type TrackMode* = enum
@@ -51,10 +50,9 @@ proc track*(
 
   try:
     let exitCode = await process.waitForExit(30.seconds)
-    if exitCode != 0:
-      debug "nim track failed", exitCode = exitCode
-      return @[]
     let rawBytes = process.stdoutStream.read().await
+    if exitCode != 0:
+      debug "nim track exit", exitCode = exitCode
     result = parseTrackOutput(cast[string](rawBytes))
   except CatchableError as e:
     debug "nim track exception", error = e.msg, name = e.name

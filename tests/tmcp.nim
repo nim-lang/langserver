@@ -253,31 +253,32 @@ suite "MCP tools":
       it["name"].getStr() == "int" or it["type"].getStr().contains("int")
     )
 
-suite "MCP tools with nim track":
-  let
-    testProjectDir = absolutePath("tests" / "projects" / "mcpproject")
-    savedDir = getCurrentDir()
+when defined(feature.nimlangserver.track):
+  suite "MCP tools with nim track":
+    let
+      testProjectDir = absolutePath("tests" / "projects" / "mcpproject")
+      savedDir = getCurrentDir()
 
-  setCurrentDir(testProjectDir)
+    setCurrentDir(testProjectDir)
 
-  let
-    entryPoint = absolutePath("src" / "mcpproject.nim")
-    (ls, _) = waitFor initMcpServer(entryPoint)
+    let
+      entryPoint = absolutePath("src" / "mcpproject.nim")
+      (ls, _) = waitFor initMcpServer(entryPoint)
 
-  let conf = NlsConfig(useNimTrack: some true)
-  ls.workspaceConfiguration.complete(% @[conf])
+    let conf = NlsConfig(useNimTrack: some true)
+    ls.workspaceConfiguration.complete(% @[conf])
 
-  suiteTeardown:
-    waitFor ls.stopNimsuggestProcesses()
-    setCurrentDir(savedDir)
+    suiteTeardown:
+      waitFor ls.stopNimsuggestProcesses()
+      setCurrentDir(savedDir)
 
-  test "callTool nimFindReferences with nim track":
-    let res = waitFor mcp.callTool(
-      ls,
-      McpCallToolParams(
-        name: "nimFindReferences",
-        arguments: some %*{"path": entryPoint, "line": 3, "column": 10},
-      ),
-    )
+    test "callTool nimFindReferences with nim track":
+      let res = waitFor mcp.callTool(
+        ls,
+        McpCallToolParams(
+          name: "nimFindReferences",
+          arguments: some %*{"path": entryPoint, "line": 3, "column": 10},
+        ),
+      )
 
-    checkToolResult(res)
+      checkToolResult(res)
