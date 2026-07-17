@@ -1,11 +1,4 @@
-import
-  chronos,
-  chronos/asyncproc,
-  os,
-  strutils,
-  strformat,
-  chronicles,
-  suggestapi
+import chronos, chronos/asyncproc, os, strutils, strformat, chronicles, suggestapi
 
 type TrackMode* = enum
   tmDef = "def"

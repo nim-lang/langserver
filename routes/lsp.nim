@@ -169,8 +169,9 @@ proc definition*(
         if ch.isNone:
           return @[]
         let projectFile = await ls.openFiles[uri].projectFile
-        result = (await track(projectFile, uriToPath(uri), line + 1, ch.get, tmDef))
-          .map(x => x.toUtf16Pos(ls).toLocation)
+        result = (await track(projectFile, uriToPath(uri), line + 1, ch.get, tmDef)).map(
+          x => x.toUtf16Pos(ls).toLocation
+        )
         return
     let ns = await ls.tryGetNimsuggest(uri)
     if ns.isNone:
@@ -457,11 +458,10 @@ proc references*(
           return @[]
         let projectFile = await ls.openFiles[uri].projectFile
         let mode = if includeDeclaration: tmDefUsages else: tmUsages
-        let refs =
-          await track(projectFile, uriToPath(uri), line + 1, ch.get, mode)
-        result = refs.filter(suggest => suggest.section != ideDef or includeDeclaration).map(
-            x => x.toUtf16Pos(ls).toLocation
-          )
+        let refs = await track(projectFile, uriToPath(uri), line + 1, ch.get, mode)
+        result = refs
+          .filter(suggest => suggest.section != ideDef or includeDeclaration)
+          .map(x => x.toUtf16Pos(ls).toLocation)
         return
     let nimsuggest = await ls.tryGetNimsuggest(uri)
     if nimsuggest.isNone:

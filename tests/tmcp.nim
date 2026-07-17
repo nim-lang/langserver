@@ -12,9 +12,7 @@ type McpSocketClient = ref object
 
 proc initMcpServer(
     mainFile: string
-): Future[(LanguageServer, McpInitializeResult)] {.
-    async: (raises: [CatchableError])
-.} =
+): Future[(LanguageServer, McpInitializeResult)] {.async: (raises: [CatchableError]).} =
   let
     cmdParams =
       CommandLineParams(mode: some ServerMode.mcp, transport: some TransportMode.stdio)
