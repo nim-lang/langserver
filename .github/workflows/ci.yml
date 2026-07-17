@@ -41,7 +41,7 @@ jobs:
       
       - name: Nimble Test
         shell: bash
-        run: nimble test -d:feature.nimlangserver.track
+        run: nimble test -d:features.nimlangserver.track
 
   lint:
     name: Lint

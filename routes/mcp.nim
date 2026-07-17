@@ -4,7 +4,7 @@ import
   ../[suggestapi, ls, utils],
   ../protocol/types
 
-when defined(feature.nimlangserver.track):
+when defined(features.nimlangserver.track):
   import ../trackapi
 
 const McpProtocolVersion* = "2025-11-25"
@@ -227,7 +227,7 @@ proc callNimFindReferences(
       TextDocumentItem(uri: uri, languageId: "nim", version: 0, text: readFile(path))
     )
 
-  when defined(feature.nimlangserver.track):
+  when defined(features.nimlangserver.track):
     let config = await ls.getWorkspaceConfiguration()
 
     if config.useNimTrack.get(false):

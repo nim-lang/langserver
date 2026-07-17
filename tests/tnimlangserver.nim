@@ -290,7 +290,7 @@ suite "Null configuration:":
     let hover = client.call("textDocument/hover", %hoverParams).waitFor
     doAssert hover.kind == JNull
 
-when defined(feature.nimlangserver.track):
+when defined(features.nimlangserver.track):
   suite "Nim track mode":
     let cmdParams =
       CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())

@@ -17,7 +17,7 @@ import
   ../[testrunner, nimexpand, asyncprocmonitor, suggestapi, ls, utils],
   ../protocol/[enums, types]
 
-when defined(feature.nimlangserver.track):
+when defined(features.nimlangserver.track):
   import ../trackapi
 
 import macros except error
@@ -160,7 +160,7 @@ proc definition*(
 ): Future[seq[Location]] {.async.} =
   with (params.position, params.textDocument):
     asyncSpawn ls.addProjectFileToPendingRequest(id.uint, uri)
-    when defined(feature.nimlangserver.track):
+    when defined(features.nimlangserver.track):
       let config = await ls.getWorkspaceConfiguration()
       if config.useNimTrack.get(false):
         if uri notin ls.openFiles or ls.openFiles[uri].changed:
@@ -448,7 +448,7 @@ proc references*(
     ls: LanguageServer, params: ReferenceParams
 ): Future[seq[Location]] {.async.} =
   with (params.position, params.textDocument, params.context):
-    when defined(feature.nimlangserver.track):
+    when defined(features.nimlangserver.track):
       let config = await ls.getWorkspaceConfiguration()
       if config.useNimTrack.get(false):
         if uri notin ls.openFiles or ls.openFiles[uri].changed:

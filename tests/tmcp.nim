@@ -251,7 +251,7 @@ suite "MCP tools":
       it["name"].getStr() == "int" or it["type"].getStr().contains("int")
     )
 
-when defined(feature.nimlangserver.track):
+when defined(features.nimlangserver.track):
   suite "MCP tools with nim track":
     let
       testProjectDir = absolutePath("tests" / "projects" / "mcpproject")
