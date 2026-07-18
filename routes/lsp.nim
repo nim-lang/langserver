@@ -1004,7 +1004,6 @@ proc didClose*(
 proc didOpen*(
     ls: LanguageServer, params: DidOpenTextDocumentParams
 ): Future[void] {.async.} =
-  await ls.nimsuggestInit
   await ls.didOpenFile(params.textDocument)
 
 proc didChangeConfiguration*(
