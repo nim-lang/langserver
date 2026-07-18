@@ -1274,6 +1274,7 @@ proc checkFile*(ls: LanguageServer, uri: string): Future[void] {.async.} =
 
   let ns = await ls.tryGetNimsuggest(uri)
   if ns.isSome:
+    discard await ns.get().changed(path, ls.uriToStash(uri))
     let diagnostics = ns.get().chkFile(path, ls.uriToStash(uri)).await()
     ls.progress(token, "end")
     ls.sendDiagnostics(diagnostics, path)
