@@ -119,12 +119,10 @@ proc initialize*(
     if docCaps.rename.isSome and docCaps.rename.get().prepareSupport.get(false):
       result.capabilities.renameProvider = %*{"prepareProvider": true}
 
-  debug "Initialize completed. Trying to start nimsuggest instances"
+  debug "Initialize completed. Nimsuggest instances will start after configuration arrives."
 
   let ls = p.ls
   ls.lspServerCapabilities = result.capabilities
-  let rootPath = ls.lspInitializeParams.getRootPath
-  await ls.initNimsuggestInstances(rootPath)
 
 proc toCompletionItem(suggest: Suggest): CompletionItem =
   with suggest:
@@ -913,6 +911,9 @@ proc initialized*(ls: LanguageServer, _: JsonNode): Future[void] {.async.} =
   debug "Client initialized."
   maybeRegisterCapabilityDidChangeConfiguration(ls)
   maybeRequestConfigurationFromClient(ls)
+  discard await ls.waitForWorkspaceConfiguration()
+  let rootPath = ls.lspInitializeParams.getRootPath
+  await ls.initNimsuggestInstances(rootPath)
 
 proc cancelRequest*(ls: LanguageServer, params: CancelParams): Future[void] {.async.} =
   if params.id.isSome:

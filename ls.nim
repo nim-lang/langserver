@@ -361,6 +361,26 @@ proc getAndWaitForWorkspaceConfiguration*(
     error "Failed to get workspace configuration", error = ex.msg
     writeStackTrace(ex)
 
+const CONFIG_WAIT_TIMEOUT_MS = 30_000
+const CONFIG_WAIT_POLL_MS = 50
+
+proc waitForWorkspaceConfiguration*(ls: LanguageServer): Future[NlsConfig] {.async.} =
+  ## Waits for workspace configuration with a 30-second fallback to defaults.
+  ## Safe to call from any async context; idempotent once config has arrived.
+  ## Polls rather than awaiting the shared future directly to avoid cancelling it.
+  if ls.workspaceConfiguration.finished:
+    return await ls.getWorkspaceConfiguration()
+  debug "Waiting for workspace configuration from client"
+  var elapsed = 0
+  while not ls.workspaceConfiguration.finished and elapsed < CONFIG_WAIT_TIMEOUT_MS:
+    await sleepAsync(CONFIG_WAIT_POLL_MS)
+    elapsed += CONFIG_WAIT_POLL_MS
+  if ls.workspaceConfiguration.finished:
+    debug "Workspace configuration received"
+  else:
+    warn "Workspace configuration not received within timeout, proceeding with defaults"
+  return await ls.getWorkspaceConfiguration()
+
 proc showMessage*(
     ls: LanguageServer, message: string, typ: MessageType
 ) {.raises: [].} =
@@ -951,6 +971,18 @@ proc didOpenFile*(
       # already migrated the entry to this URI. Nothing to do.
       debug "didOpenFile: URI already tracked (post-rename), skipping", uri = uri
       return
+
+    # Wait for config before getProjectFile so projectMapping and
+    # maxNimsuggestProcesses are available when the project file is resolved.
+    discard await ls.waitForWorkspaceConfiguration()
+
+    # Re-check after the await: a concurrent didOpen or didRenameFile may have
+    # inserted this URI while we were waiting for configuration.
+    if uri in ls.openFiles:
+      debug "didOpenFile: URI tracked after config wait (concurrent open), skipping",
+        uri = uri
+      return
+
     debug "New document opened for URI:", uri = uri
     let
       file = open(ls.uriStorageLocation(uri), fmWrite)
