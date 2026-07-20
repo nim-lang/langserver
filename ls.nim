@@ -846,8 +846,9 @@ proc initNimsuggestInstances*(ls: LanguageServer, rootPath: string) {.async.} =
     let nimbleFile = nimbleFiles[0]
     debug "Starting nimble dump for  ", nimbleFile
     let nimbleDumpInfo = await ls.getNimbleDumpInfo(nimbleFile)
-    debug "Finished nimble dump for  ", nimbleFile
     ls.entryPoints = nimbleDumpInfo.getNimbleEntryPoints(rootPath)
+    
+    debug "Finished nimble dump for  ", nimbleFile
     for entryPoint in ls.entryPoints:
       debug "Starting nimsuggest for entry point ", entry = entryPoint
       if entryPoint notin ls.projectFiles:

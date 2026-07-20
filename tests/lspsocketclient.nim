@@ -26,6 +26,10 @@ proc newLspSocketClient*(): LspSocketClient =
   result.notifications = newTable[string, NotificationRpc]()
   result.calls = newTable[string, seq[JsonNode]]()
   result.responses = newTable[int, Future[JsonNode]]()
+  # Default handler: respond to workspace/configuration requests with empty config.
+  # Without this the server's workspaceConfiguration future never completes.
+  result.routes["workspace/configuration"] = proc(params: JsonNode): Future[JsonNode] {.async.} =
+    return newJArray()
 
 method call*(
     client: LspSocketClient, name: string, params: JsonNode
@@ -66,12 +70,18 @@ proc processMessage(client: LspSocketClient, msg: string) {.raises: [].} =
     if "method" in serverReq:
       let meth = serverReq["method"].jsonTo(string)
       debug "[Process Data Loop ]", meth = meth
-      if meth in client.notifications:
-        asyncSpawn client.notifications[meth](serverReq["params"])
-      elif meth in client.routes:
-        asyncSpawn runRpc(client, client.routes[meth], serverReq)
+      if "id" in serverReq:
+        # Server-to-client request: needs a response via client.routes
+        if meth in client.routes:
+          asyncSpawn runRpc(client, client.routes[meth], serverReq)
+        else:
+          error "Route not implemented ", meth = meth
       else:
-        error "Method not implemented ", meth = meth
+        # Server-to-client notification: no response needed
+        if meth in client.notifications:
+          asyncSpawn client.notifications[meth](serverReq["params"])
+        else:
+          error "Method not implemented ", meth = meth
     elif "id" in serverReq: #Response here
       let id = serverReq["id"].jsonTo(int)
       client.responses[id].complete(serverReq["result"])

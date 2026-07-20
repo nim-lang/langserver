@@ -4,7 +4,10 @@ nimcache/
 
 *.log
 *.exe
+*.dSYM
 tests/all
+tests/nimbleDir
+tests/projects
 /nimlangserver
 nimble.develop
 nimble.paths
