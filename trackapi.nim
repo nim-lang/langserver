@@ -24,7 +24,8 @@ proc parseTrackOutput(raw: string): seq[Suggest] =
     )
 
 proc track*(
-    projectFile, file: string, line, col: int, mode: TrackMode
+    projectFile, file: string, line, col: int, mode: TrackMode,
+    nimPath = "nim", timeout = REQUEST_TIMEOUT
 ): Future[seq[Suggest]] {.async.} =
   let
     workingDir = projectFile.parentDir()
@@ -33,7 +34,7 @@ proc track*(
   debug "nim track", projectFile = projectFile, arg = arg
 
   let process = await startProcess(
-    "nim",
+    nimPath,
     workingDir = workingDir,
     arguments = @["track", projectFile, arg],
     options = {UsePath},
@@ -42,11 +43,19 @@ proc track*(
   )
 
   try:
-    let exitCode = await process.waitForExit(30.seconds)
-    let rawBytes = process.stdoutStream.read().await
+    let exitCode = await process.waitForExit(timeout.milliseconds)
+    let stdoutBytes = process.stdoutStream.read().await
+    var stderrStr = ""
+    try:
+      stderrStr = process.stderrStream.read().await.toString
+    except CatchableError:
+      discard
+    if "invalid command: track" in stderrStr:
+      warn "nim track not supported (requires nim >= 2.3.1)", nimPath = nimPath
+      return @[]
     if exitCode != 0:
       debug "nim track exit", exitCode = exitCode
-    result = parseTrackOutput(cast[string](rawBytes))
+    result = parseTrackOutput(stdoutBytes.toString)
   except CatchableError as e:
     debug "nim track exception", error = e.msg, name = e.name
     result = @[]
