@@ -345,6 +345,7 @@ proc createNimsuggest*(
     workingDir = getCurrentDir(),
     enableLog: bool = false,
     enableExceptionInlayHints: bool = false,
+    nimPaths: seq[string] = @[],
 ): Future[Project] {.async.} =
   result = Project(file: root)
   result.ns = newFuture[NimSuggest]()
@@ -387,8 +388,12 @@ proc createNimsuggest*(
         args.add("--exceptionInlayHints:on")
       else:
         args.add("--exceptionInlayHints:off")
+    for p in nimPaths:
+      args.add(p)
+    debug "Nimsuggest nim paths", nimPaths = nimPaths
     result.process = await startProcess(
       nimsuggestPath,
+      workingDir = workingDir,
       arguments = args,
       options = {UsePath},
       stdoutHandle = AsyncProcess.Pipe,

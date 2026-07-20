@@ -282,6 +282,16 @@ proc getNimbleDumpInfo*(
     let workDir =
       if nimbleFile == "": getCurrentDir()
       else: nimbleFile.parentDir
+    
+    let nimbleDirEnv = getEnv("NIMBLE_DIR", "<not set>")
+    let homeEnv = getEnv("HOME", "<not set>")
+    let pathEnv = getEnv("PATH", "<not set>")
+    debug "getNimbleDumpInfo environment",
+      nimbleFile = nimbleFile,
+      workDir = workDir,
+      NIMBLE_DIR = nimbleDirEnv,
+      HOME = homeEnv,
+      PATH = pathEnv
     process = await startProcess(
       "nimble",
       workingDir = workDir,
@@ -291,6 +301,7 @@ proc getNimbleDumpInfo*(
       stdoutHandle = AsyncProcess.Pipe,
     )
     let info = string.fromBytes(process.stdoutStream.read().await)
+    debug "getNimbleDumpInfo result ", info
 
     for line in info.splitLines:
       if line.startsWith("srcDir"):
@@ -833,7 +844,9 @@ proc initNimsuggestInstances*(ls: LanguageServer, rootPath: string) {.async.} =
   let nimbleFiles = walkFiles(rootPath / "*.nimble").toSeq
   if nimbleFiles.len > 0:
     let nimbleFile = nimbleFiles[0]
+    debug "Starting nimble dump for  ", nimbleFile
     let nimbleDumpInfo = await ls.getNimbleDumpInfo(nimbleFile)
+    debug "Finished nimble dump for  ", nimbleFile
     ls.entryPoints = nimbleDumpInfo.getNimbleEntryPoints(rootPath)
     for entryPoint in ls.entryPoints:
       debug "Starting nimsuggest for entry point ", entry = entryPoint
@@ -1183,6 +1196,35 @@ proc onErrorCallback(args: (LanguageServer, string), project: Project) =
       )
       ls.sendStatusChanged()
 
+proc findNimblePaths(fromFile: string): seq[string] =
+  ## Walk up from fromFile's directory looking for nimble.paths.
+  ## Returns the flags it contains (--noNimblePath and --path:... entries)
+  ## with any surrounding quotes stripped, ready to pass directly to nimsuggest.
+  var dir = fromFile.parentDir
+  while dir.len > 0:
+    let pathsFile = dir / "nimble.paths"
+    if pathsFile.fileExists:
+      debug "Found nimble.paths for nimsuggest", path = pathsFile
+      for line in pathsFile.lines:
+        let trimmed = line.strip()
+        if trimmed.len == 0:
+          continue
+        if trimmed.startsWith("--path:"):
+          # nimble.paths wraps paths in quotes: --path:"/foo/bar"
+          # Strip them so the arg is passed cleanly to nimsuggest.
+          let val = trimmed[7 .. ^1]
+          if val.len >= 2 and val[0] == '"' and val[^1] == '"':
+            result.add("--path:" & val[1 .. ^2])
+          else:
+            result.add(trimmed)
+        else:
+          result.add(trimmed)
+      return
+    let parent = dir.parentDir
+    if parent == dir:
+      break
+    dir = parent
+
 proc createOrRestartNimsuggest*(
     ls: LanguageServer, projectFile: string, uri = ""
 ) {.gcsafe, raises: [].} =
@@ -1211,7 +1253,9 @@ proc createOrRestartNimsuggest*(
         ls.sendStatusChanged()
       errorCallback = partial(onErrorCallback, (ls, uri))
 
-    debug "Creating new nimsuggest project", projectFile = projectFile
+    let nimPaths = findNimblePaths(projectFile)
+    debug "Creating new nimsuggest project",
+      projectFile = projectFile, nimPathCount = nimPaths.len
 
     let projectNext = waitFor createNimsuggest(
       projectFile,
@@ -1223,6 +1267,7 @@ proc createOrRestartNimsuggest*(
       workingDir,
       configuration.logNimsuggest.get(false),
       configuration.exceptionHintsEnabled,
+      nimPaths,
     )
 
     if projectFile in ls.projectFiles:

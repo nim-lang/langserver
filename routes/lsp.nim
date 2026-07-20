@@ -817,6 +817,15 @@ proc exit*(
 proc startNimbleProcess(
     ls: LanguageServer, args: seq[string]
 ): Future[AsyncProcessRef] {.async.} =
+  let nimbleDirEnv = getEnv("NIMBLE_DIR", "<not set>")
+  let homeEnv = getEnv("HOME", "<not set>")
+  let pathEnv = getEnv("PATH", "<not set>")
+  debug "startNimbleProcess environment",
+    args = args,
+    workingDir = ls.lspInitializeParams.getRootPath,
+    NIMBLE_DIR = nimbleDirEnv,
+    HOME = homeEnv,
+    PATH = pathEnv
   await startProcess(
     "nimble",
     arguments = args,
@@ -829,6 +838,9 @@ proc startNimbleProcess(
 proc tasks*(ls: LanguageServer, conf: JsonNode): Future[seq[NimbleTask]] {.async.} =
   let rootPath: string = ls.lspInitializeParams.getRootPath
   debug "Received tasks ", rootPath = rootPath
+  debug "tasks: deleting NIMBLE_DIR before nimble tasks",
+    NIMBLE_DIR_before = getEnv("NIMBLE_DIR", "<not set>"),
+    HOME = getEnv("HOME", "<not set>")
   delEnv "NIMBLE_DIR"
   let process = await ls.startNimbleProcess(@["tasks"])
   let res =
