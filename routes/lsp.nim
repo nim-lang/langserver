@@ -165,9 +165,13 @@ proc definition*(
       if ch.isNone:
         return @[]
       let projectFile = await ls.openFiles[uri].projectFile
-      result = (await track(projectFile, uriToPath(uri), line + 1, ch.get, tmDef)).map(
-        x => x.toUtf16Pos(ls).toLocation
-      )
+      let nimPath = config.getNimPath()
+      if nimPath.isNone:
+        return @[]
+      let timeout = config.timeout.get(REQUEST_TIMEOUT)
+      result = (await track(projectFile, uriToPath(uri), line + 1, ch.get, tmDef,
+                            nimPath = nimPath.get, timeout = timeout))
+        .map(x => x.toUtf16Pos(ls).toLocation)
       return
     let ns = await ls.tryGetNimsuggest(uri)
     if ns.isNone:
@@ -453,7 +457,12 @@ proc references*(
         return @[]
       let projectFile = await ls.openFiles[uri].projectFile
       let mode = if includeDeclaration: tmDefUsages else: tmUsages
-      let refs = await track(projectFile, uriToPath(uri), line + 1, ch.get, mode)
+      let nimPath = config.getNimPath()
+      if nimPath.isNone:
+        return @[]
+      let timeout = config.timeout.get(REQUEST_TIMEOUT)
+      let refs = await track(projectFile, uriToPath(uri), line + 1, ch.get, mode,
+                             nimPath = nimPath.get, timeout = timeout)
       result = refs
         .filter(suggest => suggest.section != ideDef or includeDeclaration)
         .map(x => x.toUtf16Pos(ls).toLocation)

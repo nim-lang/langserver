@@ -228,7 +228,15 @@ proc callNimFindReferences(
 
   if config.useNimTrack.get(false):
     let projectFile = await ls.openFiles[uri].projectFile
-    let refs = await track(projectFile, path, line, column, tmUsages)
+    let nimPath = config.getNimPath()
+    if nimPath.isNone:
+      return McpCallToolResult(
+        content: @[McpContentBlock(`type`: TextContent, text: "Nim not found")],
+        isError: true,
+      )
+    let timeout = config.timeout.get(REQUEST_TIMEOUT)
+    let refs = await track(projectFile, path, line, column, tmUsages,
+                           nimPath = nimPath.get, timeout = timeout)
 
     var usageReferencesJson = newJArray()
     for reference in refs:
