@@ -506,7 +506,7 @@ proc initialize*(
     rootPath = getCurrentDir().pathToUri.uriToPath
 
   ls.mcpServerCapabilities = result.capabilities
-  ls.nimSuggestInit = ls.initNimsuggestInstances(rootPath)
+  await ls.initNimsuggestInstances(rootPath)
 
 proc listTools*(
     ls: LanguageServer, params: McpListToolsParams
@@ -528,8 +528,6 @@ proc callTool*(
 ): Future[McpCallToolResult] {.async.} =
   debug "Call tool received...", name = params.name
 
-  await ls.nimsuggestInit
-  
   case params.name
   of "nimFindReferences":
     await callNimFindReferences(ls, params)

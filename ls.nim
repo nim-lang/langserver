@@ -163,7 +163,6 @@ type
     inlayHintsRefreshRequest*: Future[JsonNode]
     didChangeConfigurationRegistrationRequest*: Future[JsonNode]
     filesWithDiags*: HashSet[string]
-    nimsuggestInit*: Future[void]
     lastNimsuggest*: Future[Nimsuggest]
     childNimsuggestProcessesStopped*: bool
     isShutdown*: bool
@@ -277,14 +276,32 @@ proc getNimbleDumpInfo*(
     return ls.nimDumpCache.getOrDefault(nimbleFile)
   var process: AsyncProcessRef
   try:
+    # nimble dump expects no file argument — it reads the .nimble in its CWD.
+    # Passing an absolute path as an argument causes nimble to mangle it
+    # (prepend CWD, strip leading '/') and fail silently with empty output.
+    let workDir =
+      if nimbleFile == "": getCurrentDir()
+      else: nimbleFile.parentDir
+    
+    let nimbleDirEnv = getEnv("NIMBLE_DIR", "<not set>")
+    let homeEnv = getEnv("HOME", "<not set>")
+    let pathEnv = getEnv("PATH", "<not set>")
+    debug "getNimbleDumpInfo environment",
+      nimbleFile = nimbleFile,
+      workDir = workDir,
+      NIMBLE_DIR = nimbleDirEnv,
+      HOME = homeEnv,
+      PATH = pathEnv
     process = await startProcess(
       "nimble",
-      arguments = @["dump", nimbleFile],
+      workingDir = workDir,
+      arguments = @["dump"],
       options = {UsePath},
       stderrHandle = AsyncProcess.Pipe,
       stdoutHandle = AsyncProcess.Pipe,
     )
     let info = string.fromBytes(process.stdoutStream.read().await)
+    debug "getNimbleDumpInfo result ", info
 
     for line in info.splitLines:
       if line.startsWith("srcDir"):
@@ -299,9 +316,13 @@ proc getNimbleDumpInfo*(
         result.entryPoints =
           line[(1 + line.find '"') ..^ 2].split(',').mapIt(it.strip(chars = {' ', '"'}))
 
+    # Cache under the resolved path AND under "" so that repeated empty-string
+    # calls don't re-run the SAT solver on every nimsuggest spawn.
     var nimbleFile = nimbleFile
-    if nimbleFile == "" and result.nimblePath.isSome:
-      nimbleFile = result.nimblePath.get
+    if nimbleFile == "":
+      ls.nimDumpCache[""] = result
+      if result.nimblePath.isSome:
+        nimbleFile = result.nimblePath.get
     if nimbleFile != "":
       ls.nimDumpCache[nimbleFile] = result
   except OSError, IOError:
@@ -350,6 +371,26 @@ proc getAndWaitForWorkspaceConfiguration*(
   except CatchableError as ex:
     error "Failed to get workspace configuration", error = ex.msg
     writeStackTrace(ex)
+
+const CONFIG_WAIT_TIMEOUT_MS = 30_000
+const CONFIG_WAIT_POLL_MS = 50
+
+proc waitForWorkspaceConfiguration*(ls: LanguageServer): Future[NlsConfig] {.async.} =
+  ## Waits for workspace configuration with a 30-second fallback to defaults.
+  ## Safe to call from any async context; idempotent once config has arrived.
+  ## Polls rather than awaiting the shared future directly to avoid cancelling it.
+  if ls.workspaceConfiguration.finished:
+    return await ls.getWorkspaceConfiguration()
+  debug "Waiting for workspace configuration from client"
+  var elapsed = 0
+  while not ls.workspaceConfiguration.finished and elapsed < CONFIG_WAIT_TIMEOUT_MS:
+    await sleepAsync(CONFIG_WAIT_POLL_MS)
+    elapsed += CONFIG_WAIT_POLL_MS
+  if ls.workspaceConfiguration.finished:
+    debug "Workspace configuration received"
+  else:
+    warn "Workspace configuration not received within timeout, proceeding with defaults"
+  return await ls.getWorkspaceConfiguration()
 
 proc showMessage*(
     ls: LanguageServer, message: string, typ: MessageType
@@ -786,6 +827,16 @@ proc createOrRestartNimsuggest*(
   ls: LanguageServer, projectFile: string, uri = ""
 ) {.gcsafe, raises: [].}
 
+proc shouldSpawnNimsuggest*(ls: LanguageServer): Future[bool] {.async.} =
+  # Count ALL projectFiles entries (including projects still starting), not just
+  # finished ones — otherwise concurrent didOpen tasks all see count=0 and all spawn.
+  let nsCount = ls.projectFiles.len
+  let conf = await ls.getWorkspaceConfiguration
+  let maxNimsuggestProcesses = conf.maxNimsuggestProcesses.get(NIM_MAX_NS_PROCESSES)
+  result = maxNimsuggestProcesses == 0 or nsCount < maxNimsuggestProcesses
+  debug "shouldSpawnNimsuggest",
+    result = result, nsCount = nsCount, maxNimsuggestProcesses = maxNimsuggestProcesses
+
 proc initNimsuggestInstances*(ls: LanguageServer, rootPath: string) {.async.} =
   if rootPath == "":
     return
@@ -793,22 +844,34 @@ proc initNimsuggestInstances*(ls: LanguageServer, rootPath: string) {.async.} =
   let nimbleFiles = walkFiles(rootPath / "*.nimble").toSeq
   if nimbleFiles.len > 0:
     let nimbleFile = nimbleFiles[0]
+    debug "Starting nimble dump for  ", nimbleFile
     let nimbleDumpInfo = await ls.getNimbleDumpInfo(nimbleFile)
     ls.entryPoints = nimbleDumpInfo.getNimbleEntryPoints(rootPath)
+    
+    debug "Finished nimble dump for  ", nimbleFile
     for entryPoint in ls.entryPoints:
       debug "Starting nimsuggest for entry point ", entry = entryPoint
       if entryPoint notin ls.projectFiles:
-        ls.createOrRestartNimsuggest(entryPoint)
+        let shouldSpawn = await ls.shouldSpawnNimsuggest()
+        if shouldSpawn:
+          ls.createOrRestartNimsuggest(entryPoint)
+        else:
+          debug "Limit reached, skipping entry point", entryPoint = entryPoint
+          break
 
 proc getNimsuggestInner(ls: LanguageServer, uri: string): Future[Nimsuggest] {.async.} =
   assert uri in ls.openFiles, "File not open"
 
   let projectFile = await ls.openFiles[uri].projectFile
   if not ls.projectFiles.hasKey(projectFile):
-    debug "Creating new nimsuggest instance", uri = uri, projectFile = projectFile
-    ls.createOrRestartNimsuggest(projectFile, uri)
-    # Wait a bit to allow nimsuggest to start
-    await sleepAsync(10)
+    let shouldSpawn = await ls.shouldSpawnNimsuggest()
+    if shouldSpawn:
+      debug "Creating new nimsuggest instance", uri = uri, projectFile = projectFile
+      ls.createOrRestartNimsuggest(projectFile, uri)
+      # Wait a bit to allow nimsuggest to start
+      await sleepAsync(10)
+    else:
+      debug "Limit reached, reusing existing nimsuggest", uri = uri
 
   const MaxFails = 10
   if projectFile in ls.failTable and ls.failTable[projectFile] >= MaxFails:
@@ -820,11 +883,13 @@ proc getNimsuggestInner(ls: LanguageServer, uri: string): Future[Nimsuggest] {.a
     else:
       return nil
 
-  # Check multiple times with small delays
+  # Check multiple times with small delays.
+  # Skip entries whose ns is still pending (sentinel from createOrRestartNimsuggest).
   var attempts = 0
   const maxAttempts = 10
   while attempts < maxAttempts:
-    if projectFile in ls.projectFiles:
+    if projectFile in ls.projectFiles and
+        ls.projectFiles[projectFile].ns.finished:
       ls.lastNimsuggest = ls.projectFiles[projectFile].ns
       return await ls.projectFiles[projectFile].ns
 
@@ -846,6 +911,9 @@ proc checkFile*(ls: LanguageServer, uri: string): Future[void] {.raises: [], gcs
 proc didCloseFile*(ls: LanguageServer, uri: string): Future[void] {.async.} =
   debug "Closed the following document:", uri = uri
 
+  if uri notin ls.openFiles:
+    return
+
   if ls.openFiles[uri].changed:
     # check the file if it is closed but not saved.
     traceAsyncErrors ls.checkFile(uri)
@@ -861,10 +929,74 @@ proc makeIdleFile*(ls: LanguageServer, file: NlsFileInfo): Future[void] {.async.
 
 proc getProjectFile*(fileUri: string, ls: LanguageServer): Future[string] {.async.}
 
+proc didRenameFile*(
+    ls: LanguageServer, oldUri, newUri: string
+): Future[void] {.async.} =
+  debug "File renamed", oldUri = oldUri, newUri = newUri
+
+  # Move the stash file so any pending content checks use the right path
+  let oldStash = ls.uriStorageLocation(oldUri)
+  let newStash = ls.uriStorageLocation(newUri)
+  if oldStash.fileExists:
+    try:
+      moveFile(oldStash, newStash)
+    except Exception as e:
+      debug "Failed to move stash file on rename", oldStash = oldStash, newStash = newStash, msg = e.msg
+
+  # If a .nimble file was renamed, invalidate its dump cache entry
+  let oldPath = uriToPath(oldUri)
+  if oldPath.endsWith(".nimble"):
+    ls.nimDumpCache.del(oldPath)
+    ls.nimDumpCache.del(uriToPath(newUri))
+
+  # If the file is currently open, migrate its entry to the new URI
+  if oldUri in ls.openFiles:
+    let oldInfo = ls.openFiles[oldUri]
+    let oldProjectFile = await oldInfo.projectFile
+    let newProjectFile = await getProjectFile(uriToPath(newUri), ls)
+
+    let newFut = newFuture[string]("rename")
+    newFut.complete(newProjectFile)
+    ls.openFiles[newUri] = NlsFileInfo(
+      projectFile: newFut,
+      changed: oldInfo.changed,
+      fingerTable: oldInfo.fingerTable,
+      textDocument: TextDocumentItem(
+        uri: newUri,
+        languageId: oldInfo.textDocument.languageId,
+        version: oldInfo.textDocument.version,
+        text: oldInfo.textDocument.text,
+      ),
+    )
+    ls.openFiles.del(oldUri)
+
+    # If the file moved to a different project, ensure nimsuggest is running for it
+    if newProjectFile != oldProjectFile and newProjectFile notin ls.projectFiles:
+      let shouldSpawn = await ls.shouldSpawnNimsuggest()
+      if shouldSpawn:
+        ls.createOrRestartNimsuggest(newProjectFile, newUri)
+
 proc didOpenFile*(
     ls: LanguageServer, textDocument: TextDocumentItem
 ): Future[void] {.async.} =
   with textDocument:
+    if uri in ls.openFiles:
+      # Already tracked — this didOpen arrived after a didRenameFiles that
+      # already migrated the entry to this URI. Nothing to do.
+      debug "didOpenFile: URI already tracked (post-rename), skipping", uri = uri
+      return
+
+    # Wait for config before getProjectFile so projectMapping and
+    # maxNimsuggestProcesses are available when the project file is resolved.
+    discard await ls.waitForWorkspaceConfiguration()
+
+    # Re-check after the await: a concurrent didOpen or didRenameFile may have
+    # inserted this URI while we were waiting for configuration.
+    if uri in ls.openFiles:
+      debug "didOpenFile: URI tracked after config wait (concurrent open), skipping",
+        uri = uri
+      return
+
     debug "New document opened for URI:", uri = uri
     let
       file = open(ls.uriStorageLocation(uri), fmWrite)
@@ -884,8 +1016,17 @@ proc didOpenFile*(
     debug "Document associated with the following projectFile",
       uri = uri, projectFile = projectFile
     if not ls.projectFiles.hasKey(projectFile):
-      debug "Will create nimsuggest for this file", uri = uri
-      ls.createOrRestartNimsuggest(projectFile, uri)
+      let shouldSpawn = await ls.shouldSpawnNimsuggest()
+      if shouldSpawn:
+        debug "Will create nimsuggest for this file", uri = uri
+        ls.createOrRestartNimsuggest(projectFile, uri)
+      elif ls.projectFiles.len > 0 and uri in ls.openFiles:
+        let reused = ls.projectFiles.keys.toSeq[0]
+        debug "Limit reached in didOpenFile, reusing nimsuggest",
+          uri = uri, reused = reused
+        let f = newFuture[string]("reuse")
+        f.complete(reused)
+        ls.openFiles[uri].projectFile = f
 
     for line in text.splitLines:
       if uri in ls.openFiles:
@@ -1056,11 +1197,46 @@ proc onErrorCallback(args: (LanguageServer, string), project: Project) =
       )
       ls.sendStatusChanged()
 
+proc findNimblePaths(fromFile: string): seq[string] =
+  ## Walk up from fromFile's directory looking for nimble.paths.
+  ## Returns the flags it contains (--noNimblePath and --path:... entries)
+  ## with any surrounding quotes stripped, ready to pass directly to nimsuggest.
+  var dir = fromFile.parentDir
+  while dir.len > 0:
+    let pathsFile = dir / "nimble.paths"
+    if pathsFile.fileExists:
+      debug "Found nimble.paths for nimsuggest", path = pathsFile
+      for line in pathsFile.lines:
+        let trimmed = line.strip()
+        if trimmed.len == 0:
+          continue
+        if trimmed.startsWith("--path:"):
+          # nimble.paths wraps paths in quotes: --path:"/foo/bar"
+          # Strip them so the arg is passed cleanly to nimsuggest.
+          let val = trimmed[7 .. ^1]
+          if val.len >= 2 and val[0] == '"' and val[^1] == '"':
+            result.add("--path:" & val[1 .. ^2])
+          else:
+            result.add(trimmed)
+        else:
+          result.add(trimmed)
+      return
+    let parent = dir.parentDir
+    if parent == dir:
+      break
+    dir = parent
+
 proc createOrRestartNimsuggest*(
     ls: LanguageServer, projectFile: string, uri = ""
 ) {.gcsafe, raises: [].} =
   try:
     debug "Starting createOrRestartNimsuggest", projectFile = projectFile, uri = uri
+    # Reserve the slot immediately so concurrent shouldSpawnNimsuggest checks see it.
+    # The sentinel has a pending ns future; getNimsuggestInner skips pending entries
+    # and retries until the real project replaces this sentinel.
+    if projectFile notin ls.projectFiles:
+      ls.projectFiles[projectFile] =
+        Project(file: projectFile, ns: newFuture[Nimsuggest]("pending"))
     let
       configuration = ls.getWorkspaceConfiguration().waitFor()
       workingDir = ls.getWorkingDir(projectFile).waitFor()
@@ -1078,7 +1254,9 @@ proc createOrRestartNimsuggest*(
         ls.sendStatusChanged()
       errorCallback = partial(onErrorCallback, (ls, uri))
 
-    debug "Creating new nimsuggest project", projectFile = projectFile
+    let nimPaths = findNimblePaths(projectFile)
+    debug "Creating new nimsuggest project",
+      projectFile = projectFile, nimPathCount = nimPaths.len
 
     let projectNext = waitFor createNimsuggest(
       projectFile,
@@ -1090,6 +1268,7 @@ proc createOrRestartNimsuggest*(
       workingDir,
       configuration.logNimsuggest.get(false),
       configuration.exceptionHintsEnabled,
+      nimPaths,
     )
 
     if projectFile in ls.projectFiles:
@@ -1200,14 +1379,6 @@ proc stopNimsuggestProcesses*(ls: LanguageServer) {.async.} =
 proc stopNimsuggestProcessesP*(ls: LanguageServer) =
   waitFor stopNimsuggestProcesses(ls)
 
-proc shouldSpawnNimsuggest*(ls: LanguageServer): Future[bool] {.async.} =
-  let nsCount = ls.getLspStatus().nimsuggestInstances.len
-  let conf = await ls.getWorkspaceConfiguration
-  let maxNimsuggestProcesses = conf.maxNimsuggestProcesses.get(NIM_MAX_NS_PROCESSES)
-  result = maxNimsuggestProcesses == 0 or nsCount < maxNimsuggestProcesses
-  debug "shouldSpawnNimsuggest",
-    result = result, nsCount = nsCount, maxNimsuggestProcesses = maxNimsuggestProcesses
-
 proc getProjectFile*(fileUri: string, ls: LanguageServer): Future[string] {.async.} =
   let
     rootPath =
@@ -1230,6 +1401,11 @@ proc getProjectFile*(fileUri: string, ls: LanguageServer): Future[string] {.asyn
       if fileExists(result):
         trace "getProjectFile?",
           project = result, uri = fileUri, matchedRegex = mapping.fileRegex
+        let shouldSpawn = await ls.shouldSpawnNimsuggest()
+        if not shouldSpawn:
+          result = ls.projectFiles.keys.toSeq[0]
+          debug "Reached the maximum instances of nimsuggest (mapping), reusing first instance",
+            project = result
         return result
     else:
       trace "getProjectFile does not match",
@@ -1274,6 +1450,7 @@ proc checkFile*(ls: LanguageServer, uri: string): Future[void] {.async.} =
 
   let ns = await ls.tryGetNimsuggest(uri)
   if ns.isSome:
+    discard await ns.get().changed(path, ls.uriToStash(uri))
     let diagnostics = ns.get().chkFile(path, ls.uriToStash(uri)).await()
     ls.progress(token, "end")
     ls.sendDiagnostics(diagnostics, path)

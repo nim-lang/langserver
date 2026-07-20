@@ -73,7 +73,21 @@ proc initialize*(
       hoverProvider: some(true),
       workspace: some(
         ServerCapabilities_workspace(
-          workspaceFolders: some(WorkspaceFoldersServerCapabilities())
+          workspaceFolders: some(WorkspaceFoldersServerCapabilities()),
+          fileOperations: some(
+            ServerCapabilities_workspace_fileOperations(
+              didRename: some(
+                FileOperationRegistrationOptions(
+                  filters: @[
+                    FileOperationFilter(
+                      scheme: some("file"),
+                      pattern: FileOperationPattern(glob: "**/*.nim"),
+                    )
+                  ]
+                )
+              )
+            )
+          ),
         )
       ),
       completionProvider:
@@ -105,14 +119,10 @@ proc initialize*(
     if docCaps.rename.isSome and docCaps.rename.get().prepareSupport.get(false):
       result.capabilities.renameProvider = %*{"prepareProvider": true}
 
-  debug "Initialize completed. Trying to start nimsuggest instances"
+  debug "Initialize completed. Nimsuggest instances will start after configuration arrives."
 
-  let
-    ls = p.ls
-    rootPath = ls.lspInitializeParams.getRootPath
-
+  let ls = p.ls
   ls.lspServerCapabilities = result.capabilities
-  ls.nimSuggestInit = ls.initNimsuggestInstances(rootPath)
 
 proc toCompletionItem(suggest: Suggest): CompletionItem =
   with suggest:
@@ -807,6 +817,15 @@ proc exit*(
 proc startNimbleProcess(
     ls: LanguageServer, args: seq[string]
 ): Future[AsyncProcessRef] {.async.} =
+  let nimbleDirEnv = getEnv("NIMBLE_DIR", "<not set>")
+  let homeEnv = getEnv("HOME", "<not set>")
+  let pathEnv = getEnv("PATH", "<not set>")
+  debug "startNimbleProcess environment",
+    args = args,
+    workingDir = ls.lspInitializeParams.getRootPath,
+    NIMBLE_DIR = nimbleDirEnv,
+    HOME = homeEnv,
+    PATH = pathEnv
   await startProcess(
     "nimble",
     arguments = args,
@@ -819,6 +838,9 @@ proc startNimbleProcess(
 proc tasks*(ls: LanguageServer, conf: JsonNode): Future[seq[NimbleTask]] {.async.} =
   let rootPath: string = ls.lspInitializeParams.getRootPath
   debug "Received tasks ", rootPath = rootPath
+  debug "tasks: deleting NIMBLE_DIR before nimble tasks",
+    NIMBLE_DIR_before = getEnv("NIMBLE_DIR", "<not set>"),
+    HOME = getEnv("HOME", "<not set>")
   delEnv "NIMBLE_DIR"
   let process = await ls.startNimbleProcess(@["tasks"])
   let res =
@@ -901,6 +923,9 @@ proc initialized*(ls: LanguageServer, _: JsonNode): Future[void] {.async.} =
   debug "Client initialized."
   maybeRegisterCapabilityDidChangeConfiguration(ls)
   maybeRequestConfigurationFromClient(ls)
+  discard await ls.waitForWorkspaceConfiguration()
+  let rootPath = ls.lspInitializeParams.getRootPath
+  await ls.initNimsuggestInstances(rootPath)
 
 proc cancelRequest*(ls: LanguageServer, params: CancelParams): Future[void] {.async.} =
   if params.id.isSome:
@@ -1004,8 +1029,13 @@ proc didClose*(
 proc didOpen*(
     ls: LanguageServer, params: DidOpenTextDocumentParams
 ): Future[void] {.async.} =
-  await ls.nimsuggestInit
   await ls.didOpenFile(params.textDocument)
+
+proc didRenameFiles*(
+    ls: LanguageServer, params: RenameFilesParams
+): Future[void] {.async.} =
+  for rename in params.files:
+    await ls.didRenameFile(rename.oldUri, rename.newUri)
 
 proc didChangeConfiguration*(
     ls: LanguageServer, conf: JsonNode
