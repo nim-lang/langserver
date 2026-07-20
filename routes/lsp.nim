@@ -107,12 +107,10 @@ proc initialize*(
 
   debug "Initialize completed. Trying to start nimsuggest instances"
 
-  let
-    ls = p.ls
-    rootPath = ls.lspInitializeParams.getRootPath
-
+  let ls = p.ls
   ls.lspServerCapabilities = result.capabilities
-  ls.nimSuggestInit = ls.initNimsuggestInstances(rootPath)
+  let rootPath = ls.lspInitializeParams.getRootPath
+  await ls.initNimsuggestInstances(rootPath)
 
 proc toCompletionItem(suggest: Suggest): CompletionItem =
   with suggest:

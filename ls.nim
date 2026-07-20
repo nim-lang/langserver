@@ -163,7 +163,6 @@ type
     inlayHintsRefreshRequest*: Future[JsonNode]
     didChangeConfigurationRegistrationRequest*: Future[JsonNode]
     filesWithDiags*: HashSet[string]
-    nimsuggestInit*: Future[void]
     lastNimsuggest*: Future[Nimsuggest]
     childNimsuggestProcessesStopped*: bool
     isShutdown*: bool
@@ -850,11 +849,13 @@ proc getNimsuggestInner(ls: LanguageServer, uri: string): Future[Nimsuggest] {.a
     else:
       return nil
 
-  # Check multiple times with small delays
+  # Check multiple times with small delays.
+  # Skip entries whose ns is still pending (sentinel from createOrRestartNimsuggest).
   var attempts = 0
   const maxAttempts = 10
   while attempts < maxAttempts:
-    if projectFile in ls.projectFiles:
+    if projectFile in ls.projectFiles and
+        ls.projectFiles[projectFile].ns.finished:
       ls.lastNimsuggest = ls.projectFiles[projectFile].ns
       return await ls.projectFiles[projectFile].ns
 
@@ -914,8 +915,17 @@ proc didOpenFile*(
     debug "Document associated with the following projectFile",
       uri = uri, projectFile = projectFile
     if not ls.projectFiles.hasKey(projectFile):
-      debug "Will create nimsuggest for this file", uri = uri
-      ls.createOrRestartNimsuggest(projectFile, uri)
+      let shouldSpawn = await ls.shouldSpawnNimsuggest()
+      if shouldSpawn:
+        debug "Will create nimsuggest for this file", uri = uri
+        ls.createOrRestartNimsuggest(projectFile, uri)
+      elif ls.projectFiles.len > 0 and uri in ls.openFiles:
+        let reused = ls.projectFiles.keys.toSeq[0]
+        debug "Limit reached in didOpenFile, reusing nimsuggest",
+          uri = uri, reused = reused
+        let f = newFuture[string]("reuse")
+        f.complete(reused)
+        ls.openFiles[uri].projectFile = f
 
     for line in text.splitLines:
       if uri in ls.openFiles:
@@ -1091,6 +1101,12 @@ proc createOrRestartNimsuggest*(
 ) {.gcsafe, raises: [].} =
   try:
     debug "Starting createOrRestartNimsuggest", projectFile = projectFile, uri = uri
+    # Reserve the slot immediately so concurrent shouldSpawnNimsuggest checks see it.
+    # The sentinel has a pending ns future; getNimsuggestInner skips pending entries
+    # and retries until the real project replaces this sentinel.
+    if projectFile notin ls.projectFiles:
+      ls.projectFiles[projectFile] =
+        Project(file: projectFile, ns: newFuture[Nimsuggest]("pending"))
     let
       configuration = ls.getWorkspaceConfiguration().waitFor()
       workingDir = ls.getWorkingDir(projectFile).waitFor()
