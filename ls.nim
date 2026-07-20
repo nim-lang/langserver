@@ -277,9 +277,16 @@ proc getNimbleDumpInfo*(
     return ls.nimDumpCache.getOrDefault(nimbleFile)
   var process: AsyncProcessRef
   try:
+    # nimble dump expects no file argument — it reads the .nimble in its CWD.
+    # Passing an absolute path as an argument causes nimble to mangle it
+    # (prepend CWD, strip leading '/') and fail silently with empty output.
+    let workDir =
+      if nimbleFile == "": getCurrentDir()
+      else: nimbleFile.parentDir
     process = await startProcess(
       "nimble",
-      arguments = @["dump", nimbleFile],
+      workingDir = workDir,
+      arguments = @["dump"],
       options = {UsePath},
       stderrHandle = AsyncProcess.Pipe,
       stdoutHandle = AsyncProcess.Pipe,
@@ -299,9 +306,13 @@ proc getNimbleDumpInfo*(
         result.entryPoints =
           line[(1 + line.find '"') ..^ 2].split(',').mapIt(it.strip(chars = {' ', '"'}))
 
+    # Cache under the resolved path AND under "" so that repeated empty-string
+    # calls don't re-run the SAT solver on every nimsuggest spawn.
     var nimbleFile = nimbleFile
-    if nimbleFile == "" and result.nimblePath.isSome:
-      nimbleFile = result.nimblePath.get
+    if nimbleFile == "":
+      ls.nimDumpCache[""] = result
+      if result.nimblePath.isSome:
+        nimbleFile = result.nimblePath.get
     if nimbleFile != "":
       ls.nimDumpCache[nimbleFile] = result
   except OSError, IOError:
