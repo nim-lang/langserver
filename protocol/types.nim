@@ -640,10 +640,17 @@ type
 
   FileOperationFilter* = ref object of RootObj
     scheme*: Option[string]
-    pattern: FileOperationPattern
+    pattern*: FileOperationPattern
 
   FileOperationRegistrationOptions* = ref object of RootObj
     filters*: seq[FileOperationFilter]
+
+  FileRename* = ref object of RootObj
+    oldUri*: string
+    newUri*: string
+
+  RenameFilesParams* = ref object of RootObj
+    files*: seq[FileRename]
 
   ServerCapabilities_workspace_fileOperations* = ref object of RootObj
     didCreate*: Option[FileOperationRegistrationOptions]
@@ -655,7 +662,7 @@ type
 
   ServerCapabilities_workspace* = ref object of RootObj
     workspaceFolders*: Option[WorkspaceFoldersServerCapabilities]
-    #!!!!!!!fileOperations*: Option[ServerCapabilities_workspace_fileOperations]
+    fileOperations*: Option[ServerCapabilities_workspace_fileOperations]
 
   TextDocumentRegistrationOptions* = ref object of RootObj
     documentSelector*: OptionalSeq[DocumentFilter]

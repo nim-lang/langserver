@@ -73,7 +73,21 @@ proc initialize*(
       hoverProvider: some(true),
       workspace: some(
         ServerCapabilities_workspace(
-          workspaceFolders: some(WorkspaceFoldersServerCapabilities())
+          workspaceFolders: some(WorkspaceFoldersServerCapabilities()),
+          fileOperations: some(
+            ServerCapabilities_workspace_fileOperations(
+              didRename: some(
+                FileOperationRegistrationOptions(
+                  filters: @[
+                    FileOperationFilter(
+                      scheme: some("file"),
+                      pattern: FileOperationPattern(glob: "**/*.nim"),
+                    )
+                  ]
+                )
+              )
+            )
+          ),
         )
       ),
       completionProvider:
@@ -1003,6 +1017,12 @@ proc didOpen*(
     ls: LanguageServer, params: DidOpenTextDocumentParams
 ): Future[void] {.async.} =
   await ls.didOpenFile(params.textDocument)
+
+proc didRenameFiles*(
+    ls: LanguageServer, params: RenameFilesParams
+): Future[void] {.async.} =
+  for rename in params.files:
+    await ls.didRenameFile(rename.oldUri, rename.newUri)
 
 proc didChangeConfiguration*(
     ls: LanguageServer, conf: JsonNode

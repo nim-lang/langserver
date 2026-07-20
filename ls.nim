@@ -877,6 +877,9 @@ proc checkFile*(ls: LanguageServer, uri: string): Future[void] {.raises: [], gcs
 proc didCloseFile*(ls: LanguageServer, uri: string): Future[void] {.async.} =
   debug "Closed the following document:", uri = uri
 
+  if uri notin ls.openFiles:
+    return
+
   if ls.openFiles[uri].changed:
     # check the file if it is closed but not saved.
     traceAsyncErrors ls.checkFile(uri)
@@ -892,10 +895,62 @@ proc makeIdleFile*(ls: LanguageServer, file: NlsFileInfo): Future[void] {.async.
 
 proc getProjectFile*(fileUri: string, ls: LanguageServer): Future[string] {.async.}
 
+proc didRenameFile*(
+    ls: LanguageServer, oldUri, newUri: string
+): Future[void] {.async.} =
+  debug "File renamed", oldUri = oldUri, newUri = newUri
+
+  # Move the stash file so any pending content checks use the right path
+  let oldStash = ls.uriStorageLocation(oldUri)
+  let newStash = ls.uriStorageLocation(newUri)
+  if oldStash.fileExists:
+    try:
+      moveFile(oldStash, newStash)
+    except Exception as e:
+      debug "Failed to move stash file on rename", oldStash = oldStash, newStash = newStash, msg = e.msg
+
+  # If a .nimble file was renamed, invalidate its dump cache entry
+  let oldPath = uriToPath(oldUri)
+  if oldPath.endsWith(".nimble"):
+    ls.nimDumpCache.del(oldPath)
+    ls.nimDumpCache.del(uriToPath(newUri))
+
+  # If the file is currently open, migrate its entry to the new URI
+  if oldUri in ls.openFiles:
+    let oldInfo = ls.openFiles[oldUri]
+    let oldProjectFile = await oldInfo.projectFile
+    let newProjectFile = await getProjectFile(uriToPath(newUri), ls)
+
+    let newFut = newFuture[string]("rename")
+    newFut.complete(newProjectFile)
+    ls.openFiles[newUri] = NlsFileInfo(
+      projectFile: newFut,
+      changed: oldInfo.changed,
+      fingerTable: oldInfo.fingerTable,
+      textDocument: TextDocumentItem(
+        uri: newUri,
+        languageId: oldInfo.textDocument.languageId,
+        version: oldInfo.textDocument.version,
+        text: oldInfo.textDocument.text,
+      ),
+    )
+    ls.openFiles.del(oldUri)
+
+    # If the file moved to a different project, ensure nimsuggest is running for it
+    if newProjectFile != oldProjectFile and newProjectFile notin ls.projectFiles:
+      let shouldSpawn = await ls.shouldSpawnNimsuggest()
+      if shouldSpawn:
+        ls.createOrRestartNimsuggest(newProjectFile, newUri)
+
 proc didOpenFile*(
     ls: LanguageServer, textDocument: TextDocumentItem
 ): Future[void] {.async.} =
   with textDocument:
+    if uri in ls.openFiles:
+      # Already tracked — this didOpen arrived after a didRenameFiles that
+      # already migrated the entry to this URI. Nothing to do.
+      debug "didOpenFile: URI already tracked (post-rename), skipping", uri = uri
+      return
     debug "New document opened for URI:", uri = uri
     let
       file = open(ls.uriStorageLocation(uri), fmWrite)
