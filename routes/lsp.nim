@@ -1010,7 +1010,7 @@ proc didOpen*(
 proc didChangeConfiguration*(
     ls: LanguageServer, conf: JsonNode
 ): Future[void] {.async.} =
-  debug "Changed configuration: ", conf = conf
+  debug "Changed configuration: ", conf = $conf
   if ls.usePullConfigurationModel:
     ls.maybeRequestConfigurationFromClient
   else:

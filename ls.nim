@@ -279,7 +279,8 @@ proc getNimbleDumpInfo*(
   try:
     process = await startProcess(
       "nimble",
-      arguments = @["dump", nimbleFile],
+      workingDir = nimbleFile.parentDir(),
+      arguments = @["dump"],
       options = {UsePath},
       stderrHandle = AsyncProcess.Pipe,
       stdoutHandle = AsyncProcess.Pipe,
@@ -1097,7 +1098,7 @@ proc createOrRestartNimsuggest*(
       project.stop()
     ls.projectFiles[projectFile] = projectNext
 
-    projectNext.ns.addCallback do(fut: Future[Nimsuggest]):
+    projectNext.ns.addCallback do(fut: Future[Nimsuggest]) {.gcsafe.}:
       if fut.failed:
         let msg = fut.error.msg
         error "Nimsuggest initialization failed", projectFile = projectFile, error = msg
@@ -1141,7 +1142,7 @@ proc maybeRegisterCapabilityDidChangeConfiguration*(ls: LanguageServer) =
       gcsafe
     .}:
       debug "Got response for the didChangeConfiguration registration:",
-        res = res.read()
+        res = $res.read()
 
 proc handleConfigurationChanges*(
     ls: LanguageServer, oldConfiguration, newConfiguration: NlsConfig
@@ -1165,10 +1166,12 @@ proc maybeRequestConfigurationFromClient*(ls: LanguageServer) =
     ls.prevWorkspaceConfiguration = ls.workspaceConfiguration
 
     ls.workspaceConfiguration = ls.call("workspace/configuration", %configurationParams)
-    ls.workspaceConfiguration.addCallback do(futConfiguration: Future[JsonNode]):
+    ls.workspaceConfiguration.addCallback do(futConfiguration: Future[JsonNode]) {.
+      gcsafe
+    .}:
       if futConfiguration.error.isNil:
         debug "Received the following configuration",
-          configuration = futConfiguration.read()
+          configuration = $futConfiguration.read()
         if not isNil(ls.prevWorkspaceConfiguration) and
             ls.prevWorkspaceConfiguration.finished:
           let
