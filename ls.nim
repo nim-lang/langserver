@@ -25,6 +25,9 @@ import
   chronos/asyncproc,
   stew/byteutils
 
+chronicles.formatIt(JsonNode):
+  $it
+
 proc getVersionFromNimble(): string =
   #We should static run nimble dump instead
   const content = staticRead("nimlangserver.nimble")
