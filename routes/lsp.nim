@@ -921,7 +921,7 @@ proc runTests*(
 ): Future[RunTestProjectResult] {.async.} =
   let config = await ls.getWorkspaceConfiguration()
   let workspaceRoot = ls.lspInitializeParams.getRootPath
-  let nimPath = ls.getNimPath(config, workspaceRoot)
+  let nimPath = await ls.getNimPath(config, workspaceRoot)
   if nimPath.isNone:
     error "Nim path not found when running tests"
     return RunTestProjectResult()
