@@ -510,10 +510,15 @@ proc getNimVersion(nimDir: string): string =
 proc getNimSuggestPathAndVersion(
     ls: LanguageServer, conf: NlsConfig, workingDir: string
 ): Future[(string, string)] {.async.} =
-  #Attempting to see if the project is using a custom Nim version, if it's the case this will be slower than usual
-  let nimbleDumpInfo = await ls.getNimbleDumpInfo("")
-  let nimDir = nimbleDumpInfo.nimDir.get ""
+  let nimbleFiles = walkFiles(workingDir / "*.nimble").toSeq
 
+  let nimbleDumpInfo =
+    if nimbleFiles.len > 0:
+      await ls.getNimbleDumpInfo(nimbleFiles[0])
+    else:
+      await ls.getNimbleDumpInfo("")
+
+  let nimDir = nimbleDumpInfo.nimDir.get ""
   var nimsuggestPath = expandTilde(conf.nimsuggestPath.get(""))
   var nimVersion = ""
   if nimsuggestPath == "":
