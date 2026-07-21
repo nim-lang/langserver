@@ -529,11 +529,19 @@ proc getNimSuggestPathAndVersion(
   debug "Using {nimVersion}", nimVersion = nimVersion
   (nimsuggestPath, nimVersion)
 
-proc getNimPath*(conf: NlsConfig): Option[string] =
+proc getNimPath*(
+    ls: LanguageServer, conf: NlsConfig, workingDir = ""
+): Future[Option[string]] {.async.} =
   if conf.nimSuggestPath.isSome and conf.nimsuggestPath.get().fileExists():
     some(conf.nimSuggestPath.get.parentDir / "nim")
   else:
-    let path = findExe "nim"
+    let (nimsuggestPath, _) = await ls.getNimSuggestPathAndVersion(conf, workingDir)
+    let path =
+      if nimsuggestPath.fileExists():
+        nimsuggestPath.parentDir / "nim"
+      else:
+        findExe "nim"
+
     if path != "":
       some(path)
     else:
