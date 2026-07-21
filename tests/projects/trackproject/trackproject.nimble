@@ -8,4 +8,4 @@ srcDir = "src"
 
 # Dependencies
 
-requires "nim#head", "unittest2"
+requires "nim#head"
