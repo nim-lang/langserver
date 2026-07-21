@@ -612,7 +612,7 @@ proc getRootPath*(ip: LspInitializeParams): string =
 proc getRootPath*(ip: McpInitializeParams): string =
   getCurrentDir().pathToUri.uriToPath
 
-proc getWorkingDir(ls: LanguageServer, path: string): Future[string] {.async.} =
+proc getWorkingDir*(ls: LanguageServer, path: string): Future[string] {.async.} =
   let rootPath =
     case ls.serverMode
     of lsp: ls.lspInitializeParams.getRootPath
