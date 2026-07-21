@@ -24,8 +24,11 @@ proc parseTrackOutput(raw: string): seq[Suggest] =
     )
 
 proc track*(
-    projectFile, file: string, line, col: int, mode: TrackMode,
-    nimPath = "nim", timeout = REQUEST_TIMEOUT
+    projectFile, file: string,
+    line, col: int,
+    mode: TrackMode,
+    nimPath = "nim",
+    timeout = REQUEST_TIMEOUT,
 ): Future[seq[Suggest]] {.async.} =
   let
     workingDir = projectFile.parentDir()

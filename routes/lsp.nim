@@ -169,9 +169,17 @@ proc definition*(
       if nimPath.isNone:
         return @[]
       let timeout = config.timeout.get(REQUEST_TIMEOUT)
-      result = (await track(projectFile, uriToPath(uri), line + 1, ch.get, tmDef,
-                            nimPath = nimPath.get, timeout = timeout))
-        .map(x => x.toUtf16Pos(ls).toLocation)
+      result = (
+        await track(
+          projectFile,
+          uriToPath(uri),
+          line + 1,
+          ch.get,
+          tmDef,
+          nimPath = nimPath.get,
+          timeout = timeout,
+        )
+      ).map(x => x.toUtf16Pos(ls).toLocation)
       return
     let ns = await ls.tryGetNimsuggest(uri)
     if ns.isNone:
@@ -461,8 +469,15 @@ proc references*(
       if nimPath.isNone:
         return @[]
       let timeout = config.timeout.get(REQUEST_TIMEOUT)
-      let refs = await track(projectFile, uriToPath(uri), line + 1, ch.get, mode,
-                             nimPath = nimPath.get, timeout = timeout)
+      let refs = await track(
+        projectFile,
+        uriToPath(uri),
+        line + 1,
+        ch.get,
+        mode,
+        nimPath = nimPath.get,
+        timeout = timeout,
+      )
       result = refs
         .filter(suggest => suggest.section != ideDef or includeDeclaration)
         .map(x => x.toUtf16Pos(ls).toLocation)

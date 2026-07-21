@@ -235,8 +235,15 @@ proc callNimFindReferences(
         isError: true,
       )
     let timeout = config.timeout.get(REQUEST_TIMEOUT)
-    let refs = await track(projectFile, path, line, column, tmUsages,
-                           nimPath = nimPath.get, timeout = timeout)
+    let refs = await track(
+      projectFile,
+      path,
+      line,
+      column,
+      tmUsages,
+      nimPath = nimPath.get,
+      timeout = timeout,
+    )
 
     var usageReferencesJson = newJArray()
     for reference in refs:
