@@ -165,10 +165,11 @@ proc definition*(
       if ch.isNone:
         return @[]
       let projectFile = await ls.openFiles[uri].projectFile
-      let nimPath = config.getNimPath()
+      let timeout = config.timeout.get(REQUEST_TIMEOUT)
+      let workingDir = await ls.getWorkingDir(projectFile)
+      let nimPath = await ls.getNimPath(config, workingDir)
       if nimPath.isNone:
         return @[]
-      let timeout = config.timeout.get(REQUEST_TIMEOUT)
       result = (
         await track(
           projectFile,
@@ -177,6 +178,7 @@ proc definition*(
           ch.get,
           tmDef,
           nimPath = nimPath.get,
+          workingDir = workingDir,
           timeout = timeout,
         )
       ).map(x => x.toUtf16Pos(ls).toLocation)
@@ -465,10 +467,11 @@ proc references*(
         return @[]
       let projectFile = await ls.openFiles[uri].projectFile
       let mode = if includeDeclaration: tmDefUsages else: tmUsages
-      let nimPath = config.getNimPath()
+      let timeout = config.timeout.get(REQUEST_TIMEOUT)
+      let workingDir = await ls.getWorkingDir(projectFile)
+      let nimPath = await ls.getNimPath(config, workingDir)
       if nimPath.isNone:
         return @[]
-      let timeout = config.timeout.get(REQUEST_TIMEOUT)
       let refs = await track(
         projectFile,
         uriToPath(uri),
@@ -476,6 +479,7 @@ proc references*(
         ch.get,
         mode,
         nimPath = nimPath.get,
+        workingDir = workingDir,
         timeout = timeout,
       )
       result = refs

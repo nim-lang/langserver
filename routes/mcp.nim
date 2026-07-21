@@ -228,13 +228,14 @@ proc callNimFindReferences(
 
   if config.useNimTrack.get(false):
     let projectFile = await ls.openFiles[uri].projectFile
-    let nimPath = config.getNimPath()
+    let timeout = config.timeout.get(REQUEST_TIMEOUT)
+    let workingDir = await ls.getWorkingDir(projectFile)
+    let nimPath = await ls.getNimPath(config, workingDir)
     if nimPath.isNone:
       return McpCallToolResult(
         content: @[McpContentBlock(`type`: TextContent, text: "Nim not found")],
         isError: true,
       )
-    let timeout = config.timeout.get(REQUEST_TIMEOUT)
     let refs = await track(
       projectFile,
       path,
@@ -242,6 +243,7 @@ proc callNimFindReferences(
       column,
       tmUsages,
       nimPath = nimPath.get,
+      workingDir = workingDir,
       timeout = timeout,
     )
 

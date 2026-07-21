@@ -1,4 +1,4 @@
-import chronos, chronos/asyncproc, os, strutils, strformat, chronicles, suggestapi
+import chronos, chronos/asyncproc, strutils, strformat, chronicles, suggestapi
 
 type TrackMode* = enum
   tmDef = "def"
@@ -27,12 +27,11 @@ proc track*(
     projectFile, file: string,
     line, col: int,
     mode: TrackMode,
-    nimPath = "nim",
+    nimPath: string,
+    workingDir: string,
     timeout = REQUEST_TIMEOUT,
 ): Future[seq[Suggest]] {.async.} =
-  let
-    workingDir = projectFile.parentDir()
-    arg = fmt "--{$mode}:{file},{line},{col}"
+  let arg = fmt "--{$mode}:{file},{line},{col}"
 
   debug "nim track", projectFile = projectFile, arg = arg
 
