@@ -14,7 +14,7 @@ import
     stew/byteutils,
     with,
   ],
-  ../[testrunner, nimexpand, asyncprocmonitor, suggestapi, ls, utils],
+  ../[testrunner, nimexpand, asyncprocmonitor, suggestapi, trackapi, ls, utils],
   ../protocol/[enums, types]
 
 import macros except error
@@ -157,6 +157,32 @@ proc definition*(
 ): Future[seq[Location]] {.async.} =
   with (params.position, params.textDocument):
     asyncSpawn ls.addProjectFileToPendingRequest(id.uint, uri)
+    let config = await ls.getWorkspaceConfiguration()
+    if config.useNimTrack.get(false):
+      if uri notin ls.openFiles or ls.openFiles[uri].changed:
+        return @[]
+      let ch = ls.getCharacter(uri, line, character)
+      if ch.isNone:
+        return @[]
+      let projectFile = await ls.openFiles[uri].projectFile
+      let timeout = config.timeout.get(REQUEST_TIMEOUT)
+      let workingDir = await ls.getWorkingDir(projectFile)
+      let nimPath = await ls.getNimPath(config, workingDir)
+      if nimPath.isNone:
+        return @[]
+      result = (
+        await track(
+          projectFile,
+          uriToPath(uri),
+          line + 1,
+          ch.get,
+          tmDef,
+          nimPath = nimPath.get,
+          workingDir = workingDir,
+          timeout = timeout,
+        )
+      ).map(x => x.toUtf16Pos(ls).toLocation)
+      return
     let ns = await ls.tryGetNimsuggest(uri)
     if ns.isNone:
       return @[]
@@ -410,14 +436,14 @@ proc hover*(
           content.value.add &"```nim\n{expanded[0].doc}\n```"
         else:
           # debug "Couldnt expand the macro. Trying with nim expand", suggest = suggest[]
-          let nimPath = config.getNimPath()
+          let nimPath = await ls.getNimPath(config)
           if nimPath.isSome:
             let expanded = await nimExpandMacro(nimPath.get, suggest, uriToPath(uri))
             content.value.add &"```nim\n{expanded}\n```"
       if suggest.section == ideDef and suggest.symkind in ["skProc"] and
           config.nimExpandArc.get(NIM_EXPAND_ARC_BY_DEFAULT):
         debug "#Expanding arc", suggest = suggest[]
-        let nimPath = config.getNimPath()
+        let nimPath = await ls.getNimPath(config)
         if nimPath.isSome:
           let expanded = await nimExpandArc(nimPath.get, suggest, uriToPath(uri))
           let arcContent = "#Expanded arc \n" & expanded
@@ -432,6 +458,34 @@ proc references*(
     ls: LanguageServer, params: ReferenceParams
 ): Future[seq[Location]] {.async.} =
   with (params.position, params.textDocument, params.context):
+    let config = await ls.getWorkspaceConfiguration()
+    if config.useNimTrack.get(false):
+      if uri notin ls.openFiles or ls.openFiles[uri].changed:
+        return @[]
+      let ch = ls.getCharacter(uri, line, character)
+      if ch.isNone:
+        return @[]
+      let projectFile = await ls.openFiles[uri].projectFile
+      let mode = if includeDeclaration: tmDefUsages else: tmUsages
+      let timeout = config.timeout.get(REQUEST_TIMEOUT)
+      let workingDir = await ls.getWorkingDir(projectFile)
+      let nimPath = await ls.getNimPath(config, workingDir)
+      if nimPath.isNone:
+        return @[]
+      let refs = await track(
+        projectFile,
+        uriToPath(uri),
+        line + 1,
+        ch.get,
+        mode,
+        nimPath = nimPath.get,
+        workingDir = workingDir,
+        timeout = timeout,
+      )
+      result = refs
+        .filter(suggest => suggest.section != ideDef or includeDeclaration)
+        .map(x => x.toUtf16Pos(ls).toLocation)
+      return
     let nimsuggest = await ls.tryGetNimsuggest(uri)
     if nimsuggest.isNone:
       return @[]
@@ -854,7 +908,8 @@ proc listTests*(
     ls: LanguageServer, params: ListTestsParams
 ): Future[ListTestsResult] {.async.} =
   let config = await ls.getWorkspaceConfiguration()
-  let nimPath = config.getNimPath()
+  let workspaceRoot = ls.lspInitializeParams.getRootPath
+  let nimPath = await ls.getNimPath(config, workspaceRoot)
   if nimPath.isNone:
     error "Nim path not found when listing tests"
     return ListTestsResult(
@@ -862,7 +917,6 @@ proc listTests*(
         entryPoint: params.entryPoint, suites: initTable[string, TestSuiteInfo]()
       )
     )
-  let workspaceRoot = ls.lspInitializeParams.getRootPath
   let testProjectInfo = await listTests(params.entryPoint, nimPath.get(), workspaceRoot)
   result.projectInfo = testProjectInfo
 
@@ -870,11 +924,11 @@ proc runTests*(
     ls: LanguageServer, params: RunTestParams
 ): Future[RunTestProjectResult] {.async.} =
   let config = await ls.getWorkspaceConfiguration()
-  let nimPath = config.getNimPath()
+  let workspaceRoot = ls.lspInitializeParams.getRootPath
+  let nimPath = await ls.getNimPath(config, workspaceRoot)
   if nimPath.isNone:
     error "Nim path not found when running tests"
     return RunTestProjectResult()
-  let workspaceRoot = ls.lspInitializeParams.getRootPath
   await runTests(
     params.entryPoint,
     nimPath.get(),
@@ -1010,7 +1064,7 @@ proc didOpen*(
 proc didChangeConfiguration*(
     ls: LanguageServer, conf: JsonNode
 ): Future[void] {.async.} =
-  debug "Changed configuration: ", conf = conf
+  debug "Changed configuration: ", conf = $conf
   if ls.usePullConfigurationModel:
     ls.maybeRequestConfigurationFromClient
   else:

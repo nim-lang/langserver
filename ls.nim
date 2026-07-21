@@ -96,6 +96,7 @@ type
     nimExpandMacro*: Option[bool]
     maxNimsuggestProcesses*: Option[int]
       #max number of nimsuggest processes to keep alive. zero means unlimited
+    useNimTrack*: Option[bool]
 
   NlsFileInfo* = ref object of RootObj
     projectFile*: Future[string]
@@ -279,7 +280,8 @@ proc getNimbleDumpInfo*(
   try:
     process = await startProcess(
       "nimble",
-      arguments = @["dump", nimbleFile],
+      workingDir = nimbleFile.parentDir(),
+      arguments = @["dump"],
       options = {UsePath},
       stderrHandle = AsyncProcess.Pipe,
       stdoutHandle = AsyncProcess.Pipe,
@@ -508,10 +510,15 @@ proc getNimVersion(nimDir: string): string =
 proc getNimSuggestPathAndVersion(
     ls: LanguageServer, conf: NlsConfig, workingDir: string
 ): Future[(string, string)] {.async.} =
-  #Attempting to see if the project is using a custom Nim version, if it's the case this will be slower than usual
-  let nimbleDumpInfo = await ls.getNimbleDumpInfo("")
-  let nimDir = nimbleDumpInfo.nimDir.get ""
+  let nimbleFiles = walkFiles(workingDir / "*.nimble").toSeq
 
+  let nimbleDumpInfo =
+    if nimbleFiles.len > 0:
+      await ls.getNimbleDumpInfo(nimbleFiles[0])
+    else:
+      await ls.getNimbleDumpInfo("")
+
+  let nimDir = nimbleDumpInfo.nimDir.get ""
   var nimsuggestPath = expandTilde(conf.nimsuggestPath.get(""))
   var nimVersion = ""
   if nimsuggestPath == "":
@@ -527,11 +534,19 @@ proc getNimSuggestPathAndVersion(
   debug "Using {nimVersion}", nimVersion = nimVersion
   (nimsuggestPath, nimVersion)
 
-proc getNimPath*(conf: NlsConfig): Option[string] =
+proc getNimPath*(
+    ls: LanguageServer, conf: NlsConfig, workingDir = ""
+): Future[Option[string]] {.async.} =
   if conf.nimSuggestPath.isSome and conf.nimsuggestPath.get().fileExists():
     some(conf.nimSuggestPath.get.parentDir / "nim")
   else:
-    let path = findExe "nim"
+    let (nimsuggestPath, _) = await ls.getNimSuggestPathAndVersion(conf, workingDir)
+    let path =
+      if nimsuggestPath.fileExists():
+        nimsuggestPath.parentDir / "nim"
+      else:
+        findExe "nim"
+
     if path != "":
       some(path)
     else:
@@ -597,7 +612,7 @@ proc getRootPath*(ip: LspInitializeParams): string =
 proc getRootPath*(ip: McpInitializeParams): string =
   getCurrentDir().pathToUri.uriToPath
 
-proc getWorkingDir(ls: LanguageServer, path: string): Future[string] {.async.} =
+proc getWorkingDir*(ls: LanguageServer, path: string): Future[string] {.async.} =
   let rootPath =
     case ls.serverMode
     of lsp: ls.lspInitializeParams.getRootPath
@@ -607,7 +622,7 @@ proc getWorkingDir(ls: LanguageServer, path: string): Future[string] {.async.} =
     pathRelativeToRoot = path.tryRelativeTo(rootPath)
     mapping = ls.getWorkspaceConfiguration.await().workingDirectoryMapping.get(@[])
 
-  result = getCurrentDir()
+  result = rootPath
 
   for m in mapping:
     if pathRelativeToRoot.isSome and m.projectFile == pathRelativeToRoot.get():
@@ -945,7 +960,7 @@ proc checkProject*(ls: LanguageServer, uri: string): Future[void] {.async.} =
   let conf = await ls.getAndWaitForWorkspaceConfiguration()
   let useNimCheck = conf.useNimCheck.get(USE_NIM_CHECK_BY_DEFAULT)
 
-  let nimPath = getNimPath(conf)
+  let nimPath = await ls.getNimPath(conf)
 
   if useNimCheck and nimPath.isSome:
     proc getFilePath(c: CheckResult): string =
@@ -1097,7 +1112,7 @@ proc createOrRestartNimsuggest*(
       project.stop()
     ls.projectFiles[projectFile] = projectNext
 
-    projectNext.ns.addCallback do(fut: Future[Nimsuggest]):
+    projectNext.ns.addCallback do(fut: Future[Nimsuggest]) {.gcsafe.}:
       if fut.failed:
         let msg = fut.error.msg
         error "Nimsuggest initialization failed", projectFile = projectFile, error = msg
@@ -1141,7 +1156,7 @@ proc maybeRegisterCapabilityDidChangeConfiguration*(ls: LanguageServer) =
       gcsafe
     .}:
       debug "Got response for the didChangeConfiguration registration:",
-        res = res.read()
+        res = $res.read()
 
 proc handleConfigurationChanges*(
     ls: LanguageServer, oldConfiguration, newConfiguration: NlsConfig
@@ -1165,10 +1180,12 @@ proc maybeRequestConfigurationFromClient*(ls: LanguageServer) =
     ls.prevWorkspaceConfiguration = ls.workspaceConfiguration
 
     ls.workspaceConfiguration = ls.call("workspace/configuration", %configurationParams)
-    ls.workspaceConfiguration.addCallback do(futConfiguration: Future[JsonNode]):
+    ls.workspaceConfiguration.addCallback do(futConfiguration: Future[JsonNode]) {.
+      gcsafe
+    .}:
       if futConfiguration.error.isNil:
         debug "Received the following configuration",
-          configuration = futConfiguration.read()
+          configuration = $futConfiguration.read()
         if not isNil(ls.prevWorkspaceConfiguration) and
             ls.prevWorkspaceConfiguration.finished:
           let
@@ -1259,7 +1276,7 @@ proc getProjectFile*(fileUri: string, ls: LanguageServer): Future[string] {.asyn
 proc checkFile*(ls: LanguageServer, uri: string): Future[void] {.async.} =
   let conf = await ls.getAndWaitForWorkspaceConfiguration()
   let useNimCheck = conf.useNimCheck.get(USE_NIM_CHECK_BY_DEFAULT)
-  let nimPath = conf.getNimPath()
+  let nimPath = await ls.getNimPath(conf)
   let token = fmt "Checking file {uri}"
   ls.workDoneProgressCreate(token)
   ls.progress(token, "begin", fmt "Checking {uri.uriToPath}")

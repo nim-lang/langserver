@@ -21,7 +21,7 @@ jobs:
       - name: Setup Nimble
         uses: nim-lang/setup-nimble-action@v1
         with:
-          nimble-version: "0.20.1"
+          nimble-version: "latest"
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Restore nimble dependencies from cache
@@ -34,6 +34,10 @@ jobs:
           key: ${{ matrix.target.os }}-${{ env.cache_nonce }}-${{ hashFiles('**/nimble.lock') }}
           restore-keys: |
             ${{ runner.os }}-${{ env.cache_nonce }}-
+
+      - name: Install Nimble fork with the nim#head fix
+        shell: bash
+        run: nimble install https://github.com/moigagoo/nimble@#bugfix/nimble_dump_with_nim_head
 
       - name: Install dependencies
         shell: bash
