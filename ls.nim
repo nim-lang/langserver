@@ -609,7 +609,7 @@ proc getWorkingDir(ls: LanguageServer, path: string): Future[string] {.async.} =
     pathRelativeToRoot = path.tryRelativeTo(rootPath)
     mapping = ls.getWorkspaceConfiguration.await().workingDirectoryMapping.get(@[])
 
-  result = getCurrentDir()
+  result = rootPath
 
   for m in mapping:
     if pathRelativeToRoot.isSome and m.projectFile == pathRelativeToRoot.get():
