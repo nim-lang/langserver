@@ -191,6 +191,8 @@ type
       #Project file to fail count
       #List of errors (crashes) nimsuggest has had since the lsp session started
     checkInProgress*: bool
+    crashedFiles*: Table[string, HashSet[string]]
+      # projectFile → set of file paths that have caused a SIGSEGV in this nimsuggest instance
 
   Certainty* = enum
     None
@@ -1068,6 +1070,14 @@ proc tryGetNimsuggest*(
   if uri notin ls.openFiles:
     return none(NimSuggest)
 
+  let path = uri.uriToPath
+  let fileInfo = ls.openFiles[uri]
+  if fileInfo.projectFile.finished and not fileInfo.projectFile.failed:
+    let pf = fileInfo.projectFile.read()
+    if pf in ls.crashedFiles and path in ls.crashedFiles[pf]:
+      debug "Skipping nimsuggest for crash-inducing file", file = path, project = pf
+      return none(Nimsuggest)
+
   var retryCount = 0
   const maxRetries = 3
   while retryCount < maxRetries:
@@ -1178,6 +1188,15 @@ proc checkProject*(ls: LanguageServer, uri: string): Future[void] {.async.} =
       debug "Running delayed check project...", uri = uri
       traceAsyncErrors ls.checkProject(uri)
 
+proc extractCrashedFile(cmd: string): string =
+  ## Extract the first quoted file path from a nimsuggest command string.
+  ## e.g. `sug "/path/file.nim";"/stash.nim":4:12` → "/path/file.nim"
+  let start = cmd.find('"')
+  if start < 0: return ""
+  let stop = cmd.find('"', start + 1)
+  if stop < 0: return ""
+  cmd[start + 1 ..< stop]
+
 proc onErrorCallback(args: (LanguageServer, string), project: Project) =
   let
     ls = args[0]
@@ -1185,6 +1204,11 @@ proc onErrorCallback(args: (LanguageServer, string), project: Project) =
   debug "NimSuggest needed to be restarted due to an error "
   ls.failTable[project.file] = ls.failTable.getOrDefault(project.file, 0) + 1
   debug "Fail count", count = ls.failTable[project.file]
+  let crashedFile = project.lastCmd.extractCrashedFile()
+  if crashedFile != "" and crashedFile != project.file:
+    ls.crashedFiles.mgetOrPut(project.file, initHashSet[string]()).incl crashedFile
+    warn "Blocking file from nimsuggest after crash; restart the language server or import the file to re-enable",
+      file = crashedFile, project = project.file
   let configuration = ls.getWorkspaceConfiguration().waitFor()
   warn "Server stopped.", projectFile = project.file
   try:
