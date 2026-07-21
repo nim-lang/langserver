@@ -14,30 +14,17 @@ suite "Nim track with nim >= 2.3.1":
   discard execCmdEx("nimble setup")
   setCurrentDir(savedDir)
 
-  # Find nimbledeps Nim and configure nimsuggestPath.
-  # This is a temporary workaround: nimble dump returns an empty nimDir
-  # for #head versions (including nim >= 2.3.1 which resolves to #head),
-  # so getNimSuggestPathAndVersion cannot auto-discover the project Nim.
-  # Once nimble dump properly reports nimDir for #head deps, this
-  # explicit config can be removed.
-  var nimBinDir = ""
-  for kind, path in walkDir(trackProjectDir / "nimbledeps" / "pkgs2"):
-    if path.extractFilename.startsWith("nim-"):
-      nimBinDir = path / "bin"
-      break
-  assert nimBinDir != "", "nim not found in trackproject nimbledeps"
-
   let cmdParams =
     CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
   let ls = main(cmdParams)
   let client = newLspSocketClient()
   client.registerNotification(
-    "window/showMessage", "extension/statusUpdate",
-    "textDocument/publishDiagnostics", "$/progress",
+    "window/showMessage", "extension/statusUpdate", "textDocument/publishDiagnostics",
+    "$/progress",
   )
   waitFor client.connect("localhost", cmdParams.port)
 
-  let conf = NlsConfig(useNimTrack: some true, nimsuggestPath: some(nimBinDir / "nimsuggest"))
+  let conf = NlsConfig(useNimTrack: some true)
   ls.workspaceConfiguration = newFuture[JsonNode]()
   ls.workspaceConfiguration.complete(% @[conf])
 
@@ -54,7 +41,7 @@ suite "Nim track with nim >= 2.3.1":
 
   let trackAbsFile = trackFile.fixtureUri.uriToPath
   check waitFor client.waitForNotificationMessage(
-    fmt"Nimsuggest initialized for {trackAbsFile}",
+    fmt"Nimsuggest initialized for {trackAbsFile}"
   )
 
   let trackUri = fixtureUri("projects/trackproject/src/trackproject.nim")
@@ -62,13 +49,12 @@ suite "Nim track with nim >= 2.3.1":
   test "Definition with nim track":
     client.notify("textDocument/didOpen", %createDidOpenParams(trackFile))
     discard waitFor client.waitForNotificationMessage(
-      fmt"Nimsuggest initialized for {trackAbsFile}",
+      fmt"Nimsuggest initialized for {trackAbsFile}"
     )
     let
       positionParams = positionParams(trackUri, 4, 6)
       locations = to(
-        waitFor client.call("textDocument/definition", %positionParams),
-        seq[Location],
+        waitFor client.call("textDocument/definition", %positionParams), seq[Location]
       )
     check locations.len == 1
     check locations[0].uri.pathToUri().contains("trackproject.nim")
@@ -76,7 +62,7 @@ suite "Nim track with nim >= 2.3.1":
   test "References with nim track":
     client.notify("textDocument/didOpen", %createDidOpenParams(trackFile))
     discard waitFor client.waitForNotificationMessage(
-      fmt"Nimsuggest initialized for {trackAbsFile}",
+      fmt"Nimsuggest initialized for {trackAbsFile}"
     )
     let referenceParams =
       ReferenceParams %* {
@@ -85,34 +71,22 @@ suite "Nim track with nim >= 2.3.1":
         "textDocument": {"uri": trackUri},
       }
     let locations = to(
-      waitFor client.call("textDocument/references", %referenceParams),
-      seq[Location],
+      waitFor client.call("textDocument/references", %referenceParams), seq[Location]
     )
     check locations.len >= 1
 
 suite "Nim track unavailable with nim < 2.3.1":
-  # nimble dump reports the global Nim (2.3.1) even when the project has
-  # nim >= 2.2.10 in nimbledeps, so ns.nimsuggestPath would point to 2.3.1.
-  # Configuring nimsuggestPath explicitly to a Nim < 2.3.1 ensures the
-  # "track unavailable" test is environment-independent.
-  var oldNimBinDir = ""
-  for kind, path in walkDir(getCurrentDir() / "nimbledeps" / "pkgs2"):
-    if path.extractFilename.startsWith("nim-") and path.extractFilename.contains("2.2"):
-      oldNimBinDir = path / "bin"
-      break
-  assert oldNimBinDir != "", "nim-2.2 not found in project nimbledeps"
-
   let cmdParams =
     CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
   let ls = main(cmdParams)
   let client = newLspSocketClient()
   client.registerNotification(
-    "window/showMessage", "extension/statusUpdate",
-    "textDocument/publishDiagnostics", "$/progress",
+    "window/showMessage", "extension/statusUpdate", "textDocument/publishDiagnostics",
+    "$/progress",
   )
   waitFor client.connect("localhost", cmdParams.port)
 
-  let conf = NlsConfig(useNimTrack: some true, nimsuggestPath: some(oldNimBinDir / "nimsuggest"))
+  let conf = NlsConfig(useNimTrack: some true)
   ls.workspaceConfiguration = newFuture[JsonNode]()
   ls.workspaceConfiguration.complete(% @[conf])
 
@@ -129,7 +103,7 @@ suite "Nim track unavailable with nim < 2.3.1":
 
   let hwAbsFile = hwFile.fixtureUri.uriToPath
   check waitFor client.waitForNotificationMessage(
-    fmt"Nimsuggest initialized for {hwAbsFile}",
+    fmt"Nimsuggest initialized for {hwAbsFile}"
   )
 
   let hwUri = fixtureUri("projects/hw/hw.nim")
@@ -138,8 +112,7 @@ suite "Nim track unavailable with nim < 2.3.1":
     let
       positionParams = positionParams(hwUri, 1, 6)
       locations = to(
-        waitFor client.call("textDocument/definition", %positionParams),
-        seq[Location],
+        waitFor client.call("textDocument/definition", %positionParams), seq[Location]
       )
     check locations.len == 0
 
@@ -151,7 +124,6 @@ suite "Nim track unavailable with nim < 2.3.1":
         "textDocument": {"uri": hwUri},
       }
     let locations = to(
-      waitFor client.call("textDocument/references", %referenceParams),
-      seq[Location],
+      waitFor client.call("textDocument/references", %referenceParams), seq[Location]
     )
     check locations.len == 0
