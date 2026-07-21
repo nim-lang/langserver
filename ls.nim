@@ -970,6 +970,16 @@ proc didRenameFile*(
     )
     ls.openFiles.del(oldUri)
 
+    # If this was a .nim rename, nimsuggest's module graph is stale (it still
+    # references the old filename). Trigger an in-process full recompile so the
+    # graph is rebuilt before the next sug/chk request arrives. This avoids a
+    # SIGSEGV in nimsuggest where getModule returns nil after recompilePartially
+    # fails on the now-missing old file.
+    if oldPath.endsWith(".nim") and oldProjectFile in ls.projectFiles:
+      let ns = await ls.projectFiles[oldProjectFile].ns
+      if ns != nil:
+        traceAsyncErrors ns.recompile()
+
     # If the file moved to a different project, ensure nimsuggest is running for it
     if newProjectFile != oldProjectFile and newProjectFile notin ls.projectFiles:
       let shouldSpawn = await ls.shouldSpawnNimsuggest()
