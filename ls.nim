@@ -1301,7 +1301,12 @@ proc createOrRestartNimsuggest*(
 
         ls.showMessage(fmt "Nimsuggest initialized for {projectFile}", MessageType.Info)
         traceAsyncErrors ls.checkProject(uri)
-        fut.read().openFiles.incl uri
+        let newNs = fut.read()
+        for openUri in ls.openFiles.keys:
+          let fileInfo = ls.openFiles[openUri]
+          if fileInfo.projectFile.finished and
+              fileInfo.projectFile.read() == projectFile:
+            newNs.openFiles.incl openUri
       ls.sendStatusChanged()
   except CatchableError as ex:
     error "Failed to create/restart nimsuggest",
