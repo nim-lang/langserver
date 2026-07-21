@@ -434,14 +434,14 @@ proc hover*(
           content.value.add &"```nim\n{expanded[0].doc}\n```"
         else:
           # debug "Couldnt expand the macro. Trying with nim expand", suggest = suggest[]
-          let nimPath = config.getNimPath()
+          let nimPath = await ls.getNimPath(config)
           if nimPath.isSome:
             let expanded = await nimExpandMacro(nimPath.get, suggest, uriToPath(uri))
             content.value.add &"```nim\n{expanded}\n```"
       if suggest.section == ideDef and suggest.symkind in ["skProc"] and
           config.nimExpandArc.get(NIM_EXPAND_ARC_BY_DEFAULT):
         debug "#Expanding arc", suggest = suggest[]
-        let nimPath = config.getNimPath()
+        let nimPath = await ls.getNimPath(config)
         if nimPath.isSome:
           let expanded = await nimExpandArc(nimPath.get, suggest, uriToPath(uri))
           let arcContent = "#Expanded arc \n" & expanded
@@ -904,7 +904,8 @@ proc listTests*(
     ls: LanguageServer, params: ListTestsParams
 ): Future[ListTestsResult] {.async.} =
   let config = await ls.getWorkspaceConfiguration()
-  let nimPath = config.getNimPath()
+  let workspaceRoot = ls.lspInitializeParams.getRootPath
+  let nimPath = await ls.getNimPath(config, workspaceRoot)
   if nimPath.isNone:
     error "Nim path not found when listing tests"
     return ListTestsResult(
@@ -912,7 +913,6 @@ proc listTests*(
         entryPoint: params.entryPoint, suites: initTable[string, TestSuiteInfo]()
       )
     )
-  let workspaceRoot = ls.lspInitializeParams.getRootPath
   let testProjectInfo = await listTests(params.entryPoint, nimPath.get(), workspaceRoot)
   result.projectInfo = testProjectInfo
 
@@ -920,11 +920,11 @@ proc runTests*(
     ls: LanguageServer, params: RunTestParams
 ): Future[RunTestProjectResult] {.async.} =
   let config = await ls.getWorkspaceConfiguration()
-  let nimPath = config.getNimPath()
+  let workspaceRoot = ls.lspInitializeParams.getRootPath
+  let nimPath = ls.getNimPath(config, workspaceRoot)
   if nimPath.isNone:
     error "Nim path not found when running tests"
     return RunTestProjectResult()
-  let workspaceRoot = ls.lspInitializeParams.getRootPath
   await runTests(
     params.entryPoint,
     nimPath.get(),

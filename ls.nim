@@ -955,7 +955,7 @@ proc checkProject*(ls: LanguageServer, uri: string): Future[void] {.async.} =
   let conf = await ls.getAndWaitForWorkspaceConfiguration()
   let useNimCheck = conf.useNimCheck.get(USE_NIM_CHECK_BY_DEFAULT)
 
-  let nimPath = getNimPath(conf)
+  let nimPath = await ls.getNimPath(conf)
 
   if useNimCheck and nimPath.isSome:
     proc getFilePath(c: CheckResult): string =
@@ -1270,7 +1270,7 @@ proc getProjectFile*(fileUri: string, ls: LanguageServer): Future[string] {.asyn
 proc checkFile*(ls: LanguageServer, uri: string): Future[void] {.async.} =
   let conf = await ls.getAndWaitForWorkspaceConfiguration()
   let useNimCheck = conf.useNimCheck.get(USE_NIM_CHECK_BY_DEFAULT)
-  let nimPath = conf.getNimPath()
+  let nimPath = await ls.getNimPath(conf)
   let token = fmt "Checking file {uri}"
   ls.workDoneProgressCreate(token)
   ls.progress(token, "begin", fmt "Checking {uri.uriToPath}")
