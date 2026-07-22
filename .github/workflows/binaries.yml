@@ -101,7 +101,7 @@ jobs:
       - name: Setup Nimble
         uses: nim-lang/setup-nimble-action@v1
         with:
-          nimble-version: "latest"
+          nimble-version: "0.20.1"
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Restore nimble dependencies from cache
