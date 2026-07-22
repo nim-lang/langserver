@@ -1080,7 +1080,7 @@ proc createOrRestartNimsuggest*(
 
     debug "Creating new nimsuggest project", projectFile = projectFile
 
-    let projectNext = waitFor createNimsuggest(
+    let projectFut = createNimsuggest(
       projectFile,
       nimsuggestPath,
       version,
@@ -1091,7 +1091,13 @@ proc createOrRestartNimsuggest*(
       configuration.logNimsuggest.get(false),
       configuration.exceptionHintsEnabled,
     )
+    let projectOpt = waitFor utils.withTimeout(projectFut, NIMSUGGEST_STARTUP_TIMEOUT)
 
+    if projectOpt.isNone:
+      error "Nimsuggest startup timed out", projectFile = projectFile
+      return
+
+    let projectNext = projectOpt.get
     if projectFile in ls.projectFiles:
       var project = ls.projectFiles[projectFile]
       project.stop()

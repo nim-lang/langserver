@@ -18,6 +18,7 @@ import
   stew/[byteutils]
 
 const REQUEST_TIMEOUT* = 120000
+const NIMSUGGEST_STARTUP_TIMEOUT* = 30000
 const HighestSupportedNimSuggestProtocolVersion = 4
 
 # copied from Nim repo
