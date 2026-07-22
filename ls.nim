@@ -1048,6 +1048,7 @@ proc didOpenFile*(
     let ns = await ls.tryGetNimSuggest(uri)
     if ns.isSome:
       discard ls.warnIfUnknown(ns.get(), uri, projectFile)
+      ns.get().openFiles.incl(uri)
 
     let projectFileUri = projectFile.pathToUri
     if projectFileUri notin ls.openFiles:
@@ -1331,6 +1332,11 @@ proc createOrRestartNimsuggest*(
           if fileInfo.projectFile.finished and
               fileInfo.projectFile.read() == projectFile:
             newNs.openFiles.incl openUri
+            # Compile each open file into the fresh module graph so that
+            # subsequent saves cascade dirty-marking to all open files,
+            # not just those transitively imported from the project root.
+            if openUri != uri:
+              traceAsyncErrors ls.checkFile(openUri)
       ls.sendStatusChanged()
   except CatchableError as ex:
     error "Failed to create/restart nimsuggest",
