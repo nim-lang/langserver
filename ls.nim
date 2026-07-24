@@ -815,21 +815,55 @@ proc sendDiagnostics*(
   else:
     ls.filesWithDiags.excl path
 
-proc warnIfUnknown*(
-    ls: LanguageServer, ns: Nimsuggest, uri: string, projectFile: string
-): Future[void] {.async.} =
-  let path = uri.uriToPath
-  let isFileKnown = await ns.isKnown(path)
-  if not isFileKnown and not ns.canHandleUnknown:
-    ls.showMessage(
-      fmt """{path} is not compiled as part of project {projectFile}.
-  In orde to get the IDE features working you must either configure nim.projectMapping or import the module.""",
-      MessageType.Warning,
-    )
-
 proc createOrRestartNimsuggest*(
   ls: LanguageServer, projectFile: string, uri = ""
 ) {.gcsafe, raises: [].}
+
+proc warnIfUnknown*(
+    ls: LanguageServer,
+    ns: Nimsuggest,
+    uri: string,
+    projectFile: string,
+    intendedProjectFile: string = "",
+): Future[void] {.async.} =
+  let path = uri.uriToPath
+  let isFileKnown = await ns.isKnown(path)
+  if not isFileKnown:
+    if intendedProjectFile != "" and intendedProjectFile != projectFile:
+      # Reuse was forced (maxNimsuggestProcesses limit hit) but the file is not
+      # in the running nimsuggest's module graph. Restart for the intended
+      # (consumer-level) project so the user gets full IDE features.
+      # Guard: if a nimsuggest for the intended project is already starting or
+      # running, skip to avoid a redundant restart.
+      if intendedProjectFile in ls.projectFiles:
+        let existingNs = ls.projectFiles[intendedProjectFile].ns
+        if existingNs.finished and not existingNs.failed:
+          debug "warnIfUnknown: intended project already has nimsuggest, skipping restart",
+            file = path, intended = intendedProjectFile
+          return
+      debug "warnIfUnknown: restarting nimsuggest for intended project after unknownFile detection",
+        file = path, `from` = projectFile, to = intendedProjectFile
+      if projectFile in ls.projectFiles:
+        ls.projectFiles[projectFile].stop()
+      ls.createOrRestartNimsuggest(intendedProjectFile, uri)
+      # Redirect the old slot so files already assigned to it still find a
+      # working nimsuggest (their projectFile future already resolved to projectFile).
+      if intendedProjectFile in ls.projectFiles:
+        ls.projectFiles[projectFile] = ls.projectFiles[intendedProjectFile]
+      # Reassign all open files from the old project to the new project so the
+      # re-registration loop (which filters on projectFile) includes them.
+      for openUri, fileInfo in ls.openFiles.mpairs:
+        if fileInfo.projectFile.finished and
+            fileInfo.projectFile.read() == projectFile:
+          let newFut = newFuture[string]("reassign")
+          newFut.complete(intendedProjectFile)
+          fileInfo.projectFile = newFut
+    elif not ns.canHandleUnknown:
+      ls.showMessage(
+        fmt """{path} is not compiled as part of project {projectFile}.
+  In orde to get the IDE features working you must either configure nim.projectMapping or import the module.""",
+        MessageType.Warning,
+      )
 
 proc shouldSpawnNimsuggest*(ls: LanguageServer): Future[bool] {.async.} =
   # Count ALL projectFiles entries (including projects still starting), not just
@@ -943,6 +977,7 @@ proc makeIdleFile*(ls: LanguageServer, file: NlsFileInfo): Future[void] {.async.
     ls.openFiles.del(uri)
 
 proc getProjectFile*(fileUri: string, ls: LanguageServer): Future[string] {.async.}
+proc getIntendedProjectFile*(fileUri: string, ls: LanguageServer): Future[string] {.async.}
 
 proc didRenameFile*(
     ls: LanguageServer, oldUri, newUri: string
@@ -1046,6 +1081,11 @@ proc didOpenFile*(
     debug "Document associated with the following projectFile",
       uri = uri, projectFile = projectFile
 
+    # Resolve the mapping-intended project before the reuse override. This is
+    # passed to warnIfUnknown so it can restart nimsuggest for the right project
+    # when the assigned (reused) nimsuggest doesn't know the file.
+    let intendedProjectFile = await getIntendedProjectFile(uriToPath(uri), ls)
+
     if not ls.projectFiles.hasKey(projectFile):
       let shouldSpawn = await ls.shouldSpawnNimsuggest()
       if shouldSpawn:
@@ -1059,7 +1099,7 @@ proc didOpenFile*(
     file.close()
     let ns = await ls.tryGetNimSuggest(uri)
     if ns.isSome:
-      discard ls.warnIfUnknown(ns.get(), uri, projectFile)
+      discard ls.warnIfUnknown(ns.get(), uri, projectFile, intendedProjectFile)
       debug "[chg:didOpenFile] adding uri to ns.openFiles", uri = uri, project = projectFile
       ns.get().openFiles.incl(uri)
     else:
@@ -1499,6 +1539,28 @@ proc getProjectFile*(fileUri: string, ls: LanguageServer): Future[string] {.asyn
     result = fileUri
 
   debug "getProjectFile ", project = result, fileUri = fileUri
+
+proc getIntendedProjectFile*(fileUri: string, ls: LanguageServer): Future[string] {.async.} =
+  ## Returns the project file that projectMapping intends for fileUri,
+  ## WITHOUT the reuse fallback applied by getProjectFile. Returns "" if no
+  ## mapping matches (auto-guess projects are not considered "intended").
+  let
+    rootPath =
+      case ls.serverMode
+      of mcp:
+        ls.mcpInitializeParams.getRootPath()
+      of lsp:
+        ls.lspInitializeParams.getRootPath()
+    pathRelativeToRoot = fileUri.tryRelativeTo(rootPath)
+    mappings = ls.getWorkspaceConfiguration.await().projectMapping.get(@[])
+  for mapping in mappings:
+    var m: RegexMatch2
+    if pathRelativeToRoot.isSome and
+        find(pathRelativeToRoot.get(), re2(mapping.fileRegex), m):
+      let intended = rootPath / mapping.projectFile
+      if fileExists(intended):
+        return intended
+  return ""
 
 proc checkFile*(ls: LanguageServer, uri: string): Future[void] {.async.} =
   let conf = await ls.getAndWaitForWorkspaceConfiguration()
