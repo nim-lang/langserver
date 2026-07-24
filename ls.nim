@@ -844,6 +844,10 @@ proc warnIfUnknown*(
       debug "warnIfUnknown: restarting nimsuggest for intended project after unknownFile detection",
         file = path, `from` = projectFile, to = intendedProjectFile
       if projectFile in ls.projectFiles:
+        # Clear the error callback before stopping so onErrorCallback does not
+        # treat this intentional stop as a crash (which would block the file and
+        # auto-restart the old nimsuggest, fighting against the intended restart).
+        ls.projectFiles[projectFile].errorCallback = none(ProjectCallback)
         ls.projectFiles[projectFile].stop()
       ls.createOrRestartNimsuggest(intendedProjectFile, uri)
       # Redirect the old slot so files already assigned to it still find a
