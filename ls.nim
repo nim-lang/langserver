@@ -1337,16 +1337,21 @@ proc createOrRestartNimsuggest*(
         ls.showMessage(fmt "Nimsuggest initialized for {projectFile}", MessageType.Info)
         traceAsyncErrors ls.checkProject(uri)
         let newNs = fut.read()
+        debug "[chg:reRegLoop] re-registering open files after nimsuggest restart", project = projectFile
         for openUri in ls.openFiles.keys:
           let fileInfo = ls.openFiles[openUri]
           if fileInfo.projectFile.finished and
               fileInfo.projectFile.read() == projectFile:
+            let openPath = openUri.uriToPath
+            if projectFile in ls.crashedFiles and
+                openPath in ls.crashedFiles[projectFile]:
+              # Skip crash-inducing files: don't re-register them in the new
+              # instance's tracking set or issue checkFile, which would bypass
+              # the tryGetNimsuggest guard and re-trigger the crash.
+              debug "[chg:reRegLoop] skipping crashed file during re-registration", uri = openUri
+              continue
+            debug "[chg:reRegLoop] adding to ns.openFiles", uri = openUri
             newNs.openFiles.incl openUri
-            # Compile each open file into the fresh module graph so that
-            # subsequent saves cascade dirty-marking to all open files,
-            # not just those transitively imported from the project root.
-            if openUri != uri:
-              traceAsyncErrors ls.checkFile(openUri)
       ls.sendStatusChanged()
   except CatchableError as ex:
     error "Failed to create/restart nimsuggest",
