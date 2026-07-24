@@ -674,7 +674,9 @@ proc cancelPendingFileChecks*(ls: LanguageServer, nimsuggest: Nimsuggest) =
   # stop all checks on file level if we are going to run checks on project
   # level.
   for uri in nimsuggest.openFiles:
-    let fileData = ls.openFiles[uri]
+    let fileData = ls.openFiles.getOrDefault(uri)
+    if fileData == nil:
+      debug "[chg:cancelPendingFileChecks] stale ns.openFiles entry skipped (getOrDefault guard)", uri = uri
     if fileData != nil:
       let cancelFileCheck = fileData.cancelFileCheck
       if cancelFileCheck != nil and not cancelFileCheck.finished:
@@ -922,6 +924,17 @@ proc didCloseFile*(ls: LanguageServer, uri: string): Future[void] {.async.} =
 
   ls.openFiles.del uri
 
+  # Sync ns.openFiles: there is no nimsuggest "close" command, so we maintain
+  # the per-instance tracking set manually. Without this, stale entries remain
+  # in ns.openFiles after the file is closed, causing cancelPendingFileChecks
+  # to attempt ls.openFiles[uri] on a key that no longer exists.
+  for project in ls.projectFiles.values:
+    if project.ns.finished and not project.ns.failed:
+      let nsRef = project.ns.read()
+      if uri in nsRef.openFiles:
+        debug "[chg:didCloseFile] removing closed file from ns.openFiles", uri = uri, project = project.file
+        nsRef.openFiles.excl(uri)
+
 proc makeIdleFile*(ls: LanguageServer, file: NlsFileInfo): Future[void] {.async.} =
   let uri = file.textDocument.uri
   if uri in ls.openFiles:
@@ -1027,18 +1040,12 @@ proc didOpenFile*(
     let projectFile = await projectFileFuture
     debug "Document associated with the following projectFile",
       uri = uri, projectFile = projectFile
+
     if not ls.projectFiles.hasKey(projectFile):
       let shouldSpawn = await ls.shouldSpawnNimsuggest()
       if shouldSpawn:
         debug "Will create nimsuggest for this file", uri = uri
         ls.createOrRestartNimsuggest(projectFile, uri)
-      elif ls.projectFiles.len > 0 and uri in ls.openFiles:
-        let reused = ls.projectFiles.keys.toSeq[0]
-        debug "Limit reached in didOpenFile, reusing nimsuggest",
-          uri = uri, reused = reused
-        let f = newFuture[string]("reuse")
-        f.complete(reused)
-        ls.openFiles[uri].projectFile = f
 
     for line in text.splitLines:
       if uri in ls.openFiles:
@@ -1048,7 +1055,10 @@ proc didOpenFile*(
     let ns = await ls.tryGetNimSuggest(uri)
     if ns.isSome:
       discard ls.warnIfUnknown(ns.get(), uri, projectFile)
+      debug "[chg:didOpenFile] adding uri to ns.openFiles", uri = uri, project = projectFile
       ns.get().openFiles.incl(uri)
+    else:
+      debug "[chg:didOpenFile] tryGetNimsuggest returned none, uri NOT added to ns.openFiles", uri = uri, project = projectFile
 
     let projectFileUri = projectFile.pathToUri
     if projectFileUri notin ls.openFiles:
