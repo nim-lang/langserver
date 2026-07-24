@@ -993,7 +993,12 @@ proc didRenameFile*(
     if oldPath.endsWith(".nim") and oldProjectFile in ls.projectFiles:
       let ns = await ls.projectFiles[oldProjectFile].ns
       if ns != nil:
+        debug "[chg:didRenameFile] triggering ns.recompile() after .nim rename", oldPath = oldPath, project = oldProjectFile
         traceAsyncErrors ns.recompile()
+      else:
+        debug "[chg:didRenameFile] skipping recompile: ns is nil", oldPath = oldPath, project = oldProjectFile
+    else:
+      debug "[chg:didRenameFile] skipping recompile: not a .nim rename or project not tracked", oldPath = oldPath
 
     # If the file moved to a different project, ensure nimsuggest is running for it
     if newProjectFile != oldProjectFile and newProjectFile notin ls.projectFiles:
@@ -1086,7 +1091,7 @@ proc tryGetNimsuggest*(
   if fileInfo.projectFile.finished and not fileInfo.projectFile.failed:
     let pf = fileInfo.projectFile.read()
     if pf in ls.crashedFiles and path in ls.crashedFiles[pf]:
-      debug "Skipping nimsuggest for crash-inducing file", file = path, project = pf
+      debug "[chg:tryGetNimsuggest] BLOCKED by crashedFiles", file = path, project = pf
       return none(Nimsuggest)
 
   var retryCount = 0
@@ -1216,10 +1221,13 @@ proc onErrorCallback(args: (LanguageServer, string), project: Project) =
   ls.failTable[project.file] = ls.failTable.getOrDefault(project.file, 0) + 1
   debug "Fail count", count = ls.failTable[project.file]
   let crashedFile = project.lastCmd.extractCrashedFile()
+  debug "[chg:onErrorCallback] extracted crashed file from lastCmd", lastCmd = project.lastCmd, crashedFile = crashedFile, projectFile = project.file
   if crashedFile != "" and crashedFile != project.file:
     ls.crashedFiles.mgetOrPut(project.file, initHashSet[string]()).incl crashedFile
-    warn "Blocking file from nimsuggest after crash; restart the language server or import the file to re-enable",
+    warn "[chg:onErrorCallback] Blocking file from nimsuggest after crash; restart the language server or import the file to re-enable",
       file = crashedFile, project = project.file
+  else:
+    debug "[chg:onErrorCallback] crashedFile empty or equals project root, not blocking", crashedFile = crashedFile
   let configuration = ls.getWorkspaceConfiguration().waitFor()
   warn "Server stopped.", projectFile = project.file
   try:

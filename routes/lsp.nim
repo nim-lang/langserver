@@ -1,7 +1,7 @@
 import
   std/
     [
-      os, sugar, sequtils, tables, strformat, strscans, times, json, parseutils,
+      os, sugar, sequtils, sets, tables, strformat, strscans, times, json, parseutils,
       strutils,
     ],
   pkg/[
@@ -276,6 +276,10 @@ proc extensionSuggest*(
       return SuggestResult()
   template restart(ls: LanguageServer, project: Project) =
     ls.showMessage(fmt "Restarting nimsuggest {projectFile}", MessageType.Info)
+    # Clear crash blocks: an explicit restart is the user signalling they want
+    # a clean slate. All previously blocked files become eligible again.
+    debug "[chg:restart] clearing crashedFiles for project on explicit restart", project = projectFile
+    ls.crashedFiles.del(projectFile)
     project.errorCallback = none(ProjectCallback)
     project.stop()
     ls.createOrRestartNimsuggest(projectFile, projectFile.pathToUri)
@@ -991,6 +995,24 @@ proc didSave*(
   let
     uri = params.textDocument.uri
     config = await ls.getWorkspaceConfiguration()
+
+  # Un-block crash-inducing files on save: the user may have fixed the code
+  # that caused the crash. This must happen before tryGetNimsuggest, which
+  # returns none for blocked files and would cause an early return without
+  # ever un-blocking.
+  let path = uri.uriToPath
+  debug "[chg:didSave] checking if file needs un-blocking", file = path
+  if uri in ls.openFiles:
+    let fileInfo = ls.openFiles[uri]
+    if fileInfo.projectFile.finished and not fileInfo.projectFile.failed:
+      let pf = fileInfo.projectFile.read()
+      debug "[chg:didSave] project resolved", file = path, project = pf, isBlocked = (pf in ls.crashedFiles and path in ls.crashedFiles.getOrDefault(pf))
+      if pf in ls.crashedFiles and path in ls.crashedFiles[pf]:
+        debug "[chg:didSave] un-blocking crash-inducing file on save", file = path, project = pf
+        ls.crashedFiles[pf].excl(path)
+    else:
+      debug "[chg:didSave] projectFile not yet resolved at save time", file = path
+
   let nimsuggest = await ls.tryGetNimsuggest(uri)
 
   if nimsuggest.isNone:
