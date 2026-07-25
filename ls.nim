@@ -675,8 +675,6 @@ proc cancelPendingFileChecks*(ls: LanguageServer, nimsuggest: Nimsuggest) =
   # level.
   for uri in nimsuggest.openFiles:
     let fileData = ls.openFiles.getOrDefault(uri)
-    if fileData == nil:
-      debug "[chg:cancelPendingFileChecks] stale ns.openFiles entry skipped (getOrDefault guard)", uri = uri
     if fileData != nil:
       let cancelFileCheck = fileData.cancelFileCheck
       if cancelFileCheck != nil and not cancelFileCheck.finished:
@@ -970,7 +968,6 @@ proc didCloseFile*(ls: LanguageServer, uri: string): Future[void] {.async.} =
     if project.ns.finished and not project.ns.failed:
       let nsRef = project.ns.read()
       if uri in nsRef.openFiles:
-        debug "[chg:didCloseFile] removing closed file from ns.openFiles", uri = uri, project = project.file
         nsRef.openFiles.excl(uri)
 
 proc makeIdleFile*(ls: LanguageServer, file: NlsFileInfo): Future[void] {.async.} =
@@ -1032,12 +1029,7 @@ proc didRenameFile*(
     if oldPath.endsWith(".nim") and oldProjectFile in ls.projectFiles:
       let ns = await ls.projectFiles[oldProjectFile].ns
       if ns != nil:
-        debug "[chg:didRenameFile] triggering ns.recompile() after .nim rename", oldPath = oldPath, project = oldProjectFile
         traceAsyncErrors ns.recompile()
-      else:
-        debug "[chg:didRenameFile] skipping recompile: ns is nil", oldPath = oldPath, project = oldProjectFile
-    else:
-      debug "[chg:didRenameFile] skipping recompile: not a .nim rename or project not tracked", oldPath = oldPath
 
     # If the file moved to a different project, ensure nimsuggest is running for it
     if newProjectFile != oldProjectFile and newProjectFile notin ls.projectFiles:
@@ -1104,10 +1096,7 @@ proc didOpenFile*(
     let ns = await ls.tryGetNimSuggest(uri)
     if ns.isSome:
       discard ls.warnIfUnknown(ns.get(), uri, projectFile, intendedProjectFile)
-      debug "[chg:didOpenFile] adding uri to ns.openFiles", uri = uri, project = projectFile
       ns.get().openFiles.incl(uri)
-    else:
-      debug "[chg:didOpenFile] tryGetNimsuggest returned none, uri NOT added to ns.openFiles", uri = uri, project = projectFile
 
     let projectFileUri = projectFile.pathToUri
     if projectFileUri notin ls.openFiles:
@@ -1135,7 +1124,6 @@ proc tryGetNimsuggest*(
   if fileInfo.projectFile.finished and not fileInfo.projectFile.failed:
     let pf = fileInfo.projectFile.read()
     if pf in ls.crashedFiles and path in ls.crashedFiles[pf]:
-      debug "[chg:tryGetNimsuggest] BLOCKED by crashedFiles", file = path, project = pf
       return none(Nimsuggest)
 
   var retryCount = 0
@@ -1265,13 +1253,10 @@ proc onErrorCallback(args: (LanguageServer, string), project: Project) =
   ls.failTable[project.file] = ls.failTable.getOrDefault(project.file, 0) + 1
   debug "Fail count", count = ls.failTable[project.file]
   let crashedFile = project.lastCmd.extractCrashedFile()
-  debug "[chg:onErrorCallback] extracted crashed file from lastCmd", lastCmd = project.lastCmd, crashedFile = crashedFile, projectFile = project.file
   if crashedFile != "" and crashedFile != project.file:
     ls.crashedFiles.mgetOrPut(project.file, initHashSet[string]()).incl crashedFile
-    warn "[chg:onErrorCallback] Blocking file from nimsuggest after crash; restart the language server or import the file to re-enable",
+    warn "Blocking file from nimsuggest after crash; save the file to re-enable",
       file = crashedFile, project = project.file
-  else:
-    debug "[chg:onErrorCallback] crashedFile empty or equals project root, not blocking", crashedFile = crashedFile
   let configuration = ls.getWorkspaceConfiguration().waitFor()
   warn "Server stopped.", projectFile = project.file
   try:
@@ -1389,7 +1374,6 @@ proc createOrRestartNimsuggest*(
         ls.showMessage(fmt "Nimsuggest initialized for {projectFile}", MessageType.Info)
         traceAsyncErrors ls.checkProject(uri)
         let newNs = fut.read()
-        debug "[chg:reRegLoop] re-registering open files after nimsuggest restart", project = projectFile
         for openUri in ls.openFiles.keys:
           let fileInfo = ls.openFiles[openUri]
           if fileInfo.projectFile.finished and
@@ -1400,9 +1384,7 @@ proc createOrRestartNimsuggest*(
               # Skip crash-inducing files: don't re-register them in the new
               # instance's tracking set or issue checkFile, which would bypass
               # the tryGetNimsuggest guard and re-trigger the crash.
-              debug "[chg:reRegLoop] skipping crashed file during re-registration", uri = openUri
               continue
-            debug "[chg:reRegLoop] adding to ns.openFiles", uri = openUri
             newNs.openFiles.incl openUri
       ls.sendStatusChanged()
   except CatchableError as ex:
@@ -1623,7 +1605,7 @@ proc removeIdleNimsuggests*(ls: LanguageServer) {.async.} =
     project.errorCallback = none(ProjectCallback)
 
     let ns = await project.ns
-    for uri in ns.openFiles:
+    for uri in ns.openFiles.toSeq:
       debug "Removing idle nimsuggest open file", uri = uri
       ls.openFiles.withValue(uri, info):
         await ls.makeIdleFile(info[])
