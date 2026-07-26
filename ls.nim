@@ -330,7 +330,8 @@ proc getNimbleDumpInfo*(
   except OSError, IOError:
     debug "Failed to get nimble dump info", nimbleFile = nimbleFile
   finally:
-    await shutdownChildProcess(process)
+    if process != nil:
+      await shutdownChildProcess(process)
 
 proc parseWorkspaceConfiguration*(conf: JsonNode): NlsConfig =
   try:
@@ -440,11 +441,15 @@ proc getLspStatus*(ls: LanguageServer): NimLangServerStatus {.raises: [].} =
   result.lspPath = getAppFilename()
   result.version = LSPVersion
   result.extensionCapabilities = ls.extensionCapabilities.toSeq
+  var seenPorts = initHashSet[int]()
   for project in ls.projectFiles.values:
     let futNs = project.ns
     if futNs.finished:
       try:
         var ns = futNs.read
+        if ns.port in seenPorts:
+          continue
+        seenPorts.incl(ns.port)
         var nsStatus = NimSuggestStatus(
           projectFile: project.file,
           capabilities: ns.capabilities.toSeq,
@@ -834,11 +839,13 @@ proc warnIfUnknown*(
       # Guard: if a nimsuggest for the intended project is already starting or
       # running, skip to avoid a redundant restart.
       if intendedProjectFile in ls.projectFiles:
-        let existingNs = ls.projectFiles[intendedProjectFile].ns
-        if existingNs.finished and not existingNs.failed:
+        let existingProj = ls.projectFiles[intendedProjectFile]
+        if existingProj.file == intendedProjectFile and
+            existingProj.ns.finished and not existingProj.ns.failed:
           debug "warnIfUnknown: intended project already has nimsuggest, skipping restart",
             file = path, intended = intendedProjectFile
           return
+
       debug "warnIfUnknown: restarting nimsuggest for intended project after unknownFile detection",
         file = path, `from` = projectFile, to = intendedProjectFile
       if projectFile in ls.projectFiles:
@@ -860,12 +867,56 @@ proc warnIfUnknown*(
           let newFut = newFuture[string]("reassign")
           newFut.complete(intendedProjectFile)
           fileInfo.projectFile = newFut
+          
     elif not ns.canHandleUnknown:
       ls.showMessage(
         fmt """{path} is not compiled as part of project {projectFile}.
-  In orde to get the IDE features working you must either configure nim.projectMapping or import the module.""",
+  In order to get the IDE features working you must either configure nim.projectMapping or import the module.""",
         MessageType.Warning,
       )
+    else:
+      # canHandleUnknown=true but the v4 nimsuggest protocol does not compile
+      # unknown files standalone: needsCompilation(fileIndex) returns false for
+      # files with no module in the graph (the old protocol checked isKnownFile
+      # and called compileProject unconditionally; v4 dropped that path).
+      # Restart nimsuggest with the open file as its own entry point so the user
+      # gets full IDE features while editing it in isolation before importing it.
+      #
+      # Cascade prevention: if the project slot is a redirect alias (its .file
+      # differs from the key), another standalone restart is already in progress
+      # for a different file in this project. Triggering another here would start
+      # sequential per-file restarts, each paying the full cold-compile cost.
+      # Only the project entry-file itself (path == projectFile) is allowed past
+      # this guard, as that represents a deliberate "latest file wins" switch.
+      if projectFile in ls.projectFiles:
+        let projEntry = ls.projectFiles[projectFile]
+        if projEntry.file != projectFile and path != projectFile:
+          debug "warnIfUnknown: cascade prevention — standalone restart already active for another file in this project",
+            file = path, project = projectFile, activeFile = projEntry.file
+          return
+      # Guard: if nimsuggest is already running for this file as its own project,
+      # skip to avoid a restart loop when multiple unimported files are open.
+      if path in ls.projectFiles:
+        let existingProj = ls.projectFiles[path]
+        if existingProj.file == path and
+            existingProj.ns.finished and not existingProj.ns.failed:
+          debug "warnIfUnknown: nimsuggest already running for file as standalone, skipping",
+            file = path
+          return
+      debug "warnIfUnknown: restarting nimsuggest with open file as standalone entry point",
+        file = path, project = projectFile
+      if projectFile in ls.projectFiles:
+        ls.projectFiles[projectFile].errorCallback = none(ProjectCallback)
+        ls.projectFiles[projectFile].stop()
+      ls.createOrRestartNimsuggest(path, uri)
+      if path in ls.projectFiles:
+        ls.projectFiles[projectFile] = ls.projectFiles[path]
+      for openUri, fileInfo in ls.openFiles.mpairs:
+        if fileInfo.projectFile.finished and
+            fileInfo.projectFile.read() == projectFile:
+          let newFut = newFuture[string]("reassign")
+          newFut.complete(path)
+          fileInfo.projectFile = newFut
 
 proc shouldSpawnNimsuggest*(ls: LanguageServer): Future[bool] {.async.} =
   # Count ALL projectFiles entries (including projects still starting), not just
@@ -1036,6 +1087,32 @@ proc didRenameFile*(
       let shouldSpawn = await ls.shouldSpawnNimsuggest()
       if shouldSpawn:
         ls.createOrRestartNimsuggest(newProjectFile, newUri)
+
+proc didDeleteFile*(ls: LanguageServer, uri: string): Future[void] {.async.} =
+  debug "File deleted", uri = uri
+  let path = uriToPath(uri)
+
+  # If a .nimble file was deleted, invalidate its dump cache entry
+  if path.endsWith(".nimble"):
+    ls.nimDumpCache.del(path)
+
+  # Sync ns.openFiles: the file is gone from disk, so remove it from every
+  # nimsuggest instance's tracking set
+  for project in ls.projectFiles.values:
+    if project.ns.finished and not project.ns.failed:
+      let nsRef = project.ns.read()
+      if uri in nsRef.openFiles:
+        nsRef.openFiles.excl(uri)
+
+  # Trigger a full recompile on all live nimsuggest instances. This converts
+  # the mid-command IOError (recompilePartially hitting the missing file) into
+  # a controlled degraded state via recompileFullProject, which handles
+  # "cannot open file" gracefully. We recompile all instances conservatively
+  # since we cannot know which projects import the deleted file.
+  if path.endsWith(".nim"):
+    for project in ls.projectFiles.values:
+      if project.ns.finished and not project.ns.failed:
+        traceAsyncErrors project.ns.read().recompile()
 
 proc didOpenFile*(
     ls: LanguageServer, textDocument: TextDocumentItem
@@ -1592,9 +1669,14 @@ proc removeIdleNimsuggests*(ls: LanguageServer) {.async.} =
       DefaultNimsuggestIdleTimeout
     )
   var toStop = newSeq[Project]()
+  var seenFiles: HashSet[string]
   for project in ls.projectFiles.values:
     if project.file in ls.entryPoints: #we only remove non entry point nimsuggests
       continue
+    # Deduplicate: redirect aliases share the same project.file; only process once.
+    if project.file in seenFiles:
+      continue
+    seenFiles.incl(project.file)
     if project.lastCmdDate.isSome:
       let passedTime = now() - project.lastCmdDate.get()
       if passedTime.inMilliseconds > timeout:
@@ -1610,7 +1692,14 @@ proc removeIdleNimsuggests*(ls: LanguageServer) {.async.} =
       ls.openFiles.withValue(uri, info):
         await ls.makeIdleFile(info[])
     project.stop()
-    ls.projectFiles.del(project.file)
+    # Delete ALL keys pointing to this project: both the main key and any redirect
+    # aliases created by warnIfUnknown (where the key ≠ project.file). Using only
+    # del(project.file) would leave alias keys forever since their project.file also
+    # equals the stopped project's file, so del(project.file) is a no-op for them.
+    let fileToStop = project.file
+    for k in ls.projectFiles.keys.toSeq:
+      if ls.projectFiles.hasKey(k) and ls.projectFiles[k].file == fileToStop:
+        ls.projectFiles.del(k)
 
     ls.showMessage(
       fmt"Nimsuggest for {project.file} was stopped because it was idle for too long",
