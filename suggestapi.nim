@@ -486,11 +486,6 @@ proc processQueue(self: Nimsuggest): Future[void] {.async.} =
         if (content == ""):
           self.project.markFailed "Server crashed/socket closed."
           debug "Server socket closed"
-          if not req.future.finished:
-            debug "Call cancelled before sending error", command = req.command
-            req.future.fail newException(
-              CatchableError, "Server crashed/socket closed."
-            )
         if not req.future.finished:
           debug "Sending result(s)", length = res.len
           req.future.complete res
@@ -575,17 +570,12 @@ createFileOnlyCommand(globalSymbols)
 createGlobalCommand(recompile)
 createRangeCommand(inlayHints)
 
-proc `mod`*(
-    nimsuggest: Nimsuggest, file: string, dirtyfile = ""
-): Future[seq[Suggest]] =
-  return nimsuggest.call("ideMod", file, dirtyfile, 0, 0)
-
 proc isKnown*(nimsuggest: Nimsuggest, filePath: string): Future[bool] {.async.} =
   let res = await withTimeout(nimsuggest.known(filePath))
   if res.isNone:
-    debug "Timeout reached running [isKnown], assuming the file is not known",
+    debug "Timeout reached running [isKnown], assuming the file is known (nimsuggest busy)",
       file = filePath
-    return
+    return true
   let sug = res.get()
   if sug.len == 0:
     return false
