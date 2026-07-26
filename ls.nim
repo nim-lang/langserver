@@ -822,6 +822,30 @@ proc createOrRestartNimsuggest*(
   ls: LanguageServer, projectFile: string, uri = ""
 ) {.gcsafe, raises: [].}
 
+proc shouldSpawnNimsuggest*(ls: LanguageServer): Future[bool] {.async.} =
+  # Count ALL projectFiles entries (including projects still starting), not just
+  # finished ones — otherwise concurrent didOpen tasks all see count=0 and all spawn.
+  let nsCount = ls.projectFiles.len
+  let conf = await ls.getWorkspaceConfiguration
+  let maxNimsuggestProcesses = conf.maxNimsuggestProcesses.get(NIM_MAX_NS_PROCESSES)
+  result = maxNimsuggestProcesses == 0 or nsCount < maxNimsuggestProcesses
+  debug "shouldSpawnNimsuggest",
+    result = result, nsCount = nsCount, maxNimsuggestProcesses = maxNimsuggestProcesses
+
+proc leastRecentlyUsedProjectFile(ls: LanguageServer): string =
+  ## Returns the projectFiles key whose nimsuggest has been least recently used.
+  ## Only considers finished, non-failed instances. Falls back to the first key
+  ## if no finished instance exists (e.g. all still compiling).
+  var oldest = now()
+  result = ls.projectFiles.keys.toSeq[0]
+  for k, proj in ls.projectFiles.pairs:
+    if not proj.ns.finished or proj.ns.failed:
+      continue
+    let date = proj.lastCmdDate.get(dateTime(1970, mJan, 1, 0, 0, 0, 0, utc()))
+    if date < oldest:
+      oldest = date
+      result = k
+
 proc warnIfUnknown*(
     ls: LanguageServer,
     ns: Nimsuggest,
@@ -877,23 +901,9 @@ proc warnIfUnknown*(
     else:
       # canHandleUnknown=true but the v4 nimsuggest protocol does not compile
       # unknown files standalone: needsCompilation(fileIndex) returns false for
-      # files with no module in the graph (the old protocol checked isKnownFile
-      # and called compileProject unconditionally; v4 dropped that path).
-      # Restart nimsuggest with the open file as its own entry point so the user
-      # gets full IDE features while editing it in isolation before importing it.
+      # files with no module in the graph. Restart nimsuggest with the open file
+      # as its own entry point to give the user full IDE features in isolation.
       #
-      # Cascade prevention: if the project slot is a redirect alias (its .file
-      # differs from the key), another standalone restart is already in progress
-      # for a different file in this project. Triggering another here would start
-      # sequential per-file restarts, each paying the full cold-compile cost.
-      # Only the project entry-file itself (path == projectFile) is allowed past
-      # this guard, as that represents a deliberate "latest file wins" switch.
-      if projectFile in ls.projectFiles:
-        let projEntry = ls.projectFiles[projectFile]
-        if projEntry.file != projectFile and path != projectFile:
-          debug "warnIfUnknown: cascade prevention — standalone restart already active for another file in this project",
-            file = path, project = projectFile, activeFile = projEntry.file
-          return
       # Guard: if nimsuggest is already running for this file as its own project,
       # skip to avoid a restart loop when multiple unimported files are open.
       if path in ls.projectFiles:
@@ -903,30 +913,53 @@ proc warnIfUnknown*(
           debug "warnIfUnknown: nimsuggest already running for file as standalone, skipping",
             file = path
           return
-      debug "warnIfUnknown: restarting nimsuggest with open file as standalone entry point",
-        file = path, project = projectFile
-      if projectFile in ls.projectFiles:
-        ls.projectFiles[projectFile].errorCallback = none(ProjectCallback)
-        ls.projectFiles[projectFile].stop()
-      ls.createOrRestartNimsuggest(path, uri)
-      if path in ls.projectFiles:
-        ls.projectFiles[projectFile] = ls.projectFiles[path]
-      for openUri, fileInfo in ls.openFiles.mpairs:
-        if fileInfo.projectFile.finished and
-            fileInfo.projectFile.read() == projectFile:
-          let newFut = newFuture[string]("reassign")
+      let canSpawn = await ls.shouldSpawnNimsuggest()
+      if canSpawn:
+        # "Spawn alongside" path: a free slot is available — start a second
+        # nimsuggest for this file without stopping the existing one.
+        debug "warnIfUnknown: spawning standalone nimsuggest alongside existing",
+          file = path, project = projectFile
+        # Reassign this file's projectFile future BEFORE spawning so the
+        # addCallback re-registration loop (which checks projectFile.read() == path)
+        # picks up this uri and adds it to the new ns.openFiles.
+        if uri in ls.openFiles:
+          let newFut = newFuture[string]("reassign-standalone")
           newFut.complete(path)
-          fileInfo.projectFile = newFut
-
-proc shouldSpawnNimsuggest*(ls: LanguageServer): Future[bool] {.async.} =
-  # Count ALL projectFiles entries (including projects still starting), not just
-  # finished ones — otherwise concurrent didOpen tasks all see count=0 and all spawn.
-  let nsCount = ls.projectFiles.len
-  let conf = await ls.getWorkspaceConfiguration
-  let maxNimsuggestProcesses = conf.maxNimsuggestProcesses.get(NIM_MAX_NS_PROCESSES)
-  result = maxNimsuggestProcesses == 0 or nsCount < maxNimsuggestProcesses
-  debug "shouldSpawnNimsuggest",
-    result = result, nsCount = nsCount, maxNimsuggestProcesses = maxNimsuggestProcesses
+          ls.openFiles[uri].projectFile = newFut
+        # Remove from old nimsuggest's tracking since it now has its own.
+        if projectFile in ls.projectFiles and
+            ls.projectFiles[projectFile].ns.finished and
+            not ls.projectFiles[projectFile].ns.failed:
+          ls.projectFiles[projectFile].ns.read().openFiles.excl(uri)
+        ls.createOrRestartNimsuggest(path, uri)
+      else:
+        # "Kill and replace" path: at the process limit — replace the least recently
+        # used nimsuggest with a new one for this file.
+        #
+        # Cascade prevention: redirect aliases exist only in this path (created by
+        # the redirect alias assignment below). If the project slot is already a
+        # redirect alias, another standalone restart is in progress for a different
+        # file in this project; bail unless this file is the project entry-file itself.
+        if projectFile in ls.projectFiles:
+          let projEntry = ls.projectFiles[projectFile]
+          if projEntry.file != projectFile and path != projectFile:
+            debug "warnIfUnknown: cascade prevention — standalone restart already active for another file in this project",
+              file = path, project = projectFile, activeFile = projEntry.file
+            return
+        debug "warnIfUnknown: replacing nimsuggest (at limit) with standalone for file",
+          file = path, project = projectFile
+        if projectFile in ls.projectFiles:
+          ls.projectFiles[projectFile].errorCallback = none(ProjectCallback)
+          ls.projectFiles[projectFile].stop()
+        ls.createOrRestartNimsuggest(path, uri)
+        if path in ls.projectFiles:
+          ls.projectFiles[projectFile] = ls.projectFiles[path]
+        for openUri, fileInfo in ls.openFiles.mpairs:
+          if fileInfo.projectFile.finished and
+              fileInfo.projectFile.read() == projectFile:
+            let newFut = newFuture[string]("reassign")
+            newFut.complete(path)
+            fileInfo.projectFile = newFut
 
 proc initNimsuggestInstances*(ls: LanguageServer, rootPath: string) {.async.} =
   if rootPath == "":
@@ -966,13 +999,13 @@ proc getNimsuggestInner(ls: LanguageServer, uri: string): Future[Nimsuggest] {.a
 
   const MaxFails = 10
   if projectFile in ls.failTable and ls.failTable[projectFile] >= MaxFails:
-    let nextNs = ls.projectFiles.keys.toSeq.filterIt(it != projectFile)
-    if nextNs.len > 0:
-      let nextNs = nextNs[0]
-      debug "Reusing nimsuggest instance for", uri = uri, projectFile = nextNs
-      return await ls.projectFiles[nextNs].ns
-    else:
-      return nil
+    if ls.projectFiles.len > 1:
+      let nextNs = ls.leastRecentlyUsedProjectFile()
+      if nextNs != projectFile:
+        debug "Reusing least recently used nimsuggest after repeated failures",
+          uri = uri, projectFile = nextNs
+        return await ls.projectFiles[nextNs].ns
+    return nil
 
   # Check multiple times with small delays.
   # Skip entries whose ns is still pending (sentinel from createOrRestartNimsuggest).
@@ -1470,7 +1503,7 @@ proc createOrRestartNimsuggest*(
 
 proc restartAllNimsuggestInstances(ls: LanguageServer) =
   debug "Restarting all nimsuggest instances"
-  for projectFile in ls.projectFiles.keys:
+  for projectFile in ls.projectFiles.keys.toSeq:
     ls.createOrRestartNimsuggest(projectFile, projectFile.pathToUri)
 
 proc maybeRegisterCapabilityDidChangeConfiguration*(ls: LanguageServer) =
@@ -1574,8 +1607,8 @@ proc getProjectFile*(fileUri: string, ls: LanguageServer): Future[string] {.asyn
           project = result, uri = fileUri, matchedRegex = mapping.fileRegex
         let shouldSpawn = await ls.shouldSpawnNimsuggest()
         if not shouldSpawn:
-          result = ls.projectFiles.keys.toSeq[0]
-          debug "Reached the maximum instances of nimsuggest (mapping), reusing first instance",
+          result = ls.leastRecentlyUsedProjectFile()
+          debug "Reached the maximum instances of nimsuggest (mapping), reusing least recently used instance",
             project = result
         return result
     else:
@@ -1585,8 +1618,8 @@ proc getProjectFile*(fileUri: string, ls: LanguageServer): Future[string] {.asyn
   #If we reached the maximum instances of nimsuggest, we just return the first project
   let shouldSpawn = await ls.shouldSpawnNimsuggest()
   if not shouldSpawn:
-    result = ls.projectFiles.keys.toSeq[0]
-    debug "Reached the maximum instances of nimsuggest, reusing the first nimsuggest instance",
+    result = ls.leastRecentlyUsedProjectFile()
+    debug "Reached the maximum instances of nimsuggest, reusing least recently used instance",
       project = result
     return result
 
