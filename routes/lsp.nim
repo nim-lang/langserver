@@ -85,7 +85,17 @@ proc initialize*(
                     )
                   ]
                 )
-              )
+              ),
+              didDelete: some(
+                FileOperationRegistrationOptions(
+                  filters: @[
+                    FileOperationFilter(
+                      scheme: some("file"),
+                      pattern: FileOperationPattern(glob: "**/*.nim"),
+                    )
+                  ]
+                )
+              ),
             )
           ),
         )
@@ -884,11 +894,11 @@ proc listTests*(
     error "Nim path not found when listing tests"
     return ListTestsResult(
       projectInfo: TestProjectInfo(
-        entryPoint: params.entryPoint, suites: initTable[string, TestSuiteInfo]()
+        entryPoint: params.entryPoint.get(""), suites: initTable[string, TestSuiteInfo]()
       )
     )
   let workspaceRoot = ls.lspInitializeParams.getRootPath
-  let testProjectInfo = await listTests(params.entryPoint, nimPath.get(), workspaceRoot)
+  let testProjectInfo = await listTests(params.entryPoint.get(""), nimPath.get(), workspaceRoot)
   result.projectInfo = testProjectInfo
 
 proc runTests*(
@@ -1052,6 +1062,12 @@ proc didRenameFiles*(
 ): Future[void] {.async.} =
   for rename in params.files:
     await ls.didRenameFile(rename.oldUri, rename.newUri)
+
+proc didDeleteFiles*(
+    ls: LanguageServer, params: DeleteFilesParams
+): Future[void] {.async.} =
+  for file in params.files:
+    await ls.didDeleteFile(file.uri)
 
 proc didChangeConfiguration*(
     ls: LanguageServer, conf: JsonNode

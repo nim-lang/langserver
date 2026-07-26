@@ -652,6 +652,12 @@ type
   RenameFilesParams* = ref object of RootObj
     files*: seq[FileRename]
 
+  FileDelete* = ref object of RootObj
+    uri*: string
+
+  DeleteFilesParams* = ref object of RootObj
+    files*: seq[FileDelete]
+
   ServerCapabilities_workspace_fileOperations* = ref object of RootObj
     didCreate*: Option[FileOperationRegistrationOptions]
     willCreate*: Option[FileOperationRegistrationOptions]
@@ -1137,7 +1143,7 @@ type
     error*: Option[string]
 
   ListTestsParams* = object
-    entryPoint*: string
+    entryPoint*: Option[string]
       #can be patterns? if empty we could do the same as nimble does or just run `nimble test args`
 
   ListTestsResult* = object

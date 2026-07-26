@@ -216,6 +216,14 @@ proc runRpc(ls: LanguageServer, req: RequestRx, rpc: RpcProc): Future[void] {.as
   except CatchableError as ex:
     error "[RunRPC] ", msg = ex.msg, req = req.`method`
     writeStackTrace(ex = ex)
+    if req.id.kind == riNumber:
+      ls.writeOutput(
+        %*{
+          "jsonrpc": "2.0",
+          "id": req.id.num,
+          "error": {"code": -32603, "message": ex.msg},
+        }
+      )
 
 proc processMessage(ls: LanguageServer, message: string) {.raises: [].} =
   try:
