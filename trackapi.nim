@@ -45,11 +45,13 @@ proc track*(
   )
 
   try:
+    let stdoutFuture = process.stdoutStream.read()
+    let stderrFuture = process.stderrStream.read()
     let exitCode = await process.waitForExit(timeout.milliseconds)
-    let stdoutBytes = process.stdoutStream.read().await
+    let stdoutBytes = await stdoutFuture
     var stderrStr = ""
     try:
-      stderrStr = process.stderrStream.read().await.toString
+      stderrStr = (await stderrFuture).toString
     except CatchableError:
       discard
     if "invalid command: track" in stderrStr:
