@@ -1,4 +1,4 @@
-import chronos, chronos/asyncproc, strutils, strformat, chronicles, suggestapi
+import chronos, chronos/asyncproc, strutils, strformat, chronicles, suggestapi, utils
 
 type TrackMode* = enum
   tmDef = "def"
@@ -58,6 +58,9 @@ proc track*(
     if exitCode != 0:
       debug "nim track exit", exitCode = exitCode
     result = parseTrackOutput(stdoutBytes.toString)
+  except CancelledError:
+    await shutdownChildProcess(process)
+    raise
   except CatchableError as e:
     debug "nim track exception", error = e.msg, name = e.name
     result = @[]
