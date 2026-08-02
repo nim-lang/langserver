@@ -1,8 +1,8 @@
+import std/[syncio, os, json, strutils, strformat]
 import json_rpc/[servers/socketserver, private/jrpc_sys, jsonmarshal, rpcclient, router]
 import chronicles, chronos
-import std/[syncio, os, json, strutils, strformat]
-import ls, utils, lstransports, asyncprocmonitor
-import routes/[lsp, mcp]
+import langserver/[langserver, utils, transports]
+import routes/[asyncprocmonitor, lsp, mcp]
 import protocol/types
 when defined(posix):
   import posix
@@ -108,7 +108,7 @@ proc registerLspRoutes(srv: RpcSocketServer, ls: LanguageServer) =
   srv.register("$/setTrace", wrapRpc(partial(lsp.setTrace, ls)))
 
 proc showHelp() =
-  echo "nimlangserver: The Nim Language Server"
+  echo "quicknimlsp: The Nim Language Server"
   echo "Version: ", LSPVersion
   echo ""
   echo "Options:"
@@ -214,12 +214,12 @@ proc tickLs*(ls: LanguageServer, time = 1.seconds) {.async.} =
   await ls.tickLs()
 
 proc main*(cmdLineParams: CommandLineParams): LanguageServer =
-  debug "Starting nimlangserver", version = LSPVersion, params = cmdLineParams
+  debug "Starting quicknimlsp", version = LSPVersion, params = cmdLineParams
   #[
-  `nimlangserver` supports both transports: stdio and socket. By default it uses stdio transport. 
+  `quicknimlsp` supports both transports: stdio and socket. By default it uses stdio transport.
     But we do construct a RPC socket server even in stdio mode, so that we can reuse the same code for both transports.
   ]#
-  result = initLs(cmdLineParams, ensureStorageDir())
+  result = initLanguageServer(cmdLineParams, ensureStorageDir())
   case result.transportMode
   of stdio:
     result.startStdioServer()

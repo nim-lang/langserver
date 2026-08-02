@@ -2,11 +2,11 @@ import
   std/
     [os, strscans, tables, enumerate, strutils, xmlparser, xmltree, options, strformat]
 import chronos, chronos/asyncproc
-import protocol/types
-import ls
+import ../protocol/types
+import ../langserver/langserver
 import chronicles
 import stew/byteutils
-import utils
+import ../langserver/utils
 
 proc extractTestInfo*(rawOutput: string): TestProjectInfo =
   result.suites = initTable[string, TestSuiteInfo]()

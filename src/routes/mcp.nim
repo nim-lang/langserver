@@ -1,7 +1,8 @@
 import
   std/[os, sequtils, tables, json],
   pkg/[chronos, json_rpc/server, chronicles, json_serialization],
-  ../[suggestapi, ls, utils],
+  ../nimsuggest/suggestapi,
+  ../langserver/[langserver, utils],
   ../protocol/types
 
 const McpProtocolVersion* = "2025-11-25"
@@ -497,7 +498,7 @@ proc initialize*(
     protocolVersion: McpProtocolVersion,
     capabilities: McpServerCapabilities(tools: McpToolsOptions()),
     serverInfo:
-      McpInitializeParams_serverInfo(name: "nimlangserver", version: LSPVersion),
+      McpInitializeParams_serverInfo(name: "quicknimlsp", version: LSPVersion),
   )
   debug "Initialize completed. Trying to start nimsuggest instances"
 

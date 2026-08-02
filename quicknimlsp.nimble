@@ -1,11 +1,11 @@
 mode = ScriptMode.Verbose
 
-packageName = "nimlangserver"
-version = "1.14.0"
-author = "The core Nim team"
-description = "Nim language server for IDEs"
+packageName = "quicknimlsp"
+version = "1.15.0"
+author = "David Pocknee and The core Nim team"
+description = "Alternative Nim language server for IDEs"
 license = "MIT"
-bin = @["nimlangserver"]
+bin = @["quicknimlsp"]
 skipDirs = @["tests"]
 
 requires "nim == 2.0.8",
@@ -24,7 +24,7 @@ task book, "Generate book":
   exec "mdbook build book -d ../docs"
 
 task apidocs, "Generate API docs":
-  exec "nimble doc --outdir:docs/apidocs --project --index:on --git.url:https://github.com/nim-lang/langserver--git.commit:master --git.devel:master nimlangserver.nim"
+  exec "nimble doc --outdir:docs/apidocs --project --index:on --git.url:https://github.com/nim-lang/langserver--git.commit:master --git.devel:master quicknimlsp.nim"
 
 task docs, "Generate docs":
   exec "nimble book"

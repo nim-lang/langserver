@@ -1068,12 +1068,6 @@ type
     nsExceptionInlayHints = "exceptionInlayHints"
     nsUnknownFile = "unknownFile"
 
-  PendingRequestStatus* = object
-    name*: string
-    projectFile*: string
-    time*: string
-    state*: string
-
   NimSuggestStatus* = object
     projectFile*: string
     capabilities*: seq[NimSuggestCapability]
@@ -1082,6 +1076,12 @@ type
     port*: int
     openFiles*: seq[string]
     unknownFiles*: seq[string]
+  PendingRequestStatus* = object
+    name*: string
+    projectFile*: string
+    time*: string
+    state*: string
+
 
   LspExtensionCapability* = enum
     #List of extensions this server support. Useful for clients

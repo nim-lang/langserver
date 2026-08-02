@@ -14,8 +14,11 @@ import
     stew/byteutils,
     with,
   ],
-  ../[testrunner, nimexpand, asyncprocmonitor, suggestapi, ls, utils],
-  ../protocol/[enums, types]
+  ../testrunner/testrunner,
+  ../nimsuggest/suggestapi,
+  ../langserver/[langserver, utils],
+  ../protocol/[enums, types],
+  ./[nimexpand, asyncprocmonitor]
 
 import macros except error
 

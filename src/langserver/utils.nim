@@ -4,6 +4,7 @@ import "$nim/compiler/pathutils"
 import json_rpc/private/jrpc_sys
 import macros
 import stew/byteutils
+import ./langserver_types
 
 type
   FingerTable = seq[tuple[u16pos, offset: int]]
@@ -77,42 +78,6 @@ proc utf8to16*(fingerTable: FingerTable, utf8pos: int): int =
       result -= finger.offset
     else:
       break
-
-when isMainModule:
-  import termstyle
-  var x = "heållo☀☀wor𐐀𐐀☀ld heållo☀wor𐐀ld heållo☀wor𐐀ld"
-  var fingerTable = createUTFMapping(x)
-
-  var corrected = utf16to8(fingerTable, 5)
-  for y in x:
-    if corrected == 0:
-      echo "-"
-    if ord(y) > 125:
-      echo ord(y).red
-    else:
-      echo ord(y)
-    corrected -= 1
-
-  echo "utf16\tchar\tutf8\tchar\tchk"
-  var pos = 0
-  for c in x.runes:
-    stdout.write pos
-    stdout.write "\t"
-    stdout.write c
-    stdout.write "\t"
-    var corrected = utf16to8(fingerTable, pos)
-    stdout.write corrected
-    stdout.write "\t"
-    stdout.write x.runeAt(corrected)
-    if c.int32 == x.runeAt(corrected).int32:
-      stdout.write "\tOK".green
-    else:
-      stdout.write "\tERR".red
-    stdout.write "\n"
-    if c.int >= 0x10000:
-      pos += 2
-    else:
-      pos += 1
 
 proc uriToPath*(uri: string): string =
   ## Convert an RFC 8089 file URI to a native, platform-specific, absolute path.
@@ -304,7 +269,7 @@ proc partial*[A, B, C, D](
     return fn(a, b, c)
 
 proc ensureStorageDir*(): string =
-  result = getTempDir() / "nimlangserver"
+  result = getTempDir() / "quicknimlsp"
   discard existsOrCreateDir(result)
 
 proc either*[T](fut1, fut2: Future[T]): Future[T] {.async.} =
@@ -348,7 +313,7 @@ func isWord*(str: string): bool =
   return true
 
 proc getNimScriptAPITemplatePath*(): string =
-  result = getCacheDir("nimlangserver")
+  result = getCacheDir("quicknimlsp")
   createDir(result)
   result = result / "nimscriptapi.nim"
 
@@ -444,3 +409,109 @@ proc readOutputUntilExit*(
     if hasExited:
       # debug "Process has exited, final cleanup", output = output, error = error, code = res
       return (output, error, res)
+
+macro `%*`*(t: untyped, inputStream: untyped): untyped =
+  result =
+    newCall(bindSym("to", brOpen), newCall(bindSym("%*", brOpen), inputStream), t)
+
+
+proc uriStorageLocation*(ls: LanguageServer, uri: string): string =
+  ls.storageDir / (hash(uri).toHex & ".nim")
+
+proc uriToStash*(ls: LanguageServer, uri: string): string =
+  if ls.openFiles.hasKey(uri) and ls.openFiles[uri].changed:
+    uriStorageLocation(ls, uri)
+  else:
+    ""
+
+proc toUtf16Pos*(
+    ls: LanguageServer, uri: string, line: int, utf8Pos: int
+): Option[int] =
+  if uri in ls.openFiles and line >= 0 and line < ls.openFiles[uri].fingerTable.len:
+    let utf16Pos = ls.openFiles[uri].fingerTable[line].utf8to16(utf8Pos)
+    return some(utf16Pos)
+  else:
+    return none(int)
+
+proc toUtf16Pos*(suggest: Suggest, ls: LanguageServer): Suggest =
+  result = suggest
+  let uri = pathToUri(suggest.filePath)
+  let pos = toUtf16Pos(ls, uri, suggest.line - 1, suggest.column)
+  if pos.isSome:
+    result.column = pos.get()
+
+proc toUtf16Pos*(
+    suggest: SuggestInlayHint, ls: LanguageServer, uri: string
+): SuggestInlayHint =
+  result = suggest
+  let pos = toUtf16Pos(ls, uri, suggest.line - 1, suggest.column)
+  if pos.isSome:
+    result.column = pos.get()
+
+proc toUtf16Pos*(checkResult: CheckResult, ls: LanguageServer): CheckResult =
+  result = checkResult
+  let uri = pathToUri(checkResult.file)
+  let pos = toUtf16Pos(ls, uri, checkResult.line - 1, checkResult.column)
+  if pos.isSome:
+    result.column = pos.get()
+
+  for i in 0 ..< result.stacktrace.len:
+    let stPos =
+      toUtf16Pos(ls, uri, result.stacktrace[i].line - 1, result.stacktrace[i].column)
+    if stPos.isSome:
+      result.stacktrace[i].column = stPos.get()
+
+proc range*(startLine, startCharacter, endLine, endCharacter: int): Range =
+  return
+    Range %* {
+      "start": {"line": startLine, "character": startCharacter},
+      "end": {"line": endLine, "character": endCharacter},
+    }
+
+proc toLabelRange*(suggest: Suggest): Range =
+  with suggest:
+    return range(line - 1, column, line - 1, column + utf16Len(qualifiedPath[^1]))
+
+proc getCharacter*(
+    ls: LanguageServer, uri: string, line: int, character: int
+): Option[int] =
+  if uri in ls.openFiles and line < ls.openFiles[uri].fingerTable.len:
+    return some ls.openFiles[uri].fingerTable[line].utf16to8(character)
+  else:
+    return none(int)
+  
+when isMainModule:
+  import termstyle
+  var x = "heållo☀☀wor𐐀𐐀☀ld heållo☀wor𐐀ld heållo☀wor𐐀ld"
+  var fingerTable = createUTFMapping(x)
+
+  var corrected = utf16to8(fingerTable, 5)
+  for y in x:
+    if corrected == 0:
+      echo "-"
+    if ord(y) > 125:
+      echo ord(y).red
+    else:
+      echo ord(y)
+    corrected -= 1
+
+  echo "utf16\tchar\tutf8\tchar\tchk"
+  var pos = 0
+  for c in x.runes:
+    stdout.write pos
+    stdout.write "\t"
+    stdout.write c
+    stdout.write "\t"
+    var corrected = utf16to8(fingerTable, pos)
+    stdout.write corrected
+    stdout.write "\t"
+    stdout.write x.runeAt(corrected)
+    if c.int32 == x.runeAt(corrected).int32:
+      stdout.write "\tOK".green
+    else:
+      stdout.write "\tERR".red
+    stdout.write "\n"
+    if c.int >= 0x10000:
+      pos += 2
+    else:
+      pos += 1

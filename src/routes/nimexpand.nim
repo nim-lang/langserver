@@ -2,8 +2,8 @@ import std/[strutils]
 import chronos, chronos/asyncproc
 import stew/[byteutils]
 import chronicles
-import utils
-import suggestapi
+import ../langserver/utils
+import ../nimsuggest/suggestapi
 import std/[strformat]
 
 proc extractMacroExpansion*(output: string, targetLine: int): string =
