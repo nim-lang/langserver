@@ -28,6 +28,7 @@ suite "Nimlangserver extensions":
           {"window": {"workDoneProgress": true}, "workspace": {"configuration": true}},
       }
     let initializeResult = waitFor client.initialize(initParams)
+    ls.workspaceConfiguration.complete(% @[NlsConfig()])
 
     check initializeResult.capabilities.textDocumentSync.isSome
 
@@ -35,7 +36,7 @@ suite "Nimlangserver extensions":
     let helloWorldFile = "projects/hw/hw.nim"
     let hwAbsFile = uriToPath(helloWorldFile.fixtureUri())
     client.notify("textDocument/didOpen", %createDidOpenParams(helloWorldFile))
-    
+
     check waitFor client.waitForNotificationMessage(
       fmt"Nimsuggest initialized for {hwAbsFile}",
     )

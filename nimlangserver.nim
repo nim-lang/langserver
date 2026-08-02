@@ -96,6 +96,8 @@ proc registerLspRoutes(srv: RpcSocketServer, ls: LanguageServer) =
   srv.register("textDocument/didOpen", wrapRpc(partial(lsp.didOpen, ls)))
   srv.register("textDocument/didSave", wrapRpc(partial(lsp.didSave, ls)))
   srv.register("textDocument/didClose", wrapRpc(partial(lsp.didClose, ls)))
+  srv.register("workspace/didRenameFiles", wrapRpc(partial(lsp.didRenameFiles, ls)))
+  srv.register("workspace/didDeleteFiles", wrapRpc(partial(lsp.didDeleteFiles, ls)))
   srv.register(
     "workspace/didChangeConfiguration", wrapRpc(partial(lsp.didChangeConfiguration, ls))
   )

@@ -118,6 +118,9 @@ suite "LSP features":
   let didOpenParams = createDidOpenParams("projects/hw/hw.nim")
 
   client.notify("textDocument/didOpen", %didOpenParams)
+  discard waitFor client.waitForNotificationMessage(
+    fmt"Nimsuggest initialized for {uriToPath(helloWorldUri)}",
+  )
 
   test "Sending hover.":
     let

@@ -71,6 +71,9 @@ proc listTests*(
     entryPoint: string, nimPath: string, workspaceRoot: string
 ): Future[TestProjectInfo] {.async.} =
   var entryPoint = getFullPath(entryPoint, workspaceRoot)
+  if not fileExists(entryPoint):
+    debug "Listing tests: entry point does not exist, skipping", entryPoint = entryPoint
+    return TestProjectInfo()
   let executableDir = (getTempDir() / entryPoint.splitFile.name).absolutePath
   debug "Listing tests", entryPoint = entryPoint, exists = fileExists(entryPoint)
   let args =

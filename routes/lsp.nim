@@ -1,7 +1,7 @@
 import
   std/
     [
-      os, sugar, sequtils, tables, strformat, strscans, times, json, parseutils,
+      os, sugar, sequtils, sets, tables, strformat, strscans, times, json, parseutils,
       strutils,
     ],
   pkg/[
@@ -73,7 +73,31 @@ proc initialize*(
       hoverProvider: some(true),
       workspace: some(
         ServerCapabilities_workspace(
-          workspaceFolders: some(WorkspaceFoldersServerCapabilities())
+          workspaceFolders: some(WorkspaceFoldersServerCapabilities()),
+          fileOperations: some(
+            ServerCapabilities_workspace_fileOperations(
+              didRename: some(
+                FileOperationRegistrationOptions(
+                  filters: @[
+                    FileOperationFilter(
+                      scheme: some("file"),
+                      pattern: FileOperationPattern(glob: "**/*.nim"),
+                    )
+                  ]
+                )
+              ),
+              didDelete: some(
+                FileOperationRegistrationOptions(
+                  filters: @[
+                    FileOperationFilter(
+                      scheme: some("file"),
+                      pattern: FileOperationPattern(glob: "**/*.nim"),
+                    )
+                  ]
+                )
+              ),
+            )
+          ),
         )
       ),
       completionProvider:
@@ -105,14 +129,10 @@ proc initialize*(
     if docCaps.rename.isSome and docCaps.rename.get().prepareSupport.get(false):
       result.capabilities.renameProvider = %*{"prepareProvider": true}
 
-  debug "Initialize completed. Trying to start nimsuggest instances"
+  debug "Initialize completed. Nimsuggest instances will start after configuration arrives."
 
-  let
-    ls = p.ls
-    rootPath = ls.lspInitializeParams.getRootPath
-
+  let ls = p.ls
   ls.lspServerCapabilities = result.capabilities
-  ls.nimSuggestInit = ls.initNimsuggestInstances(rootPath)
 
 proc toCompletionItem(suggest: Suggest): CompletionItem =
   with suggest:
@@ -266,6 +286,9 @@ proc extensionSuggest*(
       return SuggestResult()
   template restart(ls: LanguageServer, project: Project) =
     ls.showMessage(fmt "Restarting nimsuggest {projectFile}", MessageType.Info)
+    # Clear crash blocks: an explicit restart is the user signalling they want
+    # a clean slate. All previously blocked files become eligible again.
+    ls.crashedFiles.del(projectFile)
     project.errorCallback = none(ProjectCallback)
     project.stop()
     ls.createOrRestartNimsuggest(projectFile, projectFile.pathToUri)
@@ -807,6 +830,15 @@ proc exit*(
 proc startNimbleProcess(
     ls: LanguageServer, args: seq[string]
 ): Future[AsyncProcessRef] {.async.} =
+  let nimbleDirEnv = getEnv("NIMBLE_DIR", "<not set>")
+  let homeEnv = getEnv("HOME", "<not set>")
+  let pathEnv = getEnv("PATH", "<not set>")
+  debug "startNimbleProcess environment",
+    args = args,
+    workingDir = ls.lspInitializeParams.getRootPath,
+    NIMBLE_DIR = nimbleDirEnv,
+    HOME = homeEnv,
+    PATH = pathEnv
   await startProcess(
     "nimble",
     arguments = args,
@@ -819,6 +851,9 @@ proc startNimbleProcess(
 proc tasks*(ls: LanguageServer, conf: JsonNode): Future[seq[NimbleTask]] {.async.} =
   let rootPath: string = ls.lspInitializeParams.getRootPath
   debug "Received tasks ", rootPath = rootPath
+  debug "tasks: deleting NIMBLE_DIR before nimble tasks",
+    NIMBLE_DIR_before = getEnv("NIMBLE_DIR", "<not set>"),
+    HOME = getEnv("HOME", "<not set>")
   delEnv "NIMBLE_DIR"
   let process = await ls.startNimbleProcess(@["tasks"])
   let res =
@@ -859,11 +894,11 @@ proc listTests*(
     error "Nim path not found when listing tests"
     return ListTestsResult(
       projectInfo: TestProjectInfo(
-        entryPoint: params.entryPoint, suites: initTable[string, TestSuiteInfo]()
+        entryPoint: params.entryPoint.get(""), suites: initTable[string, TestSuiteInfo]()
       )
     )
   let workspaceRoot = ls.lspInitializeParams.getRootPath
-  let testProjectInfo = await listTests(params.entryPoint, nimPath.get(), workspaceRoot)
+  let testProjectInfo = await listTests(params.entryPoint.get(""), nimPath.get(), workspaceRoot)
   result.projectInfo = testProjectInfo
 
 proc runTests*(
@@ -901,6 +936,9 @@ proc initialized*(ls: LanguageServer, _: JsonNode): Future[void] {.async.} =
   debug "Client initialized."
   maybeRegisterCapabilityDidChangeConfiguration(ls)
   maybeRequestConfigurationFromClient(ls)
+  discard await ls.waitForWorkspaceConfiguration()
+  let rootPath = ls.lspInitializeParams.getRootPath
+  await ls.initNimsuggestInstances(rootPath)
 
 proc cancelRequest*(ls: LanguageServer, params: CancelParams): Future[void] {.async.} =
   if params.id.isSome:
@@ -966,6 +1004,19 @@ proc didSave*(
   let
     uri = params.textDocument.uri
     config = await ls.getWorkspaceConfiguration()
+
+  # Un-block crash-inducing files on save: the user may have fixed the code
+  # that caused the crash. This must happen before tryGetNimsuggest, which
+  # returns none for blocked files and would cause an early return without
+  # ever un-blocking.
+  let path = uri.uriToPath
+  if uri in ls.openFiles:
+    let fileInfo = ls.openFiles[uri]
+    if fileInfo.projectFile.finished and not fileInfo.projectFile.failed:
+      let pf = fileInfo.projectFile.read()
+      if pf in ls.crashedFiles and path in ls.crashedFiles[pf]:
+        ls.crashedFiles[pf].excl(path)
+
   let nimsuggest = await ls.tryGetNimsuggest(uri)
 
   if nimsuggest.isNone:
@@ -1004,8 +1055,19 @@ proc didClose*(
 proc didOpen*(
     ls: LanguageServer, params: DidOpenTextDocumentParams
 ): Future[void] {.async.} =
-  await ls.nimsuggestInit
   await ls.didOpenFile(params.textDocument)
+
+proc didRenameFiles*(
+    ls: LanguageServer, params: RenameFilesParams
+): Future[void] {.async.} =
+  for rename in params.files:
+    await ls.didRenameFile(rename.oldUri, rename.newUri)
+
+proc didDeleteFiles*(
+    ls: LanguageServer, params: DeleteFilesParams
+): Future[void] {.async.} =
+  for file in params.files:
+    await ls.didDeleteFile(file.uri)
 
 proc didChangeConfiguration*(
     ls: LanguageServer, conf: JsonNode
