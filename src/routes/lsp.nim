@@ -16,7 +16,10 @@ import
   ],
   ../testrunner/testrunner,
   ../nimsuggest/suggestapi,
-  ../langserver/[langserver, utils],
+  ../langserver/[langserver, langserver_types, utils, constants, configuration_types, configurations, messaging_types, queue_types, queues, files],
+  ../nimsuggest/nimsuggest,
+  ../nimsuggest/nimsuggest_types,
+  ../nim_compiler/nim_compiler,
   ../protocol/[enums, types],
   ./[nimexpand, asyncprocmonitor]
 
@@ -60,8 +63,8 @@ proc initialize*(
           hookAsyncProcMonitor(pidInt, onClientProcessExit)
       else:
         hookAsyncProcMonitor(pidInt, onClientProcessExit)
-  p.ls.lspInitializeParams = params
-  p.ls.lspClientCapabilities = params.capabilities
+  p.ls.capabilities.lspInitializeParams = params
+  p.ls.capabilities.lspClientCapabilities = params.capabilities
   result = LspInitializeResult(
     capabilities: LspServerCapabilities(
       textDocumentSync: some(
@@ -135,7 +138,7 @@ proc initialize*(
   debug "Initialize completed. Nimsuggest instances will start after configuration arrives."
 
   let ls = p.ls
-  ls.lspServerCapabilities = result.capabilities
+  ls.capabilities.lspServerCapabilities = result.capabilities
 
 proc toCompletionItem(suggest: Suggest): CompletionItem =
   with suggest:
@@ -162,7 +165,7 @@ proc completion*(
       await nimsuggest.get.sug(uriToPath(uri), ls.uriToStash(uri), line + 1, ch.get)
     result = completions.map(toCompletionItem)
 
-    if ls.lspClientCapabilities.supportSignatureHelp() and
+    if ls.capabilities.lspClientCapabilities.supportSignatureHelp() and
         nsCon in nimSuggest.get.capabilities:
       #show only unique overloads if we support signatureHelp
       var unique = initTable[string, CompletionItem]()
@@ -269,44 +272,52 @@ proc status*(
 proc extensionCapabilities*(
     ls: LanguageServer, _: JsonNode
 ): Future[seq[string]] {.async.} =
-  ls.extensionCapabilities.toSeq.mapIt($it)
+  ls.capabilities.extensionCapabilities.toSeq.mapIt($it)
 
 proc extensionSuggest*(
     ls: LanguageServer, params: SuggestParams
 ): Future[SuggestResult] {.async.} =
   debug "[Extension Suggest]", params = params
   var projectFile = params.projectFile
-  if projectFile != "" and projectFile notin ls.projectFiles:
-    #test if just a regular file
+
+  # Resolve projectFile from the open file's slot if needed.
+  if projectFile != "" and (ls.pool == nil or projectFile notin ls.pool.slots):
     let uri = projectFile.pathToUri
-    if uri in ls.openFiles:
-      let openFile = ls.openFiles[uri]
-      projectFile = await openFile.projectFile
-      debug "[ExtensionSuggest] Found project file for ",
-        file = params.projectFile, project = projectFile
+    if uri in ls.files.openFiles:
+      let openFile = ls.files.openFiles[uri]
+      if openFile.slot != nil:
+        projectFile = openFile.slot.projectFile
+        debug "[ExtensionSuggest] Found project file for ",
+          file = params.projectFile, project = projectFile
+      else:
+        error "Project file must exist", params = params
+        return SuggestResult()
     else:
-      error "Project file must exists ", params = params
+      error "Project file must exist", params = params
       return SuggestResult()
-  template restart(ls: LanguageServer, project: Project) =
-    ls.showMessage(fmt "Restarting nimsuggest {projectFile}", MessageType.Info)
-    # Clear crash blocks: an explicit restart is the user signalling they want
-    # a clean slate. All previously blocked files become eligible again.
-    ls.crashedFiles.del(projectFile)
-    project.errorCallback = none(ProjectCallback)
-    project.stop()
-    ls.createOrRestartNimsuggest(projectFile, projectFile.pathToUri)
+
+  proc restartSlot(ls: LanguageServer, slot: NimsuggestSlot) =
+    ls.showMessage(fmt "Restarting nimsuggest {slot.projectFile}", MessageType.Info)
+    slot.crashedUris.clear()
+    slot.send SlotCommand(
+      kind: SlotCommandKind.RESTART,
+      spawnProjectFile: slot.projectFile,
+      spawnTriggerUri: slot.projectFile.pathToUri,
+    )
     ls.sendStatusChanged()
+
+  if ls.pool == nil:
+    return SuggestResult()
 
   case params.action
   of saRestart:
-    let project = ls.projectFiles[projectFile]
-    ls.restart(project)
+    let slotOpt = ls.pool.findSlot(projectFile)
+    if slotOpt.isSome:
+      ls.restartSlot(slotOpt.get)
     SuggestResult(actionPerformed: saRestart)
   of saRestartAll:
-    let projectFiles = ls.projectFiles.keys.toSeq()
-    for projectFile in projectFiles:
-      let project = ls.projectFiles[projectFile]
-      ls.restart(project)
+    for slot in ls.pool.slots.values:
+      ls.restartSlot(slot)
     SuggestResult(actionPerformed: saRestartAll)
   of saNone:
     error "An action must be specified", params = params
@@ -317,7 +328,7 @@ proc typeDefinition*(
 ): Future[seq[Location]] {.async.} =
   with (params.position, params.textDocument):
     asyncSpawn ls.addProjectFileToPendingRequest(id.uint, uri)
-    let ns = await ls.tryGetNimSuggest(uri)
+    let ns = await ls.tryGetNimsuggest(uri)
     if ns.isNone:
       return @[]
     let ch = ls.getCharacter(uri, line, character)
@@ -351,10 +362,10 @@ proc documentSymbols*(
     @[]
 
 proc scheduleFileCheck(ls: LanguageServer, uri: string) {.gcsafe, raises: [].} =
-  if not ls.getWorkspaceConfiguration().waitFor().autoCheckFile.get(true):
+  if not ls.getWorkspaceConfiguration().autoCheckFile.get(true):
     return
   # schedule file check after the file is modified
-  let fileData = ls.openFiles.getOrDefault(uri)
+  let fileData = ls.files.openFiles.getOrDefault(uri)
   if fileData.cancelFileCheck != nil and not fileData.cancelFileCheck.finished:
     fileData.cancelFileCheck.complete()
 
@@ -370,7 +381,7 @@ proc scheduleFileCheck(ls: LanguageServer, uri: string) {.gcsafe, raises: [].} =
       fileData.checkInProgress = true
       ls.checkFile(uri).addCallback do() {.gcsafe, raises: [].}:
         try:
-          ls.openFiles[uri].checkInProgress = false
+          ls.files.openFiles[uri].checkInProgress = false
           if fileData.needsChecking:
             fileData.needsChecking = false
             ls.scheduleFileCheck(uri)
@@ -402,7 +413,7 @@ proc hover*(
     ls: LanguageServer, params: HoverParams, id: int
 ): Future[Option[Hover]] {.async.} =
   with (params.position, params.textDocument):
-    let config = await ls.getWorkspaceConfiguration()
+    let config = ls.getWorkspaceConfiguration()
     asyncSpawn ls.addProjectFileToPendingRequest(id.uint, uri)
     let nimsuggest = await ls.tryGetNimsuggest(uri)
     if nimsuggest.isNone:
@@ -486,7 +497,7 @@ proc prepareRename*(
     if def.len == 0:
       return newJNull()
     # Check if the symbol belongs to the project
-    let projectDir = ls.lspInitializeParams.getRootPath
+    let projectDir = ls.capabilities.lspInitializeParams.getRootPath
     if def[0].filePath.isRelTo(projectDir):
       return %def[0].toLocation().range
 
@@ -504,7 +515,7 @@ proc rename*(
     )
   )
   # Build up list of edits that the client needs to perform for each file
-  let projectDir = ls.lspInitializeParams.getRootPath
+  let projectDir = ls.capabilities.lspInitializeParams.getRootPath
   var edits = newJObject()
   for reference in references:
     # Only rename symbols in the project.
@@ -573,7 +584,7 @@ proc inlayHint*(
   with (params.range, params.textDocument):
     asyncSpawn ls.addProjectFileToPendingRequest(id.uint, uri)
     let
-      configuration = ls.getWorkspaceConfiguration.await()
+      configuration = ls.getWorkspaceConfiguration()
       nimsuggest = await ls.tryGetNimsuggest(uri)
 
     if nimsuggest.isNone or nimsuggest.get.protocolVersion < 4 or
@@ -608,7 +619,13 @@ proc inlayHint*(
 proc codeAction*(
     ls: LanguageServer, params: CodeActionParams
 ): Future[seq[CodeAction]] {.async.} =
-  let projectUri = await getProjectFile(params.textDocument.uri.uriToPath, ls)
+  let uri = params.textDocument.uri
+  let fileInfo = ls.files.openFiles.getOrDefault(uri)
+  let projectUri =
+    if fileInfo != nil and fileInfo.slot != nil:
+      fileInfo.slot.projectFile.pathToUri
+    else:
+      uri
   return
     seq[CodeAction] %* [
       {
@@ -647,20 +664,29 @@ proc executeCommand*(
   case params.command
   of RESTART_COMMAND:
     debug "Restarting nimsuggest", projectFile = projectFile
-    ls.createOrRestartNimsuggest(projectFile, projectFile.pathToUri)
+    if ls.pool != nil:
+      let slotOpt = ls.pool.findSlot(projectFile)
+      if slotOpt.isSome:
+        let slot = slotOpt.get
+        slot.crashedUris.clear()
+        slot.send SlotCommand(
+          kind: SlotCommandKind.RESTART,
+          spawnProjectFile: projectFile,
+          spawnTriggerUri: projectFile.pathToUri,
+        )
   of CHECK_PROJECT_COMMAND:
     debug "Checking project", projectFile = projectFile
     ls.checkProject(projectFile.pathToUri).traceAsyncErrors
   of RECOMPILE_COMMAND:
     debug "Clean build", projectFile = projectFile
-    let
-      token = fmt "Compiling {projectFile}"
-      ns = ls.projectFiles.getOrDefault(projectFile).ns
-    if ns != nil:
-      ls.workDoneProgressCreate(token)
-      ls.progress(token, "begin", fmt "Compiling project {projectFile}")
-
-      ns.await().recompile().addCallback do():
+    if ls.pool != nil:
+      let slotOpt = ls.pool.findSlot(projectFile)
+      if slotOpt.isSome and slotOpt.get.isLive:
+        let slot = slotOpt.get
+        let token = fmt "Compiling {projectFile}"
+        ls.workDoneProgressCreate(token)
+        ls.progress(token, "begin", fmt "Compiling project {projectFile}")
+        slot.send SlotCommand(kind: SlotCommandKind.RECOMPILE)
         ls.progress(token, "end")
         ls.checkProject(projectFile.pathToUri).traceAsyncErrors
 
@@ -701,7 +727,7 @@ proc signatureHelp*(
   #   result.capabilities.signatureHelpProvider = SignatureHelpOptions(
   #           triggerCharacters: some(@["(", ","])
   #   )
-  if not ls.lspClientCapabilities.supportSignatureHelp():
+  if not ls.capabilities.lspClientCapabilities.supportSignatureHelp():
     #Some clients doesnt support signatureHelp
     return none[SignatureHelp]()
   with (params.position, params.textDocument):
@@ -781,11 +807,14 @@ proc formatting*(
 proc workspaceSymbol*(
     ls: LanguageServer, params: WorkspaceSymbolParams, id: int
 ): Future[seq[SymbolInformation]] {.async.} =
-  if ls.lastNimsuggest != nil:
-    let
-      nimsuggest = await ls.lastNimsuggest
-      symbols = await nimsuggest.globalSymbols(params.query, "-")
-    return symbols.map(x => x.toUtf16Pos(ls).toSymbolInformation)
+  # Use any live nimsuggest for workspace-wide symbol search.
+  if ls.pool != nil:
+    for slot in ls.pool.slots.values:
+      let nsOpt = slot.resolvedNs
+      if nsOpt.isSome:
+        let symbols = await nsOpt.get.globalSymbols(params.query, "-")
+        return symbols.map(x => x.toUtf16Pos(ls).toSymbolInformation)
+        break
 
 proc toDocumentHighlight(suggest: Suggest): DocumentHighlight =
   return DocumentHighlight %* {"range": toLabelRange(suggest)}
@@ -838,7 +867,7 @@ proc startNimbleProcess(
   let pathEnv = getEnv("PATH", "<not set>")
   debug "startNimbleProcess environment",
     args = args,
-    workingDir = ls.lspInitializeParams.getRootPath,
+    workingDir = ls.capabilities.lspInitializeParams.getRootPath,
     NIMBLE_DIR = nimbleDirEnv,
     HOME = homeEnv,
     PATH = pathEnv
@@ -846,13 +875,13 @@ proc startNimbleProcess(
     "nimble",
     arguments = args,
     options = {UsePath},
-    workingDir = ls.lspInitializeParams.getRootPath,
+    workingDir = ls.capabilities.lspInitializeParams.getRootPath,
     stdoutHandle = AsyncProcess.Pipe,
     stderrHandle = AsyncProcess.Pipe,
   )
 
 proc tasks*(ls: LanguageServer, conf: JsonNode): Future[seq[NimbleTask]] {.async.} =
-  let rootPath: string = ls.lspInitializeParams.getRootPath
+  let rootPath: string = ls.capabilities.lspInitializeParams.getRootPath
   debug "Received tasks ", rootPath = rootPath
   debug "tasks: deleting NIMBLE_DIR before nimble tasks",
     NIMBLE_DIR_before = getEnv("NIMBLE_DIR", "<not set>"),
@@ -891,7 +920,7 @@ proc runTask*(
 proc listTests*(
     ls: LanguageServer, params: ListTestsParams
 ): Future[ListTestsResult] {.async.} =
-  let config = await ls.getWorkspaceConfiguration()
+  let config = ls.getWorkspaceConfiguration()
   let nimPath = config.getNimPath()
   if nimPath.isNone:
     error "Nim path not found when listing tests"
@@ -900,19 +929,19 @@ proc listTests*(
         entryPoint: params.entryPoint.get(""), suites: initTable[string, TestSuiteInfo]()
       )
     )
-  let workspaceRoot = ls.lspInitializeParams.getRootPath
+  let workspaceRoot = ls.capabilities.lspInitializeParams.getRootPath
   let testProjectInfo = await listTests(params.entryPoint.get(""), nimPath.get(), workspaceRoot)
   result.projectInfo = testProjectInfo
 
 proc runTests*(
     ls: LanguageServer, params: RunTestParams
 ): Future[RunTestProjectResult] {.async.} =
-  let config = await ls.getWorkspaceConfiguration()
+  let config = ls.getWorkspaceConfiguration()
   let nimPath = config.getNimPath()
   if nimPath.isNone:
     error "Nim path not found when running tests"
     return RunTestProjectResult()
-  let workspaceRoot = ls.lspInitializeParams.getRootPath
+  let workspaceRoot = ls.capabilities.lspInitializeParams.getRootPath
   await runTests(
     params.entryPoint,
     nimPath.get(),
@@ -939,21 +968,21 @@ proc initialized*(ls: LanguageServer, _: JsonNode): Future[void] {.async.} =
   debug "Client initialized."
   maybeRegisterCapabilityDidChangeConfiguration(ls)
   maybeRequestConfigurationFromClient(ls)
-  discard await ls.waitForWorkspaceConfiguration()
-  let rootPath = ls.lspInitializeParams.getRootPath
+  await ls.waitForWorkspaceConfiguration()
+  let rootPath = ls.capabilities.lspInitializeParams.getRootPath
   await ls.initNimsuggestInstances(rootPath)
 
 proc cancelRequest*(ls: LanguageServer, params: CancelParams): Future[void] {.async.} =
   if params.id.isSome:
     let id = params.id.get.getInt.uint
-    if id notin ls.pendingRequests:
+    if id notin ls.messaging.pendingRequests:
       return
-    let pendingRequest = ls.pendingRequests[id]
-    if ls.pendingRequests[id].request != nil:
+    let pendingRequest = ls.messaging.pendingRequests[id]
+    if ls.messaging.pendingRequests[id].request != nil:
       debug "Cancelling: ", id = id
-      await ls.pendingRequests[id].request.cancelAndWait()
-      ls.pendingRequests[id].state = prsCancelled
-      ls.pendingRequests[id].endTime = now()
+      await ls.messaging.pendingRequests[id].request.cancelAndWait()
+      ls.messaging.pendingRequests[id].state = prsCancelled
+      ls.messaging.pendingRequests[id].endTime = now()
 
 proc setTrace*(ls: LanguageServer, params: SetTraceParams) {.async.} =
   debug "setTrace", value = params.value
@@ -963,17 +992,17 @@ proc didChange*(
 ): Future[void] {.async.} =
   with params:
     let uri = textDocument.uri
-    if uri notin ls.openFiles:
+    if uri notin ls.files.openFiles:
       return
     let file = open(ls.uriStorageLocation(uri), fmWrite)
 
-    ls.openFiles[uri].fingerTable = @[]
-    ls.openFiles[uri].changed = true
+    ls.files.openFiles[uri].fingerTable = @[]
+    ls.files.openFiles[uri].changed = true
     if contentChanges.len <= 0:
       file.close()
       return
     for line in contentChanges[0].text.splitLines:
-      ls.openFiles[uri].fingerTable.add line.createUTFMapping()
+      ls.files.openFiles[uri].fingerTable.add line.createUTFMapping()
       file.writeLine line
     file.close()
 
@@ -986,11 +1015,11 @@ proc willSaveWaitUntil*(
 
   let
     uri = params.textDocument.uri
-    config = await ls.getWorkspaceConfiguration()
+    config = ls.getWorkspaceConfiguration()
     nphPath = getNphPath()
 
   let shouldFormat =
-    nphPath.isSome and ls.lspServerCapabilities.documentFormattingProvider.get(false) and
+    nphPath.isSome and ls.capabilities.lspServerCapabilities.documentFormattingProvider.get(false) and
     config.formatOnSave.get(false)
 
   if shouldFormat:
@@ -1006,26 +1035,22 @@ proc didSave*(
 ): Future[void] {.async.} =
   let
     uri = params.textDocument.uri
-    config = await ls.getWorkspaceConfiguration()
+    config = ls.getWorkspaceConfiguration()
 
-  # Un-block crash-inducing files on save: the user may have fixed the code
-  # that caused the crash. This must happen before tryGetNimsuggest, which
-  # returns none for blocked files and would cause an early return without
-  # ever un-blocking.
+  # Un-block crash-inducing URIs on save: the user may have fixed the code.
+  # In the new slot model, crashedUris lives on the slot itself.
   let path = uri.uriToPath
-  if uri in ls.openFiles:
-    let fileInfo = ls.openFiles[uri]
-    if fileInfo.projectFile.finished and not fileInfo.projectFile.failed:
-      let pf = fileInfo.projectFile.read()
-      if pf in ls.crashedFiles and path in ls.crashedFiles[pf]:
-        ls.crashedFiles[pf].excl(path)
+  if uri in ls.files.openFiles:
+    let fileInfo = ls.files.openFiles[uri]
+    if fileInfo.slot != nil:
+      fileInfo.slot.crashedUris.excl(uri)
 
   let nimsuggest = await ls.tryGetNimsuggest(uri)
 
   if nimsuggest.isNone:
     return
 
-  ls.openFiles[uri].changed = false
+  ls.files.openFiles[uri].changed = false
   traceAsyncErrors nimsuggest.get.changed(uriToPath(uri))
 
   if config.checkOnSave.get(true):
@@ -1079,10 +1104,12 @@ proc didChangeConfiguration*(
   if ls.usePullConfigurationModel:
     ls.maybeRequestConfigurationFromClient
   else:
-    if ls.workspaceConfiguration.finished:
-      let
-        oldConfiguration = parseWorkspaceConfiguration(ls.workspaceConfiguration.read)
-        newConfiguration = parseWorkspaceConfiguration(conf)
-      ls.workspaceConfiguration = newFuture[JsonNode]()
-      ls.workspaceConfiguration.complete(conf)
-      handleConfigurationChanges(ls, oldConfiguration, newConfiguration)
+    # Push model: client sent us the new config directly.
+    let oldConfiguration = ls.getWorkspaceConfiguration()
+    let newConfiguration = parseWorkspaceConfiguration(conf)
+    ls.configurations.currentConfig = some(newConfiguration)
+    ls.configurations.configReady.fire()
+    # Restart all nimsuggest instances if settings that affect them changed.
+    if oldConfiguration.nimsuggestPath != newConfiguration.nimsuggestPath or
+        oldConfiguration.maxNimsuggestProcesses != newConfiguration.maxNimsuggestProcesses:
+      ls.restartAllNimsuggestInstances()

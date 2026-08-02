@@ -1,8 +1,8 @@
 import
   std/[os, sequtils, tables, json],
   pkg/[chronos, json_rpc/server, chronicles, json_serialization],
-  ../nimsuggest/suggestapi,
-  ../langserver/[langserver, utils],
+  ../nimsuggest/[suggestapi, nimsuggest_types, nimsuggest],
+  ../langserver/[langserver, langserver_types, utils, files, constants, configurations, configuration_types],
   ../protocol/types
 
 const McpProtocolVersion* = "2025-11-25"
@@ -212,7 +212,7 @@ proc callNimFindReferences(
     line = arguments["line"].getInt()
     column = arguments["column"].getInt()
 
-  if uri notin ls.openFiles:
+  if uri notin ls.files.openFiles:
     await ls.didOpenFile(
       TextDocumentItem(uri: uri, languageId: "nim", version: 0, text: readFile(path))
     )
@@ -246,7 +246,7 @@ proc callNimFindReferences(
 proc callNimFindSymbols(
     ls: LanguageServer, params: McpCallToolParams
 ): Future[McpCallToolResult] {.async.} =
-  if len(ls.projectFiles) == 0:
+  if len(ls.pool.slots) == 0:
     return McpCallToolResult(
       content: @[
         McpContentBlock(`type`: TextContent, text: "Tool works only in Nimble projects")
@@ -257,10 +257,10 @@ proc callNimFindSymbols(
   let
     arguments = params.arguments.get()
     query = arguments["query"].getStr()
-    path = ls.projectFiles.keys.toSeq[0]
+    path = ls.pool.slots.keys.toSeq[0]
     uri = path.pathToUri()
 
-  if uri notin ls.openFiles:
+  if uri notin ls.files.openFiles:
     await ls.didOpenFile(
       TextDocumentItem(uri: uri, languageId: "nim", version: 0, text: readFile(path))
     )
@@ -305,7 +305,7 @@ proc callNimListSymbols(
     path = arguments["path"].getStr().absolutePath
     uri = path.pathToUri()
 
-  if uri notin ls.openFiles:
+  if uri notin ls.files.openFiles:
     await ls.didOpenFile(
       TextDocumentItem(uri: uri, languageId: "nim", version: 0, text: readFile(path))
     )
@@ -342,7 +342,7 @@ proc callNimListSymbols(
 proc callNimCheckProject(
     ls: LanguageServer, params: McpCallToolParams
 ): Future[McpCallToolResult] {.async.} =
-  if len(ls.projectFiles) == 0:
+  if len(ls.pool.slots) == 0:
     return McpCallToolResult(
       content: @[
         McpContentBlock(`type`: TextContent, text: "Tool works only in Nimble projects")
@@ -351,10 +351,10 @@ proc callNimCheckProject(
     )
 
   let
-    path = ls.projectFiles.keys.toSeq[0]
+    path = ls.pool.slots.keys.toSeq[0]
     uri = path.pathToUri()
 
-  if uri notin ls.openFiles:
+  if uri notin ls.files.openFiles:
     await ls.didOpenFile(
       TextDocumentItem(uri: uri, languageId: "nim", version: 0, text: readFile(path))
     )
@@ -401,7 +401,7 @@ proc callNimCheckFile(
     path = arguments["path"].getStr().absolutePath
     uri = path.pathToUri()
 
-  if uri notin ls.openFiles:
+  if uri notin ls.files.openFiles:
     await ls.didOpenFile(
       TextDocumentItem(uri: uri, languageId: "nim", version: 0, text: readFile(path))
     )
@@ -452,7 +452,7 @@ proc callNimFindTypeDefinition(
     line = arguments["line"].getInt()
     column = arguments["column"].getInt()
 
-  if uri notin ls.openFiles:
+  if uri notin ls.files.openFiles:
     await ls.didOpenFile(
       TextDocumentItem(uri: uri, languageId: "nim", version: 0, text: readFile(path))
     )
@@ -492,8 +492,8 @@ proc initialize*(
     p: tuple[ls: LanguageServer, onExit: OnExitCallback], params: McpInitializeParams
 ): Future[McpInitializeResult] {.async.} =
   debug "Initialize received..."
-  p.ls.mcpInitializeParams = params
-  p.ls.mcpClientCapabilities = params.capabilities
+  p.ls.capabilities.mcpInitializeParams = params
+  p.ls.capabilities.mcpClientCapabilities = params.capabilities
   result = McpInitializeResult(
     protocolVersion: McpProtocolVersion,
     capabilities: McpServerCapabilities(tools: McpToolsOptions()),
@@ -506,7 +506,7 @@ proc initialize*(
     ls = p.ls
     rootPath = getCurrentDir().pathToUri.uriToPath
 
-  ls.mcpServerCapabilities = result.capabilities
+  ls.capabilities.mcpServerCapabilities = result.capabilities
   await ls.initNimsuggestInstances(rootPath)
 
 proc listTools*(

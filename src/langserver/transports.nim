@@ -1,8 +1,9 @@
 import json_rpc/[servers/socketserver, private/jrpc_sys, jsonmarshal, rpcclient, router]
 import chronicles, chronos
 import std/[syncio, os, json, strutils, strformat, streams, oids, sequtils, times]
-import ls, utils
-import protocol/types, chronos/threadsync
+import ./[utils, langserver_types, messaging_types, constants, langserver]
+import ../protocol/types
+import chronos/threadsync
 
 type
   LspClientResponse* = object
@@ -104,16 +105,16 @@ proc addRpcToCancellable*(ls: LanguageServer, rpc: Rpc): Rpc =
     try:
       let idRequest = get[uint](params, "idRequest")
       let name = get[string](params, "method")
-      ls.pendingRequests[idRequest] =
+      ls.messaging.pendingRequests[idRequest] =
         PendingRequest(id: idRequest, name: name, startTime: now(), state: prsOnGoing)
       ls.sendStatusChanged
       var fut = rpc(params)
-      ls.pendingRequests[idRequest].request = fut
+      ls.messaging.pendingRequests[idRequest].request = fut
         #we need to add it before because the rpc may access to the pendingRequest to set the projectFile
       fut.addCallback proc(d: pointer) =
         try:
-          ls.pendingRequests[idRequest].state = prsComplete
-          ls.pendingRequests[idRequest].endTime = now()
+          ls.messaging.pendingRequests[idRequest].state = prsComplete
+          ls.messaging.pendingRequests[idRequest].endTime = now()
           ls.sendStatusChanged
         except KeyError:
           error "Error completing pending requests. Id not found in pending requests"
@@ -181,22 +182,22 @@ proc wrapContentWithContentLength*(content: string): string =
 
 proc writeOutput*(ls: LanguageServer, content: JsonNode) =
   let res =
-    case ls.serverMode
+    case ls.capabilities.serverMode
     of lsp:
       wrapContentWithContentLength($content)
     of mcp:
       $content & "\n"
 
   try:
-    case ls.transportMode
+    case ls.transport.transportMode
     of stdio:
       # writing to a closed FILE is a SIGSEGV in libc, not a CatchableError
-      if ls.outStream.isNil:
+      if ls.transport.outStream.isNil:
         return
-      ls.outStream.write(res)
-      ls.outStream.flush()
+      ls.transport.outStream.write(res)
+      ls.transport.outStream.flush()
     of socket:
-      discard waitFor ls.socketTransport.write(res)
+      discard waitFor ls.transport.socketTransport.write(res)
   except CatchableError as ex:
     error "Error writing output", msg = ex.msg
 
@@ -242,7 +243,7 @@ proc processMessage(ls: LanguageServer, message: string) {.raises: [].} =
         req.params.named.add ParamDescNamed(
           name: "method", value: JsonString($(contentJson["method"]))
         )
-      let rpc = ls.srv.router.procs.getOrDefault(req.meth.get)
+      let rpc = ls.transport.srv.router.procs.getOrDefault(req.meth.get)
       if rpc.isNil:
         error "[Processing Message] rpc method not found: ", msg = req.meth.get
         return
@@ -250,16 +251,16 @@ proc processMessage(ls: LanguageServer, message: string) {.raises: [].} =
     else: #Response
       let response = JrpcSys.decode(message, LspClientResponse)
       let id = response.id
-      if id notin ls.responseMap:
+      if id notin ls.messaging.responseMap:
         error "Id not found in responseMap", id = id
           #TODO we should store the call name we are trying to responde to here
       if response.result == nil:
-        ls.responseMap[id].complete(newJObject())
-        ls.responseMap.del id
+        ls.messaging.responseMap[id].complete(newJObject())
+        ls.messaging.responseMap.del id
       else:
         let r = response.result
-        ls.responseMap[id].complete(r)
-        ls.responseMap.del id
+        ls.messaging.responseMap[id].complete(r)
+        ls.messaging.responseMap.del id
   except JsonParsingError as ex:
     error "[Processing Message] Error parsing message", message = message
     writeStackTrace(ex)
@@ -269,14 +270,14 @@ proc processMessage(ls: LanguageServer, message: string) {.raises: [].} =
 
 proc initActions*(ls: LanguageServer) =
   let onExit: OnExitCallback = proc() {.async.} =
-    case ls.transportMode
+    case ls.transport.transportMode
     of stdio:
-      if not ls.outStream.isNil:
-        ls.outStream.close()
-        ls.outStream = nil
-      freeShared(ls.stdinContext)
+      if not ls.transport.outStream.isNil:
+        ls.transport.outStream.close()
+        ls.transport.outStream = nil
+      freeShared(ls.transport.stdinContext)
     of socket:
-      ls.srv.close()
+      ls.transport.srv.close()
 
   template genJsonAction() {.dirty.} =
     var json = newJObject()
@@ -295,7 +296,7 @@ proc initActions*(ls: LanguageServer) =
     ls.writeOutput(json)
     result = newFuture[JsonNode]()
     #We store the future in the responseMap so we can complete it in processMessage
-    ls.responseMap[id] = result
+    ls.messaging.responseMap[id] = result
 
   ls.call = callAction
   ls.notify = notifyAction
@@ -304,10 +305,10 @@ proc initActions*(ls: LanguageServer) =
 #start and loop functions belows are the only difference between transports
 proc startStdioLoop*(ls: LanguageServer): Future[void] {.async.} =
   while true:
-    await ls.stdinContext.onStdReadSignal.wait()
-    let msg = $ls.stdinContext.value
-    freeShared(ls.stdinContext.value[0].addr)
-    await ls.stdinContext.onMainReadSignal.fire()
+    await ls.transport.stdinContext.onStdReadSignal.wait()
+    let msg = $ls.transport.stdinContext.value
+    freeShared(ls.transport.stdinContext.value[0].addr)
+    await ls.transport.stdinContext.onMainReadSignal.fire()
     if msg == "":
       error "Client disconnected"
       break
@@ -316,24 +317,24 @@ proc startStdioLoop*(ls: LanguageServer): Future[void] {.async.} =
 proc startStdioServer*(ls: LanguageServer) =
   #Holds the responses from the client done via the callAction. Likely this is only needed for stdio
   debug "Starting stdio server"
-  ls.srv = newRpcSocketServer()
+  ls.transport.srv = newRpcSocketServer()
   ls.initActions()
-  ls.outStream = newFileStream(stdout)
+  ls.transport.outStream = newFileStream(stdout)
   var stdinThread {.global.}: Thread[ptr ReadStdinContext]
-  ls.stdinContext = createShared(ReadStdinContext)
-  ls.stdinContext.onMainReadSignal = ThreadSignalPtr.new().expect("")
-  ls.stdinContext.onStdReadSignal = ThreadSignalPtr.new().expect("")
-  case ls.serverMode
+  ls.transport.stdinContext = createShared(ReadStdinContext)
+  ls.transport.stdinContext.onMainReadSignal = ThreadSignalPtr.new().expect("")
+  ls.transport.stdinContext.onStdReadSignal = ThreadSignalPtr.new().expect("")
+  case ls.capabilities.serverMode
   of lsp:
-    createThread(stdinThread, readLspStdin, ls.stdinContext)
+    createThread(stdinThread, readLspStdin, ls.transport.stdinContext)
   of mcp:
-    createThread(stdinThread, readMcpStdin, ls.stdinContext)
+    createThread(stdinThread, readMcpStdin, ls.transport.stdinContext)
   asyncSpawn ls.startStdioLoop()
 
 proc processClientLoop*(
     ls: LanguageServer, server: StreamServer, transport: StreamTransport
 ) {.async: (raises: []), gcsafe.} =
-  ls.socketTransport = transport
+  ls.transport.socketTransport = transport
   while true:
     let msg = await processContentLength(transport)
     if msg == "":
@@ -344,14 +345,14 @@ proc processClientLoop*(
     ls.processMessage(msg)
 
 proc startSocketServer*(ls: LanguageServer, port: Port) =
-  ls.srv = newRpcSocketServer(partial(processClientLoop, ls))
+  ls.transport.srv = newRpcSocketServer(partial(processClientLoop, ls))
   ls.initActions()
-  ls.srv.addStreamServer("localhost", port)
-  ls.srv.start
+  ls.transport.srv.addStreamServer("localhost", port)
+  ls.transport.srv.start
   proc waitUntilSocketTransportIsReady(ls: LanguageServer) {.async.} =
     when defined(test):
       return
-    while ls.socketTransport.isNil:
+    while ls.transport.socketTransport.isNil:
       await sleepAsync(0)
 
   debug "Waiting for socket server to be ready"

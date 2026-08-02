@@ -6,14 +6,9 @@ import stew/byteutils
 
 import ../protocol/types
 import ../langserver/[constants, utils, langserver_types]
+import ./nimble_types
 
-type
-  NimbleDumpInfo* = object
-    srcDir*: string
-    name*: string
-    nimDir*: Option[string]
-    nimblePath*: Option[string]
-    entryPoints*: seq[string] #when it's empty, means the nimble version doesnt dump it.
+export nimble_types
 
 proc getNimbleEntryPoints*(
     dumpInfo: NimbleDumpInfo, nimbleProjectPath: string

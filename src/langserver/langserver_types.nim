@@ -4,9 +4,8 @@ import chronos/asyncproc
 import json_rpc/servers/socketserver
 
 import ../protocol/types
-import ../nimsuggest/nimsuggest_types
-import ../nimble/nimble
-import ./[messaging_types, configuration_types]
+import ../nimble/nimble_types
+import ./[messaging_types, configuration_types, queue_types]
 
 ##[
 LRU = Least Recently Used — a cache eviction policy where, when you need to free a slot, you discard whichever entry was accessed least recently.
@@ -26,8 +25,10 @@ type
     extensionCapabilities*: set[LspExtensionCapability]
 
   LanguageServerConfigurations* = object
-    workspaceConfiguration*: Option[NlsConfig] 
-    didChangeConfigurationRegistrationRequest*: bool
+    currentConfig*: Option[NlsConfig]
+      ## Parsed config. none until first workspace/configuration response arrives.
+    configReady*: AsyncEvent
+      ## Fired when currentConfig is first populated, and re-fired after each change.
 
 ##[
 NlsFileInfo fields
@@ -47,7 +48,9 @@ textDocument: TextDocumentItem — the original didOpen metadata (URI, language 
 ]##
 type
   NlsFileInfo* = ref object of RootObj
-    projectFile*: Future[string]
+    slot*: NimsuggestSlot
+      ## The pool slot responsible for this file. Assigned synchronously during
+      ## didOpenFile. Never nil after assignment.
     changed*: bool
     fingerTable*: seq[seq[tuple[u16pos, offset: int]]]
     cancelFileCheck*: Future[void]
@@ -80,40 +83,7 @@ type
     filesWithDiags*: HashSet[string]
     storageDir*: string
   
-##[
-LanguageServerProjects
-Nimsuggest process lifecycle — spawning, crash tracking, idle eviction.  No knowledge of what the editor has open.
-
-projectFiles
-Central registry of running (or starting) nimsuggest instances, keyed by project entry-point path. 
-Two kinds of entries exist: 
-- Canonical: key == project.file — a real running instance.
-- Redirect alias: key != project.file — points at another project's instance after a "kill and replace" standalone restart. Created so files whose projectFile future already resolved to the old key can still reach a working nimsuggest.  Always check proj.file == key before treating an entry as canonical.
-    
-entryPoints
-Project entry points discovered from nimble dump during initialized. Used by initNimsuggestInstances to pre-spawn nimsuggest, and by removeIdleNimsuggests to protect entry-point instances from eviction.
-    
-failTable
-projectFile → crash count. When count >= MaxFails, getNimsuggestInner gives up and falls back to the LRU instance instead of retrying. Cleared on successful nimsuggest initialisation.
-    
-crashedFiles
-projectFile → set of file URIs that caused a nimsuggest SIGSEGV.  Blocked files are skipped during re-registration after a restart. Cleared by: didSave (per file), explicit restart (per project).
-    
-nimDumpCache
-nimble file path → cached dump result. Avoids repeated SAT solver runs for the same .nimble file within a session. Invalidated on didRenameFiles / didDeleteFiles for .nimble files.
-
-]##
-
-
 type
-  ProjectFile* {.borrow.} = distinct string 
-  LanguageServerNimSuggest* = object
-    nimsuggestInstances*: Table[ProjectFile, Project]
-    entryPoints*: seq[ProjectFile]
-    failTable*: Table[ProjectFile, int]
-    crashedFiles*: Table[ProjectFile, HashSet[string]]
-    nimDumpCache*: Table[ProjectFile, NimbleDumpInfo] 
-
   LanguageServerTransport* = object
     srv*: RpcSocketServer
     case transportMode*: TransportMode
@@ -128,7 +98,7 @@ type
     responseMap*: TableRef[string, Future[JsonNode]]
     inlayHintsRefreshRequest*: Future[JsonNode]
     projectErrors*: seq[ProjectError]
-    lastStatusSent: JsonNode
+    lastStatusSent*: JsonNode
 
 type
   Certainty* = enum
@@ -151,7 +121,7 @@ type
     configurations*: LanguageServerConfigurations
     transport*: LanguageServerTransport
     files*: LanguageServerFiles
-    nimsuggest*: LanguageServerNimSuggest
+    pool*: NimsuggestPool
     messaging*: LanguageServerMessaging
     
     notify*: NotifyAction
@@ -162,4 +132,5 @@ type
     
     checkInProgress*: bool
     isShutdown*: bool
+    nimDumpCache*: Table[string, NimbleDumpInfo]
     

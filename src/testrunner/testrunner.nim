@@ -3,7 +3,7 @@ import
     [os, strscans, tables, enumerate, strutils, xmlparser, xmltree, options, strformat]
 import chronos, chronos/asyncproc
 import ../protocol/types
-import ../langserver/langserver
+import ../langserver/[langserver, langserver_types]
 import chronicles
 import stew/byteutils
 import ../langserver/utils

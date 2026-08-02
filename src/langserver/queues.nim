@@ -281,6 +281,9 @@ proc execStop(slot: NimsuggestSlot, pool: NimsuggestPool) {.async.} =
   slot.ns = none(Future[NimSuggest])
   slot.state = SlotState.IDLE
 
+proc processCommands*(slot: NimsuggestSlot, pool: NimsuggestPool) {.async.}
+proc processQueries*(slot: NimsuggestSlot, pool: NimsuggestPool) {.async.}
+
 proc execCheckKnown(
     slot: NimsuggestSlot,
     pool: NimsuggestPool,
@@ -433,7 +436,9 @@ proc processQueries*(slot: NimsuggestSlot, pool: NimsuggestPool) {.async.} =
       try:
         discard await slot.ns.get # waits for SPAWNING → READY
       except CatchableError:
-        # Process failed to start or crashed. Complete with empty.
+        # Process failed to start or crashed. Blame the in-flight URI so
+        # didSave can unblock it (see fix #12C invariant).
+        slot.crashedUris.incl(q.uri)
         if not q.responseFuture.finished:
           q.responseFuture.complete(@[])
         continue
@@ -461,5 +466,6 @@ proc processQueries*(slot: NimsuggestSlot, pool: NimsuggestPool) {.async.} =
     except CatchableError as ex:
       debug "processQueries: query failed",
         projectFile = slot.projectFile, kind = $q.kind, msg = ex.msg
+      slot.crashedUris.incl(q.uri)
       if not q.responseFuture.finished:
         q.responseFuture.complete(@[]) # empty, not fail — see fix #17

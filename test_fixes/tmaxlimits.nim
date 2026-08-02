@@ -40,7 +40,7 @@ import unittest2
 suite "Fix — checkFile sends changed() before chkFile":
   generateSimpleNimblePaths()
   let (cmdParams, ls, client) = startServer("test_fixes/projects/simple")
-  ls.workspaceConfiguration.complete(% @[NlsConfig(
+  ls.configurations.currentConfig = some(NlsConfig(
     maxNimsuggestProcesses: some 1,
     projectMapping: some @[
       NlsNimsuggestConfig(
@@ -48,7 +48,8 @@ suite "Fix — checkFile sends changed() before chkFile":
         projectFile: simpleProjectFile()
       )
     ]
-  )])
+  ))
+  ls.configurations.configReady.fire()
   doInitialize(client, "test_fixes/projects/simple")
   client.notify("initialized", newJObject())
 
@@ -111,7 +112,7 @@ suite "Fix #8 — config-first init: projectMapping applied on first open":
   # waitForWorkspaceConfiguration() finds it immediately.  The assertion below
   # verifies that the mapping WAS applied — which only happens when the config
   # is actually consulted before spawning.
-  ls.workspaceConfiguration.complete(% @[NlsConfig(
+  ls.configurations.currentConfig = some(NlsConfig(
     maxNimsuggestProcesses: some 1,
     projectMapping: some @[
       NlsNimsuggestConfig(
@@ -119,7 +120,8 @@ suite "Fix #8 — config-first init: projectMapping applied on first open":
         projectFile: simpleProjectFile()
       )
     ]
-  )])
+  ))
+  ls.configurations.configReady.fire()
   doInitialize(client, "test_fixes/projects/simple")
   client.notify("initialized", newJObject())
 
@@ -162,7 +164,7 @@ suite "Fix #8 — config-first init: projectMapping applied on first open":
 suite "Fix — concurrent didOpen respects maxNimsuggestProcesses=1":
   generateMonorepoNimblePaths()
   let (cmdParams, ls, client) = startServer("test_fixes/projects/monorepo")
-  ls.workspaceConfiguration.complete(% @[NlsConfig(
+  ls.configurations.currentConfig = some(NlsConfig(
     maxNimsuggestProcesses: some 1,
     projectMapping: some @[
       NlsNimsuggestConfig(
@@ -174,7 +176,8 @@ suite "Fix — concurrent didOpen respects maxNimsuggestProcesses=1":
         projectFile: pkgbProjectFile()
       )
     ]
-  )])
+  ))
+  ls.configurations.configReady.fire()
   doInitialize(client, "test_fixes/projects/monorepo")
   client.notify("initialized", newJObject())
 

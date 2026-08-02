@@ -15,3 +15,5 @@ nimbledeps
 dprint.json
 
 docs/
+
+.DS_Store

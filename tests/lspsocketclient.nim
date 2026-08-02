@@ -1,6 +1,6 @@
-import ../[ls, lstransports, utils]
-
-import ../protocol/types
+import ../src/langserver/[transports, utils]
+import ../src/langserver/langserver_types
+import ../src/protocol/types
 import std/[options, unittest, json, os, jsonutils, tables, strutils, sequtils, sugar]
 import json_rpc/[rpcclient]
 import chronicles

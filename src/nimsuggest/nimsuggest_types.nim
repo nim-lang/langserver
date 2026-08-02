@@ -6,7 +6,7 @@ import chronos/asyncproc
 import ../protocol/types
 
 const REQUEST_TIMEOUT* = 120000
-const HighestSupportedNimSuggestProtocolVersion = 4
+const HighestSupportedNimSuggestProtocolVersion* = 4
 
 # copied from Nim repo
 type
@@ -57,9 +57,9 @@ type
     inlayHintInfo*: SuggestInlayHint
 
   SuggestCall* = ref object
-    commandString: string
-    future: Future[seq[Suggest]]
-    command: string
+    commandString*: string
+    future*: Future[seq[Suggest]]
+    command*: string
 
   SuggestInlayHintKind* = enum
     sihkType = "Type"
@@ -82,11 +82,11 @@ type
     openFiles*: OrderedSet[string]
     successfullCall*: bool
     port*: int
-    root: string
-    requestQueue: Deque[SuggestCall]
-    processing: bool
-    timeout: int
-    timeoutCallback: NimsuggestCallback
+    root*: string
+    requestQueue*: Deque[SuggestCall]
+    processing*: bool
+    timeout*: int
+    timeoutCallback*: NimsuggestCallback
     protocolVersion*: int
     capabilities*: set[NimSuggestCapability]
     nimSuggestPath*: string

@@ -3,7 +3,7 @@ import chronos, chronos/asyncproc
 import stew/[byteutils]
 import chronicles
 import ../langserver/utils
-import ../nimsuggest/suggestapi
+import ../nimsuggest/[suggestapi, nimsuggest_types]
 import std/[strformat]
 
 proc extractMacroExpansion*(output: string, targetLine: int): string =

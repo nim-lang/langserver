@@ -5,7 +5,7 @@ version = "1.15.0"
 author = "David Pocknee and The core Nim team"
 description = "Alternative Nim language server for IDEs"
 license = "MIT"
-bin = @["quicknimlsp"]
+bin = @["src/quicknimlsp"]
 skipDirs = @["tests"]
 
 requires "nim == 2.0.8",

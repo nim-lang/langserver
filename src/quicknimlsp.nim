@@ -1,9 +1,10 @@
 import std/[syncio, os, json, strutils, strformat]
 import json_rpc/[servers/socketserver, private/jrpc_sys, jsonmarshal, rpcclient, router]
 import chronicles, chronos
-import langserver/[langserver, utils, transports]
+import langserver/[langserver, langserver_types, utils, transports, constants, messaging_types]
 import routes/[asyncprocmonitor, lsp, mcp]
 import protocol/types
+import nimsuggest/nimsuggest
 when defined(posix):
   import posix
 
@@ -220,17 +221,17 @@ proc main*(cmdLineParams: CommandLineParams): LanguageServer =
     But we do construct a RPC socket server even in stdio mode, so that we can reuse the same code for both transports.
   ]#
   result = initLanguageServer(cmdLineParams, ensureStorageDir())
-  case result.transportMode
+  case result.transport.transportMode
   of stdio:
     result.startStdioServer()
   of socket:
     result.startSocketServer(cmdLineParams.port)
 
-  case result.serverMode
+  case result.capabilities.serverMode
   of lsp:
-    result.srv.registerLspRoutes(result)
+    result.transport.srv.registerLspRoutes(result)
   of mcp:
-    result.srv.registerMcpRoutes(result)
+    result.transport.srv.registerMcpRoutes(result)
 
   result.registerProcMonitor()
 

@@ -34,11 +34,12 @@ proc startCombinedServer*(maxNs: int): (CommandLineParams, LanguageServer, LspSo
   # ls.call("workspace/configuration"). The test client never answers that call.
   # Give the handler time to fire, then complete the new future ourselves.
   waitFor sleepAsync(200)
-  if not ls.workspaceConfiguration.finished:
-    ls.workspaceConfiguration.complete(% @[NlsConfig(
+  if ls.configurations.currentConfig.isNone:
+    ls.configurations.currentConfig = some(NlsConfig(
       maxNimsuggestProcesses: some maxNs,
       projectMapping: some combinedMapping()
-    )])
+    ))
+    ls.configurations.configReady.fire()
   (cmdParams, ls, client)
 
 const

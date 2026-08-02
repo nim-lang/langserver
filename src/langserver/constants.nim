@@ -21,6 +21,7 @@ const
   NIM_EXPAND_MACRO_BY_DEFAULT* = false
   NIM_MAX_NS_PROCESSES* = 1
 
-const 
+const
   CONFIG_WAIT_TIMEOUT_MS* = 30_000
   CONFIG_WAIT_POLL_MS* = 50
+  DEFAULT_IDLE_TIMEOUT* = 120 ## idle timeout in minutes

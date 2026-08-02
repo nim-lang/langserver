@@ -1,6 +1,7 @@
 import std/[os, strutils, times, options, json, tables, sequtils, sugar]
-import ../[nimlangserver, ls, lstransports, utils]
-import ../protocol/types
+import ../src/langserver/[langserver_types, utils, configurations, configuration_types, messaging_types]
+import ../src/protocol/types
+import ../src/quicknimlsp
 import ../tests/lspsocketclient  # import without alias so we can selectively re-export
 import chronos
 import unittest2
@@ -11,8 +12,8 @@ export newLspSocketClient, notify, call, connect
 export waitForNotification, waitForNotificationMessage
 export registerNotification, positionParams, initialize, notificationHandle
 
-export ls, lstransports, utils, nimlangserver, types, options, json, tables,
-  sequtils, times, os, strutils, chronos
+export langserver_types, utils, configurations, configuration_types, messaging_types,
+  types, options, json, tables, sequtils, times, os, strutils, chronos
 
 # fixtureUri that resolves from repo root, NOT tests/ (overrides lspsocketclient version)
 proc fixtureUri*(path: string): string =

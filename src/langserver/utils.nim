@@ -1,10 +1,13 @@
-import std/[unicode, uri, strformat, os, strutils, options, json, jsonutils, sugar, net]
+import std/[unicode, uri, strformat, os, strutils, options, json, jsonutils, sugar, net, hashes]
+import with
 import chronos, chronicles, chronos/asyncproc
 import "$nim/compiler/pathutils"
 import json_rpc/private/jrpc_sys
 import macros
 import stew/byteutils
 import ./langserver_types
+import ../nimsuggest/nimsuggest_types
+import ../protocol/types
 
 type
   FingerTable = seq[tuple[u16pos, offset: int]]
@@ -12,7 +15,7 @@ type
   UriParseError* = object of Defect
     uri: string
 
-const NIM_SCRIPT_API_TEMPLATE* = staticRead("templates/nimscriptapi.nim")
+const NIM_SCRIPT_API_TEMPLATE* = staticRead("../templates/nimscriptapi.nim")
   #We add this file to nimsuggest and `nim check` to support nimble files
 
 proc writeStackTrace*(ex = getCurrentException()) =
@@ -416,10 +419,10 @@ macro `%*`*(t: untyped, inputStream: untyped): untyped =
 
 
 proc uriStorageLocation*(ls: LanguageServer, uri: string): string =
-  ls.storageDir / (hash(uri).toHex & ".nim")
+  ls.files.storageDir / (hash(uri).toHex & ".nim")
 
 proc uriToStash*(ls: LanguageServer, uri: string): string =
-  if ls.openFiles.hasKey(uri) and ls.openFiles[uri].changed:
+  if ls.files.openFiles.hasKey(uri) and ls.files.openFiles[uri].changed:
     uriStorageLocation(ls, uri)
   else:
     ""
@@ -427,8 +430,8 @@ proc uriToStash*(ls: LanguageServer, uri: string): string =
 proc toUtf16Pos*(
     ls: LanguageServer, uri: string, line: int, utf8Pos: int
 ): Option[int] =
-  if uri in ls.openFiles and line >= 0 and line < ls.openFiles[uri].fingerTable.len:
-    let utf16Pos = ls.openFiles[uri].fingerTable[line].utf8to16(utf8Pos)
+  if uri in ls.files.openFiles and line >= 0 and line < ls.files.openFiles[uri].fingerTable.len:
+    let utf16Pos = ls.files.openFiles[uri].fingerTable[line].utf8to16(utf8Pos)
     return some(utf16Pos)
   else:
     return none(int)
@@ -448,19 +451,6 @@ proc toUtf16Pos*(
   if pos.isSome:
     result.column = pos.get()
 
-proc toUtf16Pos*(checkResult: CheckResult, ls: LanguageServer): CheckResult =
-  result = checkResult
-  let uri = pathToUri(checkResult.file)
-  let pos = toUtf16Pos(ls, uri, checkResult.line - 1, checkResult.column)
-  if pos.isSome:
-    result.column = pos.get()
-
-  for i in 0 ..< result.stacktrace.len:
-    let stPos =
-      toUtf16Pos(ls, uri, result.stacktrace[i].line - 1, result.stacktrace[i].column)
-    if stPos.isSome:
-      result.stacktrace[i].column = stPos.get()
-
 proc range*(startLine, startCharacter, endLine, endCharacter: int): Range =
   return
     Range %* {
@@ -475,8 +465,8 @@ proc toLabelRange*(suggest: Suggest): Range =
 proc getCharacter*(
     ls: LanguageServer, uri: string, line: int, character: int
 ): Option[int] =
-  if uri in ls.openFiles and line < ls.openFiles[uri].fingerTable.len:
-    return some ls.openFiles[uri].fingerTable[line].utf16to8(character)
+  if uri in ls.files.openFiles and line < ls.files.openFiles[uri].fingerTable.len:
+    return some ls.files.openFiles[uri].fingerTable[line].utf16to8(character)
   else:
     return none(int)
   
@@ -515,3 +505,14 @@ when isMainModule:
       pos += 2
     else:
       pos += 1
+
+proc getRootPath*(ip: LspInitializeParams): string =
+  if ip.rootUri.isNone or ip.rootUri.get == "":
+    if ip.rootPath.isSome and ip.rootPath.get != "":
+      return ip.rootPath.get
+    else:
+      return getCurrentDir().pathToUri.uriToPath
+  ip.rootUri.get.uriToPath
+
+proc getRootPath*(ip: McpInitializeParams): string =
+  getCurrentDir().pathToUri.uriToPath

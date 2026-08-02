@@ -6,20 +6,25 @@ import unittest2
 suite "Fix #10 — nimble.paths forwarded to nimsuggest":
   generateSimpleNimblePaths()
   let (cmdParams, ls, client) = startServer("test_fixes/projects/simple")
-  ls.workspaceConfiguration.complete(% @[NlsConfig(maxNimsuggestProcesses: some 1)])
+  ls.configurations.currentConfig = some(NlsConfig(maxNimsuggestProcesses: some 1))
+  ls.configurations.configReady.fire()
   doInitialize(client, "test_fixes/projects/simple")
   client.notify("initialized", newJObject())
 
   test "nimsuggest receives --noNimblePath from nimble.paths":
     sendDidOpen(client, "test_fixes/projects/simple/src/simple.nim")
     check waitForNsInit(client, simpleProjectFile())
+    # Open widget.nim explicitly so it enters openFiles (mimics real VS Code usage).
+    sendDidOpen(client, "test_fixes/projects/simple/src/widget.nim")
+    waitFor sleepAsync(200)
     let hover = sendHover(client, "test_fixes/projects/simple/src/widget.nim", 7, 5)
     check hover.kind != JNull
 
 suite "Fix #16 — listTests with no entryPoint":
   generateSimpleNimblePaths()
   let (cmdParams, ls, client) = startServer("test_fixes/projects/simple")
-  ls.workspaceConfiguration.complete(% @[NlsConfig()])
+  ls.configurations.currentConfig = some(NlsConfig())
+  ls.configurations.configReady.fire()
   doInitialize(client, "test_fixes/projects/simple")
   client.notify("initialized", newJObject())
 
@@ -39,7 +44,7 @@ suite "Fix #16 — listTests with no entryPoint":
 suite "Fix #17 — in-flight commands complete with [] not error":
   generateSimpleNimblePaths()
   let (cmdParams, ls, client) = startServer("test_fixes/projects/simple")
-  ls.workspaceConfiguration.complete(% @[NlsConfig(
+  ls.configurations.currentConfig = some(NlsConfig(
     maxNimsuggestProcesses: some 1,
     projectMapping: some @[
       NlsNimsuggestConfig(
@@ -47,7 +52,8 @@ suite "Fix #17 — in-flight commands complete with [] not error":
         projectFile: simpleProjectFile()
       )
     ]
-  )])
+  ))
+  ls.configurations.configReady.fire()
   doInitialize(client, "test_fixes/projects/simple")
   client.notify("initialized", newJObject())
 
@@ -73,7 +79,7 @@ suite "Fix #17 — in-flight commands complete with [] not error":
 suite "Fix #18 — standalone nimsuggest for unimported file":
   generateSimpleNimblePaths()
   let (cmdParams, ls, client) = startServer("test_fixes/projects/simple")
-  ls.workspaceConfiguration.complete(% @[NlsConfig(
+  ls.configurations.currentConfig = some(NlsConfig(
     maxNimsuggestProcesses: some 2,
     projectMapping: some @[
       NlsNimsuggestConfig(
@@ -81,7 +87,8 @@ suite "Fix #18 — standalone nimsuggest for unimported file":
         projectFile: simpleProjectFile()
       )
     ]
-  )])
+  ))
+  ls.configurations.configReady.fire()
   doInitialize(client, "test_fixes/projects/simple")
   client.notify("initialized", newJObject())
 
@@ -107,7 +114,7 @@ suite "Fix #18 — standalone nimsuggest for unimported file":
 suite "Fix #19 — cascade prevention at maxNimsuggestProcesses=1":
   generateSimpleNimblePaths()
   let (cmdParams, ls, client) = startServer("test_fixes/projects/simple")
-  ls.workspaceConfiguration.complete(% @[NlsConfig(
+  ls.configurations.currentConfig = some(NlsConfig(
     maxNimsuggestProcesses: some 1,
     projectMapping: some @[
       NlsNimsuggestConfig(
@@ -115,7 +122,8 @@ suite "Fix #19 — cascade prevention at maxNimsuggestProcesses=1":
         projectFile: simpleProjectFile()
       )
     ]
-  )])
+  ))
+  ls.configurations.configReady.fire()
   doInitialize(client, "test_fixes/projects/simple")
   client.notify("initialized", newJObject())
 
@@ -133,7 +141,7 @@ suite "Fix #19 — cascade prevention at maxNimsuggestProcesses=1":
 suite "Fix #19 — LRU eviction at process limit":
   generateMonorepoNimblePaths()
   let (cmdParams, ls, client) = startServer("test_fixes/projects/monorepo")
-  ls.workspaceConfiguration.complete(% @[NlsConfig(
+  ls.configurations.currentConfig = some(NlsConfig(
     maxNimsuggestProcesses: some 1,
     projectMapping: some @[
       NlsNimsuggestConfig(
@@ -145,7 +153,8 @@ suite "Fix #19 — LRU eviction at process limit":
         projectFile: pkgaProjectFile()
       )
     ]
-  )])
+  ))
+  ls.configurations.configReady.fire()
   doInitialize(client, "test_fixes/projects/monorepo")
   client.notify("initialized", newJObject())
 
@@ -166,7 +175,7 @@ suite "Fix #19 — LRU eviction at process limit":
 suite "Fix #13 — cross-project unknown file restarts for intended project":
   generateMonorepoNimblePaths()
   let (cmdParams, ls, client) = startServer("test_fixes/projects/monorepo")
-  ls.workspaceConfiguration.complete(% @[NlsConfig(
+  ls.configurations.currentConfig = some(NlsConfig(
     maxNimsuggestProcesses: some 1,
     projectMapping: some @[
       NlsNimsuggestConfig(
@@ -178,7 +187,8 @@ suite "Fix #13 — cross-project unknown file restarts for intended project":
         projectFile: pkgbProjectFile()
       )
     ]
-  )])
+  ))
+  ls.configurations.configReady.fire()
   doInitialize(client, "test_fixes/projects/monorepo")
   client.notify("initialized", newJObject())
 
@@ -199,7 +209,7 @@ suite "Fix #13 — cross-project unknown file restarts for intended project":
 suite "Fix #7 and #11 — workspace/didRenameFiles":
   generateSimpleNimblePaths()
   let (cmdParams, ls, client) = startServer("test_fixes/projects/simple")
-  ls.workspaceConfiguration.complete(% @[NlsConfig(
+  ls.configurations.currentConfig = some(NlsConfig(
     maxNimsuggestProcesses: some 1,
     projectMapping: some @[
       NlsNimsuggestConfig(
@@ -207,7 +217,8 @@ suite "Fix #7 and #11 — workspace/didRenameFiles":
         projectFile: simpleProjectFile()
       )
     ]
-  )])
+  ))
+  ls.configurations.configReady.fire()
   doInitialize(client, "test_fixes/projects/simple")
   client.notify("initialized", newJObject())
 
@@ -235,7 +246,8 @@ suite "Fix #7 and #11 — workspace/didRenameFiles":
 suite "Fix #12A — openFiles sync on didClose":
   generateSimpleNimblePaths()
   let (cmdParams, ls, client) = startServer("test_fixes/projects/simple")
-  ls.workspaceConfiguration.complete(% @[NlsConfig(maxNimsuggestProcesses: some 1)])
+  ls.configurations.currentConfig = some(NlsConfig(maxNimsuggestProcesses: some 1))
+  ls.configurations.configReady.fire()
   doInitialize(client, "test_fixes/projects/simple")
   client.notify("initialized", newJObject())
 
@@ -255,7 +267,7 @@ suite "Fix #12A — openFiles sync on didClose":
 suite "Fix #12C — SIGSEGV recovery: save unblocks crashed file":
   generateSimpleNimblePaths()
   let (cmdParams, ls, client) = startServer("test_fixes/projects/simple")
-  ls.workspaceConfiguration.complete(% @[NlsConfig(
+  ls.configurations.currentConfig = some(NlsConfig(
     maxNimsuggestProcesses: some 1,
     projectMapping: some @[
       NlsNimsuggestConfig(
@@ -263,7 +275,8 @@ suite "Fix #12C — SIGSEGV recovery: save unblocks crashed file":
         projectFile: simpleProjectFile()
       )
     ]
-  )])
+  ))
+  ls.configurations.configReady.fire()
   doInitialize(client, "test_fixes/projects/simple")
   client.notify("initialized", newJObject())
 
