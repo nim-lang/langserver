@@ -4,6 +4,7 @@
 import std/[options, sets, tables, times]
 import chronos
 import ../nimsuggest/nimsuggest_types
+import ../protocol/types
 
 # ---------------------------------------------------------------------------
 # Nimsuggest TCP command queue types (defined first so NimsuggestSlot can use them)
@@ -241,40 +242,4 @@ type
     stopProc*: StopProc
     isKnownProc*: IsKnownProc
 
-
-type
-  LanguageServerHandlerKind* {.pure.} = enum
-    INITIALIZE, SHUTDOWN, EXIT,
-    TEXT_DOCUMENT, WORKSPACE, 
-    EXTENSION
-
-
-  TextDocumentQueryKind* {.pure.} = enum
-    COMPLETION, 
-    DEFINITION, TYPE_DEFINITION,
-    DECLARATION, 
-    DOCUMENT_SYMBOL,
-    HOVER,
-    REFERENCES,
-    PREPARE_RENAME,
-    RENAME,
-    INLAY_HINT,
-    SIGNATURE_HELP,
-    FORMATTING,
-    DOCUMENT_HIGHLIGHT,
-    CODE_ACTION
-
-  WorkspaceQueryKind* {.pure.} = enum
-    EXECUTE_COMMAND,
-    SYMBOL,
-
-  ExtensionQueryKind* {.pure.} = enum
-    MACRO_EXPANSION,
-    STATUS,
-    CAPABILITIES,
-    SUGGEST,
-    TASKS,
-    RUN_TASK, 
-    LIST_TESTS,
-    RUN_TESTS,
-    CANCEL_TEST
+# expandAll, expand exist in lsp.nim but are not used anywhere ... why?  Macro expansion?
