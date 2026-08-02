@@ -832,13 +832,17 @@ proc shouldSpawnNimsuggest*(ls: LanguageServer): Future[bool] {.async.} =
   debug "shouldSpawnNimsuggest",
     result = result, nsCount = nsCount, maxNimsuggestProcesses = maxNimsuggestProcesses
 
-proc leastRecentlyUsedProjectFile(ls: LanguageServer): string =
+proc leastRecentlyUsedProjectFile*(ls: LanguageServer): string =
   ## Returns the projectFiles key whose nimsuggest has been least recently used.
-  ## Only considers finished, non-failed instances. Falls back to the first key
-  ## if no finished instance exists (e.g. all still compiling).
+  ## Only considers real entries (proj.file == key) — redirect aliases are skipped
+  ## because they share a Project with the canonical key and picking the alias key
+  ## causes cascade prevention to misfire. Falls back to the first key if no real
+  ## finished instance exists (e.g. all still compiling).
   var oldest = now()
   result = ls.projectFiles.keys.toSeq[0]
   for k, proj in ls.projectFiles.pairs:
+    if proj.file != k:
+      continue  # skip redirect aliases
     if not proj.ns.finished or proj.ns.failed:
       continue
     let date = proj.lastCmdDate.get(dateTime(1970, mJan, 1, 0, 0, 0, 0, utc()))
@@ -1346,7 +1350,7 @@ proc checkProject*(ls: LanguageServer, uri: string): Future[void] {.async.} =
       debug "Running delayed check project...", uri = uri
       traceAsyncErrors ls.checkProject(uri)
 
-proc extractCrashedFile(cmd: string): string =
+proc extractCrashedFile*(cmd: string): string =
   ## Extract the first quoted file path from a nimsuggest command string.
   ## e.g. `sug "/path/file.nim";"/stash.nim":4:12` → "/path/file.nim"
   let start = cmd.find('"')
@@ -1389,7 +1393,7 @@ proc onErrorCallback(args: (LanguageServer, string), project: Project) =
       )
       ls.sendStatusChanged()
 
-proc findNimblePaths(fromFile: string): seq[string] =
+proc findNimblePaths*(fromFile: string): seq[string] =
   ## Walk up from fromFile's directory looking for nimble.paths.
   ## Returns the flags it contains (--noNimblePath and --path:... entries)
   ## with any surrounding quotes stripped, ready to pass directly to nimsuggest.
