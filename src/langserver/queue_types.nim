@@ -243,13 +243,13 @@ type
 
 
 type
-  LanguageServerHandlerKind {.pure.} = enum
+  LanguageServerHandlerKind* {.pure.} = enum
     INITIALIZE, SHUTDOWN, EXIT,
     TEXT_DOCUMENT, WORKSPACE, 
     EXTENSION
 
 
-  TextDocumentQueryKind  {.pure.} = enum
+  TextDocumentQueryKind* {.pure.} = enum
     COMPLETION, 
     DEFINITION, TYPE_DEFINITION,
     DECLARATION, 
@@ -259,4 +259,22 @@ type
     PREPARE_RENAME,
     RENAME,
     INLAY_HINT,
-    
+    SIGNATURE_HELP,
+    FORMATTING,
+    DOCUMENT_HIGHLIGHT,
+    CODE_ACTION
+
+  WorkspaceQueryKind* {.pure.} = enum
+    EXECUTE_COMMAND,
+    SYMBOL,
+
+  ExtensionQueryKind* {.pure.} = enum
+    MACRO_EXPANSION,
+    STATUS,
+    CAPABILITIES,
+    SUGGEST,
+    TASKS,
+    RUN_TASK, 
+    LIST_TESTS,
+    RUN_TESTS,
+    CANCEL_TEST
