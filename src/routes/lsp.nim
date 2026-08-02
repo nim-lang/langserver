@@ -154,7 +154,7 @@ proc completion*(
     ls: LanguageServer, params: CompletionParams, id: int
 ): Future[seq[CompletionItem]] {.async.} =
   with (params.position, params.textDocument):
-    asyncSpawn ls.addProjectFileToPendingRequest(id.uint, uri)
+    ls.addProjectFileToPendingRequest(id.uint, uri)
     let nimsuggest = await ls.tryGetNimsuggest(uri)
     if nimsuggest.isNone():
       return @[]
@@ -182,7 +182,7 @@ proc definition*(
     ls: LanguageServer, params: TextDocumentPositionParams, id: int
 ): Future[seq[Location]] {.async.} =
   with (params.position, params.textDocument):
-    asyncSpawn ls.addProjectFileToPendingRequest(id.uint, uri)
+    ls.addProjectFileToPendingRequest(id.uint, uri)
     let ns = await ls.tryGetNimsuggest(uri)
     if ns.isNone:
       return @[]
@@ -198,7 +198,7 @@ proc declaration*(
     ls: LanguageServer, params: TextDocumentPositionParams, id: int
 ): Future[seq[Location]] {.async.} =
   with (params.position, params.textDocument):
-    asyncSpawn ls.addProjectFileToPendingRequest(id.uint, uri)
+    ls.addProjectFileToPendingRequest(id.uint, uri)
     let ns = await ls.tryGetNimsuggest(uri)
     if ns.isNone:
       return @[]
@@ -327,7 +327,7 @@ proc typeDefinition*(
     ls: LanguageServer, params: TextDocumentPositionParams, id: int
 ): Future[seq[Location]] {.async.} =
   with (params.position, params.textDocument):
-    asyncSpawn ls.addProjectFileToPendingRequest(id.uint, uri)
+    ls.addProjectFileToPendingRequest(id.uint, uri)
     let ns = await ls.tryGetNimsuggest(uri)
     if ns.isNone:
       return @[]
@@ -352,7 +352,7 @@ proc documentSymbols*(
     ls: LanguageServer, params: DocumentSymbolParams, id: int
 ): Future[seq[SymbolInformation]] {.async.} =
   let uri = params.textDocument.uri
-  asyncSpawn ls.addProjectFileToPendingRequest(id.uint, uri)
+  ls.addProjectFileToPendingRequest(id.uint, uri)
   let ns = await ls.tryGetNimsuggest(uri)
   if ns.isSome:
     ns.get().outline(uriToPath(uri), ls.uriToStash(uri)).await().map(
@@ -414,7 +414,7 @@ proc hover*(
 ): Future[Option[Hover]] {.async.} =
   with (params.position, params.textDocument):
     let config = ls.getWorkspaceConfiguration()
-    asyncSpawn ls.addProjectFileToPendingRequest(id.uint, uri)
+    ls.addProjectFileToPendingRequest(id.uint, uri)
     let nimsuggest = await ls.tryGetNimsuggest(uri)
     if nimsuggest.isNone:
       return none(Hover)
@@ -485,7 +485,7 @@ proc prepareRename*(
     ls: LanguageServer, params: PrepareRenameParams, id: int
 ): Future[JsonNode] {.async.} =
   with (params.position, params.textDocument):
-    asyncSpawn ls.addProjectFileToPendingRequest(id.uint, uri)
+    ls.addProjectFileToPendingRequest(id.uint, uri)
     let nimsuggest = await ls.tryGetNimsuggest(uri)
     if nimsuggest.isNone:
       return newJNull()
@@ -582,7 +582,7 @@ proc inlayHint*(
 ): Future[seq[InlayHint]] {.async.} =
   debug "inlayHint received..."
   with (params.range, params.textDocument):
-    asyncSpawn ls.addProjectFileToPendingRequest(id.uint, uri)
+    ls.addProjectFileToPendingRequest(id.uint, uri)
     let
       configuration = ls.getWorkspaceConfiguration()
       nimsuggest = await ls.tryGetNimsuggest(uri)
@@ -731,7 +731,7 @@ proc signatureHelp*(
     #Some clients doesnt support signatureHelp
     return none[SignatureHelp]()
   with (params.position, params.textDocument):
-    asyncSpawn ls.addProjectFileToPendingRequest(id.uint, uri)
+    ls.addProjectFileToPendingRequest(id.uint, uri)
     let nimsuggest = await ls.tryGetNimsuggest(uri)
     if nimsuggest.isNone:
       return none[SignatureHelp]()
@@ -798,7 +798,7 @@ proc formatting*(
     ls: LanguageServer, params: DocumentFormattingParams, id: int
 ): Future[seq[TextEdit]] {.async.} =
   with (params.textDocument):
-    asyncSpawn ls.addProjectFileToPendingRequest(id.uint, uri)
+    ls.addProjectFileToPendingRequest(id.uint, uri)
     debug "Received Formatting request "
     let formatTextEdit = await ls.format(getNphPath().get(), uri)
     if formatTextEdit.isSome:
@@ -823,7 +823,7 @@ proc documentHighlight*(
     ls: LanguageServer, params: TextDocumentPositionParams, id: int
 ): Future[seq[DocumentHighlight]] {.async.} =
   with (params.position, params.textDocument):
-    asyncSpawn ls.addProjectFileToPendingRequest(id.uint, uri)
+    ls.addProjectFileToPendingRequest(id.uint, uri)
     let nimsuggest = await ls.tryGetNimsuggest(uri)
     if nimsuggest.isNone:
       return @[]
@@ -1078,7 +1078,7 @@ proc didSave*(
 proc didClose*(
     ls: LanguageServer, params: DidCloseTextDocumentParams
 ): Future[void] {.async.} =
-  await ls.didCloseFile(params.textDocument.uri)
+  ls.didCloseFile(params.textDocument.uri)
 
 proc didOpen*(
     ls: LanguageServer, params: DidOpenTextDocumentParams
@@ -1089,7 +1089,7 @@ proc didRenameFiles*(
     ls: LanguageServer, params: RenameFilesParams
 ): Future[void] {.async.} =
   for rename in params.files:
-    await ls.didRenameFile(rename.oldUri, rename.newUri)
+    ls.didRenameFile(rename.oldUri, rename.newUri)
 
 proc didDeleteFiles*(
     ls: LanguageServer, params: DeleteFilesParams

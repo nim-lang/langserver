@@ -20,7 +20,9 @@ import chronos
 import chronicles
 import ./queue_types
 import ./utils             # uriToPath, pathToUri
+import ./constants         # MAX_CRASH_RETRIES
 import ../nimsuggest/nimsuggest_types
+import ../nimsuggest/suggestapi
 
 # ---------------------------------------------------------------------------
 # Construction
@@ -91,7 +93,7 @@ proc lruSlot*(pool: NimsuggestPool): Option[NimsuggestSlot] =
   ## Entry-point slots are not eligible for eviction.
   ## Returns none if every active slot is an entry point.
   var best: Option[NimsuggestSlot]
-  var bestTime = now()
+  var bestTime = dateTime(9999, mDec, 31, 23, 59, 59, 0, utc())
   for slot in pool.slots.values:
     if not slot.isActive or slot.isEntryPoint:
       continue
@@ -260,6 +262,18 @@ proc execSpawn(
     slot.state = SlotState.CRASHED
     error "execSpawn: failed to spawn nimsuggest",
       projectFile = projectFile, msg = ex.msg
+    inc slot.crashCount
+    if slot.crashCount <= MAX_CRASH_RETRIES:
+      debug "execSpawn: scheduling restart after crash",
+        projectFile = projectFile, crashCount = slot.crashCount
+      slot.send SlotCommand(
+        kind: SlotCommandKind.RESTART,
+        spawnProjectFile: slot.projectFile,
+        spawnTriggerUri: "",
+      )
+    else:
+      error "execSpawn: crash limit reached, slot permanently failed",
+        projectFile = projectFile, crashCount = slot.crashCount
 
 proc execStop(slot: NimsuggestSlot, pool: NimsuggestPool) {.async.} =
   ## Shut down the slot's nimsuggest process.
@@ -347,6 +361,7 @@ proc execCheckKnown(
     let evictOpt = pool.findSlot(routing.evictSlot)
     if evictOpt.isSome:
       evictOpt.get.send SlotCommand(kind: SlotCommandKind.STOP)
+      pool.removeSlot(routing.evictSlot) # remove now; slot object lives on in its coroutines
 
     if routing.targetProjectFile notin pool.slots:
       let newSlot = newSlot(routing.targetProjectFile)
@@ -452,17 +467,51 @@ proc processQueries*(slot: NimsuggestSlot, pool: NimsuggestPool) {.async.} =
     let ns = nsOpt.get
     slot.lastCmdTime = some(now())
 
-    # Dispatch to the concrete nimsuggest TCP command.
-    # The actual dispatch (sug/def/highlight/etc.) lives in suggestapi.nim.
-    # Here we only handle the queue mechanics and the empty-result fallback.
-    # TODO: replace this stub with real dispatch when suggestapi is ported.
+    let path = q.uri.uriToPath
+    debug "processQueries: dispatching",
+      projectFile = slot.projectFile, kind = $q.kind, uri = q.uri
     try:
-      debug "processQueries: dispatching",
-        projectFile = slot.projectFile, kind = $q.kind, uri = q.uri
-      # Stub: real impl calls ns.sug / ns.def / etc. based on q.kind
-      # and completes q.responseFuture with the result.
+      let results: seq[Suggest] =
+        case q.kind
+        of NimsuggestQueryKind.SUGGEST:
+          await ns.sug(path, q.dirtyFile, q.position.line, q.position.col)
+        of NimsuggestQueryKind.DEFINITION:
+          await ns.def(path, q.dirtyFile, q.position.line, q.position.col)
+        of NimsuggestQueryKind.DECLARATION:
+          await ns.declaration(path, q.dirtyFile, q.position.line, q.position.col)
+        of NimsuggestQueryKind.TYPE_DEFINITION:
+          await ns.type(path, q.dirtyFile, q.position.line, q.position.col)
+        of NimsuggestQueryKind.REFERENCES:
+          await ns.use(path, q.dirtyFile, q.position.line, q.position.col)
+        of NimsuggestQueryKind.DOCUMENT_SYMBOLS:
+          await ns.outline(path, q.dirtyFile)
+        of NimsuggestQueryKind.WORKSPACE_SYMBOLS:
+          await ns.globalSymbols(path, q.dirtyFile)
+        of NimsuggestQueryKind.HOVER, NimsuggestQueryKind.DOCUMENT_HIGHLIGHT:
+          await ns.highlight(path, q.dirtyFile, q.position.line, q.position.col)
+        of NimsuggestQueryKind.SIGNATURE_HELP:
+          await ns.con(path, q.dirtyFile, q.position.line, q.position.col)
+        of NimsuggestQueryKind.INLAY_HINTS:
+          await ns.inlayHints(
+            path, q.dirtyFile,
+            q.hintStart.line, q.hintStart.col,
+            q.hintEnd.line, q.hintEnd.col,
+            q.hintOptions,
+          )
+        of NimsuggestQueryKind.EXPAND:
+          await ns.expand(path, q.dirtyFile, q.position.line, q.position.col)
+        of NimsuggestQueryKind.CHANGED:
+          await ns.changed(path, q.dirtyFile)
+        of NimsuggestQueryKind.CHECK_FILE:
+          await ns.chkFile(path, q.dirtyFile)
+        of NimsuggestQueryKind.CHECK_PROJECT:
+          await ns.chk(path, q.dirtyFile)
+        of NimsuggestQueryKind.RECOMPILE:
+          await ns.recompile()
+        of NimsuggestQueryKind.KNOWN:
+          await ns.known(path)
       if not q.responseFuture.finished:
-        q.responseFuture.complete(@[])
+        q.responseFuture.complete(results)
     except CatchableError as ex:
       debug "processQueries: query failed",
         projectFile = slot.projectFile, kind = $q.kind, msg = ex.msg

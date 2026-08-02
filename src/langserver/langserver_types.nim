@@ -12,7 +12,7 @@ LRU = Least Recently Used — a cache eviction policy where, when you need to fr
 ]##
 
 type
-  LanguageServerCapabiities* = object
+  LanguageServerCapabilities* = object
     case serverMode*: ServerMode
     of lsp:
       lspClientCapabilities*: LspClientCapabilities
@@ -117,7 +117,7 @@ type
 
 type
   LanguageServer* = ref object
-    capabilities*: LanguageServerCapabiities
+    capabilities*: LanguageServerCapabilities
     configurations*: LanguageServerConfigurations
     transport*: LanguageServerTransport
     files*: LanguageServerFiles

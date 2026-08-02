@@ -46,7 +46,7 @@ proc checkFile*(ls: LanguageServer, uri: string): Future[void] {.async.} =
   let results = await ns.chkFile(path, stash)
   ls.sendDiagnostics(results.filter(s => s.filePath != "???"), path)
 
-proc didCloseFile*(ls: LanguageServer, uri: string): Future[void] {.async.} =
+proc didCloseFile*(ls: LanguageServer, uri: string) =
   debug "Closed the following document:", uri = uri
 
   if uri notin ls.files.openFiles:
@@ -67,15 +67,13 @@ proc didCloseFile*(ls: LanguageServer, uri: string): Future[void] {.async.} =
   if fileInfo.cancelFileCheck != nil and not fileInfo.cancelFileCheck.finished:
     fileInfo.cancelFileCheck.complete()
 
-proc makeIdleFile*(ls: LanguageServer, file: NlsFileInfo): Future[void] {.async.} =
+proc makeIdleFile*(ls: LanguageServer, file: NlsFileInfo) =
   let uri = file.textDocument.uri
   if uri in ls.files.openFiles:
-    await ls.didCloseFile(uri)
+    ls.didCloseFile(uri)
     ls.files.idleOpenFiles[uri] = file
 
-proc didRenameFile*(
-    ls: LanguageServer, oldUri, newUri: string
-): Future[void] {.async.} =
+proc didRenameFile*(ls: LanguageServer, oldUri, newUri: string) =
   debug "File renamed", oldUri = oldUri, newUri = newUri
 
   # Move the stash file so any pending content checks use the right path
@@ -125,7 +123,7 @@ proc didRenameFile*(
     if oldPath.endsWith(".nim") and slot != nil and slot.isLive:
       slot.send SlotCommand(kind: SlotCommandKind.RECOMPILE)
 
-proc didDeleteFile*(ls: LanguageServer, uri: string): Future[void] {.async.} =
+proc didDeleteFile*(ls: LanguageServer, uri: string) =
   debug "File deleted", uri = uri
   let path = uriToPath(uri)
 
@@ -140,10 +138,6 @@ proc didDeleteFile*(ls: LanguageServer, uri: string): Future[void] {.async.} =
       if path.endsWith(".nim") and fileInfo.slot.isLive:
         fileInfo.slot.send SlotCommand(kind: SlotCommandKind.RECOMPILE)
     ls.files.openFiles.del(uri)
-
-proc didOpenFile*(
-    ls: LanguageServer, doc: TextDocumentItem
-): Future[void] {.async.}
 
 proc didOpenFile*(
     ls: LanguageServer, doc: TextDocumentItem

@@ -240,3 +240,23 @@ type
     spawnProc*: SpawnProc
     stopProc*: StopProc
     isKnownProc*: IsKnownProc
+
+
+type
+  LanguageServerHandlerKind {.pure.} = enum
+    INITIALIZE, SHUTDOWN, EXIT,
+    TEXT_DOCUMENT, WORKSPACE, 
+    EXTENSION
+
+
+  TextDocumentQueryKind  {.pure.} = enum
+    COMPLETION, 
+    DEFINITION, TYPE_DEFINITION,
+    DECLARATION, 
+    DOCUMENT_SYMBOL,
+    HOVER,
+    REFERENCES,
+    PREPARE_RENAME,
+    RENAME,
+    INLAY_HINT,
+    

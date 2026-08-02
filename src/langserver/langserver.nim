@@ -22,8 +22,8 @@ import ./[constants, utils, langserver_types, configuration_types, messaging_typ
 proc initLanguageServer*(params: CommandLineParams, storageDir: string): LanguageServer =
   let configReady = newAsyncEvent()
   result = LanguageServer(
-    capabilities: LanguageServerCapabiities(
-      serverMode: params.mode.get(),
+    capabilities: LanguageServerCapabilities(
+      serverMode: params.mode.get(ServerMode.lsp),
       extensionCapabilities: LspExtensionCapability.items.toSet,
     ),
     configurations: LanguageServerConfigurations(
@@ -31,7 +31,7 @@ proc initLanguageServer*(params: CommandLineParams, storageDir: string): Languag
       configReady: configReady,
     ),
     transport: LanguageServerTransport(
-      transportMode: params.transport.get(),
+      transportMode: params.transport.get(TransportMode.stdio),
     ),
     files: LanguageServerFiles(
       openFiles: initTable[string, NlsFileInfo](),
@@ -47,7 +47,14 @@ proc initLanguageServer*(params: CommandLineParams, storageDir: string): Languag
     nimDumpCache: initTable[string, NimbleDumpInfo](),
     cmdLineClientProcessId: params.clientProcessId,
   )
-  # pool is initialized later by initNimsuggestInstances
+  # Create the pool synchronously so ls.pool is never nil when event loop starts.
+  # initNimsuggestInstances will update maxSlots from config and spawn entry points.
+  result.pool = newPool(
+    maxSlots = NIM_MAX_NS_PROCESSES,
+    spawnProc = makeSpawnProc(result),
+    stopProc = makeStopProc(),
+    isKnownProc = makeIsKnownProc(),
+  )
 
 proc supportSignatureHelp*(cc: LspClientCapabilities): bool =
   if cc.isNil:
@@ -118,7 +125,7 @@ proc getLspStatus*(ls: LanguageServer): NimLangServerStatus {.raises: [].} =
             path: ns.nimSuggestPath,
             port: ns.port,
           )
-          for open in ns.openFiles:
+          for open in ns.openFiles.toSeq:
             nsStatus.openFiles.add open
           result.nimsuggestInstances.add nsStatus
       except CatchableError:
@@ -136,16 +143,11 @@ proc sendStatusChanged*(ls: LanguageServer) {.raises: [].} =
     ls.notify("extension/statusUpdate", status)
     ls.messaging.lastStatusSent = status
 
-proc addProjectFileToPendingRequest*(
-    ls: LanguageServer, id: uint, uri: string
-) {.async.} =
+proc addProjectFileToPendingRequest*(ls: LanguageServer, id: uint, uri: string) =
   try:
     if id in ls.messaging.pendingRequests:
-      let projectFile = uri.uriToPath()
-      ls.messaging.pendingRequests[id].projectFile = some projectFile
+      ls.messaging.pendingRequests[id].projectFile = some uri.uriToPath()
       ls.sendStatusChanged
-  except CancelledError:
-    discard
   except CatchableError as e:
     error "addProjectFileToPendingRequest failed", uri = uri, msg = e.msg
 

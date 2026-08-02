@@ -102,9 +102,15 @@ proc makeSpawnProc*(ls: LanguageServer): SpawnProc =
 proc makeStopProc*(): StopProc =
   result = proc(ns: NimSuggest): Future[void] {.gcsafe, raises: [].} =
     let fut = newFuture[void]("makeStopProc")
-    if ns != nil and ns.project != nil:
-      ns.project.stop()
-    fut.complete()
+    proc doStop() {.async.} =
+      try:
+        if ns != nil and ns.project != nil and ns.project.process != nil:
+          await shutdownChildProcess(ns.project.process)
+      except CatchableError:
+        discard
+      if not fut.finished:
+        fut.complete()
+    asyncSpawn doStop()
     fut
 
 proc makeIsKnownProc*(): IsKnownProc =
@@ -181,13 +187,8 @@ proc initNimsuggestInstances*(ls: LanguageServer, rootPath: string) {.async.} =
 
   let config = ls.getWorkspaceConfiguration()
 
-  # Create the pool with injected procs
-  ls.pool = newPool(
-    maxSlots = config.maxNimsuggestProcesses.get(NIM_MAX_NS_PROCESSES),
-    spawnProc = makeSpawnProc(ls),
-    stopProc = makeStopProc(),
-    isKnownProc = makeIsKnownProc(),
-  )
+  # Update maxSlots from config (pool was created with defaults in initLanguageServer)
+  ls.pool.maxSlots = config.maxNimsuggestProcesses.get(NIM_MAX_NS_PROCESSES)
 
   # Discover entry points via nimble dump
   let nimbleFiles = walkFiles(rootPath / "*.nimble").toSeq
@@ -237,7 +238,8 @@ proc removeIdleNimsuggests*(ls: LanguageServer) {.async.} =
   let config = ls.getWorkspaceConfiguration()
   let timeout = config.nimsuggestIdleTimeout.get(DEFAULT_IDLE_TIMEOUT)
   let cutoff = now() - initDuration(minutes = timeout)
-  for slot in ls.pool.slots.values:
+  # Snapshot values before iterating: removeSlot mutates the table.
+  for slot in ls.pool.slots.values.toSeq:
     if slot.isEntryPoint or not slot.isLive:
       continue
     if slot.lastCmdTime.isSome and slot.lastCmdTime.get > cutoff:
@@ -245,4 +247,5 @@ proc removeIdleNimsuggests*(ls: LanguageServer) {.async.} =
     if slot.ownedUris.len == 0:
       debug "Removing idle nimsuggest", projectFile = slot.projectFile
       slot.send SlotCommand(kind: SlotCommandKind.STOP)
+      ls.pool.removeSlot(slot.projectFile) # slot object lives on in its coroutines
 
