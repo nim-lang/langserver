@@ -3,17 +3,17 @@ import chronos
 import chronicles
 
 import ../protocol/types
-import ../nimsuggest/[nimsuggest_types, nimsuggest, suggestapi]
+import ../nimsuggest/[nimsuggest_types, nimsuggest]
 import ../nimcheck/nimcheck
 import ../nim_compiler/nim_compiler
 import ./[configurations, langserver_types, constants, utils, queue_types, queues, diagnostics]
+import ../requests/requests
 
 proc checkFile*(ls: LanguageServer, uri: string): Future[void] {.async.} =
   if uri notin ls.files.openFiles:
     return
   let fileInfo = ls.files.openFiles[uri]
-  let slot = fileInfo.slot
-  if slot == nil:
+  if fileInfo.slot == nil:
     return
 
   let conf = ls.getWorkspaceConfiguration()
@@ -26,24 +26,13 @@ proc checkFile*(ls: LanguageServer, uri: string): Future[void] {.async.} =
     ls.sendDiagnostics(checkResults, path)
     return
 
-  # Await spawning if in progress.
-  if slot.ns.isSome:
-    try:
-      discard await slot.ns.get
-    except CatchableError:
-      return
-
-  let nsOpt = slot.resolvedNs
-  if nsOpt.isNone:
-    return
-  let ns = nsOpt.get
-
-  let stash = ls.uriToStash(uri)
-  # Send `changed` first so nimsuggest v4 marks the module dirty and
-  # picks up the stash content before chkFile runs.
+  # Route through the per-slot queue. processQueries awaits slot.ns.get
+  # internally, so checkFile never needs to touch the NimSuggest handle directly.
+  # CHANGED is sent first (if there are unsaved edits) so nimsuggest v4 marks
+  # the module dirty and picks up the stash content before CHECK_FILE runs.
   if fileInfo.changed:
-    discard await ns.changed(path, stash)
-  let results = await ns.chkFile(path, stash)
+    discard await ls.queryFile(uri, NimsuggestQueryKind.CHANGED)
+  let results = await ls.queryFile(uri, NimsuggestQueryKind.CHECK_FILE)
   ls.sendDiagnostics(results.filter(s => s.filePath != "???"), path)
 
 proc didCloseFile*(ls: LanguageServer, uri: string) =
@@ -147,8 +136,8 @@ proc didOpenFile*(
     debug "didOpenFile: URI already tracked, skipping", uri = uri
     return
 
-  # Wait for config before making routing decisions
-  await ls.configurations.configReady.wait()
+  # Wait for config before making routing decisions (30s polling timeout)
+  await ls.waitForWorkspaceConfiguration()
 
   # Re-check after the await in case concurrent open beat us
   if uri in ls.files.openFiles:
@@ -165,8 +154,12 @@ proc didOpenFile*(
   let storagePath = ls.files.storageDir / (hash(uri).toHex & ".nim")
   try:
     writeFile(storagePath, doc.text)
-  except IOError, OSError:
-    debug "Failed to write stash file", path = storagePath
+  except IOError as ex:
+    warn "Failed to write stash file; hover/completion may show stale content",
+      path = storagePath, msg = ex.msg
+  except OSError as ex:
+    warn "Failed to write stash file; hover/completion may show stale content",
+      path = storagePath, msg = ex.msg
 
   # Build finger table for UTF-16 mapping
   var fingerTable: seq[seq[tuple[u16pos, offset: int]]] = @[]

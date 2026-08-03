@@ -55,8 +55,18 @@ proc getAndWaitForWorkspaceConfiguration*(
   return ls.getWorkspaceConfiguration()
 
 proc waitForWorkspaceConfiguration*(ls: LanguageServer): Future[void] {.async.} =
-  ## Waits until workspace configuration is available (AsyncEvent-based, no polling).
-  await ls.configurations.configReady.wait()
+  ## Waits until workspace configuration is available, with a 30-second timeout.
+  ## Uses polling (not raw AsyncEvent.wait) so cancelling this future does not
+  ## cancel the shared configReady event, which would break other awaiters.
+  if ls.configurations.currentConfig.isSome:
+    return
+  debug "Waiting for workspace configuration from client"
+  var elapsed = 0
+  while ls.configurations.currentConfig.isNone and elapsed < CONFIG_WAIT_TIMEOUT_MS:
+    await sleepAsync(CONFIG_WAIT_POLL_MS.milliseconds)
+    inc elapsed, CONFIG_WAIT_POLL_MS
+  if ls.configurations.currentConfig.isNone:
+    warn "Workspace configuration not received within timeout; proceeding with defaults"
 
 
 proc inlayExceptionHintsConfigurationEquals*(a, b: NlsInlayHintsConfig): bool =

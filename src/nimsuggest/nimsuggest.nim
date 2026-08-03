@@ -57,6 +57,8 @@ proc getIntendedProject*(ls: LanguageServer, uri: string): string =
   for mapping in config.projectMapping.get(@[]):
     var m: RegexMatch2
     if find(path, re2(mapping.fileRegex), m):
+      if mapping.projectFile == "":
+        return path  # regex matched but no projectFile — file is its own project
       return rootPath / mapping.projectFile
   return ""
 
@@ -141,7 +143,9 @@ proc getOrCreateSlotForUri*(ls: LanguageServer, uri: string): NimsuggestSlot =
   for mapping in config.projectMapping.get(@[]):
     var m: RegexMatch2
     if find(path, re2(mapping.fileRegex), m):
-      let projectFile = rootPath / mapping.projectFile
+      let projectFile =
+        if mapping.projectFile == "": path
+        else: rootPath / mapping.projectFile
       if projectFile in ls.pool.slots:
         return ls.pool.slots[projectFile]
       # Slot doesn't exist yet — only create it if we have capacity.
@@ -234,18 +238,30 @@ proc restartAllNimsuggestInstances*(ls: LanguageServer) =
       spawnTriggerUri: projectFile.pathToUri,
     )
 
-proc removeIdleNimsuggests*(ls: LanguageServer) {.async.} =
+proc idleSlots*(ls: LanguageServer): seq[NimsuggestSlot] =
+  ## Return slots that have exceeded the idle timeout and have no recently-active
+  ## open files. The caller (langserver.nim tick) handles file eviction and
+  ## notification, since it has access to files.nim procs.
   let config = ls.getWorkspaceConfiguration()
   let timeout = config.nimsuggestIdleTimeout.get(DEFAULT_IDLE_TIMEOUT)
-  let cutoff = now() - initDuration(minutes = timeout)
-  # Snapshot values before iterating: removeSlot mutates the table.
+  let cutoff = now() - initDuration(milliseconds = timeout)
   for slot in ls.pool.slots.values.toSeq:
     if slot.isEntryPoint or not slot.isLive:
       continue
     if slot.lastCmdTime.isSome and slot.lastCmdTime.get > cutoff:
       continue
-    if slot.ownedUris.len == 0:
-      debug "Removing idle nimsuggest", projectFile = slot.projectFile
-      slot.send SlotCommand(kind: SlotCommandKind.STOP)
-      ls.pool.removeSlot(slot.projectFile) # slot object lives on in its coroutines
+    result.add slot
+
+proc removeIdleNimsuggests*(ls: LanguageServer) {.async.} =
+  ## Kept for direct test calls — delegates to idleSlots + per-slot stop.
+  ## File eviction and notification are duplicated here to keep tmisc working
+  ## without a separate tick loop; langserver.nim tick() can call this too.
+  for slot in ls.idleSlots():
+    debug "Removing idle nimsuggest", projectFile = slot.projectFile
+    ls.notify("window/showMessage", %*{
+      "type": MessageType.Info.int,
+      "message": fmt"Nimsuggest for {slot.projectFile} was stopped because it was idle for too long",
+    })
+    slot.send SlotCommand(kind: SlotCommandKind.STOP)
+    ls.pool.removeSlot(slot.projectFile)
 

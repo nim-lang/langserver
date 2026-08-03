@@ -96,6 +96,9 @@ type
   LanguageServerMessaging* = object
     pendingRequests*: Table[uint, PendingRequest]
     responseMap*: TableRef[string, Future[JsonNode]]
+    responseNames*: TableRef[string, string]
+      ## Parallel to responseMap: maps request-id → RPC method name.
+      ## Used to include the method name in "id not found" error logs.
     inlayHintsRefreshRequest*: Future[JsonNode]
     projectErrors*: seq[ProjectError]
     lastStatusSent*: JsonNode
@@ -123,14 +126,16 @@ type
     files*: LanguageServerFiles
     pool*: NimsuggestPool
     messaging*: LanguageServerMessaging
-    
+    lspQueue*: AsyncQueue[LspDispatchItem]
+      ## Global thin-dispatcher queue. processMessage enqueues here;
+      ## processLspMessages asyncSpawns runRpc for each item without awaiting.
+
     notify*: NotifyAction
     call*: CallAction
     onExit*: OnExitCallback
     testRunProcess*: Option[AsyncProcessRef]
     cmdLineClientProcessId*: Option[int]
-    
+
     checkInProgress*: bool
     isShutdown*: bool
     nimDumpCache*: Table[string, NimbleDumpInfo]
-    

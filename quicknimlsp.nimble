@@ -5,10 +5,12 @@ version = "1.15.0"
 author = "David Pocknee and The core Nim team"
 description = "Alternative Nim language server for IDEs"
 license = "MIT"
-bin = @["src/quicknimlsp"]
+srcDir = "src"
+bin = @["quicknimlsp"]
+binDir = "bin"
 skipDirs = @["tests"]
 
-requires "nim == 2.0.8",
+requires "nim >= 2.0.8",
   "chronos >= 4.0.4", "json_rpc >= 0.5.0", "with", "chronicles", "serialization",
   "json_serialization", "stew", "regex", "unittest2 >= 0.2.4"
 

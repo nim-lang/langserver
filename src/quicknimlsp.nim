@@ -210,9 +210,12 @@ proc registerProcMonitor(ls: LanguageServer) =
     hookAsyncProcMonitor(ls.cmdLineClientProcessId.get, onCmdLineClientProcessExit)
 
 proc tickLs*(ls: LanguageServer, time = 1.seconds) {.async.} =
-  await ls.tick()
-  await sleepAsync(time)
-  await ls.tickLs()
+  ## Runs tick() in a loop. Using a while loop rather than tail recursion avoids
+  ## accumulating an unbounded chain of Future objects (one per invocation) that
+  ## can corrupt the heap allocator under GC pressure.
+  while true:
+    await ls.tick()
+    await sleepAsync(time)
 
 proc main*(cmdLineParams: CommandLineParams): LanguageServer =
   debug "Starting quicknimlsp", version = LSPVersion, params = cmdLineParams
@@ -234,6 +237,7 @@ proc main*(cmdLineParams: CommandLineParams): LanguageServer =
     result.transport.srv.registerMcpRoutes(result)
 
   result.registerProcMonitor()
+  asyncSpawn result.processLspMessages()
 
 when isMainModule:
   try:

@@ -127,16 +127,19 @@ proc addRpcToCancellable*(ls: LanguageServer, rpc: Rpc): Rpc =
       writeStackTrace(ex)
 
 proc processContentLength*(inputStream: FileStream): string =
-  result = inputStream.readLine()
-  if result.startsWith(CONTENT_LENGTH):
-    let parts = result.split(" ")
-    let length = parseInt(parts[1])
-    discard inputStream.readLine() # skip the \r\n
-    result = newString(length)
-    for i in 0 ..< length:
-      result[i] = inputStream.readChar()
-  else:
-    error "No content length \n"
+  try:
+    result = inputStream.readLine()
+    if result.startsWith(CONTENT_LENGTH):
+      let parts = result.split(" ")
+      let length = parseInt(parts[1])
+      discard inputStream.readLine() # skip the \r\n
+      result = newString(length)
+      for i in 0 ..< length:
+        result[i] = inputStream.readChar()
+    else:
+      error "No content length"
+  except IOError as ex:
+    error "Error reading content length from stdin", msg = ex.msg
 
 proc processContentLength*(
     transport: StreamTransport, error: bool = true
@@ -226,6 +229,19 @@ proc runRpc(ls: LanguageServer, req: RequestRx, rpc: RpcProc): Future[void] {.as
         }
       )
 
+proc processLspMessages*(ls: LanguageServer): Future[void] {.async.} =
+  ## Global thin-dispatcher coroutine. Dequeues LspDispatchItems and
+  ## asyncSpawns each dispatch closure without awaiting its result.
+  ##
+  ## This is the bridge between the transport layer (which calls processMessage)
+  ## and the handler layer (runRpc). It ensures that:
+  ##   1. Message ordering is preserved — items are dispatched in arrival order.
+  ##   2. Handlers run concurrently — no handler blocks the next dequeue.
+  ##   3. The transport thread is never blocked by slow handlers.
+  while true:
+    let item = await ls.lspQueue.popFirst()
+    asyncSpawn item.dispatch()
+
 proc processMessage(ls: LanguageServer, message: string) {.raises: [].} =
   try:
     let contentJson = parseJson(message)
@@ -247,20 +263,26 @@ proc processMessage(ls: LanguageServer, message: string) {.raises: [].} =
       if rpc.isNil:
         error "[Processing Message] rpc method not found: ", msg = req.meth.get
         return
-      asyncSpawn ls.runRpc(req, rpc)
+      let dispatchReq = req
+      let dispatchRpc = rpc
+      ls.lspQueue.addLastNoWait(LspDispatchItem(
+        dispatch: proc(): Future[void] {.gcsafe, raises: [].} =
+          ls.runRpc(dispatchReq, dispatchRpc)
+      ))
     else: #Response
       let response = JrpcSys.decode(message, LspClientResponse)
       let id = response.id
       if id notin ls.messaging.responseMap:
-        error "Id not found in responseMap", id = id
-          #TODO we should store the call name we are trying to responde to here
-      if response.result == nil:
-        ls.messaging.responseMap[id].complete(newJObject())
-        ls.messaging.responseMap.del id
+        let callName = ls.messaging.responseNames.getOrDefault(id, "<unknown>")
+        error "Id not found in responseMap", id = id, meth = callName
       else:
-        let r = response.result
-        ls.messaging.responseMap[id].complete(r)
+        let callFuture = ls.messaging.responseMap[id]
         ls.messaging.responseMap.del id
+        ls.messaging.responseNames.del id
+        if response.result == nil:
+          callFuture.complete(newJObject())
+        else:
+          callFuture.complete(response.result)
   except JsonParsingError as ex:
     error "[Processing Message] Error parsing message", message = message
     writeStackTrace(ex)
@@ -297,6 +319,7 @@ proc initActions*(ls: LanguageServer) =
     result = newFuture[JsonNode]()
     #We store the future in the responseMap so we can complete it in processMessage
     ls.messaging.responseMap[id] = result
+    ls.messaging.responseNames[id] = name
 
   ls.call = callAction
   ls.notify = notifyAction

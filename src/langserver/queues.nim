@@ -15,7 +15,7 @@
 ## The injected SpawnProc / StopProc / IsKnownProc callbacks are the only
 ## bridge from the sync type system into async I/O. Everything else is pure.
 
-import std/[options, sets, tables, times, sequtils]
+import std/[options, sets, tables, times, sequtils, json, strformat]
 import chronos
 import chronicles
 import ./queue_types
@@ -274,6 +274,15 @@ proc execSpawn(
     else:
       error "execSpawn: crash limit reached, slot permanently failed",
         projectFile = projectFile, crashCount = slot.crashCount
+      if pool.notifyProc != nil:
+        pool.notifyProc(
+          "window/showMessage",
+          %*{
+            "type": 1, # MessageType.Error
+            "message": fmt"Nimsuggest for {projectFile} failed to start after {MAX_CRASH_RETRIES} attempts. Check your nim/nimsuggest installation.",
+          },
+        )
+      pool.removeSlot(projectFile)
 
 proc execStop(slot: NimsuggestSlot, pool: NimsuggestPool) {.async.} =
   ## Shut down the slot's nimsuggest process.
@@ -317,7 +326,7 @@ proc execCheckKnown(
   try:
     isKnown = await pool.isKnownProc(nsOpt.get, filePath)
   except CatchableError as ex:
-    debug "execCheckKnown: isKnown timed out or failed, assuming unknown",
+    warn "execCheckKnown: isKnown timed out or failed, assuming unknown",
       uri = uri, msg = ex.msg
 
   debug "execCheckKnown: result",
@@ -403,6 +412,20 @@ proc processCommands*(slot: NimsuggestSlot, pool: NimsuggestPool) {.async.} =
       await execStop(slot, pool)
 
     of SlotCommandKind.RESTART:
+      # Exponential backoff before each crash-induced restart.
+      # crashCount > 0 means execSpawn incremented it before enqueueing RESTART.
+      # crashCount == 0 means a manual restart (extension/suggest) — no backoff.
+      # Shift amount is capped at 14 to avoid int overflow (1 shl 14 = 16384).
+      # Sequence: 1s, 2s, 4s, …, capped at 30s.
+      let backoffMs =
+        if slot.crashCount > 0:
+          min(1_000 * (1 shl min(slot.crashCount - 1, 14)), 30_000)
+        else:
+          0
+      if backoffMs > 0:
+        debug "processCommands: backing off before restart",
+          projectFile = slot.projectFile, backoffMs = backoffMs, crashCount = slot.crashCount
+        await sleepAsync(backoffMs.millis)
       await execStop(slot, pool)
       slot.crashedUris.clear() # explicit restart = clean slate
       await execSpawn(slot, pool, slot.projectFile, cmd.spawnTriggerUri)
@@ -499,7 +522,7 @@ proc processQueries*(slot: NimsuggestSlot, pool: NimsuggestPool) {.async.} =
             q.hintOptions,
           )
         of NimsuggestQueryKind.EXPAND:
-          await ns.expand(path, q.dirtyFile, q.position.line, q.position.col)
+          await ns.expand(path, q.dirtyFile, q.position.line, q.position.col, q.expandTag)
         of NimsuggestQueryKind.CHANGED:
           await ns.changed(path, q.dirtyFile)
         of NimsuggestQueryKind.CHECK_FILE:

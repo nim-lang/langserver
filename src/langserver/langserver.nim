@@ -42,10 +42,12 @@ proc initLanguageServer*(params: CommandLineParams, storageDir: string): Languag
     messaging: LanguageServerMessaging(
       pendingRequests: initTable[uint, PendingRequest](),
       responseMap: newTable[string, Future[JsonNode]](),
+      responseNames: newTable[string, string](),
       projectErrors: @[],
     ),
     nimDumpCache: initTable[string, NimbleDumpInfo](),
     cmdLineClientProcessId: params.clientProcessId,
+    lspQueue: newAsyncQueue[LspDispatchItem](),
   )
   # Create the pool synchronously so ls.pool is never nil when event loop starts.
   # initNimsuggestInstances will update maxSlots from config and spawn entry points.
@@ -55,6 +57,9 @@ proc initLanguageServer*(params: CommandLineParams, storageDir: string): Languag
     stopProc = makeStopProc(),
     isKnownProc = makeIsKnownProc(),
   )
+  let ls = result # capture ref for the closure below
+  result.pool.notifyProc = proc(meth: string, params: JsonNode) {.gcsafe, raises: [].} =
+    ls.notify(meth, params)
 
 proc supportSignatureHelp*(cc: LspClientCapabilities): bool =
   if cc.isNil:
@@ -312,6 +317,29 @@ proc removeCompletedPendingRequests(
   for id in toRemove:
     ls.messaging.pendingRequests.del id
 
+proc nsCapabilities*(ls: LanguageServer, uri: string): set[NimSuggestCapability] =
+  ## Returns the live nimsuggest capabilities for the slot serving `uri`.
+  ## Safe to call synchronously after queryAt/queryFile returns — by that point
+  ## processQueries has already awaited slot.ns.get so the slot is READY.
+  let fileInfo = ls.files.openFiles.getOrDefault(uri)
+  if fileInfo == nil or fileInfo.slot == nil:
+    return {}
+  let nsOpt = fileInfo.slot.resolvedNs
+  if nsOpt.isNone:
+    return {}
+  nsOpt.get.capabilities
+
+proc nsProtocolVersion*(ls: LanguageServer, uri: string): int =
+  ## Returns the nimsuggest protocol version for the slot serving `uri`.
+  ## Safe to call synchronously after queryAt/queryFile returns.
+  let fileInfo = ls.files.openFiles.getOrDefault(uri)
+  if fileInfo == nil or fileInfo.slot == nil:
+    return 0
+  let nsOpt = fileInfo.slot.resolvedNs
+  if nsOpt.isNone:
+    return 0
+  nsOpt.get.protocolVersion
+
 proc tryGetNimsuggest*(ls: LanguageServer, uri: string): Future[Option[NimSuggest]] {.async.} =
   ## Compatibility helper: returns the live NimSuggest for the slot serving `uri`,
   ## or none if the slot isn't ready. Awaits spawning if the slot is currently starting.
@@ -331,7 +359,25 @@ proc tryGetNimsuggest*(ls: LanguageServer, uri: string): Future[Option[NimSugges
 proc tick*(ls: LanguageServer): Future[void] {.async.} =
   try:
     ls.removeCompletedPendingRequests()
-    await ls.removeIdleNimsuggests()
+    for slot in ls.idleSlots():
+      # Send STOP and remove from pool FIRST so that any checkFile spawned by
+      # makeIdleFile routes through an already-stopped slot and gets @[] cleanly,
+      # rather than racing with a live TCP connection being torn down.
+      debug "Removing idle nimsuggest", projectFile = slot.projectFile
+      slot.send SlotCommand(kind: SlotCommandKind.STOP)
+      ls.pool.removeSlot(slot.projectFile)
+      ls.notify("window/showMessage", %*{
+        "type": MessageType.Info.int,
+        "message": fmt"Nimsuggest for {slot.projectFile} was stopped because it was idle for too long",
+      })
+      # Evict owned open files to idleOpenFiles so they re-open silently on next use.
+      # Use direct table lookup (not withValue) to avoid holding a pointer into the
+      # table's internal storage across the makeIdleFile call, which calls
+      # openFiles.del(uri) and can invalidate that pointer.
+      for uri in slot.ownedUris.toSeq:
+        if uri in ls.files.openFiles:
+          let fileInfo = ls.files.openFiles[uri]
+          ls.makeIdleFile(fileInfo)
     ls.sendStatusChanged
   except CatchableError as ex:
     error "Error in tick", msg = ex.msg

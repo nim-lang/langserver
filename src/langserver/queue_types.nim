@@ -1,7 +1,7 @@
 ## queue_types.nim
 ## Type definitions for the two operation queues in the refactored architecture.
 
-import std/[options, sets, tables, times]
+import std/[json, options, sets, tables, times]
 import chronos
 import ../nimsuggest/nimsuggest_types
 import ../protocol/types
@@ -50,20 +50,20 @@ type
     responseFuture*: Future[seq[Suggest]]
       ## Completed by the query processor when nimsuggest replies.
       ## The LSP handler awaits this future; the processor completes it.
+    cancelled*: bool
+      ## Set by $/cancelRequest via PendingRequest.query.
+      ## processQueries checks this before dispatching; if true, completes
+      ## responseFuture with @[] immediately. Safe to write from any coroutine
+      ## because NimsuggestQuery is a ref and Chronos is single-threaded.
+    expandTag*: string
+      ## Tag passed to ns.expand for EXPAND queries (e.g. "" for expandAll,
+      ## "  all" or "  2" for expand with level). Ignored for all other kinds.
+    position*: FilePosition
+      ## Cursor position for position-based kinds (SUGGEST, DEFINITION, HOVER, …).
+      ## Ignored (zero-value) for file-level kinds (DOCUMENT_SYMBOLS, CHECK_FILE, etc.).
+      ## Kept outside the case so queryAt can construct NimsuggestQuery with a
+      ## runtime-variable `kind` without triggering Nim's discriminant-init error.
     case kind*: NimsuggestQueryKind
-    of NimsuggestQueryKind.SUGGEST,
-        NimsuggestQueryKind.DEFINITION,
-        NimsuggestQueryKind.DECLARATION,
-        NimsuggestQueryKind.TYPE_DEFINITION,
-        NimsuggestQueryKind.REFERENCES,
-        NimsuggestQueryKind.DOCUMENT_SYMBOLS,
-        NimsuggestQueryKind.HOVER,
-        NimsuggestQueryKind.DOCUMENT_HIGHLIGHT,
-        NimsuggestQueryKind.SIGNATURE_HELP,
-        NimsuggestQueryKind.EXPAND,
-        NimsuggestQueryKind.CHECK_FILE:
-      position*: FilePosition
-
     of NimsuggestQueryKind.INLAY_HINTS:
       hintStart*: FilePosition
       hintEnd*: FilePosition
@@ -72,11 +72,12 @@ type
     of NimsuggestQueryKind.WORKSPACE_SYMBOLS:
       symbolQuery*: string ## Free-text from WorkspaceSymbolParams.query
 
-    of NimsuggestQueryKind.CHANGED,
-        NimsuggestQueryKind.CHECK_PROJECT,
-        NimsuggestQueryKind.RECOMPILE,
-        NimsuggestQueryKind.KNOWN:
-      discard ## File path and stash are sufficient; no position needed.
+    else:
+      ## All other kinds (SUGGEST, DEFINITION, DECLARATION, TYPE_DEFINITION,
+      ## REFERENCES, DOCUMENT_SYMBOLS, HOVER, DOCUMENT_HIGHLIGHT, SIGNATURE_HELP,
+      ## EXPAND, CHECK_FILE, CHANGED, CHECK_PROJECT, RECOMPILE, KNOWN) need no
+      ## extra fields beyond the common ones above.
+      discard
 
 # ---------------------------------------------------------------------------
 # Slot lifecycle queue
@@ -184,6 +185,11 @@ type
     ns: NimSuggest, filePath: string
   ): Future[bool] {.gcsafe, raises: [].}
 
+  NotifyProc* = proc(meth: string, params: JsonNode) {.gcsafe, raises: [].}
+    ## Callback to send a window/showMessage (or any notification) to the LSP
+    ## client from within the pool/queue layer, which has no direct LanguageServer
+    ## reference.
+
 # ---------------------------------------------------------------------------
 # Slot and pool types
 # ---------------------------------------------------------------------------
@@ -241,5 +247,6 @@ type
     spawnProc*: SpawnProc
     stopProc*: StopProc
     isKnownProc*: IsKnownProc
-
-# expandAll, expand exist in lsp.nim but are not used anywhere ... why?  Macro expansion?
+    notifyProc*: NotifyProc
+      ## Optional callback wired to ls.notify in initLanguageServer.
+      ## Called when a slot reaches permanent failure so the user sees an error.

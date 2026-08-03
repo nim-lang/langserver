@@ -2,6 +2,9 @@ import std/[options, net, times]
 import json_rpc/[jsonmarshal, rpcclient, router]
 import chronicles
 import  chronos/threadsync
+import chronos
+
+import ./queue_types
 
 type
   CommandLineParams* = object
@@ -37,4 +40,13 @@ type
     startTime*: DateTime
     endTime*: DateTime
     state*: PendingRequestState
-    
+    query*: Option[NimsuggestQuery]
+      ## Set by handlers that call queryAt/queryFile/etc.
+      ## $/cancelRequest sets query.get.cancelled = true so processQueries
+      ## skips the TCP dispatch and completes responseFuture with @[].
+
+  LspDispatchItem* = object
+    dispatch*: proc(): Future[void] {.gcsafe, raises: [].}
+      ## Closure that calls runRpc(req, rpc). Captures the request and rpc proc
+      ## so messaging_types.nim does not need to import json_rpc internals.
+      ## processLspMessages asyncSpawns this without awaiting the result.

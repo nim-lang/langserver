@@ -17,6 +17,7 @@ import
   ../testrunner/testrunner,
   ../nimsuggest/suggestapi,
   ../langserver/[langserver, langserver_types, utils, constants, configuration_types, configurations, messaging_types, queue_types, queues, files],
+  ../requests/requests,
   ../nimsuggest/nimsuggest,
   ../nimsuggest/nimsuggest_types,
   ../nim_compiler/nim_compiler,
@@ -155,18 +156,14 @@ proc completion*(
 ): Future[seq[CompletionItem]] {.async.} =
   with (params.position, params.textDocument):
     ls.addProjectFileToPendingRequest(id.uint, uri)
-    let nimsuggest = await ls.tryGetNimsuggest(uri)
-    if nimsuggest.isNone():
-      return @[]
     let ch = ls.getCharacter(uri, line, character)
     if ch.isNone:
       return @[]
-    let completions =
-      await nimsuggest.get.sug(uriToPath(uri), ls.uriToStash(uri), line + 1, ch.get)
+    let completions = await ls.queryAt(uri, NimsuggestQueryKind.SUGGEST, line + 1, ch.get)
     result = completions.map(toCompletionItem)
 
     if ls.capabilities.lspClientCapabilities.supportSignatureHelp() and
-        nsCon in nimSuggest.get.capabilities:
+        nsCon in ls.nsCapabilities(uri):
       #show only unique overloads if we support signatureHelp
       var unique = initTable[string, CompletionItem]()
       for completion in result:
@@ -183,15 +180,10 @@ proc definition*(
 ): Future[seq[Location]] {.async.} =
   with (params.position, params.textDocument):
     ls.addProjectFileToPendingRequest(id.uint, uri)
-    let ns = await ls.tryGetNimsuggest(uri)
-    if ns.isNone:
-      return @[]
     let ch = ls.getCharacter(uri, line, character)
     if ch.isNone:
       return @[]
-    result = ns.get
-      .def(uriToPath(uri), ls.uriToStash(uri), line + 1, ch.get)
-      .await()
+    result = (await ls.queryAt(uri, NimsuggestQueryKind.DEFINITION, line + 1, ch.get))
       .map(x => x.toUtf16Pos(ls).toLocation)
 
 proc declaration*(
@@ -199,29 +191,11 @@ proc declaration*(
 ): Future[seq[Location]] {.async.} =
   with (params.position, params.textDocument):
     ls.addProjectFileToPendingRequest(id.uint, uri)
-    let ns = await ls.tryGetNimsuggest(uri)
-    if ns.isNone:
-      return @[]
     let ch = ls.getCharacter(uri, line, character)
     if ch.isNone:
       return @[]
-    result = ns.get
-      .declaration(uriToPath(uri), ls.uriToStash(uri), line + 1, ch.get)
-      .await()
+    result = (await ls.queryAt(uri, NimsuggestQueryKind.DECLARATION, line + 1, ch.get))
       .map(x => x.toUtf16Pos(ls).toLocation)
-
-proc expandAll*(
-    ls: LanguageServer, params: TextDocumentPositionParams
-): Future[ExpandResult] {.async.} =
-  with (params.position, params.textDocument):
-    let ns = await ls.tryGetNimsuggest(uri)
-    if ns.isNone:
-      return ExpandResult() #TODO make it optional
-    let ch = ls.getCharacter(uri, line, character)
-    if ch.isNone:
-      return ExpandResult()
-    let expand =
-      ns.get.expand(uriToPath(uri), ls.uriToStash(uri), line + 1, ch.get).await()
 
 proc createRangeFromSuggest(suggest: Suggest): Range =
   result = range(suggest.line - 1, 0, suggest.endLine - 1, suggest.endCol)
@@ -237,6 +211,20 @@ proc fixIdentation(s: string, indent: int): string =
     )
     .join("\n")
 
+proc expandAll*(
+    ls: LanguageServer, params: TextDocumentPositionParams
+): Future[ExpandResult] {.async.} =
+  with (params.position, params.textDocument):
+    let ch = ls.getCharacter(uri, line, character)
+    if ch.isNone:
+      return ExpandResult()
+    let expand = await ls.queryExpand(uri, line + 1, ch.get)
+    if expand.len != 0:
+      result = ExpandResult(
+        content: expand[0].doc.fixIdentation(character),
+        range: expand[0].createRangeFromSuggest(),
+      )
+
 proc expand*(
     ls: LanguageServer, params: ExpandTextDocumentPositionParams
 ): Future[ExpandResult] {.async.} =
@@ -248,15 +236,10 @@ proc expand*(
           "all"
         else:
           $lvl
-      ns = await ls.tryGetNimsuggest(uri)
-    if ns.isNone:
-      return ExpandResult()
     let ch = ls.getCharacter(uri, line, character)
     if ch.isNone:
       return ExpandResult()
-    let expand = ns.get
-      .expand(uriToPath(uri), ls.uriToStash(uri), line + 1, ch.get, fmt "  {tag}")
-      .await()
+    let expand = await ls.queryExpand(uri, line + 1, ch.get, fmt "  {tag}")
     if expand.len != 0:
       result = ExpandResult(
         content: expand[0].doc.fixIdentation(character),
@@ -328,15 +311,10 @@ proc typeDefinition*(
 ): Future[seq[Location]] {.async.} =
   with (params.position, params.textDocument):
     ls.addProjectFileToPendingRequest(id.uint, uri)
-    let ns = await ls.tryGetNimsuggest(uri)
-    if ns.isNone:
-      return @[]
     let ch = ls.getCharacter(uri, line, character)
     if ch.isNone:
       return @[]
-    result = ns.get
-      .`type`(uriToPath(uri), ls.uriToStash(uri), line + 1, ch.get)
-      .await()
+    result = (await ls.queryAt(uri, NimsuggestQueryKind.TYPE_DEFINITION, line + 1, ch.get))
       .map(x => x.toUtf16Pos(ls).toLocation)
 
 proc toSymbolInformation*(suggest: Suggest): SymbolInformation =
@@ -353,13 +331,8 @@ proc documentSymbols*(
 ): Future[seq[SymbolInformation]] {.async.} =
   let uri = params.textDocument.uri
   ls.addProjectFileToPendingRequest(id.uint, uri)
-  let ns = await ls.tryGetNimsuggest(uri)
-  if ns.isSome:
-    ns.get().outline(uriToPath(uri), ls.uriToStash(uri)).await().map(
-      x => x.toUtf16Pos(ls).toSymbolInformation
-    )
-  else:
-    @[]
+  let symbols = await ls.queryFile(uri, NimsuggestQueryKind.DOCUMENT_SYMBOLS)
+  result = symbols.map(x => x.toUtf16Pos(ls).toSymbolInformation)
 
 proc scheduleFileCheck(ls: LanguageServer, uri: string) {.gcsafe, raises: [].} =
   if not ls.getWorkspaceConfiguration().autoCheckFile.get(true):
@@ -415,15 +388,10 @@ proc hover*(
   with (params.position, params.textDocument):
     let config = ls.getWorkspaceConfiguration()
     ls.addProjectFileToPendingRequest(id.uint, uri)
-    let nimsuggest = await ls.tryGetNimsuggest(uri)
-    if nimsuggest.isNone:
-      return none(Hover)
     let ch = ls.getCharacter(uri, line, character)
     if ch.isNone:
       return none(Hover)
-    let suggestions = await nimsuggest.get().highlight(
-      uriToPath(uri), ls.uriToStash(uri), line + 1, ch.get
-    )
+    let suggestions = await ls.queryAt(uri, NimsuggestQueryKind.HOVER, line + 1, ch.get)
     if suggestions.len == 0:
       return none(Hover)
     var suggest = suggestions[0]
@@ -439,18 +407,15 @@ proc hover*(
       var content = toMarkupContent(suggest)
       if suggest.symkind == "skMacro" and
           config.nimExpandMacro.get(NIM_EXPAND_MACRO_BY_DEFAULT):
-        let expanded = await nimsuggest.get.expand(
-          uriToPath(uri), ls.uriToStash(uri), suggest.line, suggest.column
-        )
+        let expanded =
+          await ls.queryAt(uri, NimsuggestQueryKind.EXPAND, suggest.line, suggest.column)
         if expanded.len > 0 and expanded[0].doc != "":
-          # debug "Expanded macro", expanded = expanded[0].doc
           content.value.add &"```nim\n{expanded[0].doc}\n```"
         else:
-          # debug "Couldnt expand the macro. Trying with nim expand", suggest = suggest[]
           let nimPath = config.getNimPath()
           if nimPath.isSome:
-            let expanded = await nimExpandMacro(nimPath.get, suggest, uriToPath(uri))
-            content.value.add &"```nim\n{expanded}\n```"
+            let nimExpanded = await nimExpandMacro(nimPath.get, suggest, uriToPath(uri))
+            content.value.add &"```nim\n{nimExpanded}\n```"
       if suggest.section == ideDef and suggest.symkind in ["skProc"] and
           config.nimExpandArc.get(NIM_EXPAND_ARC_BY_DEFAULT):
         debug "#Expanding arc", suggest = suggest[]
@@ -469,14 +434,10 @@ proc references*(
     ls: LanguageServer, params: ReferenceParams
 ): Future[seq[Location]] {.async.} =
   with (params.position, params.textDocument, params.context):
-    let nimsuggest = await ls.tryGetNimsuggest(uri)
-    if nimsuggest.isNone:
-      return @[]
     let ch = ls.getCharacter(uri, line, character)
     if ch.isNone:
       return @[]
-    let refs =
-      await nimsuggest.get.use(uriToPath(uri), ls.uriToStash(uri), line + 1, ch.get)
+    let refs = await ls.queryAt(uri, NimsuggestQueryKind.REFERENCES, line + 1, ch.get)
     result = refs.filter(suggest => suggest.section != ideDef or includeDeclaration).map(
         x => x.toUtf16Pos(ls).toLocation
       )
@@ -486,21 +447,16 @@ proc prepareRename*(
 ): Future[JsonNode] {.async.} =
   with (params.position, params.textDocument):
     ls.addProjectFileToPendingRequest(id.uint, uri)
-    let nimsuggest = await ls.tryGetNimsuggest(uri)
-    if nimsuggest.isNone:
-      return newJNull()
     let ch = ls.getCharacter(uri, line, character)
     if ch.isNone:
       return newJNull()
-    let def =
-      await nimsuggest.get.def(uriToPath(uri), ls.uriToStash(uri), line + 1, ch.get)
+    let def = await ls.queryAt(uri, NimsuggestQueryKind.DEFINITION, line + 1, ch.get)
     if def.len == 0:
       return newJNull()
     # Check if the symbol belongs to the project
     let projectDir = ls.capabilities.lspInitializeParams.getRootPath
     if def[0].filePath.isRelTo(projectDir):
       return %def[0].toLocation().range
-
     return newJNull()
 
 proc rename*(
@@ -538,7 +494,7 @@ proc convertInlayHintKind(kind: SuggestInlayHintKind): InlayHintKind_int =
 
 proc toInlayHint(suggest: SuggestInlayHint, configuration: NlsConfig): InlayHint =
   let hint_line = suggest.line - 1
-  # TODO: how to convert column?
+  # suggest.column is already UTF-16 — callers apply toUtf16Pos before calling this proc.
   var hint_col = suggest.column
   var suggest = suggest
   if suggest.label.contains("Error Type"):
@@ -583,25 +539,23 @@ proc inlayHint*(
   debug "inlayHint received..."
   with (params.range, params.textDocument):
     ls.addProjectFileToPendingRequest(id.uint, uri)
-    let
-      configuration = ls.getWorkspaceConfiguration()
-      nimsuggest = await ls.tryGetNimsuggest(uri)
-
-    if nimsuggest.isNone or nimsuggest.get.protocolVersion < 4 or
-        not configuration.inlayHintsEnabled:
+    let configuration = ls.getWorkspaceConfiguration()
+    if not configuration.inlayHintsEnabled:
       return @[]
     let ch = ls.getCharacter(uri, start.line, start.character)
     if ch.isNone:
       return @[]
-    let suggestions = await nimsuggest.get.inlayHints(
-      uriToPath(uri),
-      ls.uriToStash(uri),
+    let suggestions = await ls.queryInlayHints(
+      uri,
       start.line + 1,
       ch.get,
       `end`.line + 1,
       ch.get,
       " +exceptionHints +parameterHints",
     )
+    # nsProtocolVersion is valid now — slot is READY after queryInlayHints returns
+    if ls.nsProtocolVersion(uri) < 4:
+      return @[]
     result = suggestions
       .filter(
         x =>
@@ -716,33 +670,19 @@ proc toSignatureInformation(suggest: Suggest): SignatureInformation =
 proc signatureHelp*(
     ls: LanguageServer, params: SignatureHelpParams, id: int
 ): Future[Option[SignatureHelp]] {.async.} =
-  #TODO handle prev signature
-  # if params.context.activeSignatureHelp.isSome:
-  #   let prevSignature = params.context.activeSignatureHelp.get.signatures.get[params.context.activeSignatureHelp.get.activeSignature.get]
-  #   debug "prevSignature ", prevSignature = $prevSignature.label
-  # else:
-  #   debug "no prevSignature"
-  #only support signatureHelp if the client supports it
-  # if docCaps.signatureHelp.isSome and docCaps.signatureHelp.get.contextSupport.get(false):
-  #   result.capabilities.signatureHelpProvider = SignatureHelpOptions(
-  #           triggerCharacters: some(@["(", ","])
-  #   )
   if not ls.capabilities.lspClientCapabilities.supportSignatureHelp():
     #Some clients doesnt support signatureHelp
     return none[SignatureHelp]()
   with (params.position, params.textDocument):
     ls.addProjectFileToPendingRequest(id.uint, uri)
-    let nimsuggest = await ls.tryGetNimsuggest(uri)
-    if nimsuggest.isNone:
-      return none[SignatureHelp]()
-    if nsCon notin nimSuggest.get.capabilities:
-      #support signatureHelp only if the current version of NimSuggest supports it.
-      return none[SignatureHelp]()
     let ch = ls.getCharacter(uri, line, character)
     if ch.isNone:
       return none[SignatureHelp]()
     let completions =
-      await nimsuggest.get.con(uriToPath(uri), ls.uriToStash(uri), line + 1, ch.get)
+      await ls.queryAt(uri, NimsuggestQueryKind.SIGNATURE_HELP, line + 1, ch.get)
+    # nsCapabilities is valid now — slot is READY after queryAt returns
+    if nsCon notin ls.nsCapabilities(uri):
+      return none[SignatureHelp]()
     let signatures = completions.map(toSignatureInformation)
     if signatures.len() > 0:
       return some SignatureHelp(
@@ -807,14 +747,18 @@ proc formatting*(
 proc workspaceSymbol*(
     ls: LanguageServer, params: WorkspaceSymbolParams, id: int
 ): Future[seq[SymbolInformation]] {.async.} =
-  # Use any live nimsuggest for workspace-wide symbol search.
-  if ls.pool != nil:
-    for slot in ls.pool.slots.values:
-      let nsOpt = slot.resolvedNs
-      if nsOpt.isSome:
-        let symbols = await nsOpt.get.globalSymbols(params.query, "-")
-        return symbols.map(x => x.toUtf16Pos(ls).toSymbolInformation)
-        break
+  # Route through any live slot's queryMailbox.
+  if ls.pool == nil:
+    return @[]
+  var liveUri = ""
+  for slot in ls.pool.slots.values:
+    if slot.resolvedNs.isSome and slot.ownedUris.len > 0:
+      liveUri = slot.ownedUris.toSeq[0]
+      break
+  if liveUri == "":
+    return @[]
+  let symbols = await ls.queryWorkspaceSymbols(liveUri, params.query)
+  result = symbols.map(x => x.toUtf16Pos(ls).toSymbolInformation)
 
 proc toDocumentHighlight(suggest: Suggest): DocumentHighlight =
   return DocumentHighlight %* {"range": toLabelRange(suggest)}
@@ -824,15 +768,11 @@ proc documentHighlight*(
 ): Future[seq[DocumentHighlight]] {.async.} =
   with (params.position, params.textDocument):
     ls.addProjectFileToPendingRequest(id.uint, uri)
-    let nimsuggest = await ls.tryGetNimsuggest(uri)
-    if nimsuggest.isNone:
-      return @[]
     let ch = ls.getCharacter(uri, line, character)
     if ch.isNone:
       return @[]
-    let suggestLocations = await nimsuggest.get.highlight(
-      uriToPath(uri), ls.uriToStash(uri), line + 1, ch.get
-    )
+    let suggestLocations =
+      await ls.queryAt(uri, NimsuggestQueryKind.DOCUMENT_HIGHLIGHT, line + 1, ch.get)
     result = suggestLocations.map(x => x.toUtf16Pos(ls).toDocumentHighlight)
 
 proc extractId(id: JsonNode): int =
@@ -888,8 +828,16 @@ proc tasks*(ls: LanguageServer, conf: JsonNode): Future[seq[NimbleTask]] {.async
     HOME = getEnv("HOME", "<not set>")
   delEnv "NIMBLE_DIR"
   let process = await ls.startNimbleProcess(@["tasks"])
-  let res =
-    await process.waitForExit(InfiniteDuration) #TODO handle error (i.e. no nimble file)
+  let exitCode = await process.waitForExit(InfiniteDuration)
+  if exitCode != 0:
+    warn "nimble tasks failed", exitCode = exitCode
+    ls.showMessage(
+      "Failed to list nimble tasks (exit code " & $exitCode &
+        "). Check that a .nimble file exists in the project root.",
+      MessageType.Warning,
+    )
+    await process.shutdownChildProcess()
+    return @[]
   let output = await process.stdoutStream.readLine()
   var name, desc: string
   for line in output.splitLines:
@@ -977,12 +925,15 @@ proc cancelRequest*(ls: LanguageServer, params: CancelParams): Future[void] {.as
     let id = params.id.get.getInt.uint
     if id notin ls.messaging.pendingRequests:
       return
-    let pendingRequest = ls.messaging.pendingRequests[id]
-    if ls.messaging.pendingRequests[id].request != nil:
-      debug "Cancelling: ", id = id
-      await ls.messaging.pendingRequests[id].request.cancelAndWait()
-      ls.messaging.pendingRequests[id].state = prsCancelled
-      ls.messaging.pendingRequests[id].endTime = now()
+    debug "Cancelling: ", id = id
+    ls.messaging.pendingRequests[id].state = prsCancelled
+    ls.messaging.pendingRequests[id].endTime = now()
+    let query = ls.messaging.pendingRequests[id].query
+    if query.isSome:
+      query.get.cancelled = true
+      ## processQueries checks this flag before dispatching the TCP call.
+      ## If already dispatched, the in-flight call completes normally with @[].
+      ## No future cancellation exception is thrown — handlers get empty results.
 
 proc setTrace*(ls: LanguageServer, params: SetTraceParams) {.async.} =
   debug "setTrace", value = params.value
@@ -1045,13 +996,12 @@ proc didSave*(
     if fileInfo.slot != nil:
       fileInfo.slot.crashedUris.excl(uri)
 
-  let nimsuggest = await ls.tryGetNimsuggest(uri)
-
-  if nimsuggest.isNone:
+  if uri notin ls.files.openFiles:
     return
 
   ls.files.openFiles[uri].changed = false
-  traceAsyncErrors nimsuggest.get.changed(uriToPath(uri))
+  # Route CHANGED through the per-slot queue so it is serialized with concurrent queries.
+  traceAsyncErrors ls.queryFile(uri, NimsuggestQueryKind.CHANGED)
 
   if config.checkOnSave.get(true):
     debug "Checking project", uri = uri
@@ -1095,7 +1045,7 @@ proc didDeleteFiles*(
     ls: LanguageServer, params: DeleteFilesParams
 ): Future[void] {.async.} =
   for file in params.files:
-    await ls.didDeleteFile(file.uri)
+    ls.didDeleteFile(file.uri)
 
 proc didChangeConfiguration*(
     ls: LanguageServer, conf: JsonNode
