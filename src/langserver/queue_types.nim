@@ -1,10 +1,8 @@
-## queue_types.nim
-## Type definitions for the two operation queues in the refactored architecture.
-
 import std/[json, options, sets, tables, times]
 import chronos
-import ../nimsuggest/nimsuggest_types
+import ../nim_tools/nimsuggest/nimsuggest_types
 import ../protocol/types
+
 
 # ---------------------------------------------------------------------------
 # Nimsuggest TCP command queue types (defined first so NimsuggestSlot can use them)
@@ -42,6 +40,7 @@ type
     KNOWN     ## known     — is this file in the module graph?
 
   NimsuggestQuery* = ref object
+    id*: uint # Message id
     ## ref so the response future stays alive after the queue pops it.
     uri*: string
       ## Source URI. Used to resolve the on-disk path and stash path.
@@ -55,29 +54,37 @@ type
       ## processQueries checks this before dispatching; if true, completes
       ## responseFuture with @[] immediately. Safe to write from any coroutine
       ## because NimsuggestQuery is a ref and Chronos is single-threaded.
-    expandTag*: string
-      ## Tag passed to ns.expand for EXPAND queries (e.g. "" for expandAll,
-      ## "  all" or "  2" for expand with level). Ignored for all other kinds.
-    position*: FilePosition
-      ## Cursor position for position-based kinds (SUGGEST, DEFINITION, HOVER, …).
-      ## Ignored (zero-value) for file-level kinds (DOCUMENT_SYMBOLS, CHECK_FILE, etc.).
-      ## Kept outside the case so queryAt can construct NimsuggestQuery with a
-      ## runtime-variable `kind` without triggering Nim's discriminant-init error.
     case kind*: NimsuggestQueryKind
+    of NimsuggestQueryKind.SUGGEST, 
+      NimsuggestQueryKind.DEFINITION, 
+      NimsuggestQueryKind.DECLARATION, 
+      NimsuggestQueryKind.TYPE_DEFINITION, 
+      NimsuggestQueryKind.REFERENCES, 
+      NimsuggestQueryKind.HOVER, 
+      NimsuggestQueryKind.DOCUMENT_HIGHLIGHT, 
+      NimsuggestQueryKind.SIGNATURE_HELP:
+      position*: FilePosition
+
     of NimsuggestQueryKind.INLAY_HINTS:
-      hintStart*: FilePosition
-      hintEnd*: FilePosition
-      hintOptions*: string ## e.g. " +exceptionHints +parameterHints"
+      inlayHints*: tuple[
+        start, finish: FilePosition,
+        options: string # e.g. " +exceptionHints +parameterHints"
+      ]
 
-    of NimsuggestQueryKind.WORKSPACE_SYMBOLS:
-      symbolQuery*: string ## Free-text from WorkspaceSymbolParams.query
-
-    else:
-      ## All other kinds (SUGGEST, DEFINITION, DECLARATION, TYPE_DEFINITION,
-      ## REFERENCES, DOCUMENT_SYMBOLS, HOVER, DOCUMENT_HIGHLIGHT, SIGNATURE_HELP,
-      ## EXPAND, CHECK_FILE, CHANGED, CHECK_PROJECT, RECOMPILE, KNOWN) need no
-      ## extra fields beyond the common ones above.
+    of NimsuggestQueryKind.EXPAND:
+      expand*: tuple[
+        position:  FilePosition,
+        tag: string # Tag passed to ns.expand for EXPAND queries (e.g. "" for expandAll,"  all" or "  2" for expand with level). Ignored for all other kinds.
+      ]
+    of NimsuggestQueryKind.DOCUMENT_SYMBOLS, 
+      NimsuggestQueryKind.WORKSPACE_SYMBOLS, 
+      NimsuggestQueryKind.CHANGED, 
+      NimsuggestQueryKind.CHECK_FILE, 
+      NimsuggestQueryKind.CHECK_PROJECT, 
+      NimsuggestQueryKind.RECOMPILE, 
+      NimsuggestQueryKind.KNOWN:
       discard
+
 
 # ---------------------------------------------------------------------------
 # Slot lifecycle queue
@@ -190,6 +197,11 @@ type
     ## client from within the pool/queue layer, which has no direct LanguageServer
     ## reference.
 
+  StatusChangedProc* = proc() {.gcsafe, raises: [].}
+    ## Callback wired to ls.sendStatusChanged in initLanguageServer.
+    ## Called when a slot transitions to READY so the client receives an
+    ## up-to-date extension/statusUpdate with the new nimsuggest instance.
+
 # ---------------------------------------------------------------------------
 # Slot and pool types
 # ---------------------------------------------------------------------------
@@ -250,3 +262,7 @@ type
     notifyProc*: NotifyProc
       ## Optional callback wired to ls.notify in initLanguageServer.
       ## Called when a slot reaches permanent failure so the user sees an error.
+
+    statusChangedProc*: StatusChangedProc
+      ## Optional callback wired to ls.sendStatusChanged in initLanguageServer.
+      ## Called when a slot transitions to READY so extension/statusUpdate is sent.

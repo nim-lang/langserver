@@ -5,10 +5,10 @@ import chronicles
 import regex
 
 import ./[suggestapi, nimsuggest_types]
-import ../protocol/[types, enums]
-import ../langserver/[langserver_types, configuration_types, configurations, utils, constants, queue_types, queues, diagnostics, messaging_types]
+import ../../protocol/[types, enums]
+import ../../langserver/[langserver_types, configuration_types, configurations, utils, constants, queue_types, queues, diagnostics, messaging_types]
 import ../nimble/nimble
-import ../nim_compiler/nim_compiler
+import ../compiler/nim_compiler
 
 
 proc getWorkingDir*(ls: LanguageServer, path: string): string =
@@ -59,7 +59,8 @@ proc getIntendedProject*(ls: LanguageServer, uri: string): string =
     if find(path, re2(mapping.fileRegex), m):
       if mapping.projectFile == "":
         return path  # regex matched but no projectFile — file is its own project
-      return rootPath / mapping.projectFile
+      return if isAbsolute(mapping.projectFile): mapping.projectFile
+             else: rootPath / mapping.projectFile
   return ""
 
 proc makeSpawnProc*(ls: LanguageServer): SpawnProc =
@@ -68,13 +69,22 @@ proc makeSpawnProc*(ls: LanguageServer): SpawnProc =
       projectFile: string, nimPaths: seq[string]
   ): Future[NimSuggest] {.gcsafe, raises: [].} =
     let fut = newFuture[NimSuggest]("makeSpawnProc")
+    debug "makeSpawnProc: scheduling doSpawn", projectFile = projectFile
     proc doSpawn() {.async.} =
+      debug "makeSpawnProc.doSpawn: enter", projectFile = projectFile
       try:
         let conf = ls.getWorkspaceConfiguration()
         let workingDir = ls.getWorkingDir(projectFile)
+        debug "makeSpawnProc.doSpawn: resolving nimsuggest path",
+          projectFile = projectFile, workingDir = workingDir
         let (nimsuggestPath, version) =
           await ls.getNimSuggestPathAndVersion(conf, workingDir)
+        debug "makeSpawnProc.doSpawn: nimsuggest path resolved",
+          projectFile = projectFile, nimsuggestPath = nimsuggestPath
         let timeout = conf.timeout.get(REQUEST_TIMEOUT)
+        let nimPathFlags = nimPaths & findNimblePaths(projectFile)
+        debug "makeSpawnProc.doSpawn: calling createNimsuggest",
+          projectFile = projectFile, nimPathCount = nimPathFlags.len
         let projectResult = await createNimsuggest(
           projectFile,
           nimsuggestPath,
@@ -85,17 +95,29 @@ proc makeSpawnProc*(ls: LanguageServer): SpawnProc =
           workingDir,
           conf.logNimsuggest.get(false),
           conf.exceptionHintsEnabled,
-          nimPaths & findNimblePaths(projectFile),
+          nimPathFlags,
         )
+        debug "makeSpawnProc.doSpawn: createNimsuggest returned",
+          projectFile = projectFile,
+          nsFinished = projectResult.ns.finished,
+          nsFailed = projectResult.ns.failed
         if projectResult.ns.finished and not projectResult.ns.failed:
           let nsInitMsg = newJObject()
           nsInitMsg["type"] = newJInt(MessageType.Info.int)
           nsInitMsg["message"] = newJString(fmt "Nimsuggest initialized for {projectFile}")
+          debug "makeSpawnProc.doSpawn: sending initialized notification",
+            projectFile = projectFile
           ls.notify("window/showMessage", nsInitMsg)
           fut.complete(projectResult.ns.read())
         else:
+          debug "makeSpawnProc.doSpawn: ns future failed or not finished, failing fut",
+            projectFile = projectFile,
+            nsFinished = projectResult.ns.finished,
+            nsFailed = projectResult.ns.failed
           fut.fail(newException(CatchableError, "Nimsuggest startup failed"))
       except CatchableError as ex:
+        debug "makeSpawnProc.doSpawn: caught exception",
+          projectFile = projectFile, msg = ex.msg
         if not fut.finished:
           fut.fail(ex)
     asyncSpawn doSpawn()
@@ -121,6 +143,8 @@ proc makeIsKnownProc*(): IsKnownProc =
   ): Future[bool] {.gcsafe, raises: [].} =
     ns.isKnown(filePath)
 
+# IMPORTANT: SHould this fucntion be async?  It has asyncSpawn inside it?
+
 proc getOrCreateSlotForUri*(ls: LanguageServer, uri: string): NimsuggestSlot =
   ## Synchronously find or create the slot for this URI.
   ## 1. Check if already assigned via ownedUris scan.
@@ -145,6 +169,7 @@ proc getOrCreateSlotForUri*(ls: LanguageServer, uri: string): NimsuggestSlot =
     if find(path, re2(mapping.fileRegex), m):
       let projectFile =
         if mapping.projectFile == "": path
+        elif isAbsolute(mapping.projectFile): mapping.projectFile
         else: rootPath / mapping.projectFile
       if projectFile in ls.pool.slots:
         return ls.pool.slots[projectFile]
@@ -153,6 +178,7 @@ proc getOrCreateSlotForUri*(ls: LanguageServer, uri: string): NimsuggestSlot =
       # URI to the right place via EVICT_AND_SPAWN once nimsuggest replies.
       if ls.pool.canSpawn:
         let slot = newSlot(projectFile)
+        slot.state = SlotState.SPAWNING # Reserve liveCount so concurrent opens see capacity used
         ls.pool.addSlot(slot)
         asyncSpawn processCommands(slot, ls.pool)
         asyncSpawn processQueries(slot, ls.pool)
@@ -167,6 +193,7 @@ proc getOrCreateSlotForUri*(ls: LanguageServer, uri: string): NimsuggestSlot =
   # No mapping match — use LRU or spawn new
   if ls.pool.canSpawn:
     let slot = newSlot(path)
+    slot.state = SlotState.SPAWNING # Reserve liveCount so concurrent opens see capacity used
     ls.pool.addSlot(slot)
     asyncSpawn processCommands(slot, ls.pool)
     asyncSpawn processQueries(slot, ls.pool)
@@ -180,6 +207,7 @@ proc getOrCreateSlotForUri*(ls: LanguageServer, uri: string): NimsuggestSlot =
       return slot
     # If pool is empty, create a slot anyway
     let slot = newSlot(path)
+    slot.state = SlotState.SPAWNING # Reserve liveCount so concurrent opens see capacity used
     ls.pool.addSlot(slot)
     asyncSpawn processCommands(slot, ls.pool)
     asyncSpawn processQueries(slot, ls.pool)
@@ -208,6 +236,7 @@ proc initNimsuggestInstances*(ls: LanguageServer, rootPath: string) {.async.} =
       if entryPoint notin ls.pool.slots:
         if ls.pool.canSpawn:
           let slot = newSlot(entryPoint, isEntryPoint = true)
+          slot.state = SlotState.SPAWNING # Reserve liveCount immediately
           ls.pool.addSlot(slot)
           asyncSpawn processCommands(slot, ls.pool)
           asyncSpawn processQueries(slot, ls.pool)
@@ -225,6 +254,7 @@ proc stopNimsuggestProcesses*(ls: LanguageServer) {.async.} =
   for slot in ls.pool.slots.values:
     slot.send SlotCommand(kind: SlotCommandKind.STOP)
   await sleepAsync(500)
+  # WHat is the point of this sleepAsync here - shouldn't this be happening when the slot processes the SlotCOmmand?
 
 proc stopNimsuggestProcessesP*(ls: LanguageServer) =
   waitFor stopNimsuggestProcesses(ls)
@@ -252,6 +282,8 @@ proc idleSlots*(ls: LanguageServer): seq[NimsuggestSlot] =
       continue
     result.add slot
 
+
+# IMPORTANT: WHat are the async functions here?  It is not clear.
 proc removeIdleNimsuggests*(ls: LanguageServer) {.async.} =
   ## Kept for direct test calls — delegates to idleSlots + per-slot stop.
   ## File eviction and notification are duplicated here to keep tmisc working

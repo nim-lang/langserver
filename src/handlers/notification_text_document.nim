@@ -1,13 +1,139 @@
-import std/[os, options, hashes, sets, strformat, sugar, sequtils, strutils]
-import chronos
-import chronicles
+# === textDocument/didChange === 
+proc setTrace*(ls: LanguageServer, params: SetTraceParams) {.async.} =
+  debug "setTrace", value = params.value
 
-import ../protocol/types
-import ../nim_tools/nimsuggest/[nimsuggest_types, nimsuggest]
-import ../nim_tools/nimcheck/nimcheck
-import ../nim_tools/compiler/nim_compiler
-import ./[configurations, langserver_types, constants, utils, queue_types, queues, diagnostics]
-import ../queries/requests
+proc scheduleFileCheck(ls: LanguageServer, uri: string) {.gcsafe, raises: [].} =
+  if not ls.getWorkspaceConfiguration().autoCheckFile.get(true):
+    return
+  # schedule file check after the file is modified
+  let fileData = ls.files.openFiles.getOrDefault(uri)
+  if fileData.cancelFileCheck != nil and not fileData.cancelFileCheck.finished:
+    fileData.cancelFileCheck.complete()
+
+  if fileData.checkInProgress:
+    fileData.needsChecking = true
+    return
+
+  var cancelFuture = newFuture[void]()
+  fileData.cancelFileCheck = cancelFuture
+
+  sleepAsync(FILE_CHECK_DELAY).addCallback do():
+    if not cancelFuture.finished:
+      fileData.checkInProgress = true
+      ls.checkFile(uri).addCallback do() {.gcsafe, raises: [].}:
+        try:
+          ls.files.openFiles[uri].checkInProgress = false
+          if fileData.needsChecking:
+            fileData.needsChecking = false
+            ls.scheduleFileCheck(uri)
+        except KeyError:
+          discard
+        # except Exception:
+        #   discard
+
+proc didChange*(
+    ls: LanguageServer, params: DidChangeTextDocumentParams
+): Future[void] {.async.} =
+  with params:
+    let uri = textDocument.uri
+    if uri notin ls.files.openFiles:
+      return
+    let file = open(ls.uriStorageLocation(uri), fmWrite)
+
+    ls.files.openFiles[uri].fingerTable = @[]
+    ls.files.openFiles[uri].changed = true
+    if contentChanges.len <= 0:
+      file.close()
+      return
+    for line in contentChanges[0].text.splitLines:
+      ls.files.openFiles[uri].fingerTable.add line.createUTFMapping()
+      file.writeLine line
+    file.close()
+
+    ls.scheduleFileCheck(uri)
+
+# === textDocument/willSaveWaitUntil === 
+proc willSaveWaitUntil*(
+    ls: LanguageServer, params: WillSaveTextDocumentParams
+): Future[seq[TextEdit]] {.async.} =
+  debug "Received willSaveWaitUntil request"
+
+  let
+    uri = params.textDocument.uri
+    config = ls.getWorkspaceConfiguration()
+    nphPath = getNphPath()
+
+  let shouldFormat =
+    nphPath.isSome and ls.capabilities.lspServerCapabilities.documentFormattingProvider.get(false) and
+    config.formatOnSave.get(false)
+
+  if shouldFormat:
+    debug "Formatting document before save", uri = uri
+    let formatTextEdit = await ls.format(nphPath.get(), uri)
+    if formatTextEdit.isSome:
+      return @[formatTextEdit.get]
+
+  return @[]
+
+# === textDocument/didSave === 
+
+proc didSave*(
+    ls: LanguageServer, params: DidSaveTextDocumentParams
+): Future[void] {.async.} =
+  let
+    uri = params.textDocument.uri
+    config = ls.getWorkspaceConfiguration()
+
+  # Un-block crash-inducing URIs on save: the user may have fixed the code.
+  # In the new slot model, crashedUris lives on the slot itself.
+  let path = uri.uriToPath
+  debug "didSave: enter", uri = uri
+  if uri in ls.files.openFiles:
+    let fileInfo = ls.files.openFiles[uri]
+    if fileInfo.slot != nil:
+      let wasCrashed = uri in fileInfo.slot.crashedUris
+      fileInfo.slot.crashedUris.excl(uri)
+      debug "didSave: crashedUris unblock",
+        uri = uri, wasCrashed = wasCrashed,
+        slotProject = fileInfo.slot.projectFile,
+        slotState = $fileInfo.slot.state,
+        slotCrashCount = fileInfo.slot.crashCount
+    else:
+      debug "didSave: fileInfo.slot is nil!", uri = uri
+  else:
+    debug "didSave: uri not in openFiles", uri = uri
+
+  if uri notin ls.files.openFiles:
+    return
+
+  ls.files.openFiles[uri].changed = false
+  # Route CHANGED through the per-slot queue so it is serialized with concurrent queries.
+  debug "didSave: sending CHANGED query", uri = uri
+  traceAsyncErrors ls.queryFile(uri, NimsuggestQueryKind.CHANGED)
+
+  if config.checkOnSave.get(true):
+    debug "Checking project", uri = uri
+    traceAsyncErrors ls.checkProject(uri)
+
+  # var toStop = newTable[string, Nimsuggest]()
+  # #We first get the project file for the current file so we can test if this file recently imported another project
+  # let thisProjectFile = await getProjectFile(uri.uriToPath, ls)
+
+  # let ns: NimSuggest = await ls.projectFiles[thisProjectFile]
+  # if ns.canHandleUnknown:
+  #   for projectFile in ls.projectFiles.keys:
+  #     if projectFile in ls.entryPoints: continue
+  #     let isKnown = await ns.isKnown(projectFile)
+  #     if isKnown:
+  #       toStop[projectFile] = await ls.projectFiles[projectFile]
+
+  #   for projectFile, ns in toStop:
+  #     ns.stop()
+  #     ls.projectFiles.del projectFile
+  #   if toStop.len > 0:
+  #     ls.sendStatusChanged()
+
+# === textDocument/didClose === 
 
 proc checkFile*(ls: LanguageServer, uri: string): Future[void] {.async.} =
   if uri notin ls.files.openFiles:
@@ -111,21 +237,12 @@ proc didRenameFile*(ls: LanguageServer, oldUri, newUri: string) =
     if oldPath.endsWith(".nim") and slot != nil and slot.isLive:
       slot.send SlotCommand(kind: SlotCommandKind.RECOMPILE)
 
-proc didDeleteFile*(ls: LanguageServer, uri: string) =
-  debug "File deleted", uri = uri
-  let path = uriToPath(uri)
+proc didClose*(
+    ls: LanguageServer, params: DidCloseTextDocumentParams
+): Future[void] {.async.} =
+  ls.didCloseFile(params.textDocument.uri)
 
-  # If a .nimble file was deleted, invalidate its dump cache entry
-  if path.endsWith(".nimble"):
-    ls.nimDumpCache.del(path)
-
-  if uri in ls.files.openFiles:
-    let fileInfo = ls.files.openFiles[uri]
-    if fileInfo.slot != nil:
-      fileInfo.slot.unassignUri(uri)
-      if path.endsWith(".nim") and fileInfo.slot.isLive:
-        fileInfo.slot.send SlotCommand(kind: SlotCommandKind.RECOMPILE)
-    ls.files.openFiles.del(uri)
+# === textDocument/didOpen === 
 
 proc didOpenFile*(
     ls: LanguageServer, doc: TextDocumentItem
@@ -199,3 +316,8 @@ proc didOpenFile*(
   )
 
   debug "Opened file", uri = uri
+
+proc didOpen*(
+    ls: LanguageServer, params: DidOpenTextDocumentParams
+): Future[void] {.async.} =
+  await ls.didOpenFile(params.textDocument)

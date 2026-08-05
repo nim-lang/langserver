@@ -5,8 +5,8 @@ import chronos/asyncproc
 import chronicles
 import stew/byteutils
 
-import ../protocol/[enums, types]
-import ../langserver/utils
+import ../../protocol/[enums, types]
+import ../../langserver/utils
 import ./nimsuggest_types
 
 func canHandleUnknown*(ns: Nimsuggest): bool =

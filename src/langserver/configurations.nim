@@ -153,5 +153,6 @@ proc maybeRequestConfigurationFromClient*(ls: LanguageServer) =
     asyncSpawn ls.receiveConfiguration(configFuture)
   else:
     debug "Client does not support workspace/configuration"
-    ls.configurations.currentConfig = some(NlsConfig())
+    if ls.configurations.currentConfig.isNone:
+      ls.configurations.currentConfig = some(NlsConfig())
     ls.configurations.configReady.fire()

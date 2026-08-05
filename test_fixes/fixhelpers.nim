@@ -62,8 +62,7 @@ proc doInitialize*(client: LspSocketClient, rootRelPath: string) =
     "processId": %getCurrentProcessId(),
     "rootUri": fixtureUri(rootRelPath),
     "capabilities": {
-      "window": {"workDoneProgress": true},
-      "workspace": {"configuration": true}
+      "window": {"workDoneProgress": true}
     }
   }
   discard waitFor client.initialize(initParams)

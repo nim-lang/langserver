@@ -108,6 +108,10 @@ suite "Fix #18 — standalone nimsuggest for unimported file":
     sendDidOpen(client, "test_fixes/projects/simple/src/simple.nim")
     check waitForNsInit(client, simpleProjectFile())
 
+    # Also open widget.nim so it is in openFiles for the "original project still works" test.
+    sendDidOpen(client, "test_fixes/projects/simple/src/widget.nim")
+    waitFor sleepAsync(100)
+
     sendDidOpen(client, "test_fixes/projects/simple/src/orphan.nim")
     check waitForNsInit(client, simpleOrphanFile())
 

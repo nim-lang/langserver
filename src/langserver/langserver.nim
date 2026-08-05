@@ -11,13 +11,14 @@ import json_serialization
 import json_rpc/[servers/socketserver]
 import chronicles
 
-import ../nimble/nimble
-import ../nimsuggest/[suggestapi, nimsuggest, nimsuggest_types]
-import ../nimcheck/nimcheck
-import ../nim_compiler/nim_compiler
+import ../nim_tools/nimble/nimble
+import ../nim_tools/nimsuggest/[suggestapi, nimsuggest, nimsuggest_types]
+import ../nim_tools/nimcheck/nimcheck
+import ../nim_tools/compiler/nim_compiler
 import ../protocol/[enums, types]
 import ./[constants, utils, langserver_types, configuration_types, messaging_types, configurations, diagnostics, files, queues, queue_types]
 
+proc sendStatusChanged*(ls: LanguageServer) {.raises: [].}
 
 proc initLanguageServer*(params: CommandLineParams, storageDir: string): LanguageServer =
   let configReady = newAsyncEvent()
@@ -60,6 +61,9 @@ proc initLanguageServer*(params: CommandLineParams, storageDir: string): Languag
   let ls = result # capture ref for the closure below
   result.pool.notifyProc = proc(meth: string, params: JsonNode) {.gcsafe, raises: [].} =
     ls.notify(meth, params)
+  result.pool.statusChangedProc = proc() {.gcsafe, raises: [].} =
+    {.cast(gcsafe).}:
+      ls.sendStatusChanged()
 
 proc supportSignatureHelp*(cc: LspClientCapabilities): bool =
   if cc.isNil:
@@ -149,6 +153,7 @@ proc sendStatusChanged*(ls: LanguageServer) {.raises: [].} =
     ls.messaging.lastStatusSent = status
 
 proc addProjectFileToPendingRequest*(ls: LanguageServer, id: uint, uri: string) =
+  # WHAT DOES THIS ACTUALLY DO?
   try:
     if id in ls.messaging.pendingRequests:
       ls.messaging.pendingRequests[id].projectFile = some uri.uriToPath()
@@ -317,14 +322,27 @@ proc removeCompletedPendingRequests(
   for id in toRemove:
     ls.messaging.pendingRequests.del id
 
+proc resolvedSlot(ls: LanguageServer, uri: string): Option[NimsuggestSlot] =
+  ## Return the current owning slot for uri, healing a stale fileInfo.slot
+  ## pointer if execCheckKnown moved the URI to a different slot since open.
+  let fileInfo = ls.files.openFiles.getOrDefault(uri)
+  if fileInfo == nil or fileInfo.slot == nil:
+    return none(NimsuggestSlot)
+  if not fileInfo.slot.ownsUri(uri):
+    let current = ls.pool.slotForUri(uri)
+    if current.isNone:
+      return none(NimsuggestSlot)
+    fileInfo.slot = current.get
+  some(fileInfo.slot)
+
 proc nsCapabilities*(ls: LanguageServer, uri: string): set[NimSuggestCapability] =
   ## Returns the live nimsuggest capabilities for the slot serving `uri`.
   ## Safe to call synchronously after queryAt/queryFile returns — by that point
   ## processQueries has already awaited slot.ns.get so the slot is READY.
-  let fileInfo = ls.files.openFiles.getOrDefault(uri)
-  if fileInfo == nil or fileInfo.slot == nil:
+  let slotOpt = ls.resolvedSlot(uri)
+  if slotOpt.isNone:
     return {}
-  let nsOpt = fileInfo.slot.resolvedNs
+  let nsOpt = slotOpt.get.resolvedNs
   if nsOpt.isNone:
     return {}
   nsOpt.get.capabilities
@@ -332,10 +350,10 @@ proc nsCapabilities*(ls: LanguageServer, uri: string): set[NimSuggestCapability]
 proc nsProtocolVersion*(ls: LanguageServer, uri: string): int =
   ## Returns the nimsuggest protocol version for the slot serving `uri`.
   ## Safe to call synchronously after queryAt/queryFile returns.
-  let fileInfo = ls.files.openFiles.getOrDefault(uri)
-  if fileInfo == nil or fileInfo.slot == nil:
+  let slotOpt = ls.resolvedSlot(uri)
+  if slotOpt.isNone:
     return 0
-  let nsOpt = fileInfo.slot.resolvedNs
+  let nsOpt = slotOpt.get.resolvedNs
   if nsOpt.isNone:
     return 0
   nsOpt.get.protocolVersion

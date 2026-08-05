@@ -1,7 +1,7 @@
 import
   std/[os, sequtils, tables, json],
   pkg/[chronos, json_rpc/server, chronicles, json_serialization],
-  ../nimsuggest/[suggestapi, nimsuggest_types, nimsuggest],
+  ../nim_tools/nimsuggest/[suggestapi, nimsuggest_types, nimsuggest],
   ../langserver/[langserver, langserver_types, utils, files, constants, configurations, configuration_types],
   ../protocol/types
 

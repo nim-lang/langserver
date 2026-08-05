@@ -18,3 +18,5 @@ dprint.json
 docs/
 
 .DS_Store
+
+rewrite_analysis/

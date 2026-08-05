@@ -14,15 +14,16 @@ import
     stew/byteutils,
     with,
   ],
-  ../testrunner/testrunner,
-  ../nimsuggest/suggestapi,
+  ../nim_tools/compiler/testrunner,
+  ../nim_tools/nimsuggest/suggestapi,
   ../langserver/[langserver, langserver_types, utils, constants, configuration_types, configurations, messaging_types, queue_types, queues, files],
-  ../requests/requests,
-  ../nimsuggest/nimsuggest,
-  ../nimsuggest/nimsuggest_types,
-  ../nim_compiler/nim_compiler,
+  ../queries/requests,
+  ../nim_tools/nimsuggest/nimsuggest,
+  ../nim_tools/nimsuggest/nimsuggest_types,
+  ../nim_tools/compiler/nim_compiler,
   ../protocol/[enums, types],
-  ./[nimexpand, asyncprocmonitor]
+  ../nim_tools/compiler/nimexpand,
+  ../langserver/asyncprocmonitor
 
 import macros except error
 
@@ -668,7 +669,7 @@ proc toSignatureInformation(suggest: Suggest): SignatureInformation =
     }
 
 proc signatureHelp*(
-    ls: LanguageServer, params: SignatureHelpParams, id: int
+  ls: LanguageServer, params: SignatureHelpParams, id: int
 ): Future[Option[SignatureHelp]] {.async.} =
   if not ls.capabilities.lspClientCapabilities.supportSignatureHelp():
     #Some clients doesnt support signatureHelp
@@ -800,7 +801,7 @@ proc exit*(
   await p.onExit()
 
 proc startNimbleProcess(
-    ls: LanguageServer, args: seq[string]
+  ls: LanguageServer, args: seq[string]
 ): Future[AsyncProcessRef] {.async.} =
   let nimbleDirEnv = getEnv("NIMBLE_DIR", "<not set>")
   let homeEnv = getEnv("HOME", "<not set>")
@@ -991,16 +992,28 @@ proc didSave*(
   # Un-block crash-inducing URIs on save: the user may have fixed the code.
   # In the new slot model, crashedUris lives on the slot itself.
   let path = uri.uriToPath
+  debug "didSave: enter", uri = uri
   if uri in ls.files.openFiles:
     let fileInfo = ls.files.openFiles[uri]
     if fileInfo.slot != nil:
+      let wasCrashed = uri in fileInfo.slot.crashedUris
       fileInfo.slot.crashedUris.excl(uri)
+      debug "didSave: crashedUris unblock",
+        uri = uri, wasCrashed = wasCrashed,
+        slotProject = fileInfo.slot.projectFile,
+        slotState = $fileInfo.slot.state,
+        slotCrashCount = fileInfo.slot.crashCount
+    else:
+      debug "didSave: fileInfo.slot is nil!", uri = uri
+  else:
+    debug "didSave: uri not in openFiles", uri = uri
 
   if uri notin ls.files.openFiles:
     return
 
   ls.files.openFiles[uri].changed = false
   # Route CHANGED through the per-slot queue so it is serialized with concurrent queries.
+  debug "didSave: sending CHANGED query", uri = uri
   traceAsyncErrors ls.queryFile(uri, NimsuggestQueryKind.CHANGED)
 
   if config.checkOnSave.get(true):

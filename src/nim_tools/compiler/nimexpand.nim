@@ -2,7 +2,7 @@ import std/[strutils]
 import chronos, chronos/asyncproc
 import stew/[byteutils]
 import chronicles
-import ../langserver/utils
+import ../../langserver/utils
 import ../nimsuggest/[suggestapi, nimsuggest_types]
 import std/[strformat]
 

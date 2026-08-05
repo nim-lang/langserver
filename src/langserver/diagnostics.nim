@@ -3,8 +3,8 @@ import with
 import chronicles
 
 import ../protocol/[types, enums]
-import ../nimsuggest/nimsuggest_types
-import ../nimcheck/nimcheck
+import ../nim_tools/nimsuggest/nimsuggest_types
+import ../nim_tools/nimcheck/nimcheck
 import ./[langserver_types, utils]
 
 proc toDiagnosticJson(suggest: Suggest): JsonNode =

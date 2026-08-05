@@ -3,7 +3,7 @@ import regex
 import chronos, chronos/asyncproc
 import stew/[byteutils]
 import chronicles
-import ../langserver/utils
+import ../../langserver/utils
 
 type
   CheckStacktrace* = object

@@ -4,8 +4,8 @@ import chronos/asyncproc
 import chronicles
 import stew/byteutils
 
-import ../protocol/types
-import ../langserver/[constants, utils, langserver_types]
+import ../../protocol/types
+import ../../langserver/[constants, utils, langserver_types]
 import ./nimble_types
 
 export nimble_types

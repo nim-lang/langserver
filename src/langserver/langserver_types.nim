@@ -4,7 +4,7 @@ import chronos/asyncproc
 import json_rpc/servers/socketserver
 
 import ../protocol/types
-import ../nimble/nimble_types
+import ../nim_tools/nimble/nimble_types
 import ./[messaging_types, configuration_types, queue_types]
 
 ##[

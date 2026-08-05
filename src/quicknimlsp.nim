@@ -2,9 +2,13 @@ import std/[syncio, os, json, strutils, strformat]
 import json_rpc/[servers/socketserver, private/jrpc_sys, jsonmarshal, rpcclient, router]
 import chronicles, chronos
 import langserver/[langserver, langserver_types, utils, transports, constants, messaging_types]
-import routes/[asyncprocmonitor, lsp, mcp]
+import langserver/asyncprocmonitor
+# import routes/[lsp, mcp]
+import routes/msp
+import ./handlers/handlers as lsp
+
 import protocol/types
-import nimsuggest/nimsuggest
+import nim_tools/nimsuggest/nimsuggest
 when defined(posix):
   import posix
 

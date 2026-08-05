@@ -6,7 +6,7 @@ import json_rpc/private/jrpc_sys
 import macros
 import stew/byteutils
 import ./langserver_types
-import ../nimsuggest/nimsuggest_types
+import ../nim_tools/nimsuggest/nimsuggest_types
 import ../protocol/types
 
 type
