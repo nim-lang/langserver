@@ -1,38 +1,50 @@
-# === textDocument/didChange === 
-proc setTrace*(ls: LanguageServer, params: SetTraceParams) {.async.} =
-  debug "setTrace", value = params.value
+import std/[json, os, strutils, options, sugar, hashes]
+import chronos
+import chronicles
+import with
+import ../protocol/types
+import ../langserver/[langserver_types, utils, configurations, constants, diagnostics, queue_types, queues, langserver]
+import ../nim_tools/nimcheck/nimcheck
+import ../nim_tools/nimsuggest/nimsuggest as nimsuggestModule
+import ../queries/dispatcher
+import ./[request_process, request_text_document]
 
-proc scheduleFileCheck(ls: LanguageServer, uri: string) {.gcsafe, raises: [].} =
-  if not ls.getWorkspaceConfiguration().autoCheckFile.get(true):
-    return
-  # schedule file check after the file is modified
-  let fileData = ls.files.openFiles.getOrDefault(uri)
-  if fileData.cancelFileCheck != nil and not fileData.cancelFileCheck.finished:
-    fileData.cancelFileCheck.complete()
+# === textDocument/didChange ===
 
-  if fileData.checkInProgress:
-    fileData.needsChecking = true
-    return
+# proc didChange*(
+#   ls: LanguageServer, params: DidChangeTextDocumentParams
+# ): Future[void] {.async.} =
+#   ls.addFileAccessQueryToQueue()
 
-  var cancelFuture = newFuture[void]()
-  fileData.cancelFileCheck = cancelFuture
+# proc scheduleFileCheck(ls: LanguageServer, uri: string) {.gcsafe, raises: [].} =
+#   if not ls.getWorkspaceConfiguration().autoCheckFile.get(true):
+#     return
+#   # schedule file check after the file is modified
+#   let fileData = ls.files.openFiles.getOrDefault(uri)
+#   if fileData.cancelFileCheck != nil and not fileData.cancelFileCheck.finished:
+#     fileData.cancelFileCheck.complete()
 
-  sleepAsync(FILE_CHECK_DELAY).addCallback do():
-    if not cancelFuture.finished:
-      fileData.checkInProgress = true
-      ls.checkFile(uri).addCallback do() {.gcsafe, raises: [].}:
-        try:
-          ls.files.openFiles[uri].checkInProgress = false
-          if fileData.needsChecking:
-            fileData.needsChecking = false
-            ls.scheduleFileCheck(uri)
-        except KeyError:
-          discard
-        # except Exception:
-        #   discard
+#   if fileData.checkInProgress:
+#     fileData.needsChecking = true
+#     return
+
+#   var cancelFuture = newFuture[void]()
+#   fileData.cancelFileCheck = cancelFuture
+
+#   sleepAsync(FILE_CHECK_DELAY).addCallback do():
+#     if not cancelFuture.finished:
+#       fileData.checkInProgress = true
+#       ls.checkFile(uri).addCallback do() {.gcsafe, raises: [].}:
+#         try:
+#           ls.files.openFiles[uri].checkInProgress = false
+#           if fileData.needsChecking:
+#             fileData.needsChecking = false
+#             ls.scheduleFileCheck(uri)
+#         except KeyError:
+#           discard
 
 proc didChange*(
-    ls: LanguageServer, params: DidChangeTextDocumentParams
+  ls: LanguageServer, params: DidChangeTextDocumentParams
 ): Future[void] {.async.} =
   with params:
     let uri = textDocument.uri
@@ -49,10 +61,16 @@ proc didChange*(
       ls.files.openFiles[uri].fingerTable.add line.createUTFMapping()
       file.writeLine line
     file.close()
+    # NOTE: I am going to remove this scheduled file-checking that runs after the user has not been typing for 1 second, or so, and instead just have this run on the user saving.
+    # ls.scheduleFileCheck(uri)
 
-    ls.scheduleFileCheck(uri)
+# === textDocument/willSaveWaitUntil ===
+# willSaveWaitUntil — VS Code asks the server "before I write the file to disk, do you want to make any last-minute edits?" The server can respond with a list of TextEdits (e.g. format the file), which VS Code applies before saving. VS Code waits for the response before proceeding.
 
-# === textDocument/willSaveWaitUntil === 
+# didSave — VS Code tells the server "the file has been saved to disk."
+
+# In this codebase, willSaveWaitUntil is used to implement format-on-save: if formatOnSave is enabled and nph (the Nim formatter) is available, the server returns a formatting edit so the file gets formatted at the moment of saving, before it hits disk.
+
 proc willSaveWaitUntil*(
     ls: LanguageServer, params: WillSaveTextDocumentParams
 ): Future[seq[TextEdit]] {.async.} =
@@ -75,10 +93,10 @@ proc willSaveWaitUntil*(
 
   return @[]
 
-# === textDocument/didSave === 
+# === textDocument/didSave ===
 
 proc didSave*(
-    ls: LanguageServer, params: DidSaveTextDocumentParams
+  ls: LanguageServer, params: DidSaveTextDocumentParams
 ): Future[void] {.async.} =
   let
     uri = params.textDocument.uri
@@ -93,6 +111,7 @@ proc didSave*(
     if fileInfo.slot != nil:
       let wasCrashed = uri in fileInfo.slot.crashedUris
       fileInfo.slot.crashedUris.excl(uri)
+
       debug "didSave: crashedUris unblock",
         uri = uri, wasCrashed = wasCrashed,
         slotProject = fileInfo.slot.projectFile,
@@ -115,25 +134,7 @@ proc didSave*(
     debug "Checking project", uri = uri
     traceAsyncErrors ls.checkProject(uri)
 
-  # var toStop = newTable[string, Nimsuggest]()
-  # #We first get the project file for the current file so we can test if this file recently imported another project
-  # let thisProjectFile = await getProjectFile(uri.uriToPath, ls)
-
-  # let ns: NimSuggest = await ls.projectFiles[thisProjectFile]
-  # if ns.canHandleUnknown:
-  #   for projectFile in ls.projectFiles.keys:
-  #     if projectFile in ls.entryPoints: continue
-  #     let isKnown = await ns.isKnown(projectFile)
-  #     if isKnown:
-  #       toStop[projectFile] = await ls.projectFiles[projectFile]
-
-  #   for projectFile, ns in toStop:
-  #     ns.stop()
-  #     ls.projectFiles.del projectFile
-  #   if toStop.len > 0:
-  #     ls.sendStatusChanged()
-
-# === textDocument/didClose === 
+# === textDocument/didClose ===
 
 proc checkFile*(ls: LanguageServer, uri: string): Future[void] {.async.} =
   if uri notin ls.files.openFiles:
@@ -177,7 +178,6 @@ proc didCloseFile*(ls: LanguageServer, uri: string) =
     fileInfo.slot.unassignUri(uri)
 
   ls.files.openFiles.del(uri)
-
   # Cancel any pending file check
   if fileInfo.cancelFileCheck != nil and not fileInfo.cancelFileCheck.finished:
     fileInfo.cancelFileCheck.complete()
@@ -188,64 +188,15 @@ proc makeIdleFile*(ls: LanguageServer, file: NlsFileInfo) =
     ls.didCloseFile(uri)
     ls.files.idleOpenFiles[uri] = file
 
-proc didRenameFile*(ls: LanguageServer, oldUri, newUri: string) =
-  debug "File renamed", oldUri = oldUri, newUri = newUri
-
-  # Move the stash file so any pending content checks use the right path
-  let oldStash = ls.uriStorageLocation(oldUri)
-  let newStash = ls.uriStorageLocation(newUri)
-  if oldStash.fileExists:
-    try:
-      moveFile(oldStash, newStash)
-    except Exception as e:
-      debug "Failed to move stash file on rename",
-        oldStash = oldStash, newStash = newStash, msg = e.msg
-
-  # If a .nimble file was renamed, invalidate its dump cache entry
-  let oldPath = uriToPath(oldUri)
-  if oldPath.endsWith(".nimble"):
-    ls.nimDumpCache.del(oldPath)
-    ls.nimDumpCache.del(uriToPath(newUri))
-
-  # If the file is currently open, migrate its entry to the new URI
-  if oldUri in ls.files.openFiles:
-    let fileInfo = ls.files.openFiles[oldUri]
-    let slot = fileInfo.slot
-
-    # Atomic rename in both tables (no await between)
-    if slot != nil:
-      slot.unassignUri(oldUri)
-      slot.assignUri(newUri)
-    ls.files.openFiles[newUri] = NlsFileInfo(
-      slot: slot,
-      changed: fileInfo.changed,
-      fingerTable: fileInfo.fingerTable,
-      textDocument: TextDocumentItem(
-        uri: newUri,
-        languageId: fileInfo.textDocument.languageId,
-        version: fileInfo.textDocument.version,
-        text: fileInfo.textDocument.text,
-      ),
-    )
-    ls.files.openFiles.del(oldUri)
-
-    # Clear diagnostics for the old URI unconditionally so the editor stops
-    # showing stale errors on the now-gone path (fix #7).
-    ls.sendDiagnostics(newSeq[Suggest](), oldPath)
-
-    # Tell nimsuggest to rebuild its module graph
-    if oldPath.endsWith(".nim") and slot != nil and slot.isLive:
-      slot.send SlotCommand(kind: SlotCommandKind.RECOMPILE)
-
 proc didClose*(
     ls: LanguageServer, params: DidCloseTextDocumentParams
 ): Future[void] {.async.} =
   ls.didCloseFile(params.textDocument.uri)
 
-# === textDocument/didOpen === 
+# === textDocument/didOpen ===
 
 proc didOpenFile*(
-    ls: LanguageServer, doc: TextDocumentItem
+  ls: LanguageServer, doc: TextDocumentItem
 ): Future[void] {.async.} =
   let uri = doc.uri
   if uri in ls.files.openFiles:
@@ -253,18 +204,26 @@ proc didOpenFile*(
     return
 
   # Wait for config before making routing decisions (30s polling timeout)
-  await ls.waitForWorkspaceConfiguration()
+  # THIS IS UNECESSARY NOW it is dealt with elsewhere.
+  # await ls.waitForWorkspaceConfiguration()
 
+# THIS IS UNECESSARY NOW
   # Re-check after the await in case concurrent open beat us
-  if uri in ls.files.openFiles:
-    debug "didOpenFile: URI tracked after config wait (concurrent open), skipping",
-      uri = uri
-    return
+  # if uri in ls.files.openFiles:
+  #   debug "didOpenFile: URI tracked after config wait (concurrent open), skipping",
+  #     uri = uri
+  #   return
 
   debug "New document opened for URI:", uri = uri
 
   # Find or create the slot for this URI (sync after config is ready)
-  let slot = ls.getOrCreateSlotForUri(uri)
+  # IMPORTANT": This is the place where I need to check all currently running versions of nimsuggest, wait for ones that are spawning to finish, and then find out whether this new file exists in any of the existing slots.  If so, this file should use that slot.  If not, it needs to spawn it's own slot.
+
+
+
+  # IMPORTANT: getOrCreateSlotForUri is a deeply flawed function that needs replacing. :(
+
+  let slot = nimsuggestModule.getOrCreateSlotForUri(ls, uri)
 
   # Write the initial stash file
   let storagePath = ls.files.storageDir / (hash(uri).toHex & ".nim")
@@ -312,12 +271,12 @@ proc didOpenFile*(
   slot.send SlotCommand(
     kind: SlotCommandKind.CHECK_KNOWN,
     checkUri: uri,
-    checkIntendedProjectFile: ls.getIntendedProject(uri),
+    checkIntendedProjectFile: nimsuggestModule.getIntendedProject(ls, uri),
   )
 
   debug "Opened file", uri = uri
 
 proc didOpen*(
-    ls: LanguageServer, params: DidOpenTextDocumentParams
+  ls: LanguageServer, params: DidOpenTextDocumentParams
 ): Future[void] {.async.} =
   await ls.didOpenFile(params.textDocument)

@@ -1,7 +1,29 @@
 import ../nim_tools/nimsuggest/suggestapi
 import ../langserver/[utils, langserver_types]
 import ../protocol/[enums, types]
-import ./[query_types]
+import ./[queries_langerver, queries_file_access, queries_nimsuggest]
+
+
+proc addQueryToQueue*(
+  ls: LanguageServer, q: NimsuggestQuery,
+): Future[seq[Suggest]] =
+  let convertToQuery = LanguageServerQuery(
+    kind: LangserverQueryKind.NIMSUGGEST,
+    nimsuggest: q
+  )
+  
+  # TODO
+
+proc addQueryToQueue*(
+  ls: LanguageServer, q: FileAccessQuery,
+): Future[seq[Suggest]] =
+  let convertToQuery = LanguageServerQuery(
+    kind: LangserverQueryKind.FILE_ACCESS,
+    fileAccess: q
+  )
+  
+  # TODO
+
 
 proc addQueryToQueue*( # Used to be called `queryAt`
   ls: LanguageServer, q: NimsuggestQuery,

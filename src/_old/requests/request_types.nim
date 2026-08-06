@@ -181,36 +181,6 @@ type
 # ─────────────────────────────────────────────────────────────────────────────
 
 type
-  TextDocumentNotificationKind* {.pure.} = enum
-    DID_OPEN
-    DID_CHANGE
-    DID_SAVE
-    DID_CLOSE
-    WILL_SAVE_WAIT_UNTIL
-    DID_RENAME_FILES
-    DID_DELETE_FILES
-    DID_CHANGE_CONFIGURATION
-
-  TextDocumentNotification* = object
-    case kind*: TextDocumentNotificationKind
-    of DID_OPEN:
-      didOpen*: DidOpenTextDocumentParams
-    of DID_CHANGE:
-      didChange*: DidChangeTextDocumentParams
-    of DID_SAVE:
-      didSave*: DidSaveTextDocumentParams
-    of DID_CLOSE:
-      didClose*: DidCloseTextDocumentParams
-    of WILL_SAVE_WAIT_UNTIL:
-      willSave*: WillSaveTextDocumentParams
-    of DID_RENAME_FILES:
-      renameFiles*: RenameFilesParams
-    of DID_DELETE_FILES:
-      deleteFiles*: DeleteFilesParams
-    of DID_CHANGE_CONFIGURATION:
-      discard  # params not needed; server re-requests config from client
-
-type
   WorkspaceNotificationKind* {.pure.} = enum
     DID_RENAME_FILES
     DID_DELETE_FILES

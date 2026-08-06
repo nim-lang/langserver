@@ -1,3 +1,10 @@
+import std/[json, os, strutils, options]
+import chronos
+import chronicles
+import ../protocol/types
+import ../langserver/[langserver_types, configurations, queue_types, queues, utils, diagnostics]
+import ../nim_tools/nimsuggest/nimsuggest
+
 # === workspace/didRenameFiles ===
 proc didRenameFile*(ls: LanguageServer, oldUri, newUri: string) =
   debug "File renamed", oldUri = oldUri, newUri = newUri

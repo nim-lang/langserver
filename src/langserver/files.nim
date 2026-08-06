@@ -128,7 +128,7 @@ proc didDeleteFile*(ls: LanguageServer, uri: string) =
     ls.files.openFiles.del(uri)
 
 proc didOpenFile*(
-    ls: LanguageServer, doc: TextDocumentItem
+  ls: LanguageServer, doc: TextDocumentItem
 ): Future[void] {.async.} =
   let uri = doc.uri
   if uri in ls.files.openFiles:

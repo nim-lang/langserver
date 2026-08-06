@@ -25,11 +25,14 @@
 #   ../nim_tools/compiler/nim_compiler,
 #   ../protocol/[enums, types],
 #   ../nim_tools/compiler/nimexpand,
-import ../langserver/[asyncprocmonitor, langserver_types]
+import std/[options, json, os]
+import chronos
+import chronicles
+import ../protocol/types
+import ../langserver/[asyncprocmonitor, langserver_types, constants]
+import ../nim_tools/nimsuggest/nimsuggest
 
-import macros except error
-
-proc getNphPath(): Option[string] =
+proc getNphPath*(): Option[string] =
   let path = findExe "nph"
   if path == "":
     none(string)
@@ -155,7 +158,7 @@ proc shutdown*(ls: LanguageServer, input: JsonNode): Future[JsonNode] {.async.} 
 
 # === exit ===
 proc exit*(
-    p: tuple[ls: LanguageServer, onExit: OnExitCallback], _: JsonNode
+  p: tuple[ls: LanguageServer, onExit: OnExitCallback], _: JsonNode
 ): Future[JsonNode] {.async.} =
   if not p.ls.isShutdown:
     debug "Received an exit request without prior shutdown request"

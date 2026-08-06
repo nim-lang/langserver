@@ -3,93 +3,6 @@ import chronos
 import ../nim_tools/nimsuggest/nimsuggest_types
 import ../protocol/types
 
-
-# ---------------------------------------------------------------------------
-# Nimsuggest TCP command queue types (defined first so NimsuggestSlot can use them)
-# ---------------------------------------------------------------------------
-
-type
-  FilePosition* = object
-    ## UTF-8 line (1-based) and column as used by nimsuggest.
-    line*: int
-    col*: int
-
-  NimsuggestQueryKind* {.pure.} = enum
-    # Completion / navigation
-    SUGGEST           ## sug          — completion items at position
-    DEFINITION        ## def          — go-to-definition
-    DECLARATION       ## declaration  — go-to-declaration
-    TYPE_DEFINITION   ## type         — go-to-type-definition
-    REFERENCES        ## use          — find all references
-    DOCUMENT_SYMBOLS  ## outline      — file symbol tree
-    WORKSPACE_SYMBOLS ## globalSymbols — workspace-wide symbol search
-    # Hover / highlighting
-    HOVER              ## highlight — symbol info at position
-    DOCUMENT_HIGHLIGHT ## highlight — all occurrences in file
-    # Signature / inlay
-    SIGNATURE_HELP ## con        — overload list at call site
-    INLAY_HINTS    ## inlayHints — type / parameter / exception hints
-    # Macro / ARC expansion
-    EXPAND ## expand — macro expansion at position
-    # File state
-    CHANGED       ## changed — notify nimsuggest of unsaved edits (stash)
-    CHECK_FILE    ## chkFile — per-file diagnostics
-    CHECK_PROJECT ## chk     — full project diagnostics
-    # Project management
-    RECOMPILE ## recompile — force full in-process recompile
-    KNOWN     ## known     — is this file in the module graph?
-
-  NimsuggestQuery* = ref object
-    id*: uint # Message id
-    ## ref so the response future stays alive after the queue pops it.
-    uri*: string
-      ## Source URI. Used to resolve the on-disk path and stash path.
-    dirtyFile*: string
-      ## Stash path when openFiles[uri].changed is true, else "".
-    responseFuture*: Future[seq[Suggest]]
-      ## Completed by the query processor when nimsuggest replies.
-      ## The LSP handler awaits this future; the processor completes it.
-    cancelled*: bool
-      ## Set by $/cancelRequest via PendingRequest.query.
-      ## processQueries checks this before dispatching; if true, completes
-      ## responseFuture with @[] immediately. Safe to write from any coroutine
-      ## because NimsuggestQuery is a ref and Chronos is single-threaded.
-    case kind*: NimsuggestQueryKind
-    of NimsuggestQueryKind.SUGGEST, 
-      NimsuggestQueryKind.DEFINITION, 
-      NimsuggestQueryKind.DECLARATION, 
-      NimsuggestQueryKind.TYPE_DEFINITION, 
-      NimsuggestQueryKind.REFERENCES, 
-      NimsuggestQueryKind.HOVER, 
-      NimsuggestQueryKind.DOCUMENT_HIGHLIGHT, 
-      NimsuggestQueryKind.SIGNATURE_HELP:
-      position*: FilePosition
-
-    of NimsuggestQueryKind.INLAY_HINTS:
-      inlayHints*: tuple[
-        start, finish: FilePosition,
-        options: string # e.g. " +exceptionHints +parameterHints"
-      ]
-
-    of NimsuggestQueryKind.EXPAND:
-      expand*: tuple[
-        position:  FilePosition,
-        tag: string # Tag passed to ns.expand for EXPAND queries (e.g. "" for expandAll,"  all" or "  2" for expand with level). Ignored for all other kinds.
-      ]
-    of NimsuggestQueryKind.DOCUMENT_SYMBOLS, 
-      NimsuggestQueryKind.WORKSPACE_SYMBOLS, 
-      NimsuggestQueryKind.CHANGED, 
-      NimsuggestQueryKind.CHECK_FILE, 
-      NimsuggestQueryKind.CHECK_PROJECT, 
-      NimsuggestQueryKind.RECOMPILE, 
-      NimsuggestQueryKind.KNOWN:
-      discard
-
-
-# ---------------------------------------------------------------------------
-# Slot lifecycle queue
-# ---------------------------------------------------------------------------
-
 type
   SlotCommandKind* {.pure.} = enum
     SPAWN
@@ -229,7 +142,7 @@ type
 
     state*: SlotState
 
-    commandMailbox*: AsyncQueue[SlotCommand]
+    # commandMailbox*: AsyncQueue[SlotCommand]
       ## Lifecycle commands. processCommands dequeues one at a time.
 
     queryMailbox*: AsyncQueue[NimsuggestQuery]

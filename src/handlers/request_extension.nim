@@ -1,8 +1,16 @@
-# === extension/macroExpand === 
-# === extension/status === 
-# === extension/capabilities === 
+import std/[options, os, strutils, strscans, json, tables]
+import chronos
+import chronos/asyncproc
+import chronicles
+import ../protocol/types
+import ../langserver/[langserver_types, utils, configurations, langserver]
+import ../nim_tools/compiler/testrunner
+
+# === extension/macroExpand ===
+# === extension/status ===
+# === extension/capabilities ===
 # === extension/suggest ===
-# === extension/tasks === 
+# === extension/tasks ===
 
 proc startNimbleProcess(
   ls: LanguageServer, args: seq[string]

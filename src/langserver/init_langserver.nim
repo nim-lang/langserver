@@ -1,9 +1,5 @@
-import std/[options, json, times]
-import chronos
-import chronicles
-import ../protocol/types
-import ../langserver/[langserver_types, configurations, messaging_types, utils]
-import ../nim_tools/nimsuggest/nimsuggest
+
+# NOTIFICATIONS
 
 # === initialized ===
 proc initialized*(ls: LanguageServer, _: JsonNode): Future[void] {.async.} =
@@ -30,7 +26,5 @@ proc cancelRequest*(ls: LanguageServer, params: CancelParams): Future[void] {.as
       ## If already dispatched, the in-flight call completes normally with @[].
       ## No future cancellation exception is thrown — handlers get empty results.
 
-# === $/setTrace ===
-proc setTrace*(ls: LanguageServer, params: SetTraceParams) {.async.} =
-  debug "setTrace", value = params.value
+
 

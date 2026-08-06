@@ -1,4 +1,6 @@
-import std/[options, tables, sequtils, strutils, sugar]
+import std/[options, tables, sequtils, strutils, strformat]
+import regex
+import with
 import ../protocol/[enums, types]
 import ../langserver/[utils, langserver_types]
 import ../nim_tools/nimsuggest/suggestapi

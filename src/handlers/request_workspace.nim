@@ -1,6 +1,14 @@
+import std/[json, sequtils, strformat, options]
+import chronos
+import chronicles
+import ../protocol/types
+import ../langserver/[langserver_types, constants, queues, queue_types, langserver, utils]
+import ../queries/dispatcher
+import ./[handler_utils, request_text_document]
+
 # === workspace/executeCommand ===
 proc executeCommand*(
-    ls: LanguageServer, params: ExecuteCommandParams
+  ls: LanguageServer, params: ExecuteCommandParams
 ): Future[JsonNode] {.async.} =
   let projectFile = params.arguments[0].getStr
   case params.command
@@ -36,7 +44,7 @@ proc executeCommand*(
 
 # === workspace/symbol ===
 proc workspaceSymbol*(
-    ls: LanguageServer, params: WorkspaceSymbolParams, id: int
+  ls: LanguageServer, params: WorkspaceSymbolParams, id: int
 ): Future[seq[SymbolInformation]] {.async.} =
   # Route through any live slot's queryMailbox.
   if ls.pool == nil:
