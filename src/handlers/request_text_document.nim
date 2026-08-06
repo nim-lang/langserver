@@ -14,9 +14,7 @@ import ../langserver/[utils, langserver_types, langserver, configurations, const
 import ../protocol/[enums, types]
 import ../queries/dispatcher
 
-import ./[init_queries, handler_utils, request_process]
-
-# === These set of handlers only send and process nimsuggest queries, they do not deal with file access or external programs other than nimsuggest.  (with the exception of codeAction, but that generates a json object without querying any async part of the code).
+import ./[handler_utils, queries_nimsuggest]
 
 # === textDocument/completion ===
 proc processCompletionQuery(
@@ -472,7 +470,6 @@ proc inlayHint*(
       configuration.parameterHintsEnabled,
     )
 
-
 # === textDocument/codeAction ===
 proc codeAction*(
   ls: LanguageServer, params: CodeActionParams
@@ -514,3 +511,9 @@ proc codeAction*(
         },
       },
     ]
+
+# === textDocument/formatting ===
+proc formatting*(
+  ls: LanguageServer, params: DocumentFormattingParams, id: int
+): Future[seq[TextEdit]] {.async.} =
+  return addFormattingQueryToQueue(params)

@@ -49,6 +49,7 @@ proc initLanguageServer*(params: CommandLineParams, storageDir: string): Languag
     nimDumpCache: initTable[string, NimbleDumpInfo](),
     cmdLineClientProcessId: params.clientProcessId,
     lspQueue: newAsyncQueue[LspDispatchItem](),
+    langserverQueue: newAsyncQueue[LangserverQuery](),
   )
   # Create the pool synchronously so ls.pool is never nil when event loop starts.
   # initNimsuggestInstances will update maxSlots from config and spawn entry points.

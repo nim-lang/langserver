@@ -6,6 +6,7 @@ import ../protocol/types
 import ../langserver/[langserver_types, utils, configurations, langserver]
 import ../nim_tools/compiler/testrunner
 
+# TODO!
 # === extension/macroExpand ===
 # === extension/status ===
 # === extension/capabilities ===

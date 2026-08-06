@@ -19,8 +19,8 @@ import std/[options, sets, tables, times, sequtils, json, strformat]
 import chronos
 import chronicles
 import ./queue_types
-import ./utils             # uriToPath, pathToUri
-import ./constants         # MAX_CRASH_RETRIES
+import ../langserver/utils   # uriToPath, pathToUri
+import ../langserver/constants # MAX_CRASH_RETRIES
 import ../nim_tools/nimsuggest/nimsuggest_types
 import ../nim_tools/nimsuggest/suggestapi
 

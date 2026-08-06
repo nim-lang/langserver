@@ -2,6 +2,7 @@ import std/[syncio, os, json, strutils, strformat]
 import json_rpc/[servers/socketserver, private/jrpc_sys, jsonmarshal, rpcclient, router]
 import chronicles, chronos
 import langserver/[langserver, langserver_types, utils, transports, constants, messaging_types]
+import queries/queries_langserver
 import langserver/asyncprocmonitor
 # import routes/[lsp, mcp]
 import routes/msp
@@ -242,6 +243,7 @@ proc main*(cmdLineParams: CommandLineParams): LanguageServer =
 
   result.registerProcMonitor()
   asyncSpawn result.processLspMessages()
+  asyncSpawn result.processLangserverQueue()
 
 when isMainModule:
   try:

@@ -1,30 +1,3 @@
-
-
-# import
-#   std/
-#     [
-#       os, sugar, sequtils, sets, tables, strformat, strscans, times, json, parseutils,
-#       strutils,
-#     ],
-#   pkg/[
-#     chronos,
-#     chronos/asyncproc,
-#     json_rpc/server,
-#     chronicles,
-#     json_serialization,
-#     regex,
-#     stew/byteutils,
-#     with,
-#   ],
-#   ../nim_tools/compiler/testrunner,
-#   ../nim_tools/nimsuggest/suggestapi,
-#   ../langserver/[langserver, langserver_types, utils, constants, configuration_types, configurations, messaging_types, queue_types, queues, files],
-#   ../queries/requests,
-#   ../nim_tools/nimsuggest/nimsuggest,
-#   ../nim_tools/nimsuggest/nimsuggest_types,
-#   ../nim_tools/compiler/nim_compiler,
-#   ../protocol/[enums, types],
-#   ../nim_tools/compiler/nimexpand,
 import std/[options, json, os]
 import chronos
 import chronicles
@@ -41,7 +14,7 @@ proc getNphPath*(): Option[string] =
 
 # === initialize ===
 proc initialize*(
-    p: tuple[ls: LanguageServer, onExit: OnExitCallback], params: LspInitializeParams
+  p: tuple[ls: LanguageServer, onExit: OnExitCallback], params: LspInitializeParams
 ): Future[LspInitializeResult] {.async.} =
   proc onClientProcessExitAsync(): Future[void] {.async.} =
     debug "onClientProcessExitAsync"
