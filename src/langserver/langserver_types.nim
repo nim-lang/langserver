@@ -127,16 +127,8 @@ type
     pool*: NimsuggestPool
     messaging*: LanguageServerMessaging
     lspQueue*: AsyncQueue[LspDispatchItem]
-      ## Global thin-dispatcher queue. processMessage enqueues here;
-      ## processLspMessages asyncSpawns runRpc for each item without awaiting.
-
     langserverQueue*: AsyncQueue[LangserverQuery]
-      ## Global FIFO gate for all LSP-triggered work. Notification and request
-      ## handlers enqueue LangserverQuery items here; processLangserverQueue
-      ## drains them in arrival order, guaranteeing that file-state mutations
-      ## (stash writes, fingerTable rebuilds) are applied before any subsequent
-      ## nimsuggest query is dispatched to the per-slot mailbox.
-
+    
     notify*: NotifyAction
     call*: CallAction
     onExit*: OnExitCallback

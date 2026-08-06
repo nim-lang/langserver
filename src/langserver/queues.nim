@@ -29,11 +29,11 @@ import ../nim_tools/nimsuggest/suggestapi
 # ---------------------------------------------------------------------------
 
 proc newSlot*(projectFile: string, isEntryPoint = false): NimsuggestSlot =
-  NimsuggestSlot(
+  return NimsuggestSlot(
+    state: SlotState.IDLE,
     projectFile: projectFile,
     ownedUris: initHashSet[string](),
     ns: none(Future[NimSuggest]),
-    state: SlotState.IDLE,
     commandMailbox: newAsyncQueue[SlotCommand](),
     queryMailbox: newAsyncQueue[NimsuggestQuery](),
     isEntryPoint: isEntryPoint,
@@ -229,11 +229,13 @@ proc query*(slot: NimsuggestSlot, q: NimsuggestQuery): Future[seq[Suggest]] =
 
 # IMPORTANT!  I do not see thecommandMailbox nor the queryMailbox being emptied here - as they will be out of date if nimsuggest is respawning.  Everything for this slot should be xancelled.å
 
-proc execSpawn(
-    slot: NimsuggestSlot, pool: NimsuggestPool, projectFile, triggerUri: string
-) {.async.} =
-  ## Start a nimsuggest process for `projectFile`.
-  ## Sets slot.state, resolves slot.ns, then re-registers all ownedUris.
+proc execSpawn*(
+  slot: NimsuggestSlot, pool: NimsuggestPool, projectFile: string
+): Future[bool] {.async.} =
+  ## Start a nimsuggest process for `projectFile`, retrying up to MAX_CRASH_RETRIES times.
+  ## Returns true if the spawn succeeded, false if all attempts failed.
+  ## Sets slot.state, resolves slot.ns, and re-registers all ownedUris on success.
+  ## Removes the slot from the pool on permanent failure.
   debug "execSpawn: enter",
     slotProject = slot.projectFile, projectFile = projectFile,
     slotState = $slot.state, nsIsSome = slot.ns.isSome,
@@ -241,82 +243,84 @@ proc execSpawn(
   if slot.isActive and slot.ns.isSome:
     debug "execSpawn: slot already spawning/ready, skipping",
       projectFile = slot.projectFile, state = $slot.state
-    return
+    return true
 
   slot.state = SlotState.SPAWNING
   let nsFut = newFuture[NimSuggest]("execSpawn")
   slot.ns = some(nsFut)
 
-  debug "execSpawn: calling spawnProc", projectFile = projectFile, triggerUri = triggerUri
-  try:
-    let ns = await pool.spawnProc(projectFile, @[])
-    debug "execSpawn: spawnProc returned successfully", projectFile = projectFile
-    nsFut.complete(ns)
-    slot.state = SlotState.READY
-    slot.crashCount = 0
-    slot.lastCmdTime = some(now())
-    debug "execSpawn: ready", projectFile = projectFile, port = ns.port
-    # Notify the LanguageServer that status changed so extension/statusUpdate
-    # is sent to the client reflecting the new nimsuggest instance.
-    if pool.statusChangedProc != nil:
-      pool.statusChangedProc()
+  while slot.crashCount <= MAX_CRASH_RETRIES:
+    if slot.crashCount > 0:
+      let backoffMs = min(1_000 * (1 shl min(slot.crashCount - 1, 14)), 30_000)
+      debug "execSpawn: backing off before retry",
+        projectFile = projectFile, backoffMs = backoffMs, attempt = slot.crashCount
+      await sleepAsync(backoffMs.millis)
 
-    # Re-register all owned URIs with the fresh process.
-    # ownedUris survived the spawn (or restart) so we know exactly
-    # which files to tell nimsuggest about. No table lookup needed.
-    for uri in slot.ownedUris:
-      if uri notin slot.crashedUris:
-        ns.openFiles.incl(uri)
-        debug "execSpawn: re-registered uri", uri = uri
+    debug "execSpawn: calling spawnProc",
+      projectFile = projectFile, attempt = slot.crashCount + 1
+    try:
+      let ns = await pool.spawnProc(projectFile, @[])
+      debug "execSpawn: spawnProc succeeded", projectFile = projectFile, port = ns.port
+      nsFut.complete(ns)
+      slot.state = SlotState.READY
+      slot.crashCount = 0
+      slot.lastCmdTime = now()
+      if pool.statusChangedProc != nil:
+        pool.statusChangedProc()
+      for uri in slot.ownedUris:
+        if uri notin slot.crashedUris:
+          ns.openFiles.incl(uri)
+          debug "execSpawn: re-registered uri", uri = uri
+      return true
 
-  except CatchableError as ex:
-    debug "execSpawn: spawnProc raised exception",
-      projectFile = projectFile, msg = ex.msg
-    nsFut.fail(ex)
-    slot.state = SlotState.CRASHED
-    error "execSpawn: failed to spawn nimsuggest",
-      projectFile = projectFile, msg = ex.msg
-    inc slot.crashCount
-    if slot.crashCount <= MAX_CRASH_RETRIES:
-      debug "execSpawn: scheduling restart after crash",
-        projectFile = projectFile, crashCount = slot.crashCount
-      slot.send SlotCommand(
-        kind: SlotCommandKind.RESTART,
-        spawnProjectFile: slot.projectFile,
-        spawnTriggerUri: "",
-      )
-    else:
-      error "execSpawn: crash limit reached, slot permanently failed",
-        projectFile = projectFile, crashCount = slot.crashCount
-      if pool.notifyProc != nil:
-        pool.notifyProc(
-          "window/showMessage",
-          %*{
-            "type": 1, # MessageType.Error
-            "message": fmt"Nimsuggest for {projectFile} failed to start after {MAX_CRASH_RETRIES} attempts. Check your nim/nimsuggest installation.",
-          },
-        )
-      pool.removeSlot(projectFile)
+    except CatchableError as ex:
+      inc slot.crashCount
+      slot.state = SlotState.CRASHED
+      error "execSpawn: spawn attempt failed",
+        projectFile = projectFile, attempt = slot.crashCount, msg = ex.msg
 
-proc execStop(slot: NimsuggestSlot, pool: NimsuggestPool) {.async.} =
+  # All retries exhausted.
+  error "execSpawn: crash limit reached, slot permanently failed",
+    projectFile = projectFile, crashCount = slot.crashCount
+  nsFut.fail(newException(CatchableError,
+    fmt"Nimsuggest for {projectFile} failed after {MAX_CRASH_RETRIES} attempts"))
+  if pool.notifyProc != nil:
+    pool.notifyProc(
+      "window/showMessage",
+      %*{
+        "type": 1,
+        "message": fmt"Nimsuggest for {projectFile} failed to start after {MAX_CRASH_RETRIES} attempts. Check your nim/nimsuggest installation.",
+      },
+    )
+
+  return false
+
+proc execStop*(slot: NimsuggestSlot, pool: NimsuggestPool): Future[bool] {.async.} =
   ## Shut down the slot's nimsuggest process.
   ## ownedUris is NOT cleared — they transfer to the next spawn.
   ## In-flight queries complete with @[] because the TCP socket closes.
-  if slot.state notin {SlotState.READY, SlotState.SPAWNING}:
-    return
+  ## Returns true if the slot is stopped, false if the stop proc raised.
+  case slot.state
+  of SlotState.STOPPING:
+    # Another coroutine is already stopping this slot — wait for it to finish.
+    while slot.ns.isSome:
+      await sleepAsync(10.millis)
+    return true
 
-  slot.state = SlotState.STOPPING
-  let nsOpt = slot.resolvedNs
-  if nsOpt.isSome:
-    debug "execStop: stopping nimsuggest", projectFile = slot.projectFile
-    try:
-      await pool.stopProc(nsOpt.get)
-    except CatchableError as ex:
-      debug "execStop: stop raised (process may already be dead)",
-        projectFile = slot.projectFile, msg = ex.msg
-
-  slot.ns = none(Future[NimSuggest])
-  slot.state = SlotState.IDLE
+  of SlotState.READY, SlotState.SPAWNING, SlotState.CRASHED:
+    slot.state = SlotState.STOPPING
+    let nsOpt = slot.resolvedNs
+    if nsOpt.isSome:
+      debug "execStop: stopping nimsuggest", projectFile = slot.projectFile
+      try:
+        await pool.stopProc(nsOpt.get)
+        slot.ns = none(Future[NimSuggest])
+        return true
+      except CatchableError as ex:
+        debug "execStop: stop raised (process may already be dead)",
+          projectFile = slot.projectFile, msg = ex.msg
+    slot.ns = none(Future[NimSuggest])
+    return false
 
 proc processCommands*(slot: NimsuggestSlot, pool: NimsuggestPool) {.async.}
 proc processQueries*(slot: NimsuggestSlot, pool: NimsuggestPool) {.async.}

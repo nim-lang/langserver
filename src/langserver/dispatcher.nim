@@ -249,6 +249,63 @@ proc addFileToOpenFiles*(
   # Register ownership in the slot (sync, atomic with above)
   nimsuggestSlot.assignUri(params.uri)
 
+proc sortNimsuggestByDate(a, b: NimsuggestSlot): int = 
+  if a.lastCmdTime == b.lastCmdTime:
+    return 0
+  elif a.lastCmdTime < b.lastCmdTime:
+    return -1
+  else:
+    return 1
+
+proc getLeastRecentlyUsedNimsuggestSlotInFullPool*(pool: NimsuggestPool): NimsuggestSlot =
+  ## Returns the active slot with the oldest lastCmdTime.
+  ## Returns nil if no active slots exist.
+  let currentTime = now()
+  # var nimsuggestInstances = sorted(sortNimsuggestByDate)
+  var allSlots: seq[NimsuggestSlot] = @[]
+  for slot in pool.slots.values.toSeq:
+    allSlots.add(slot)
+  let sortedSlots = sorted(allSlots, sortNimsuggestByDate)
+  return sortedSlots[0]
+
+
+  # var best: NimsuggestSlot = nil
+  # var bestSeconds = low(float)
+
+  # for slot in pool.slots.values:
+  #   if not slot.isActive:
+  #     continue
+  #   let secondsIdle = (currentTime.toTime - slot.lastCmdTime.toTime).inSeconds.float
+  #   if secondsIdle > bestSeconds:
+  #     bestSeconds = secondsIdle
+  #     best = slot
+
+  # best
+
+proc lruAmong(slots: seq[NimsuggestSlot]): NimsuggestSlot =
+  result = slots[0]
+  for slot in slots[1..^1]:
+    if slot.lastCmdTime < result.lastCmdTime:
+      result = slot
+
+proc nimsuggestSlotToEvict*(pool: NimsuggestPool): NimsuggestSlot =
+  ## Selects the slot to evict from a full pool.
+  ## Priority: CRASHED → STOPPING → READY → SPAWNING.
+  ## Within each tier, the least recently used slot is chosen.
+  ## Precondition: pool has at least one slot.
+  assert pool.slots.len > 0, "nimsuggestSlotToEvict called on empty pool"
+
+  for state in [SlotState.CRASHED, SlotState.STOPPING, SlotState.READY, SlotState.SPAWNING]:
+    var candidates: seq[NimsuggestSlot]
+    for slot in pool.slots.values:
+      if slot.state == state:
+        candidates.add(slot)
+    if candidates.len > 0:
+      return lruAmong(candidates)
+
+  # Unreachable if precondition holds, but satisfies the compiler.
+  raiseAssert "nimsuggestSlotToEvict: pool has slots but none matched any state"
+
 proc processLangserverQueue*(ls: LanguageServer): Future[void] {.async.} =
   ## Single coroutine that drains ls.langserverQueue in FIFO order.
   ##
@@ -288,24 +345,88 @@ proc processLangserverQueue*(ls: LanguageServer): Future[void] {.async.} =
           if fileIsKnown.isSome:
             ls.addFileToOpenFiles(fileIsKnown.get(), q.didOpen.textDocument)
           else:
-            # This file is not known by any running nimsuggest instance
-            # Check if there is a free nimsuggest slot 
-            # If there is: 
-            #   - spawn a new nimsuggest instance 
-            #   - wait for it to finish
-            #   - then addFileToOpenFiles() the uri to this new nimsuggest slot.
-            # If there is no free nimsuggest slot: 
-            #   - Get the LRU (Least Recently Used) Nimsuggest Instance 
-            #   - Clear all its pending requests
-            #   - Clear its queryMailbox
-            #   - Restart this instance using the uri 
-            #   - then addFileToOpenFiles() the uri to this new nimsuggest slot.
+            # This file is not known by any running nimsuggest instance.
 
+            # Find the correct entry point for this file, otherwise, treat the file as an orphan and run nimsuggest using it as the projectFile.
+            var projectFile = uriToPath(uri)
+            let correctProjectFile = getIntendedProject(ls, uri)
+            if correctProjectFile.len > 0:
+              projectFile = correctProjectFile
             
-            discard
+            if ls.pool.canSpawn:
+              # Free slot available — create a new nimsuggest instance.
+              let newSlot = NimsuggestSlot(
+                state: SlotState.SPAWNING,
+                projectFile: projectFile,
+                ownedUris: initHashSet[string](),
+                ns: none(Future[NimSuggest]),
+                queryMailbox: newAsyncQueue[NimsuggestQuery](),
+                lastCmdTime: times.now(),
+                isEntryPoint: projectPath == correctProjectFile,
+                crashedUris: initHashSet[string](),
+              )
+              ls.pool.addSlot(s)
+              # Start the query queue running
+              let successfulSpawn: bool = await execSpawn(newSlot, pool, projectFile)
+              if successfulSpawn:
+                discard await newSlot.ns.get()
+                ls.addFileToOpenFiles(fileIsKnown.get(), q.didOpen.textDocument)
+                asyncSpawn processQueries(newSlot, ls.pool)
+              else:
+                pool.removeSlot(projectFile)
 
+            else:
+              # Pool at capacity — evict a slot.
+              let slotToEvict = nimsuggestSlotToEvict(ls.pool)
+              while slotToEvict.queryMailbox.len > 0:
+                let pendingQ = lruSlot.queryMailbox.popFirstNoWait()
+                if not pendingQ.responseFuture.finished:
+                  pendingQ.responseFuture.complete(@[])
+
+              let successfulStop = execStop(slotToEvict)
+              if successfulStop:
+                ls.pool.removeSlot(slotToEvict)
+                
+              # Create a new slot
+              let newSlot = NimsuggestSlot(
+                state: SlotState.SPAWNING,
+                projectFile: projectFile,
+                ownedUris: initHashSet[string](),
+                ns: none(Future[NimSuggest]),
+                queryMailbox: newAsyncQueue[NimsuggestQuery](),
+                lastCmdTime: times.now(),
+                isEntryPoint: projectPath == correctProjectFile,
+                crashedUris: initHashSet[string](),
+              )
+              ls.pool.addSlot(s)
+              # Start the query queue running
+              let successfulSpawn = await execSpawn(newSlot, pool, projectFile)
+              if successfulSpawn:
+                discard await newSlot.ns.get()
+                ls.addFileToOpenFiles(fileIsKnown.get(), q.didOpen.textDocument)
+                asyncSpawn processQueries(newSlot, ls.pool)
+              else:
+                debug "Failed to spawn nimsuggest for file", uri = uri
+            
       of FileAccessQueryKind.DID_CHANGE:
-        discard  # → ls.didChange(query.didChange)
+        let uri = q.didChange.textDocument.uri
+        let contentChanges = q.didChange.contentChanges
+    
+        if uri notin ls.files.openFiles:
+          return
+        let file = open(ls.uriStorageLocation(uri), fmWrite)
+
+        ls.files.openFiles[uri].fingerTable = @[]
+        ls.files.openFiles[uri].changed = true
+        if contentChanges.len <= 0:
+          file.close()
+          return
+        for line in contentChanges[0].text.splitLines:
+          ls.files.openFiles[uri].fingerTable.add line.createUTFMapping()
+          file.writeLine line
+        file.close()
+        # I have removed the scheduled file-checking that runs after the user has not been typing for 1 second, or so, and instead just have this run on the user saving.
+
       of FileAccessQueryKind.DID_SAVE:
         discard  # → ls.didSave(query.didSave)
       of FileAccessQueryKind.DID_CLOSE:
