@@ -1,14 +1,14 @@
-import std/[options, tables, algorithm, os, sequtils, sugar]
+import std/[options, tables, algorithm, os, sequtils, sugar, times]
 import chronos
 import chronicles
-import ../nim_tools/nimsuggest/[suggestapi, nimsuggest_types, nimsuggest]
+import ../nim_tools/nimsuggest/[suggestapi, nimsuggest_types]
 import ../nim_tools/nimcheck/nimcheck
 import ../nim_tools/compiler/nim_compiler
 import ../protocol/[enums, types]
 import ./[
   checking, configurations,
-  constants, diagnostics, formatting, 
-  dispatcher_utils
+  constants, diagnostics, formatting,
+  dispatcher_utils, nimsuggest_slots
 ]
 import ./[langserver_types, nimsuggest_types, query_types]
 
@@ -147,7 +147,7 @@ proc processLangserverQueue*(ls: LanguageServer): Future[void] {.async.} =
         debug "didSave: sending CHANGED query", uri = uri
         # Directly query nimsuggest
         let changedQuery = LangserverQuery(
-           kind: LanguageServerKind.NIMSUGGEST,
+           kind: LangserverQueryKind.NIMSUGGEST,
           nimsuggest: NimsuggestQuery(
             id: 0,
             kind: NimsuggestQueryKind.CHANGED,
@@ -282,3 +282,6 @@ proc processLangserverQueue*(ls: LanguageServer): Future[void] {.async.} =
           if oldConfiguration.nimsuggestPath != newConfiguration.nimsuggestPath or
               oldConfiguration.maxNimsuggestProcesses != newConfiguration.maxNimsuggestProcesses:
             ls.restartAllNimsuggestInstances()
+
+    of FileAccessQueryKind.DID_CHANGE_CONFIGURATION:
+      discard #TODO

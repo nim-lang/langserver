@@ -3,7 +3,6 @@ import chronos
 import chronicles
 import ../protocol/types
 import ../langserver/[asyncprocmonitor, langserver_types, constants]
-import ../nim_tools/nimsuggest/nimsuggest
 
 proc getNphPath*(): Option[string] =
   let path = findExe "nph"

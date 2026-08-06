@@ -5,7 +5,7 @@ import ../protocol/types
 import ../nim_tools/nimsuggest/[nimsuggest_types, nimsuggest]
 import ../nim_tools/nimcheck/nimcheck
 import ../nim_tools/compiler/nim_compiler
-import ./[configurations, langserver_types, constants, utils, queue_types, queues, diagnostics]
+import ./[configurations, langserver_types, constants, utils, queue_types, dispatcher_utils, diagnostics]
 
 
 proc scheduleFileCheck(ls: LanguageServer, uri: string) {.gcsafe, raises: [].} =
@@ -105,7 +105,7 @@ proc checkProject*(ls: LanguageServer, uri: string): Future[void] {.async.} =
     dirtyFile: ls.uriToStash(uri),
     responseFuture: newFuture[seq[Suggest]]("checkProject"),
   )
-  let diagnostics = await slot.query(q)
+  let diagnostics = await slot.query(q) #???
   ls.progress(token, "end")
 
   proc getFilepath(s: Suggest): string = s.filePath

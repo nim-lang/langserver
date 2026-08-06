@@ -2,28 +2,16 @@ import std/[syncio, os, json, strutils, strformat]
 import json_rpc/[servers/socketserver, private/jrpc_sys, jsonmarshal, rpcclient, router]
 import chronicles, chronos
 import langserver/[langserver, langserver_types, utils, transports, constants, messaging_types]
-import queries/queries_langserver
 import langserver/asyncprocmonitor
-# import routes/[lsp, mcp]
-import routes/msp
 import ./handlers/handlers as lsp
 
 import protocol/types
-import nim_tools/nimsuggest/nimsuggest
 when defined(posix):
   import posix
 
 proc registerMcpRoutes(srv: RpcSocketServer, ls: LanguageServer) =
-  # Routes
-  srv.register(
-    "initialize", wrapRpc(partial(mcp.initialize, (ls: ls, onExit: ls.onExit)))
-  )
-
-  srv.register("tools/list", wrapRpc(partial(mcp.listTools, ls)))
-  srv.register("tools/call", wrapRpc(partial(mcp.callTool, ls)))
-
-  # Notifications
-  srv.register("notifications/initialized", wrapRpc(partial(mcp.initialized, ls)))
+  # TODO: implement MCP module (routes/mcp.nim)
+  discard
 
 proc registerLspRoutes(srv: RpcSocketServer, ls: LanguageServer) =
   srv.register(

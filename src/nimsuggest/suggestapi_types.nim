@@ -3,7 +3,7 @@ import std/[options, sets, times, deques]
 import chronos
 import chronos/asyncproc
 
-import ../../protocol/types
+import ../protocol/types
 
 const REQUEST_TIMEOUT* = 120000
 const HighestSupportedNimSuggestProtocolVersion* = 4

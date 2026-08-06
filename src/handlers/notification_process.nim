@@ -3,7 +3,7 @@ import chronos
 import chronicles
 import ../protocol/types
 import ../langserver/[langserver_types, configurations, messaging_types, utils]
-import ../nim_tools/nimsuggest/nimsuggest
+import ../langserver/nimsuggest_slots
 
 # === initialized ===
 proc initialized*(ls: LanguageServer, _: JsonNode): Future[void] {.async.} =

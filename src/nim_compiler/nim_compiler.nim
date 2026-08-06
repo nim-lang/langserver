@@ -16,8 +16,8 @@ proc getNimVersion*(nimDir: string): string =
       return line
 
 proc getNimPath*(conf: NlsConfig): Option[string] =
-  if conf.nimSuggestPath.isSome and conf.nimsuggestPath.get().fileExists():
-    some(conf.nimSuggestPath.get.parentDir / "nim")
+  if conf.nimsuggestPath.isSome and conf.nimsuggestPath.get().fileExists():
+    some(conf.nimsuggestPath.get.parentDir / "nim")
   else:
     let path = findExe "nim"
     if path != "":

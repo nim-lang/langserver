@@ -7,9 +7,9 @@ import ../nim_tools/compiler/nim_compiler
 import ../protocol/[enums, types]
 import ./[
   checking, configurations,
-  constants, diagnostics, formatting, 
+  constants, diagnostics,
 ]
-import ./[langserver_types, nimsuggest_types, query_types]
+import ./[langserver_types, query_types]
 
 proc isKnownByNimsuggest*(nimsuggest: Nimsuggest, filePath: string): Future[bool] {.async.} =
   # Checks response[0].forth == "true" — the boolean result comes back as a string in the forth field of a Suggest object.

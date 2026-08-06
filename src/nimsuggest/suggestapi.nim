@@ -5,9 +5,9 @@ import chronos/asyncproc
 import chronicles
 import stew/byteutils
 
-import ../../protocol/[enums, types]
-import ../../langserver/utils
-import ./nimsuggest_types
+import ../protocol/[enums, types]
+import ../utils/utils
+import ./suggestapi_types
 
 func canHandleUnknown*(ns: Nimsuggest): bool =
   nsUnknownFile in ns.capabilities
@@ -473,3 +473,46 @@ proc isKnown*(nimsuggest: Nimsuggest, filePath: string): Future[bool] {.async.} 
     return false
   debug "isKnown", filePath = filePath, sug = sug[0].forth
   return sug.len > 0 and sug[0].forth == "true"
+
+proc range*(startLine, startCharacter, endLine, endCharacter: int): Range =
+  return
+    Range %* {
+      "start": {"line": startLine, "character": startCharacter},
+      "end": {"line": endLine, "character": endCharacter},
+    }
+
+proc toLabelRange*(suggest: Suggest): Range =
+  with suggest:
+    return range(line - 1, column, line - 1, column + utf16Len(qualifiedPath[^1]))
+
+
+proc toDiagnosticJson(suggest: Suggest): JsonNode =
+  with suggest:
+    let
+      textStart = doc.find('\'')
+      textEnd = doc.rfind('\'')
+      endColumn =
+        if textStart >= 0 and textEnd > textStart:
+          column + utf16Len(doc[textStart + 1 ..< textEnd])
+        else:
+          column + 1
+
+    let r = range(line - 1, column, line - 1, endColumn)
+    result = %*{
+      "uri": pathToUri(filePath),
+      "range": %*{
+        "start": %*{"line": r.start.line, "character": r.start.character},
+        "end": %*{"line": r.`end`.line, "character": r.`end`.character},
+      },
+      "severity":
+        case forth
+        of "Error": DiagnosticSeverity.Error.int
+        of "Hint": DiagnosticSeverity.Hint.int
+        of "Warning": DiagnosticSeverity.Warning.int
+        else: DiagnosticSeverity.Error.int
+      ,
+      "message": doc,
+      "source": "nim",
+      "code": "nimsuggest chk",
+    }
+

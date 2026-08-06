@@ -7,14 +7,12 @@ import stew/byteutils
 import with
 
 import ../nim_tools/nimsuggest/suggestapi
-import ../nim_tools/nimsuggest/nimsuggest
 import ../nim_tools/compiler/nimexpand
 import ../nim_tools/nimcheck/nimcheck
-import ../langserver/[utils, langserver_types, langserver, configurations, constants, diagnostics, queues, queue_types]
+import ../langserver/[utils, langserver_types, langserver, configurations, constants, diagnostics, queue_types]
 import ../protocol/[enums, types]
-import ../queries/dispatcher
 
-import ./[handler_utils, queries_nimsuggest]
+import ./[handler_utils, queries_nimsuggest, queries_file_access]
 
 # === textDocument/completion ===
 proc processCompletionQuery(
@@ -516,4 +514,4 @@ proc codeAction*(
 proc formatting*(
   ls: LanguageServer, params: DocumentFormattingParams, id: int
 ): Future[seq[TextEdit]] {.async.} =
-  return addFormattingQueryToQueue(params)
+  return await ls.addFormattingQueryToQueue(params)

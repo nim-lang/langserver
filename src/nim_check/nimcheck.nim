@@ -102,3 +102,39 @@ proc nimCheck*(filePath: string, nimPath: string): Future[seq[CheckResult]] {.as
     parseCheckResults(lines)
   finally:
     await shutdownChildProcess(process)
+
+
+proc toDiagnosticJson(checkResult: CheckResult): JsonNode =
+  let
+    textStart = checkResult.msg.find('\'')
+    textEnd = checkResult.msg.rfind('\'')
+    endColumn =
+      if textStart >= 0 and textEnd >= 0 and textEnd > textStart:
+        checkResult.column + utf16Len(checkResult.msg[textStart + 1 ..< textEnd])
+      else:
+        checkResult.column + 1
+
+  let r = range(
+    checkResult.line - 1,
+    max(0, checkResult.column),
+    checkResult.line - 1,
+    max(0, endColumn),
+  )
+  result = %*{
+    "uri": pathToUri(checkResult.file),
+    "range": %*{
+      "start": %*{"line": r.start.line, "character": r.start.character},
+      "end": %*{"line": r.`end`.line, "character": r.`end`.character},
+    },
+    "severity":
+      case checkResult.severity
+      of "Error": DiagnosticSeverity.Error.int
+      of "Hint": DiagnosticSeverity.Hint.int
+      of "Warning": DiagnosticSeverity.Warning.int
+      else: DiagnosticSeverity.Error.int
+    ,
+    "message": checkResult.msg,
+    "source": "nim",
+    "code": "nim check",
+  }
+

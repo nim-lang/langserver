@@ -3,6 +3,7 @@ import chronos
 import chronicles
 import ../nim_tools/nimsuggest/[nimsuggest_types, suggestapi]
 import ../langserver/[utils, constants, queue_types, langserver_types]
+import ./handler_utils
 
 # === NIMSUGGEST QUERIES ===
 proc initNimsuggestPositionQuery*(
@@ -89,7 +90,7 @@ proc addQueryToQueue*(
 ): Future[seq[Suggest]] =
   let uri = q.uri
   ls.langserverQueue.addLastNoWait(LangserverQuery(
-    kind: LanguageServerKind.NIMSUGGEST,
+    kind: LangserverQueryKind.NIMSUGGEST,
     nimsuggest: q
   ))
   return q.responseFuture

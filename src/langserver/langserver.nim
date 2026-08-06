@@ -16,7 +16,7 @@ import ../nim_tools/nimsuggest/[suggestapi, nimsuggest, nimsuggest_types]
 import ../nim_tools/nimcheck/nimcheck
 import ../nim_tools/compiler/nim_compiler
 import ../protocol/[enums, types]
-import ./[constants, utils, langserver_types, configuration_types, messaging_types, configurations, diagnostics, files, queues, queue_types]
+import ./[constants, utils, langserver_types, configuration_types, messaging_types, configurations, diagnostics, nimsuggest_slots, dispatcher_utils, queue_types]
 
 proc sendStatusChanged*(ls: LanguageServer) {.raises: [].}
 
@@ -54,10 +54,9 @@ proc initLanguageServer*(params: CommandLineParams, storageDir: string): Languag
   # Create the pool synchronously so ls.pool is never nil when event loop starts.
   # initNimsuggestInstances will update maxSlots from config and spawn entry points.
   result.pool = newPool(
+    slots: initTable[string, NimsuggestSlot](),
     maxSlots = NIM_MAX_NS_PROCESSES,
-    spawnProc = makeSpawnProc(result),
-    stopProc = makeStopProc(),
-    isKnownProc = makeIsKnownProc(),
+
   )
   let ls = result # capture ref for the closure below
   result.pool.notifyProc = proc(meth: string, params: JsonNode) {.gcsafe, raises: [].} =
@@ -161,6 +160,10 @@ proc addProjectFileToPendingRequest*(ls: LanguageServer, id: uint, uri: string) 
       ls.sendStatusChanged
   except CatchableError as e:
     error "addProjectFileToPendingRequest failed", uri = uri, msg = e.msg
+
+
+
+
 
 # proc getProjectFileAutoGuess*(
 #     ls: LanguageServer, fileUri: string
@@ -401,3 +404,66 @@ proc tick*(ls: LanguageServer): Future[void] {.async.} =
   except CatchableError as ex:
     error "Error in tick", msg = ex.msg
     writeStacktrace(ex)
+
+proc getNimbleDumpInfo*(
+    ls: LanguageServer, nimbleFile: string
+): Future[NimbleDumpInfo] {.async.} =
+  if nimbleFile in ls.nimDumpCache:
+    return ls.nimDumpCache.getOrDefault(nimbleFile)
+  var process: AsyncProcessRef
+  try:
+    # nimble dump expects no file argument — it reads the .nimble in its CWD.
+    # Passing an absolute path as an argument causes nimble to mangle it
+    # (prepend CWD, strip leading '/') and fail silently with empty output.
+    let workDir =
+      if nimbleFile == "": getCurrentDir()
+      else: nimbleFile.parentDir
+    
+    let nimbleDirEnv = getEnv("NIMBLE_DIR", "<not set>")
+    let homeEnv = getEnv("HOME", "<not set>")
+    let pathEnv = getEnv("PATH", "<not set>")
+    debug "getNimbleDumpInfo environment",
+      nimbleFile = nimbleFile,
+      workDir = workDir,
+      NIMBLE_DIR = nimbleDirEnv,
+      HOME = homeEnv,
+      PATH = pathEnv
+    process = await startProcess(
+      "nimble",
+      workingDir = workDir,
+      arguments = @["dump"],
+      options = {UsePath},
+      stderrHandle = AsyncProcess.Pipe,
+      stdoutHandle = AsyncProcess.Pipe,
+    )
+    let info = string.fromBytes(process.stdoutStream.read().await)
+    debug "getNimbleDumpInfo result ", info
+
+    for line in info.splitLines:
+      if line.startsWith("srcDir"):
+        result.srcDir = line[(1 + line.find '"') ..^ 2]
+      if line.startsWith("name"):
+        result.name = line[(1 + line.find '"') ..^ 2]
+      if line.startsWith("nimDir"):
+        result.nimDir = some line[(1 + line.find '"') ..^ 2]
+      if line.startsWith("nimblePath"):
+        result.nimblePath = some line[(1 + line.find '"') ..^ 2]
+      if line.startsWith("entryPoints"):
+        result.entryPoints =
+          line[(1 + line.find '"') ..^ 2].split(',').mapIt(it.strip(chars = {' ', '"'}))
+
+    # Cache under the resolved path AND under "" so that repeated empty-string
+    # calls don't re-run the SAT solver on every nimsuggest spawn.
+    var nimbleFile = nimbleFile
+    if nimbleFile == "":
+      ls.nimDumpCache[""] = result
+      if result.nimblePath.isSome:
+        nimbleFile = result.nimblePath.get
+    if nimbleFile != "":
+      ls.nimDumpCache[nimbleFile] = result
+  except OSError, IOError:
+    debug "Failed to get nimble dump info", nimbleFile = nimbleFile
+  finally:
+    if process != nil:
+      await shutdownChildProcess(process)
+

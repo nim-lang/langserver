@@ -2,65 +2,6 @@ import chronos
 import ../nim_tools/nimsuggest/nimsuggest_types
 import ../protocol/types
 
-# === NIMSUGGEST QUERIES ===
-type
-  FilePosition* = object
-    line*: int  ## 1-based (nimsuggest convention)
-    col*: int   ## UTF-8 byte column
-
-  NimsuggestQueryKind* {.pure.} = enum
-    SUGGEST           ## sug          — completion items at position
-    DEFINITION        ## def          — go-to-definition
-    DECLARATION       ## declaration  — go-to-declaration
-    TYPE_DEFINITION   ## type         — go-to-type-definition
-    REFERENCES        ## use          — find all references
-    DOCUMENT_SYMBOLS  ## outline      — file symbol tree
-    WORKSPACE_SYMBOLS ## globalSymbols — workspace-wide symbol search
-    HOVER              ## highlight — symbol info at position
-    DOCUMENT_HIGHLIGHT ## highlight — all occurrences in file
-    SIGNATURE_HELP     ## con        — overload list at call site
-    INLAY_HINTS        ## inlayHints — type / parameter / exception hints
-    EXPAND             ## expand — macro expansion at position
-    CHANGED            ## changed — notify nimsuggest of unsaved edits (stash)
-    CHECK_FILE         ## chkFile — per-file diagnostics
-    CHECK_PROJECT      ## chk     — full project diagnostics
-    RECOMPILE          ## recompile — force full in-process recompile
-    KNOWN              ## known     — is this file in the module graph?
-
-  NimsuggestQuery* = ref object
-    id*: uint
-    uri*: string
-      ## Source URI. Used to resolve the on-disk path and stash path.
-    dirtyFile*: string
-      ## Stash path when openFiles[uri].changed is true, else "".
-    responseFuture*: Future[seq[Suggest]]
-      ## Completed by the query processor when nimsuggest replies.
-    cancelled*: bool
-      ## Set by $/cancelRequest. processQueries completes responseFuture
-      ## with @[] immediately if true. Safe across coroutines (ref + single-threaded).
-    case kind*: NimsuggestQueryKind
-    of NimsuggestQueryKind.SUGGEST,
-       NimsuggestQueryKind.DEFINITION,
-       NimsuggestQueryKind.DECLARATION,
-       NimsuggestQueryKind.TYPE_DEFINITION,
-       NimsuggestQueryKind.REFERENCES,
-       NimsuggestQueryKind.HOVER,
-       NimsuggestQueryKind.DOCUMENT_HIGHLIGHT,
-       NimsuggestQueryKind.SIGNATURE_HELP:
-      position*: FilePosition
-    of NimsuggestQueryKind.INLAY_HINTS:
-      inlayHints*: tuple[start, finish: FilePosition, options: string]
-    of NimsuggestQueryKind.EXPAND:
-      expand*: tuple[position: FilePosition, tag: string]
-    of NimsuggestQueryKind.DOCUMENT_SYMBOLS,
-       NimsuggestQueryKind.WORKSPACE_SYMBOLS,
-       NimsuggestQueryKind.CHANGED,
-       NimsuggestQueryKind.CHECK_FILE,
-       NimsuggestQueryKind.CHECK_PROJECT,
-       NimsuggestQueryKind.RECOMPILE,
-       NimsuggestQueryKind.KNOWN:
-      discard
-
 # === FILE ACCESS QUERIES ===
 type
   FileAccessQueryKind* {.pure.} = enum

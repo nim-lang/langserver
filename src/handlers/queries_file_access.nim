@@ -1,3 +1,5 @@
+import std/json
+import chronos
 import ../langserver/[queue_types, langserver_types]
 
 proc initDidOpenQuery*(params: DidOpenTextDocumentParams): FileAccessQuery =

@@ -1,5 +1,8 @@
+import std/json
 import chronos
+import chronicles
 import ../protocol/types
+import ../langserver/langserver_types
 import ./[queries_file_access]
 
 # === textDocument/didChange ===

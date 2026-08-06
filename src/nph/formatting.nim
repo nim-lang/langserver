@@ -1,14 +1,8 @@
 import chronos
+import chronos/asyncproc
 import chronicles
-import ../nim_tools/nimcheck/nimcheck
-import ../nim_tools/compiler/nim_compiler
 import ../protocol/[enums, types]
-import ./[
-  checking, configurations,
-  constants, diagnostics, formatting, 
-  dispatcher_utils
-]
-import ./[langserver_types, nimsuggest_types, query_types]
+import ./[langserver_types, langserver]
 
 # === textDocument/formatting ===
 proc format*(
@@ -54,12 +48,12 @@ proc format*(
   debug "Formatting document", uri = uri, formattedText = formattedText
   some TextEdit(range: fullRange, newText: formattedText)
 
-proc formatting*(
-  ls: LanguageServer, params: DocumentFormattingParams, id: int
-): Future[seq[TextEdit]] {.async.} =
-  with (params.textDocument):
-    ls.addProjectFileToPendingRequest(id.uint, uri)
-    debug "Received Formatting request "
-    let formatTextEdit = await ls.format(getNphPath().get(), uri)
-    if formatTextEdit.isSome:
-      return @[formatTextEdit.get]
+# proc formatting*(
+#   ls: LanguageServer, params: DocumentFormattingParams, id: int
+# ): Future[seq[TextEdit]] {.async.} =
+#   with (params.textDocument):
+#     ls.addProjectFileToPendingRequest(id.uint, uri)
+#     debug "Received Formatting request "
+#     let formatTextEdit = await ls.format(getNphPath().get(), uri)
+#     if formatTextEdit.isSome:
+#       return @[formatTextEdit.get]

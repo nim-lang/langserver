@@ -2,8 +2,7 @@ import std/[json, sequtils, strformat, options]
 import chronos
 import chronicles
 import ../protocol/types
-import ../langserver/[langserver_types, constants, queues, queue_types, langserver, utils]
-import ../queries/dispatcher
+import ../langserver/[langserver_types, constants, queue_types, langserver, utils]
 import ./[handler_utils, request_text_document]
 
 # === workspace/executeCommand ===
