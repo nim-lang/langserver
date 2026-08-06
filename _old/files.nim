@@ -7,7 +7,7 @@ import ../nim_tools/nimsuggest/[nimsuggest_types, nimsuggest]
 import ../nim_tools/nimcheck/nimcheck
 import ../nim_tools/compiler/nim_compiler
 import ./[configurations, langserver_types, constants, utils, queue_types, queues, diagnostics]
-import ../queries/requests
+# import ../queries/requests
 
 
 
@@ -100,8 +100,6 @@ proc willSaveWaitUntil*(
       return @[formatTextEdit.get]
 
   return @[]
-
-
 
 proc checkFile*(ls: LanguageServer, uri: string): Future[void] {.async.} =
   if uri notin ls.files.openFiles:

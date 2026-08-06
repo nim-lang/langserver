@@ -1,20 +1,14 @@
-# import std/[os, sugar, sequtils, tables, strformat, strscans, times, json, strutils]
-# import chronos
-# import chronos/asyncproc
-# import chronicles
-# import json_serialization
-# import stew/byteutils
-# import with
-
-# import ../nim_tools/nimsuggest/suggestapi
-# import ../nim_tools/nimsuggest/nimsuggest
-# import ../nim_tools/compiler/nimexpand
-# import ../nim_tools/nimcheck/nimcheck
-# import ../langserver/[utils, langserver_types, langserver, configurations, constants, diagnostics, queues, queue_types]
-# import ../protocol/[enums, types]
-# import ../queries/dispatcher
-
-# import ./[init_queries, handler_utils, request_process]
+import chronos
+import chronicles
+import ../nim_tools/nimcheck/nimcheck
+import ../nim_tools/compiler/nim_compiler
+import ../protocol/[enums, types]
+import ./[
+  checking, configurations,
+  constants, diagnostics, formatting, 
+  dispatcher_utils
+]
+import ./[langserver_types, nimsuggest_types, query_types]
 
 # === textDocument/formatting ===
 proc format*(
@@ -22,7 +16,7 @@ proc format*(
 ): Future[Option[TextEdit]] {.async.} =
   let filePath = ls.uriStorageLocation(uri)
   if not fileExists(filePath):
-    warn "File doenst exist ", filePath = filePath, uri = uri
+    warn "File doesn't exist ", filePath = filePath, uri = uri
     return none(TextEdit)
 
   debug "nph starts", nphPath = nphPath, filePath = filePath
