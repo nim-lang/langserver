@@ -31,6 +31,20 @@ proc waitForWorkspaceConfiguration*(ls: LanguageServer): Future[void] {.async.} 
     warn "Workspace configuration not received within timeout; proceeding with defaults"
 
 
+proc waitForLsInitialized*(ls: LanguageServer): Future[void] {.async.} =
+  ## Waits until initNimsuggestInstances has completed (config received, nimble dump
+  ## done, entry-point slots spawned), with a 60-second timeout.
+  ## Uses polling so a timeout does not cancel the shared lsInitialized future.
+  if ls.lsInitialized.finished:
+    return
+  debug "DID_OPEN: waiting for ls initialization (initNimsuggestInstances not yet done)"
+  var elapsed = 0
+  while not ls.lsInitialized.finished and elapsed < 60_000:
+    await sleepAsync(100.milliseconds)
+    inc elapsed, 100
+  if not ls.lsInitialized.finished:
+    warn "initNimsuggestInstances did not complete within timeout; proceeding anyway"
+
 proc supportsConfigurationRequest*(ls: LanguageServer): bool =
   ls.capabilities.serverMode == lsp and
     ls.capabilities.lspClientCapabilities.workspace.isSome and

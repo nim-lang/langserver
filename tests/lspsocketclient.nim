@@ -130,9 +130,18 @@ proc connect*(client: LspSocketClient, address: string, port: Port) {.async.} =
   client.loop = processData(client)
 
 proc notify*(client: LspSocketClient, name: string, params: JsonNode) =
-  proc wrap(): Future[void] {.async.} =
-    discard await client.call(name, params)
-  asyncSpawn wrap()
+  ## Send an LSP notification (no id, no response expected).
+  ## Writes directly to the transport so the bytes are in the TCP buffer
+  ## before this proc returns — callers can safely await a subsequent
+  ## request and know the notification was sent first.
+  let reqJson = newJObject()
+  reqJson["jsonrpc"] = %"2.0"
+  reqJson["method"] = %name
+  reqJson["params"] = params
+  let reqContent = wrapContentWithContentLength($reqJson)
+  proc doWrite(): Future[void] {.async.} =
+    discard await client.transport.write(reqContent)
+  waitFor doWrite()
 
 proc register*(client: LspSocketClient, name: string, notRpc: NotificationRpc) =
   client.notifications[name] = notRpc

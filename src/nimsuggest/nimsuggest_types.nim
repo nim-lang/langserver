@@ -1,13 +1,24 @@
 import std/[hashes, json, options, os, sets, tables, times]
 import chronos
 import ./suggestapi_types
+import ../protocol/types
 
 # === NIMSUGGEST QUERIES ===
+# LSP File Position
 type
-  FilePosition* = object
+  Line0Based* = distinct int # 0-based (VS Code/LSP convention)
+  Utf16Int* = distinct int # UTF-16 byte column (VS Code/LSP convention)
+  
+  LspFilePosition* = object
+    line*: Line0Based # 0-based (VS Code/LSP convention)
+    character*: Utf16Int  # UTF-16 byte column (VS Code/LSP convention)
+
+# Nimsuggest File Position
+  NimsuggestFilePosition* = object
     line*: int  ## 1-based (nimsuggest convention)
     col*: int   ## UTF-8 byte column
-
+  
+type
   NimsuggestQueryKind* {.pure.} = enum
     SUGGEST           ## sug          — completion items at position
     DEFINITION        ## def          — go-to-definition
@@ -27,7 +38,7 @@ type
     RECOMPILE          ## recompile — force full in-process recompile
     KNOWN              ## known     — is this file in the module graph?
 
-  NimsuggestQuery* = ref object
+  NimsuggestQuery*[P] = ref object
     id*: uint
     uri*: string
       ## Source URI. Used to resolve the on-disk path and stash path.
@@ -40,32 +51,31 @@ type
       ## with @[] immediately if true. Safe across coroutines (ref + single-threaded).
     case kind*: NimsuggestQueryKind
     of NimsuggestQueryKind.SUGGEST,
-       NimsuggestQueryKind.DEFINITION,
-       NimsuggestQueryKind.DECLARATION,
-       NimsuggestQueryKind.TYPE_DEFINITION,
-       NimsuggestQueryKind.REFERENCES,
-       NimsuggestQueryKind.HOVER,
-       NimsuggestQueryKind.DOCUMENT_HIGHLIGHT,
-       NimsuggestQueryKind.SIGNATURE_HELP:
-      position*: FilePosition
+      NimsuggestQueryKind.DEFINITION,
+      NimsuggestQueryKind.DECLARATION,
+      NimsuggestQueryKind.TYPE_DEFINITION,
+      NimsuggestQueryKind.REFERENCES,
+      NimsuggestQueryKind.HOVER,
+      NimsuggestQueryKind.DOCUMENT_HIGHLIGHT,
+      NimsuggestQueryKind.SIGNATURE_HELP:
+      position*: P
     of NimsuggestQueryKind.INLAY_HINTS:
-      inlayHints*: tuple[start, finish: FilePosition, options: string]
+      inlayHints*: tuple[start, finish: P, options: string]
     of NimsuggestQueryKind.EXPAND:
-      expand*: tuple[position: FilePosition, tag: string]
+      expand*: tuple[position: P, tag: string]
     of NimsuggestQueryKind.DOCUMENT_SYMBOLS,
-       NimsuggestQueryKind.WORKSPACE_SYMBOLS,
-       NimsuggestQueryKind.CHANGED,
-       NimsuggestQueryKind.CHECK_FILE,
-       NimsuggestQueryKind.CHECK_PROJECT,
-       NimsuggestQueryKind.RECOMPILE,
-       NimsuggestQueryKind.KNOWN:
+      NimsuggestQueryKind.WORKSPACE_SYMBOLS,
+      NimsuggestQueryKind.CHANGED,
+      NimsuggestQueryKind.CHECK_FILE,
+      NimsuggestQueryKind.CHECK_PROJECT,
+      NimsuggestQueryKind.RECOMPILE,
+      NimsuggestQueryKind.KNOWN:
       discard
-
 
 # === NIMSUGGEST SLOT TYPES ====
 type
   SlotState* {.pure.} = enum
-    # IDLE      ## No process. Waiting for SPAWN.
+    STOPPED   ## No process. After stop, before re-spawn or removal.
     SPAWNING  ## Spawn in progress; ns future is pending.
     READY     ## Process live; queries accepted.
     STOPPING  ## STOP running; queries return @[].
@@ -77,12 +87,10 @@ type
     workingDir*: string  # Working directory passed to nimsuggest at spawn time. Stable across restarts.
     ownedUris*: HashSet[string]
       ## The single source of truth for which URIs this slot serves.
-    ns*: Option[Future[NimSuggest]]
-      ## none  = never spawned.
-      ## Some(pending) = spawning (SPAWNING).
-      ## Some(resolved, not failed) = live (READY).
-      ## Some(resolved, failed) = crashed (CRASHED).
-    queryMailbox*: AsyncQueue[NimsuggestQuery]
+    ns*: Future[NimSuggest]
+      ## pending = SPAWNING, completed = READY, failed = CRASHED.
+      ## SlotState is the sole lifecycle authority; ns is the async handle.
+    queryMailbox*: AsyncQueue[NimsuggestQuery[LspFilePosition]]
       ## IDE query commands. processQueries dequeues and dispatches to TCP.
     lastCmdTime*: DateTime
       ## Updated after each successful query. Drives LRU eviction policy.
@@ -113,39 +121,23 @@ type
       ## Called when a slot transitions to READY or is removed.
       ## Triggers extension/statusUpdate. Set by initLanguageServer. May be nil.
 
-proc newPool*(slots: Table[string, NimsuggestSlot], maxSlots: int): NimsuggestPool =
-  NimsuggestPool(slots: slots, maxSlots: maxSlots)
 
-proc newSlot*(projectFile: string, isEntryPoint = false, workingDir = getCurrentDir()): NimsuggestSlot =
-  NimsuggestSlot(
-    state: SlotState.SPAWNING,
-    projectFile: projectFile,
-    workingDir: workingDir,
-    ownedUris: initHashSet[string](),
-    ns: none(Future[NimSuggest]),
-    queryMailbox: newAsyncQueue[NimsuggestQuery](),
-    lastCmdTime: now(),
-    isEntryPoint: isEntryPoint,
-    crashedUris: initHashSet[string](),
-  )
+type
+  NlsFileInfo* = ref object of RootObj
+    slot*: NimsuggestSlot
+      ## The pool slot responsible for this file. Assigned synchronously during
+      ## didOpenFile. Never nil after assignment.
+    changed*: bool
+    fingerTable*: seq[seq[tuple[u16pos, offset: int]]]
+    cancelFileCheck*: Future[void]
+    checkInProgress*: bool
+    needsChecking*: bool
+    textDocument*: TextDocumentItem
 
-proc addSlot*(pool: NimsuggestPool, slot: NimsuggestSlot) =
-  pool.slots[slot.projectFile] = slot
-
-proc removeSlot*(pool: NimsuggestPool, projectFile: string) =
-  pool.slots.del(projectFile)
-
-proc canSpawn*(pool: NimsuggestPool): bool =
-  pool.maxSlots == 0 or pool.slots.len < pool.maxSlots
-
-proc slotForUri*(pool: NimsuggestPool, uri: string): Option[NimsuggestSlot] =
-  for slot in pool.slots.values:
-    if uri in slot.ownedUris:
-      return some(slot)
-  none(NimsuggestSlot)
-
-proc assignUri*(slot: NimsuggestSlot, uri: string) =
-  slot.ownedUris.incl(uri)
-
-proc unassignUri*(slot: NimsuggestSlot, uri: string) =
-  slot.ownedUris.excl(uri)
+type
+  LanguageServerFiles* = object
+    openFiles*: TableRef[string, NlsFileInfo]
+    idleOpenFiles*: TableRef[string, NlsFileInfo]
+    filesWithDiags*: HashSet[string]
+    storageDir*: string
+  

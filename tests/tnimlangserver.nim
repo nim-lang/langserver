@@ -261,11 +261,10 @@ suite "LSP features":
       textDocument: TextDocumentIdentifier(uri: helloWorldUri),
       position: Position(line: 2, character: 6)
     )
-    let resp = client.call("textDocument/prepareRename", %renameParams)
-                        .waitFor()
+    let resp = client.call("textDocument/prepareRename", %renameParams).waitFor()
     check resp == %* {
-        "start":{"line":2,"character":4},
-        "end":{"line":2,"character":7}
+      "start":{"line":2,"character":4},
+      "end":{"line":2,"character":7}
     }
 
   test "Prepare rename doesn't allow non-project symbols":

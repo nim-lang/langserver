@@ -43,7 +43,7 @@ type
     startTime*: DateTime
     endTime*: DateTime
     state*: PendingRequestState
-    query*: Option[NimsuggestQuery]
+    query*: Option[NimsuggestQuery[LspFilePosition]]
 
   LspDispatchItem* = object
     dispatch*: proc(): Future[void] {.gcsafe, raises: [].}
@@ -68,25 +68,6 @@ type
     configReady*: AsyncEvent
       ## Fired when currentConfig is first populated, and re-fired after each change.
 
-type
-  NlsFileInfo* = ref object of RootObj
-    slot*: NimsuggestSlot
-      ## The pool slot responsible for this file. Assigned synchronously during
-      ## didOpenFile. Never nil after assignment.
-    changed*: bool
-    fingerTable*: seq[seq[tuple[u16pos, offset: int]]]
-    cancelFileCheck*: Future[void]
-    checkInProgress*: bool
-    needsChecking*: bool
-    textDocument*: TextDocumentItem
-
-type
-  LanguageServerFiles* = object
-    openFiles*: Table[string, NlsFileInfo]
-    idleOpenFiles*: Table[string, NlsFileInfo]
-    filesWithDiags*: HashSet[string]
-    storageDir*: string
-  
 type
   LanguageServerTransport* = object
     srv*: RpcSocketServer
@@ -142,3 +123,7 @@ type
     checkInProgress*: bool
     isShutdown*: bool
     nimDumpCache*: Table[string, NimbleDumpInfo]
+    lsInitialized*: Future[void]
+      ## Completed after initNimsuggestInstances finishes (config + nimble dump + entry-point spawns).
+      ## DID_OPEN polls this before the spawn path so files are routed to the correct
+      ## pre-spawned entry-point slot rather than spawning nimsuggest using themselves.

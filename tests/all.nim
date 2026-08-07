@@ -1,14 +1,13 @@
 import
-  tsuggestapi,
+  textensions,
+  tfindnimblepaths,
+  tknownbug3,
+  tmaxlimits,
+  tmisc,
+  tmonorepo,
   tnimlangserver,
   tprojectsetup,
-  textensions,
-  tmisc,
-  ttestrunner,
-  troutingpolicy,
-  tfindnimblepaths,
-  tmonorepo,
-  tmaxlimits,
-  tstability
+  tstability,
+  tsuggestapi,
+  ttestrunner
   # tmcp: excluded — investigate separately whether to enable
-  # tknownbug3: excluded — known unfixed bug, expected to fail

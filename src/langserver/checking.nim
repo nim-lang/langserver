@@ -11,9 +11,34 @@ import ./[configurations, langserver_types, utils, dispatcher_utils, diagnostics
 import ../utils/utils as globalUtils
 
 
-proc checkFile*(ls: LanguageServer, uri: string): Future[void] {.async.}
+proc checkFile*(ls: LanguageServer, uri: string): Future[void] {.async.} =
+  if uri notin ls.files.openFiles:
+    return
+  let fileInfo = ls.files.openFiles[uri]
+  if fileInfo.slot == nil:
+    return
 
-proc scheduleFileCheck(ls: LanguageServer, uri: string) {.gcsafe, raises: [].} =
+  let conf = ls.getWorkspaceConfiguration()
+  let useNimCheck = conf.useNimCheck.get(USE_NIM_CHECK_BY_DEFAULT)
+  let nimPath = conf.getNimPath()
+  let path = uriToPath(uri)
+
+  if useNimCheck and nimPath.isSome:
+    let checkResults = await nimCheck(path, nimPath.get)
+    ls.sendDiagnostics(checkResults, path)
+    return
+
+  # Route through the per-slot queue. processQueries awaits slot.ns.get
+  # internally, so checkFile never needs to touch the NimSuggest handle directly.
+  # CHANGED is sent first (if there are unsaved edits) so nimsuggest v4 marks
+  # the module dirty and picks up the stash content before CHECK_FILE runs.
+  if fileInfo.changed:
+    discard await ls.queryFile(uri, NimsuggestQueryKind.CHANGED)
+  let results = await ls.queryFile(uri, NimsuggestQueryKind.CHECK_FILE)
+  ls.sendDiagnostics(results.filter(s => s.filePath != "???"), path)
+
+
+proc scheduleFileCheck*(ls: LanguageServer, uri: string) {.gcsafe, raises: [].} =
   if not ls.getWorkspaceConfiguration().autoCheckFile.get(true):
     return
   # schedule file check after the file is modified
@@ -129,28 +154,3 @@ proc checkProject*(ls: LanguageServer, uri: string): Future[void] {.async.} =
   ls.files.filesWithDiags = filesWithDiags
 
 
-proc checkFile*(ls: LanguageServer, uri: string): Future[void] {.async.} =
-  if uri notin ls.files.openFiles:
-    return
-  let fileInfo = ls.files.openFiles[uri]
-  if fileInfo.slot == nil:
-    return
-
-  let conf = ls.getWorkspaceConfiguration()
-  let useNimCheck = conf.useNimCheck.get(USE_NIM_CHECK_BY_DEFAULT)
-  let nimPath = conf.getNimPath()
-  let path = uriToPath(uri)
-
-  if useNimCheck and nimPath.isSome:
-    let checkResults = await nimCheck(path, nimPath.get)
-    ls.sendDiagnostics(checkResults, path)
-    return
-
-  # Route through the per-slot queue. processQueries awaits slot.ns.get
-  # internally, so checkFile never needs to touch the NimSuggest handle directly.
-  # CHANGED is sent first (if there are unsaved edits) so nimsuggest v4 marks
-  # the module dirty and picks up the stash content before CHECK_FILE runs.
-  if fileInfo.changed:
-    discard await ls.queryFile(uri, NimsuggestQueryKind.CHANGED)
-  let results = await ls.queryFile(uri, NimsuggestQueryKind.CHECK_FILE)
-  ls.sendDiagnostics(results.filter(s => s.filePath != "???"), path)

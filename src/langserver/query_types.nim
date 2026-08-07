@@ -49,6 +49,6 @@ type
   LangserverQuery* = object
     case kind*: LangserverQueryKind
     of LangserverQueryKind.NIMSUGGEST:
-      nimsuggest*: NimsuggestQuery
+      nimsuggest*: NimsuggestQuery[LspFilePosition]
     of LangserverQueryKind.FILE_ACCESS:
       fileAccess*: FileAccessQuery

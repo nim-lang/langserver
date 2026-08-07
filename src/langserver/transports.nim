@@ -119,7 +119,7 @@ proc addRpcToCancellable*(ls: LanguageServer, rpc: Rpc): Rpc =
           ls.messaging.pendingRequests[idRequest].endTime = now()
           ls.sendStatusChanged
         except KeyError:
-          error "Error completing pending requests. Id not found in pending requests"
+          debug "Request already cancelled; id not in pending requests"
       return fut
     except KeyError as ex:
       error "IdRequest not found in the request params"

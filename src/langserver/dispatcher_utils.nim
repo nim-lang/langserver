@@ -1,15 +1,16 @@
-import std/[options, tables, algorithm, sequtils, strutils, times]
+import std/[options, sets, tables, algorithm, sequtils, strutils, times]
 import chronos
 import chronicles
-import ../nimsuggest/[suggestapi, suggestapi_types, nimsuggest_types]
+import ../nimsuggest/[suggestapi, suggestapi_types, nimsuggest_types, nimsuggest_slots]
 import ../protocol/types
 import ./[utils as lsUtils]
 import ./langserver_types
 import ../utils/utils
 
-proc isKnownByNimsuggest*(ns: NimSuggest, filePath: string): Future[bool] {.async.} =
+
+func checkNimsuggestKnownResponse*(response: seq[Suggest]): bool = 
+  ## Returns if the response indicates the file was known.
   # Checks response[0].forth == "true" — the boolean result comes back as a string in the forth field of a Suggest object.
-  let response: seq[Suggest] = await ns.known(filePath)
   if response.len == 0:
     return false
   else:
@@ -19,33 +20,63 @@ proc checkNimsuggestSlotKnowsURI(slot: NimsuggestSlot, uri: string): Future[Opti
   case slot.state
   of SlotState.SPAWNING:
     try:
-      discard await slot.ns.get()
+      let nimsuggestInstance: Nimsuggest = await slot.ns
+      let knownQuery = NimsuggestQuery[LspFilePosition](
+        id: 0.uint,
+        kind: NimsuggestQueryKind.KNOWN,
+        uri: uri,
+        dirtyFile: "",
+        responseFuture: newFuture[seq[Suggest]]("known"),
+      )
+      slot.queryMailbox.addLastNoWait(knownQuery)
+      let response = await knownQuery.responseFuture
+      let isKnown = checkNimsuggestKnownResponse(response)
+      if isKnown:
+        return some(slot)
+      else:
+        return none(NimsuggestSlot)
     except CatchableError:
       return none(NimsuggestSlot)
+
   of SlotState.READY:
-    discard
-  else:
+    let nimsuggestInstance = slot.ns.read
+    let knownQuery = NimsuggestQuery[LspFilePosition](
+      id: 0.uint,
+      kind: NimsuggestQueryKind.KNOWN,
+      uri: uri,
+      dirtyFile: "",
+      responseFuture: newFuture[seq[Suggest]]("known"),
+    )
+    slot.queryMailbox.addLastNoWait(knownQuery)
+    let response = await knownQuery.responseFuture
+    let isKnown = checkNimsuggestKnownResponse(response)
+    if isKnown:
+      return some(slot)
+    else:
+      return none(NimsuggestSlot)
+  of SlotState.STOPPED, SlotState.STOPPING, SlotState.CRASHED:
     return none(NimsuggestSlot)
 
-  let ns = await slot.ns.get() 
-  if await ns.isKnownByNimsuggest(uriToPath(uri)):
-    return some(slot)
-
-  return none(NimsuggestSlot)
 
 proc isKnownByANimsuggestSlot*(pool: NimsuggestPool, uri: string): Future[Option[NimsuggestSlot]] {.async.} =
-  var futures: seq[
-    tuple[projectFile: string, future: Future[Option[NimsuggestSlot]]]
-  ]
-  for slot in pool.slots.values.toSeq:
-    futures.add((slot.projectFile, checkNimsuggestSlotKnowsURI(slot, uri)))  
+  var futures: seq[Future[Option[NimsuggestSlot]]]
 
-  await allFutures(futures.mapIt(it[1]))
-  futures.sort(proc(a, b: auto): int = cmp(a[0], b[0]))
-  for (_, f) in futures:
+  for slot in pool.slots.values.toSeq:
+    futures.add(checkNimsuggestSlotKnowsURI(slot, uri))
+
+  await allFutures(futures)
+  var possibleNimsuggestSlots: seq[NimsuggestSlot] = @[]
+  for f in futures:
     let res = f.read()
     if res.isSome:
-      return res
+      possibleNimsuggestSlots.add(res.get())
+
+  possibleNimsuggestSlots.sort(proc(a, b: NimsuggestSlot): int = cmp(a.projectFile, b.projectFile))
+
+  if possibleNimsuggestSlots.len > 0:
+    return some(possibleNimsuggestSlots[0])
+  else:
+    return none(NimsuggestSlot)
 
 proc addFileToOpenFiles*(
   ls: LanguageServer, 
@@ -82,6 +113,11 @@ proc addFileToOpenFiles*(
 
   # Register ownership in the slot (sync, atomic with above)
   nimsuggestSlot.assignUri(params.uri)
+  # Also sync the live NimSuggest's openFiles set so getLspStatus displays correctly.
+  # execSpawn copies ownedUris → ns.openFiles at spawn time, but files opened on an
+  # already-READY slot are not reached by that path.
+  if nimsuggestSlot.state == SlotState.READY:
+    nimsuggestSlot.ns.read.openFiles.incl(params.uri)
 
 proc sortNimsuggestByDate(a, b: NimsuggestSlot): int = 
   if a.lastCmdTime == b.lastCmdTime:
@@ -115,7 +151,7 @@ proc nimsuggestSlotToEvict*(pool: NimsuggestPool): NimsuggestSlot =
   ## Precondition: pool has at least one slot.
   assert pool.slots.len > 0, "nimsuggestSlotToEvict called on empty pool"
 
-  for state in [SlotState.CRASHED, SlotState.STOPPING, SlotState.READY, SlotState.SPAWNING]:
+  for state in [SlotState.STOPPED, SlotState.CRASHED, SlotState.STOPPING, SlotState.READY, SlotState.SPAWNING]:
     var candidates: seq[NimsuggestSlot]
     for slot in pool.slots.values:
       if slot.state == state:
@@ -136,7 +172,7 @@ proc queryFile*(ls: LanguageServer, uri: string, kind: NimsuggestQueryKind): Fut
     result.complete(@[])
     return
   let dirtyFile = if fileInfo.changed: ls.uriStorageLocation(uri) else: ""
-  fileInfo.slot.queryMailbox.addLastNoWait(NimsuggestQuery(
+  fileInfo.slot.queryMailbox.addLastNoWait(NimsuggestQuery[LspFilePosition](
     kind: kind,
     uri: uri,
     dirtyFile: dirtyFile,

@@ -18,7 +18,7 @@ import ./[handler_utils, queries_nimsuggest, queries_file_access]
 # === textDocument/completion ===
 proc processCompletionQuery(
   ls: LanguageServer, 
-  q: NimsuggestQuery,
+  q: NimsuggestQuery[LspFilePosition],
   nimsuggestResponse: seq[Suggest]
 ): seq[CompletionItem] = 
   result = nimsuggestResponse.map(toCompletionItem)
@@ -33,69 +33,57 @@ proc processCompletionQuery(
 proc completion*(
   ls: LanguageServer, params: CompletionParams, id: int
 ): Future[seq[CompletionItem]] {.async.} =
-  let query: Option[NimsuggestQuery] = ls.initNimsuggestPositionQuery(
+  let query: NimsuggestQuery[LspFilePosition] = ls.initNimsuggestPositionQuery(
     id,
     params.textDocument.uri,
     NimsuggestQueryKind.SUGGEST, 
     params.position.line,
     params.position.character
   )
-  if query.isNone:
-    return @[]
-  else:
-    let response = await ls.addQueryToQueue(query.get)
-    return processCompletionQuery(ls, query.get, response)
+  let response = await ls.addQueryToQueue(query)
+  return processCompletionQuery(ls, query, response)
 
 # === textDocument/definition ===
 proc definition*(
-    ls: LanguageServer, params: TextDocumentPositionParams, id: int
+  ls: LanguageServer, params: TextDocumentPositionParams, id: int
 ): Future[seq[Location]] {.async.} =
-  let query: Option[NimsuggestQuery] = ls.initNimsuggestPositionQuery(
+  let query: NimsuggestQuery[LspFilePosition] = ls.initNimsuggestPositionQuery(
     id,
     params.textDocument.uri,
     NimsuggestQueryKind.DEFINITION, 
     params.position.line,
     params.position.character
   )
-  if query.isNone:
-    return @[]
-  else:
-    let response = await ls.addQueryToQueue(query.get)
-    return processLocationQuery(ls, response)
+  let response = await ls.addQueryToQueue(query)
+  return processLocationQuery(ls, response)
 
 # === textDocument/declaration ===
 proc declaration*(
   ls: LanguageServer, params: TextDocumentPositionParams, id: int
 ): Future[seq[Location]] {.async.} =
-  let query: Option[NimsuggestQuery] = ls.initNimsuggestPositionQuery(
+  let query: NimsuggestQuery[LspFilePosition] = ls.initNimsuggestPositionQuery(
     id,
     params.textDocument.uri,
     NimsuggestQueryKind.DECLARATION, 
     params.position.line,
     params.position.character
   )
-  if query.isNone:
-    return @[]
-  else:
-    let response = await ls.addQueryToQueue(query.get)
-    return processLocationQuery(ls, response)
+  let response = await ls.addQueryToQueue(query)
+  return processLocationQuery(ls, response)
 
 # === textDocument/typeDefinition ===
 proc typeDefinition*(
   ls: LanguageServer, params: TextDocumentPositionParams, id: int
 ): Future[seq[Location]] {.async.} =
-  let query: Option[NimsuggestQuery] = ls.initNimsuggestPositionQuery(
+  let query: NimsuggestQuery[LspFilePosition] = ls.initNimsuggestPositionQuery(
     id,
     params.textDocument.uri,
     NimsuggestQueryKind.TYPE_DEFINITION, 
     params.position.line,
     params.position.character
   )
-  if query.isNone:
-    return @[]
-  else:
-    let response = await ls.addQueryToQueue(query.get)
-    return processLocationQuery(ls, response)
+  let response = await ls.addQueryToQueue(query)
+  return processLocationQuery(ls, response)
 
 # === textDocument/references ===
 func processTypeDefinitionQuery(
@@ -110,53 +98,63 @@ func processTypeDefinitionQuery(
 proc references*(
   ls: LanguageServer, params: ReferenceParams, id: int
 ): Future[seq[Location]] {.async.} =
-  let query: Option[NimsuggestQuery] = ls.initNimsuggestPositionQuery(
+  let query: NimsuggestQuery[LspFilePosition] = ls.initNimsuggestPositionQuery(
     id,
     params.textDocument.uri,
     NimsuggestQueryKind.REFERENCES, 
     params.position.line,
     params.position.character
   )
-  if query.isNone:
-    return @[]
-  else:
-    let response = await ls.addQueryToQueue(query.get)
-    return processTypeDefinitionQuery(ls, params.context.includeDeclaration, response)
+  let response = await ls.addQueryToQueue(query)
+  return processTypeDefinitionQuery(ls, params.context.includeDeclaration, response)
 
 # === textDocument/hover ===
 proc processHoverQuery(
   ls: LanguageServer,
-  query: NimsuggestQuery,
+  query: NimsuggestQuery[LspFilePosition],
   nimsuggestResponse: seq[Suggest]
 ): Future[Option[Hover]] {.async.} = 
+  echo "HOVER QUERY ", nimsuggestResponse.len
   if nimsuggestResponse.len == 0:
     return none(Hover)
-
+  
   var suggest = nimsuggestResponse[0]
   if suggest.symkind == "skModule": # NOTE: skMoudle always return position (1, 0)
     return some(Hover(contents: some(%toMarkupContent(suggest))))
 
   else:
     let config = ls.getWorkspaceConfiguration()
+    # Convert cursor position from UTF-16 (LSP) to UTF-8 (nimsuggest) for column comparison.
+    let utf8Col = ls.getCharacter(
+      query.uri,
+      int(query.position.line),
+      int(query.position.character)
+    ).get(int(query.position.character))
     for s in nimsuggestResponse:
-      if s.line == query.position.line:
-        if s.column <= query.position.col:
+      # s.line is 1-based (nimsuggest); query.position.line is 0-based (LSP).
+      if s.line == int(query.position.line) + 1:
+        # Both s.column and utf8Col are now UTF-8 byte offsets.
+        if s.column <= utf8Col:
           suggest = s
         else:
           break
-        
+
     var content = toMarkupContent(suggest)
     if suggest.symkind == "skMacro" and config.nimExpandMacro.get(NIM_EXPAND_MACRO_BY_DEFAULT):
-      # TODO. - this needs a guard to ensure line and column exists?
-      let expandedQuery = NimsuggestQuery(
+      # Build a hover query at the macro definition site to fetch its doc string.
+      # suggest.line is 1-based → convert to 0-based for LspFilePosition.
+      # suggest.column is UTF-8 → convert to UTF-16 via fingerTable.
+      let macroLine0 = suggest.line - 1
+      let macroChar = toUtf16Pos(ls, query.uri, macroLine0, suggest.column).get(suggest.column)
+      let expandedQuery = NimsuggestQuery[LspFilePosition](
         id: 0.uint,
         kind: NimsuggestQueryKind.HOVER,
         uri: query.uri,
         dirtyFile: ls.uriToStash(query.uri),
         responseFuture: newFuture[seq[Suggest]]("nimsuggestQuery"),
-        position: FilePosition(
-          line: suggest.line, 
-          col:  suggest.column
+        position: LspFilePosition(
+          line: Line0Based(macroLine0),
+          character: Utf16Int(macroChar),
         ),
       )
 
@@ -184,18 +182,15 @@ proc processHoverQuery(
 proc hover*(
   ls: LanguageServer, params: HoverParams, id: int
 ): Future[Option[Hover]] {.async.} =
-  let query: Option[NimsuggestQuery] = ls.initNimsuggestPositionQuery(
+  let query: NimsuggestQuery[LspFilePosition] = ls.initNimsuggestPositionQuery(
     id,
     params.textDocument.uri,
     NimsuggestQueryKind.HOVER, 
     params.position.line,
     params.position.character
   )
-  if query.isNone:
-    return none[Hover]()
-  else:
-    let response = await ls.addQueryToQueue(query.get)
-    return await processHoverQuery(ls, query.get, response)
+  let response = await ls.addQueryToQueue(query)
+  return await processHoverQuery(ls, query, response)
 
 # === textDocument/documentHighlight ===
 func toDocumentHighlight(suggest: Suggest): DocumentHighlight =
@@ -210,18 +205,15 @@ func processDocumentHighlightQuery(
 proc documentHighlight*(
   ls: LanguageServer, params: TextDocumentPositionParams, id: int
 ): Future[seq[DocumentHighlight]] {.async.} =
-  let query: Option[NimsuggestQuery] = ls.initNimsuggestPositionQuery(
+  let query: NimsuggestQuery[LspFilePosition] = ls.initNimsuggestPositionQuery(
     id,
     params.textDocument.uri,
     NimsuggestQueryKind.DOCUMENT_HIGHLIGHT, 
     params.position.line,
     params.position.character
   )
-  if query.isNone:
-    return @[]
-  else:
-    let response = await ls.addQueryToQueue(query.get)
-    return processDocumentHighlightQuery(ls, response)
+  let response = await ls.addQueryToQueue(query)
+  return processDocumentHighlightQuery(ls, response)
 
 # === textDocument/signatureHelp ===
 proc toSignatureInformation(suggest: Suggest): SignatureInformation =
@@ -247,7 +239,7 @@ proc toSignatureInformation(suggest: Suggest): SignatureInformation =
 
 proc processSignatureHelpQuery(
   ls: LanguageServer,
-  query: NimsuggestQuery,
+  query: NimsuggestQuery[LspFilePosition],
   nimsuggestResponse: seq[Suggest]
 ): Option[SignatureHelp] = 
   # nsCapabilities is valid now — slot is READY after addQueryToQueue returns
@@ -265,18 +257,15 @@ proc signatureHelp*(
   ls: LanguageServer, params: SignatureHelpParams, id: int
 ): Future[Option[SignatureHelp]] {.async.} =
   if ls.capabilities.lspClientCapabilities.supportSignatureHelp():
-    let query: Option[NimsuggestQuery] = ls.initNimsuggestPositionQuery(
+    let query: NimsuggestQuery[LspFilePosition] = ls.initNimsuggestPositionQuery(
       id,
       params.textDocument.uri,
       NimsuggestQueryKind.SIGNATURE_HELP, 
       params.position.line,
       params.position.character
     )
-    if query.isNone:
-      return none[SignatureHelp]()
-    else:
-      let response = await ls.addQueryToQueue(query.get)
-      return processSignatureHelpQuery(ls, query.get, response)
+    let response = await ls.addQueryToQueue(query)
+    return processSignatureHelpQuery(ls, query, response)
   else:
     #Some clients doesnt support signatureHelp
     return none[SignatureHelp]()
@@ -321,18 +310,15 @@ proc processPrepareRenameQuery(
 proc prepareRename*(
   ls: LanguageServer, params: PrepareRenameParams, id: int
 ): Future[JsonNode] {.async.} =
-  let query: Option[NimsuggestQuery] = ls.initNimsuggestPositionQuery(
+  let query: NimsuggestQuery[LspFilePosition] = ls.initNimsuggestPositionQuery(
     id,
     params.textDocument.uri,
-    NimsuggestQueryKind.SUGGEST,
+    NimsuggestQueryKind.DEFINITION,
     params.position.line,
     params.position.character
   )
-  if query.isNone:
-    return newJNull()
-  else:
-    let response = await ls.addQueryToQueue(query.get)
-    return processPrepareRenameQuery(ls, response)
+  let response = await ls.addQueryToQueue(query)
+  return processPrepareRenameQuery(ls, response)
 
 # === textDocument/rename ===
 proc processRenameQuery(
@@ -357,18 +343,15 @@ proc rename*(
   ls: LanguageServer, params: RenameParams, id: int
 ): Future[WorkspaceEdit] {.async.} =
   # We reuse the references command as to not duplicate it
-  let query: Option[NimsuggestQuery] = ls.initNimsuggestPositionQuery(
+  let query: NimsuggestQuery[LspFilePosition] = ls.initNimsuggestPositionQuery(
     id,
     params.textDocument.uri,
     NimsuggestQueryKind.REFERENCES,
     params.position.line,
     params.position.character
   )
-  if query.isNone:
-    return WorkspaceEdit()
-  else:
-    let response = await ls.addQueryToQueue(query.get)
-    return processRenameQuery(ls, params.newName, response)
+  let response = await ls.addQueryToQueue(query)
+  return processRenameQuery(ls, params.newName, response)
 
 
 # === textDocument/inlayHint ====
@@ -455,23 +438,20 @@ proc inlayHint*(
     params.`range`.`end`.character,
     " +exceptionHints +parameterHints",
   )
-  if query.isNone:
+  let response = await ls.addQueryToQueue(query)
+  # nsProtocolVersion is valid now — slot is READY after queryInlayHints returns
+  if ls.nsProtocolVersion(params.textDocument.uri) < 4:
     return @[]
-  else:
-    let response = await ls.addQueryToQueue(query.get)
-    # nsProtocolVersion is valid now — slot is READY after queryInlayHints returns
-    if ls.nsProtocolVersion(params.textDocument.uri) < 4:
-      return @[]
 
-    let inlayHintsCfg = configuration.inlayHints.get()
-    return processInlayHintQuery(
-      ls, params.textDocument.uri,
-      response,
-      configuration,
-      inlayHintsCfg.typeHints.isSome and inlayHintsCfg.typeHints.get().enable.get(true),
-      inlayHintsCfg.exceptionHints.isSome and inlayHintsCfg.exceptionHints.get().enable.get(true),
-      inlayHintsCfg.parameterHints.isSome and inlayHintsCfg.parameterHints.get().enable.get(true),
-    )
+  let inlayHintsCfg = configuration.inlayHints.get()
+  return processInlayHintQuery(
+    ls, params.textDocument.uri,
+    response,
+    configuration,
+    inlayHintsCfg.typeHints.isSome and inlayHintsCfg.typeHints.get().enable.get(true),
+    inlayHintsCfg.exceptionHints.isSome and inlayHintsCfg.exceptionHints.get().enable.get(true),
+    inlayHintsCfg.parameterHints.isSome and inlayHintsCfg.parameterHints.get().enable.get(true),
+  )
 
 # === textDocument/codeAction ===
 proc codeAction*(

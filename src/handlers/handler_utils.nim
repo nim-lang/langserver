@@ -12,7 +12,7 @@ proc toUtf8Col*(
   ls: LanguageServer, uri: string, line: int, character: int
 ): Option[int] =
   if uri in ls.files.openFiles and line < ls.files.openFiles[uri].fingerTable.len:
-    return some ls.files.openFiles[uri].fingerTable[line].utf16to8(character)
+    return some(ls.files.openFiles[uri].fingerTable[line].utf16to8(character))
   else:
     return none(int)
 

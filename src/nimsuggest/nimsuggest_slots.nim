@@ -1,9 +1,47 @@
-import std/[options, sets, strformat, times, json]
+import std/[options, os, sets, strformat, times, json]
 import chronos
 import chronicles
 import ../utils/process_utils
 import ./[suggestapi, suggestapi_types, nimsuggest_types]
 import ../configurations/constants
+
+proc newPool*(slots: Table[string, NimsuggestSlot], maxSlots: int): NimsuggestPool =
+  NimsuggestPool(slots: slots, maxSlots: maxSlots)
+
+proc newSlot*(projectFile: string, isEntryPoint = false, workingDir = getCurrentDir()): NimsuggestSlot =
+  NimsuggestSlot(
+    state: SlotState.SPAWNING,
+    projectFile: projectFile,
+    workingDir: workingDir,
+    ownedUris: initHashSet[string](),
+    ns: newFuture[NimSuggest]("pending"),
+    queryMailbox: newAsyncQueue[NimsuggestQuery[LspFilePosition]](),
+    lastCmdTime: now(),
+    isEntryPoint: isEntryPoint,
+    crashedUris: initHashSet[string](),
+  )
+
+proc addSlot*(pool: NimsuggestPool, slot: NimsuggestSlot) =
+  pool.slots[slot.projectFile] = slot
+
+proc removeSlot*(pool: NimsuggestPool, projectFile: string) =
+  pool.slots.del(projectFile)
+
+proc canSpawn*(pool: NimsuggestPool): bool =
+  pool.maxSlots == 0 or pool.slots.len < pool.maxSlots
+
+proc slotForUri*(pool: NimsuggestPool, uri: string): Option[NimsuggestSlot] =
+  for slot in pool.slots.values:
+    if uri in slot.ownedUris:
+      return some(slot)
+  none(NimsuggestSlot)
+
+proc assignUri*(slot: NimsuggestSlot, uri: string) =
+  slot.ownedUris.incl(uri)
+
+proc unassignUri*(slot: NimsuggestSlot, uri: string) =
+  slot.ownedUris.excl(uri)
+
 
 # === UTILS ===
 proc isLive*(slot: NimsuggestSlot): bool =
@@ -18,10 +56,8 @@ proc ownsUri*(slot: NimsuggestSlot, uri: string): bool =
 
 proc resolvedNs*(slot: NimsuggestSlot): Option[NimSuggest] =
   ## Returns the live NimSuggest if the slot is ready, else none.
-  if slot.ns.isSome:
-    let fut = slot.ns.get
-    if fut.finished and not fut.failed:
-      return some(fut.read)
+  if slot.state == SlotState.READY:
+    return some(slot.ns.read)
   none(NimSuggest)
 
 # === EXECS ===
@@ -33,16 +69,15 @@ proc execSpawn*(
   ## Sets slot.state, resolves slot.ns, and re-registers all ownedUris on success.
   debug "execSpawn: enter",
     slotProject = slot.projectFile, projectFile = projectFile,
-    slotState = $slot.state, nsIsSome = slot.ns.isSome,
-    isActive = slot.isActive
-  if slot.isActive and slot.ns.isSome:
-    debug "execSpawn: slot already spawning/ready, skipping",
-      projectFile = slot.projectFile, state = $slot.state
+    slotState = $slot.state, isActive = slot.isActive
+  if slot.state == SlotState.READY:
+    debug "execSpawn: slot already ready, skipping",
+      projectFile = slot.projectFile
     return true
 
   slot.state = SlotState.SPAWNING
   let nsFut = newFuture[NimSuggest]("execSpawn")
-  slot.ns = some(nsFut)
+  slot.ns = nsFut
 
   while slot.crashCount <= MAX_CRASH_RETRIES:
     if slot.crashCount > 0:
@@ -101,11 +136,11 @@ proc execStop*(slot: NimsuggestSlot, pool: NimsuggestPool): Future[bool] {.async
   case slot.state
   of SlotState.STOPPING:
     # Another coroutine is already stopping this slot — wait for it to finish.
-    while slot.ns.isSome:
+    while slot.state == SlotState.STOPPING:
       await sleepAsync(10)
     return true
 
-  of SlotState.READY, SlotState.SPAWNING, SlotState.CRASHED:
+  of SlotState.READY, SlotState.SPAWNING, SlotState.CRASHED, SlotState.STOPPED:
     slot.state = SlotState.STOPPING
     let nsOpt = slot.resolvedNs
     if nsOpt.isSome:
@@ -113,10 +148,12 @@ proc execStop*(slot: NimsuggestSlot, pool: NimsuggestPool): Future[bool] {.async
       try:
         if not nsOpt.get.project.process.isNil:
           await shutdownChildProcess(nsOpt.get.project.process)
-        slot.ns = none(Future[NimSuggest])
+        slot.state = SlotState.STOPPED
         return true
       except CatchableError as ex:
         debug "execStop: stop raised (process may already be dead)",
           projectFile = slot.projectFile, msg = ex.msg
-    slot.ns = none(Future[NimSuggest])
+    slot.state = SlotState.STOPPED
     return false
+
+

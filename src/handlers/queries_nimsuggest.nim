@@ -12,24 +12,23 @@ proc initNimsuggestPositionQuery*(
   uri: string,
   kind: NimsuggestQueryKind,
   line, character: int,
-): Option[NimsuggestQuery] =
+): NimsuggestQuery[LspFilePosition] =
   ## Create a position-based query (hover, definition, completion, …).
   ## line is 0-based (LSP convention); converted to 1-based for nimsuggest internally.
   ## The dirtyFile is resolved automatically from the stash.
-  let column = toUtf8Col(ls, uri, line, character)
-  if column.isNone:
-    return none(NimsuggestQuery)
-  else:
-    ls.addProjectFileToPendingRequest(id.uint, uri)
-    let q = NimsuggestQuery(
-      id: id.uint,
-      kind: kind,
-      uri: uri,
-      dirtyFile: ls.uriToStash(uri),
-      responseFuture: newFuture[seq[Suggest]]("nimsuggestQuery"),
-    )
-    q.position = FilePosition(line: line + 1, col: column.get)
-    return some(q)
+  ls.addProjectFileToPendingRequest(id.uint, uri)
+  var q = NimsuggestQuery[LspFilePosition](
+    id: id.uint,
+    kind: kind,
+    uri: uri,
+    dirtyFile: ls.uriToStash(uri),
+    responseFuture: newFuture[seq[Suggest]]("nimsuggestQuery"),
+  )
+  q.position = LspFilePosition(
+    line: Line0Based(line), 
+    character: Utf16Int(character)
+  )
+  return q
 
 proc initNimsuggestInlayHintQuery*(
   ls: LanguageServer,
@@ -38,46 +37,38 @@ proc initNimsuggestInlayHintQuery*(
   startLine, startCharacter: int,
   endLine, endCharacter: int,
   inlayHintsOptions: string
-): Option[NimsuggestQuery] =
+): NimsuggestQuery[LspFilePosition] =
   ## Create an inlay-hints range query.
   ## Lines are 0-based (LSP convention); converted to 1-based for nimsuggest internally.
   ## The dirtyFile is resolved automatically from the stash.
-  let startColumn = toUtf8Col(ls, uri, startLine, startCharacter)
-  let clampedEndLine =
-    if uri in ls.files.openFiles:
-      min(endLine, ls.files.openFiles[uri].fingerTable.len - 1)
-    else:
-      endLine
-  let endColumn = toUtf8Col(ls, uri, clampedEndLine, endCharacter)
-  if startColumn.isNone:
-    return none(NimsuggestQuery)
-  else:
-    ls.addProjectFileToPendingRequest(id.uint, uri)
-    return some(NimsuggestQuery(
-      id: id.uint,
-      kind: NimsuggestQueryKind.INLAY_HINTS,
-      uri: uri,
-      dirtyFile: ls.uriToStash(uri),
-      responseFuture: newFuture[seq[Suggest]]("nimsuggestQuery"),
-      inlayHints: (
-        start: FilePosition(
-          line: startLine + 1, col: startColumn.get
-        ),
-        finish: FilePosition(
-          line: clampedEndLine + 1, col: endColumn.get(0)
-        ),
-        options: inlayHintsOptions
-      )
-    ))
+  ls.addProjectFileToPendingRequest(id.uint, uri)
+  return NimsuggestQuery[LspFilePosition](
+    id: id.uint,
+    kind: NimsuggestQueryKind.INLAY_HINTS,
+    uri: uri,
+    dirtyFile: ls.uriToStash(uri),
+    responseFuture: newFuture[seq[Suggest]]("nimsuggestQuery"),
+    inlayHints: (
+      start: LspFilePosition(
+        line: Line0Based(startLine), 
+        character: Utf16Int(startCharacter)
+      ),
+      finish: LspFilePosition(
+        line: Line0Based(endLine), 
+        character: Utf16Int(endCharacter)
+      ),
+      options: inlayHintsOptions
+    )
+  )
 
 proc initNimsuggestFileQuery*(
   ls: LanguageServer,
   id: int,
   uri: string,
   kind: NimsuggestQueryKind,
-): NimsuggestQuery =
+): NimsuggestQuery[LspFilePosition] =
   ls.addProjectFileToPendingRequest(id.uint, uri)
-  return NimsuggestQuery(
+  return NimsuggestQuery[LspFilePosition](
     id: id.uint,
     kind: kind,
     uri: uri,
@@ -85,9 +76,94 @@ proc initNimsuggestFileQuery*(
     responseFuture: newFuture[seq[Suggest]]("nimsuggestQuery"),
   )
 
+# proc initNimsuggestPositionQuery*(
+#   ls: LanguageServer,
+#   id: int,
+#   uri: string,
+#   kind: NimsuggestQueryKind,
+#   line, character: int,
+# ): Option[NimsuggestQuery] =
+#   ## Create a position-based query (hover, definition, completion, …).
+#   ## line is 0-based (LSP convention); converted to 1-based for nimsuggest internally.
+#   ## The dirtyFile is resolved automatically from the stash.
+#   let column = toUtf8Col(ls, uri, line, character)
+#   echo "toUtf8Col ", $(uri in ls.files.openFiles)
+#   # , " ", $(line < ls.files.openFiles[uri].fingerTable.len)
+#   # echo $line, " ", $(ls.files.openFiles[uri].fingerTable.len)
+#   if column.isNone:
+#     echo "POSITION QUERY NONE "
+#     return none(NimsuggestQuery)
+#   else:
+#     let columnValue = column.get()
+#     echo "POSITION QUERY ", columnValue
+#     ls.addProjectFileToPendingRequest(id.uint, uri)
+#     let q = NimsuggestQuery(
+#       id: id.uint,
+#       kind: kind,
+#       uri: uri,
+#       dirtyFile: ls.uriToStash(uri),
+#       responseFuture: newFuture[seq[Suggest]]("nimsuggestQuery"),
+#     )
+#     q.position = FilePosition(line: line + 1, col: columnValue)
+#     return some(q)
+
+# proc initNimsuggestInlayHintQuery*(
+#   ls: LanguageServer,
+#   id: int,
+#   uri: string,
+#   startLine, startCharacter: int,
+#   endLine, endCharacter: int,
+#   inlayHintsOptions: string
+# ): Option[NimsuggestQuery] =
+#   ## Create an inlay-hints range query.
+#   ## Lines are 0-based (LSP convention); converted to 1-based for nimsuggest internally.
+#   ## The dirtyFile is resolved automatically from the stash.
+#   let startColumn = toUtf8Col(ls, uri, startLine, startCharacter)
+#   let clampedEndLine =
+#     if uri in ls.files.openFiles:
+#       min(endLine, ls.files.openFiles[uri].fingerTable.len - 1)
+#     else:
+#       endLine
+#   let endColumn = toUtf8Col(ls, uri, clampedEndLine, endCharacter)
+#   if startColumn.isNone:
+#     return none(NimsuggestQuery)
+#   else:
+#     ls.addProjectFileToPendingRequest(id.uint, uri)
+#     return some(NimsuggestQuery(
+#       id: id.uint,
+#       kind: NimsuggestQueryKind.INLAY_HINTS,
+#       uri: uri,
+#       dirtyFile: ls.uriToStash(uri),
+#       responseFuture: newFuture[seq[Suggest]]("nimsuggestQuery"),
+#       inlayHints: (
+#         start: FilePosition(
+#           line: startLine + 1, col: startColumn.get
+#         ),
+#         finish: FilePosition(
+#           line: clampedEndLine + 1, col: endColumn.get(0)
+#         ),
+#         options: inlayHintsOptions
+#       )
+#     ))
+
+# proc initNimsuggestFileQuery*(
+#   ls: LanguageServer,
+#   id: int,
+#   uri: string,
+#   kind: NimsuggestQueryKind,
+# ): NimsuggestQuery =
+#   ls.addProjectFileToPendingRequest(id.uint, uri)
+#   return NimsuggestQuery(
+#     id: id.uint,
+#     kind: kind,
+#     uri: uri,
+#     dirtyFile: ls.uriToStash(uri),
+#     responseFuture: newFuture[seq[Suggest]]("nimsuggestQuery"),
+#   )
+
 # === QUEUES ===
 proc addQueryToQueue*(
-  ls: LanguageServer, q: NimsuggestQuery,
+  ls: LanguageServer, q: NimsuggestQuery[LspFilePosition],
 ): Future[seq[Suggest]] =
   let uri = q.uri
   ls.langserverQueue.addLastNoWait(LangserverQuery(

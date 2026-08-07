@@ -20,7 +20,6 @@ proc executeCommand*(
     if ls.pool != nil and projectFile in ls.pool.slots:
       let slot = ls.pool.slots[projectFile]
       slot.crashedUris.clear()
-      slot.state = SlotState.STOPPING
       discard await execStop(slot, ls.pool)
       traceAsyncErrors execSpawn(slot, ls.pool, projectFile)
   of CHECK_PROJECT_COMMAND:
@@ -34,7 +33,6 @@ proc executeCommand*(
         let token = fmt "Compiling {projectFile}"
         ls.workDoneProgressCreate(token)
         ls.progress(token, "begin", fmt "Compiling project {projectFile}")
-        slot.state = SlotState.STOPPING
         discard await execStop(slot, ls.pool)
         traceAsyncErrors execSpawn(slot, ls.pool, projectFile)
         ls.progress(token, "end")

@@ -12,6 +12,8 @@ proc initialized*(ls: LanguageServer, _: JsonNode): Future[void] {.async.} =
   await ls.waitForWorkspaceConfiguration()
   let rootPath = ls.capabilities.lspInitializeParams.getRootPath
   await ls.initNimsuggestInstances(rootPath)
+  if not ls.lsInitialized.finished:
+    ls.lsInitialized.complete()
   
 # === $/cancelRequest ===
 proc cancelRequest*(ls: LanguageServer, params: CancelParams): Future[void] {.async.} =

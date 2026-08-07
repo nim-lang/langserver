@@ -167,7 +167,7 @@ proc initNimsuggestInstances*(ls: LanguageServer, rootPath: string) {.async.} =
           # event loop — Chronos continues serving other messages while waiting.
           let ok = await execSpawn(slot, ls.pool, entryPoint)
           if ok:
-            asyncSpawn processNimsuggestQueries(slot, ls.pool)
+            asyncSpawn processNimsuggestQueries(slot, ls.pool, ls.files.openFiles)
           else:
             ls.pool.removeSlot(entryPoint)
         else:
@@ -177,7 +177,6 @@ proc initNimsuggestInstances*(ls: LanguageServer, rootPath: string) {.async.} =
 proc stopNimsuggestProcesses*(ls: LanguageServer) {.async.} =
   debug "stopping child nimsuggest processes"
   for slot in ls.pool.slots.values.toSeq:
-    slot.state = SlotState.STOPPING
     discard await execStop(slot, ls.pool)
 
 proc stopNimsuggestProcessesP*(ls: LanguageServer) =
@@ -185,7 +184,6 @@ proc stopNimsuggestProcessesP*(ls: LanguageServer) =
 
 proc restartSlot*(slot: NimsuggestSlot, pool: NimsuggestPool): Future[void] {.async.} =
   ## Stop and re-spawn a single slot without removing it from the pool.
-  slot.state = SlotState.STOPPING
   discard await execStop(slot, pool)
   discard await execSpawn(slot, pool, slot.projectFile)
 
@@ -223,7 +221,6 @@ proc removeIdleNimsuggests*(ls: LanguageServer) {.async.} =
       "type": MessageType.Info.int,
       "message": fmt"Nimsuggest for {slot.projectFile} was stopped because it was idle for too long",
     })
-    slot.state = SlotState.STOPPING
     let successfulStop = await execStop(slot, ls.pool)
     if successfulStop:
        debug "Stopped nimsuggest"
