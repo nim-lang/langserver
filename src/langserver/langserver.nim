@@ -390,6 +390,7 @@ proc tick*(ls: LanguageServer): Future[void] {.async.} =
       # makeIdleFile routes through an already-stopped slot and gets @[] cleanly,
       # rather than racing with a live TCP connection being torn down.
       debug "Removing idle nimsuggest", projectFile = slot.projectFile
+      slot.state = SlotState.STOPPING
       discard await execStop(slot, ls.pool)
       ls.pool.removeSlot(slot.projectFile)
       ls.notify("window/showMessage", %*{

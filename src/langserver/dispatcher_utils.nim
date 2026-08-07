@@ -1,4 +1,4 @@
-import std/[options, tables, algorithm, os, sequtils, sugar, hashes, strutils, times]
+import std/[options, tables, algorithm, os, sequtils, sugar, strutils, times]
 import chronos
 import chronicles
 import ../nimsuggest/[suggestapi, suggestapi_types, nimsuggest_types]
@@ -54,7 +54,7 @@ proc addFileToOpenFiles*(
   params: TextDocumentItem
 ) = 
   # Write the initial stash file
-  let storagePath = ls.files.storageDir / (hash(params.uri).toHex & ".nim")
+  let storagePath = ls.uriStorageLocation(params.uri)
   try:
     writeFile(storagePath, params.text)
   except IOError as ex:

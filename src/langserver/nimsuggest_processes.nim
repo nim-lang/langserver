@@ -98,6 +98,15 @@ proc getNimSuggestPathAndVersion*(
   debug "Using nimsuggest", nimVersion = nimVersion, path = nimsuggestPath
   (nimsuggestPath, nimVersion)
 
+var compiledRegexCache {.threadvar.}: Table[string, Regex2]
+
+proc getCompiledRegex(pattern: string): Regex2 =
+  ## Returns a cached compiled Regex2 for pattern, compiling it on first use.
+  ## Chronos is single-threaded cooperative, so no locking is needed.
+  if pattern notin compiledRegexCache:
+    compiledRegexCache[pattern] = re2(pattern)
+  compiledRegexCache[pattern]
+
 proc getIntendedProject*(ls: LanguageServer, uri: string): string =
   ## ProjectMapping regex lookup only. No slot creation, no LRU fallback.
   ## Returns "" if no mapping matches.
@@ -110,7 +119,7 @@ proc getIntendedProject*(ls: LanguageServer, uri: string): string =
   let config = ls.getWorkspaceConfiguration()
   for mapping in config.projectMapping.get(@[]):
     var m: RegexMatch2
-    if find(path, re2(mapping.fileRegex), m):
+    if find(path, getCompiledRegex(mapping.fileRegex), m):
       if mapping.projectFile == "":
         return path  # regex matched but no projectFile — file is its own project
       return if isAbsolute(mapping.projectFile): mapping.projectFile
@@ -162,14 +171,18 @@ proc stopNimsuggestProcesses*(ls: LanguageServer) {.async.} =
 proc stopNimsuggestProcessesP*(ls: LanguageServer) =
   waitFor ls.stopNimsuggestProcesses()
 
-# proc restartAllNimsuggestInstances*(ls: LanguageServer) =
-#   debug "Restarting all nimsuggest instances"
-#   for projectFile, slot in ls.pool.slots.pairs:
-#     slot.send SlotCommand(
-#       kind: SlotCommandKind.RESTART,
-#       spawnProjectFile: projectFile,
-#       spawnTriggerUri: projectFile.pathToUri,
-#     )
+proc restartSlot*(slot: NimsuggestSlot, pool: NimsuggestPool): Future[void] {.async.} =
+  ## Stop and re-spawn a single slot without removing it from the pool.
+  discard await execStop(slot, pool)
+  discard await execSpawn(slot, pool, slot.projectFile)
+
+proc restartAllNimsuggestInstances*(ls: LanguageServer) =
+  ## Fire-and-forget restart of every slot in the pool.
+  ## Snapshots keys first to avoid mutating the table during async iteration.
+  debug "Restarting all nimsuggest instances"
+  for projectFile in ls.pool.slots.keys.toSeq:
+    if ls.pool.slots.hasKey(projectFile):
+      asyncSpawn restartSlot(ls.pool.slots[projectFile], ls.pool)
 
 proc idleSlots*(ls: LanguageServer): seq[NimsuggestSlot] =
   ## Return slots that have exceeded the idle timeout and have no recently-active

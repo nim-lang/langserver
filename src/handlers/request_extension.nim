@@ -3,7 +3,7 @@ import chronos
 import chronos/asyncproc
 import chronicles
 import ../protocol/[types, enums]
-import ../langserver/[langserver_types, utils, configurations, langserver]
+import ../langserver/[langserver_types, utils, configurations, langserver, nimsuggest_processes]
 import ../nim_compiler/testrunner
 import ../nim_compiler/nim_compiler
 import ../utils/process_utils
@@ -24,8 +24,17 @@ proc extensionCapabilities*(ls: LanguageServer, params: JsonNode): Future[seq[Ls
 
 # === extension/suggest ===
 proc extensionSuggest*(ls: LanguageServer, params: SuggestParams): Future[SuggestResult] {.async.} =
-  # TODO: implement restart/restartAll actions
   debug "extensionSuggest called", action = $params.action, projectFile = params.projectFile
+  case params.action
+  of saRestart:
+    if ls.pool.slots.hasKey(params.projectFile):
+      asyncSpawn restartSlot(ls.pool.slots[params.projectFile], ls.pool)
+    else:
+      debug "extensionSuggest: no slot found for project", projectFile = params.projectFile
+  of saRestartAll:
+    ls.restartAllNimsuggestInstances()
+  of saNone:
+    discard
   return SuggestResult(actionPerformed: params.action)
 
 proc startNimbleProcess(

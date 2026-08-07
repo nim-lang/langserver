@@ -1,11 +1,14 @@
-import std/[hashes, os, strutils, tables,  options]
+import std/[os, sha1, strutils, tables, options]
 import ./langserver_types
 import ../nimsuggest/suggestapi_types
 import ../utils/utils
 import ../protocol/types
 
 proc uriStorageLocation*(ls: LanguageServer, uri: string): string =
-  ls.files.storageDir / (hash(uri).toHex & ".nim")
+  # Use SHA-1 for a collision-resistant stash filename (40 hex chars).
+  # std/hash is a 64-bit integer hash; two URIs could share it and silently
+  # overwrite each other's edit buffer. SHA-1 collision probability is ~2^-80.
+  ls.files.storageDir / ($secureHash(uri) & ".nim")
 
 proc uriToStash*(ls: LanguageServer, uri: string): string =
   if ls.files.openFiles.hasKey(uri) and ls.files.openFiles[uri].changed:
