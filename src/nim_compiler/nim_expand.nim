@@ -1,10 +1,10 @@
-import std/[strutils]
+import std/[strutils, strformat, strutils]
 import chronos, chronos/asyncproc
 import stew/[byteutils]
 import chronicles
-import ../../langserver/utils
-import ../nimsuggest/[suggestapi, nimsuggest_types]
-import std/[strformat]
+import ../langserver/utils
+import ../nimsuggest/[suggestapi, suggestapi_types, nimsuggest_types]
+import ../utils/process_utils
 
 proc extractMacroExpansion*(output: string, targetLine: int): string =
   var start = false

@@ -1,5 +1,5 @@
+import std/[hashes, json, options, sets, tables, times]
 import chronos
-import ../protocol/types
 import ./suggestapi_types
 
 # === NIMSUGGEST QUERIES ===
@@ -94,8 +94,56 @@ type
       ## URIs that caused a SIGSEGV in this slot's process.
       ## Cleared by RESTART (explicit user action = clean slate).
 
-# === NIMSUGGEST POOL TYPES === 
-type 
+# === NIMSUGGEST POOL TYPES ===
+type
+  NotifyProc* = proc(meth: string, params: JsonNode) {.gcsafe, raises: [].}
+  StatusChangedProc* = proc() {.gcsafe, raises: [].}
+
   NimsuggestPool* = ref object
     slots*: Table[string, NimsuggestSlot]
     maxSlots*: int
+    nimsuggestPath*: string  ## Path to nimsuggest binary. Set in initNimsuggestInstances.
+    nimVersion*: string      ## Nim version string for logging.
+    timeout*: int            ## Per-request timeout in ms.
+    notifyProc*: NotifyProc
+      ## Sends a JSON-RPC notification to the client (e.g. window/showMessage).
+      ## Set by initLanguageServer. May be nil — check before calling.
+    statusChangedProc*: StatusChangedProc
+      ## Called when a slot transitions to READY or is removed.
+      ## Triggers extension/statusUpdate. Set by initLanguageServer. May be nil.
+
+proc newPool*(slots: Table[string, NimsuggestSlot], maxSlots: int): NimsuggestPool =
+  NimsuggestPool(slots: slots, maxSlots: maxSlots)
+
+proc newSlot*(projectFile: string, isEntryPoint = false): NimsuggestSlot =
+  NimsuggestSlot(
+    state: SlotState.SPAWNING,
+    projectFile: projectFile,
+    ownedUris: initHashSet[string](),
+    ns: none(Future[NimSuggest]),
+    queryMailbox: newAsyncQueue[NimsuggestQuery](),
+    lastCmdTime: now(),
+    isEntryPoint: isEntryPoint,
+    crashedUris: initHashSet[string](),
+  )
+
+proc addSlot*(pool: NimsuggestPool, slot: NimsuggestSlot) =
+  pool.slots[slot.projectFile] = slot
+
+proc removeSlot*(pool: NimsuggestPool, projectFile: string) =
+  pool.slots.del(projectFile)
+
+proc canSpawn*(pool: NimsuggestPool): bool =
+  pool.maxSlots == 0 or pool.slots.len < pool.maxSlots
+
+proc slotForUri*(pool: NimsuggestPool, uri: string): Option[NimsuggestSlot] =
+  for slot in pool.slots.values:
+    if uri in slot.ownedUris:
+      return some(slot)
+  none(NimsuggestSlot)
+
+proc assignUri*(slot: NimsuggestSlot, uri: string) =
+  slot.ownedUris.incl(uri)
+
+proc unassignUri*(slot: NimsuggestSlot, uri: string) =
+  slot.ownedUris.excl(uri)

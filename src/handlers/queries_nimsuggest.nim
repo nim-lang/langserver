@@ -1,8 +1,9 @@
 import std/[options, times, strformat, json]
 import chronos
 import chronicles
-import ../nim_tools/nimsuggest/[nimsuggest_types, suggestapi]
-import ../langserver/[utils, constants, queue_types, langserver_types]
+import ../nimsuggest/[nimsuggest_types, suggestapi_types, suggestapi]
+import ../configurations/constants
+import ../langserver/[utils, query_types, langserver_types, langserver]
 import ./handler_utils
 
 # === NIMSUGGEST QUERIES ===
@@ -21,14 +22,15 @@ proc initNimsuggestPositionQuery*(
     return none(NimsuggestQuery)
   else:
     ls.addProjectFileToPendingRequest(id.uint, uri)
-    return some(NimsuggestQuery(
+    let q = NimsuggestQuery(
       id: id.uint,
       kind: kind,
       uri: uri,
       dirtyFile: ls.uriToStash(uri),
       responseFuture: newFuture[seq[Suggest]]("nimsuggestQuery"),
-      position: FilePosition(line: line + 1, col: column.get),
-    ))
+    )
+    q.position = FilePosition(line: line + 1, col: column.get)
+    return some(q)
 
 proc initNimsuggestInlayHintQuery*(
   ls: LanguageServer,

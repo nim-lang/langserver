@@ -1,8 +1,10 @@
 import std/[options, json, os]
 import chronos
 import chronicles
-import ../protocol/types
-import ../langserver/[asyncprocmonitor, langserver_types, constants]
+import ../protocol/[types, enums]
+import ../utils/asyncprocmonitor
+import ../configurations/constants
+import ../langserver/[langserver_types, nimsuggest_processes]
 
 proc getNphPath*(): Option[string] =
   let path = findExe "nph"

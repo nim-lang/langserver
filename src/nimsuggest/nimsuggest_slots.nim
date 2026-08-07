@@ -1,8 +1,10 @@
-import std/[options, tables, algorithm, os, sequtils, sugar]
+import std/[options, sets, strformat, tables, algorithm, os, sequtils, sugar, times]
 import chronos
 import chronicles
 import ../protocol/[enums, types]
+import ../utils/process_utils
 import ./[suggestapi, suggestapi_types, nimsuggest_types]
+import ../configurations/constants
 
 # === UTILS ===
 proc isLive*(slot: NimsuggestSlot): bool =
@@ -30,7 +32,6 @@ proc execSpawn*(
   ## Start a nimsuggest process for `projectFile`, retrying up to MAX_CRASH_RETRIES times.
   ## Returns true if the spawn succeeded, false if all attempts failed.
   ## Sets slot.state, resolves slot.ns, and re-registers all ownedUris on success.
-  ## Removes the slot from the pool on permanent failure.
   debug "execSpawn: enter",
     slotProject = slot.projectFile, projectFile = projectFile,
     slotState = $slot.state, nsIsSome = slot.ns.isSome,
@@ -51,11 +52,19 @@ proc execSpawn*(
         projectFile = projectFile, backoffMs = backoffMs, attempt = slot.crashCount
       await sleepAsync(backoffMs.millis)
 
-    debug "execSpawn: calling spawnProc",
+    debug "execSpawn: calling createNimsuggest",
       projectFile = projectFile, attempt = slot.crashCount + 1
     try:
-      let ns = await pool.spawnProc(projectFile, @[])
-      debug "execSpawn: spawnProc succeeded", projectFile = projectFile, port = ns.port
+      let project = await createNimsuggest(
+        projectFile,
+        pool.nimsuggestPath,
+        pool.nimVersion,
+        pool.timeout,
+        proc(self: Nimsuggest) {.gcsafe, raises: [].} = discard,
+        proc(self: Project) {.gcsafe, raises: [].} = discard,
+      )
+      let ns = await project.ns
+      debug "execSpawn: createNimsuggest succeeded", projectFile = projectFile, port = ns.port
       nsFut.complete(ns)
       slot.state = SlotState.READY
       slot.crashCount = 0
@@ -79,15 +88,6 @@ proc execSpawn*(
     projectFile = projectFile, crashCount = slot.crashCount
   nsFut.fail(newException(CatchableError,
     fmt"Nimsuggest for {projectFile} failed after {MAX_CRASH_RETRIES} attempts"))
-  if pool.notifyProc != nil:
-    pool.notifyProc(
-      "window/showMessage",
-      %*{
-        "type": 1,
-        "message": fmt"Nimsuggest for {projectFile} failed to start after {MAX_CRASH_RETRIES} attempts. Check your nim/nimsuggest installation.",
-      },
-    )
-
   return false
 
 proc execStop*(slot: NimsuggestSlot, pool: NimsuggestPool): Future[bool] {.async.} =
@@ -108,7 +108,8 @@ proc execStop*(slot: NimsuggestSlot, pool: NimsuggestPool): Future[bool] {.async
     if nsOpt.isSome:
       debug "execStop: stopping nimsuggest", projectFile = slot.projectFile
       try:
-        await pool.stopProc(nsOpt.get)
+        if not nsOpt.get.project.process.isNil:
+          await shutdownChildProcess(nsOpt.get.project.process)
         slot.ns = none(Future[NimSuggest])
         return true
       except CatchableError as ex:
@@ -116,5 +117,3 @@ proc execStop*(slot: NimsuggestSlot, pool: NimsuggestPool): Future[bool] {.async
           projectFile = slot.projectFile, msg = ex.msg
     slot.ns = none(Future[NimSuggest])
     return false
-
-

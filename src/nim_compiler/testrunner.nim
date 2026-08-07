@@ -2,11 +2,12 @@ import
   std/
     [os, strscans, tables, enumerate, strutils, xmlparser, xmltree, options, strformat]
 import chronos, chronos/asyncproc
-import ../../protocol/types
-import ../../langserver/[langserver, langserver_types]
+import ../protocol/types
+import ../utils/process_utils
+import ../langserver/[langserver, langserver_types]
 import chronicles
 import stew/byteutils
-import ../../langserver/utils
+import ../langserver/utils
 
 proc extractTestInfo*(rawOutput: string): TestProjectInfo =
   result.suites = initTable[string, TestSuiteInfo]()
@@ -41,11 +42,11 @@ proc getFullPath*(entryPoint: string, workspaceRoot: string): string =
 proc parseObject(obj: var object, node: XmlNode) =
   for field, value in obj.fieldPairs:
     when value is string:
-      getField(obj, field) = node.attr(field)
+      value = node.attr(field)
     elif value is int:
-      getField(obj, field) = parseInt(node.attr(field))
+      value = parseInt(node.attr(field))
     elif value is float:
-      getField(obj, field) = parseFloat(node.attr(field))
+      value = parseFloat(node.attr(field))
 
 proc parseTestResult*(node: XmlNode): RunTestResult =
   parseObject(result, node)

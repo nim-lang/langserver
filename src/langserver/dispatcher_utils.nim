@@ -1,19 +1,16 @@
-import std/[options, tables, algorithm, os, sequtils, sugar]
+import std/[options, tables, algorithm, os, sequtils, sugar, hashes, strutils, times]
 import chronos
 import chronicles
-import ../nim_tools/nimsuggest/[suggestapi, nimsuggest_types, nimsuggest]
-import ../nim_tools/nimcheck/nimcheck
-import ../nim_tools/compiler/nim_compiler
+import ../nimsuggest/[suggestapi, suggestapi_types, nimsuggest_types]
 import ../protocol/[enums, types]
-import ./[
-  checking, configurations,
-  constants, diagnostics,
-]
+import ../configurations/constants
+import ./[configurations, diagnostics, utils as lsUtils]
 import ./[langserver_types, query_types]
+import ../utils/utils
 
-proc isKnownByNimsuggest*(nimsuggest: Nimsuggest, filePath: string): Future[bool] {.async.} =
+proc isKnownByNimsuggest*(ns: NimSuggest, filePath: string): Future[bool] {.async.} =
   # Checks response[0].forth == "true" — the boolean result comes back as a string in the forth field of a Suggest object.
-  let response: seq[Suggest] = await nimsuggest.known(filePath)
+  let response: seq[Suggest] = await ns.known(filePath)
   if response.len == 0:
     return false
   else:
@@ -32,12 +29,12 @@ proc checkNimsuggestSlotKnowsURI(slot: NimsuggestSlot, uri: string): Future[Opti
     return none(NimsuggestSlot)
 
   let ns = await slot.ns.get() 
-  if await ns.isKnownByNimsuggest(uri.uriToPath):
+  if await ns.isKnownByNimsuggest(uriToPath(uri)):
     return some(slot)
 
   return none(NimsuggestSlot)
 
-proc isKnownByANimsuggestSlot*(pool: NimsuggestPool, uri: string): Option[NimsuggestSlot] {.async.} =
+proc isKnownByANimsuggestSlot*(pool: NimsuggestPool, uri: string): Future[Option[NimsuggestSlot]] {.async.} =
   var futures: seq[
     tuple[projectFile: string, future: Future[Option[NimsuggestSlot]]]
   ]
@@ -134,7 +131,7 @@ proc nimsuggestSlotToEvict*(pool: NimsuggestPool): NimsuggestSlot =
 proc queryFile*(ls: LanguageServer, uri: string, kind: NimsuggestQueryKind): Future[seq[Suggest]] =
   ## Creates a NimsuggestQuery and enqueues it on the owning slot's query mailbox.
   ## Returns a Future completed by processQueries when nimsuggest responds.
-  result = newFuture[seq[Suggest]]("queryFile." & $kind)
+  result = newFuture[seq[Suggest]]("queryFile")
   let fileInfo = ls.files.openFiles.getOrDefault(uri)
   if fileInfo == nil or fileInfo.slot == nil:
     result.complete(@[])
@@ -147,52 +144,3 @@ proc queryFile*(ls: LanguageServer, uri: string, kind: NimsuggestQueryKind): Fut
     responseFuture: result,
   ))
 
-proc checkProject*(ls: LanguageServer, uri: string): Future[void] {.async.} =
-  if ls.checkInProgress:
-    return
-  ls.checkInProgress = true
-  defer:
-    ls.checkInProgress = false
-  let conf = ls.getWorkspaceConfiguration()
-  if not conf.autoCheckProject.get(true):
-    return
-  let results = await ls.queryFile(uri, NimsuggestQueryKind.CHECK_PROJECT)
-  ls.sendDiagnostics(results.filter(s => s.filePath != "???"), uri.uriToPath)
-
-proc checkFile*(ls: LanguageServer, uri: string): Future[void] {.async.} =
-  if uri notin ls.files.openFiles:
-    return
-  let fileInfo = ls.files.openFiles[uri]
-  if fileInfo.slot == nil:
-    return
-  let conf = ls.getWorkspaceConfiguration()
-  let useNimCheck = conf.useNimCheck.get(USE_NIM_CHECK_BY_DEFAULT)
-  let nimPath = getNimPath(conf)
-  let path = uriToPath(uri)
-  if useNimCheck and nimPath.isSome:
-    let checkResults = await nimCheck(path, nimPath.get)
-    ls.sendDiagnostics(checkResults, path)
-    return
-  if fileInfo.changed:
-    discard await ls.queryFile(uri, NimsuggestQueryKind.CHANGED)
-  let results = await ls.queryFile(uri, NimsuggestQueryKind.CHECK_FILE)
-  ls.sendDiagnostics(results.filter(s => s.filePath != "???"), path)
-
-proc didCloseFile*(ls: LanguageServer, uri: string) =
-  debug "Closed the following document:", uri = uri
-  if uri notin ls.files.openFiles:
-    return
-  let fileInfo = ls.files.openFiles[uri]
-  if fileInfo.changed:
-    asyncSpawn ls.checkFile(uri)
-  if fileInfo.slot != nil:
-    fileInfo.slot.unassignUri(uri)
-  ls.files.openFiles.del(uri)
-  if fileInfo.cancelFileCheck != nil and not fileInfo.cancelFileCheck.finished:
-    fileInfo.cancelFileCheck.complete()
-
-proc makeIdleFile*(ls: LanguageServer, file: NlsFileInfo) =
-  let uri = file.textDocument.uri
-  if uri in ls.files.openFiles:
-    ls.didCloseFile(uri)
-    ls.files.idleOpenFiles[uri] = file

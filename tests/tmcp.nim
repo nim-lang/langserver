@@ -1,6 +1,23 @@
-import ../[nimlangserver, ls, lstransports, utils]
-import ../protocol/types
-import ../routes/mcp
+## tmcp.nim — rewrite-compatible port of tests/tmcp.nim
+##
+## API changes from original:
+##   import ../[nimlangserver, ls, lstransports, utils]
+##     → new split imports from src/
+##
+##   initLs(cmdParams, ensureStorageDir())
+##     → initLanguageServer(cmdParams, ensureStorageDir())
+##
+##   ls.stopNimsuggestProcesses()
+##     → unchanged (in src/nimsuggest/nimsuggest.nim)
+##
+##   wrapContentWithContentLength
+##     → unchanged (in src/langserver/transports.nim)
+
+import ../src/quicknimlsp
+import ../src/langserver/[langserver, langserver_types, utils, transports, messaging_types, constants]
+import ../src/nimsuggest/nimsuggest
+import ../src/protocol/types
+import ../src/routes/mcp
 import ./testhelpers
 import std/[json, jsonutils, options, os, sequtils, strutils, tables]
 import chronos
@@ -24,7 +41,7 @@ proc initMcpServer(
         "capabilities": {},
         "clientInfo": {"name": "nimble test", "version": "1"},
       }
-    ls = initLs(cmdParams, ensureStorageDir())
+    ls = initLanguageServer(cmdParams, ensureStorageDir())
 
   ls.notify = proc(name: string, params: JsonNode) {.gcsafe, raises: [].} =
     discard
@@ -54,11 +71,9 @@ proc readResponseLine(client: McpSocketClient): Future[string] {.async.} =
     let chunk = await client.transport.read(1)
     if chunk.len == 0:
       return
-
     let ch = chunk[0].char
     if ch == '\n':
       return
-
     result.add(ch)
 
 proc callRpc(
@@ -73,7 +88,6 @@ proc callRpc(
     let response = await client.readResponseLine()
     if response == "":
       raise newException(IOError, "MCP server disconnected")
-
     let responseJson = parseJson(response)
     if "id" in responseJson and responseJson["id"].getInt() == id:
       return responseJson["result"]
@@ -135,6 +149,7 @@ suite "MCP routes":
     check findTypeDefinition.inputSchema.required == @["path", "line", "column"]
     check findTypeDefinition.outputSchema.required == @["defs"]
 
+
 suite "MCP tools":
   let
     testProjectDir = absolutePath("tests" / "projects" / "mcpproject")
@@ -160,22 +175,16 @@ suite "MCP tools":
         arguments: some %*{"path": entryPoint, "line": 3, "column": 10},
       ),
     )
-
     checkToolResult(res)
-
     let refs = res.structuredContent["refs"].getElems()
-
     check len(refs) == 1
 
   test "callTool nimFindSymbols returns matching workspace symbols":
     let res = waitFor mcp.callTool(
       ls, McpCallToolParams(name: "nimFindSymbols", arguments: some %*{"query": "add"})
     )
-
     checkToolResult(res)
-
     let syms = res.structuredContent["syms"].getElems()
-
     check syms.anyIt(
       it["path"].getStr() == entryPoint and it["line"].getInt() == 3 and
         it["column"].getInt() == 5 and it["kind"].getStr() == "Proc"
@@ -186,20 +195,15 @@ suite "MCP tools":
       ls,
       McpCallToolParams(name: "nimListSymbols", arguments: some %*{"path": entryPoint}),
     )
-
     checkToolResult(res)
-
     let syms = res.structuredContent["syms"].getElems()
-
     check syms.len == 1
     check syms[0] ==
       %*{"name": "add", "path": entryPoint, "line": 3, "column": 5, "kind": "Proc"}
 
   test "callTool nimCheckProject returns workspace diagnostics":
     let res = waitFor mcp.callTool(ls, McpCallToolParams(name: "nimCheckProject"))
-
     checkToolResult(res)
-
     let diags = res.structuredContent["diags"].getElems()
     check diags.len > 0
     check diags.anyIt(
@@ -212,9 +216,7 @@ suite "MCP tools":
     let res = waitFor mcp.callTool(
       ls, McpCallToolParams(name: "nimCheckFile", arguments: some %*{"path": errFile})
     )
-
     checkToolResult(res)
-
     let diags = res.structuredContent["diags"].getElems()
     check diags.len > 0
     check diags.anyIt(
@@ -226,9 +228,7 @@ suite "MCP tools":
     let res = waitFor mcp.callTool(
       ls, McpCallToolParams(name: "nimCheckFile", arguments: some %*{"path": testFile})
     )
-
     checkToolResult(res)
-
     let diags = res.structuredContent["diags"].getElems()
     check diags.len > 0
     check diags.anyIt(
@@ -244,9 +244,7 @@ suite "MCP tools":
         arguments: some %*{"path": entryPoint, "line": 3, "column": 10},
       ),
     )
-
     checkToolResult(res)
-
     let defs = res.structuredContent["defs"].getElems()
     check defs.len > 0
     check defs.anyIt(

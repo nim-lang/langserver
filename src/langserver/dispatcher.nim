@@ -1,16 +1,20 @@
-import std/[options, tables, algorithm, os, sequtils, sugar, times]
+import std/[options, sets, strutils, tables, algorithm, os, sequtils, sugar, times]
 import chronos
 import chronicles
-import ../nim_tools/nimsuggest/[suggestapi, nimsuggest_types]
-import ../nim_tools/nimcheck/nimcheck
-import ../nim_tools/compiler/nim_compiler
+import ../nimsuggest/[suggestapi, nimsuggest_types, suggestapi_types, nimsuggest_process]
+import ../nim_check/nim_check
+import ../nim_compiler/nim_compiler
 import ../protocol/[enums, types]
-import ./[
-  checking, configurations,
-  constants, diagnostics, formatting,
-  dispatcher_utils, nimsuggest_slots
-]
-import ./[langserver_types, nimsuggest_types, query_types]
+import ./checking
+import ../nph/formatting
+import ../nimsuggest/nimsuggest_slots
+import ../configurations/constants
+import ./[configurations, diagnostics, dispatcher_utils, nimsuggest_processes, utils]
+import ../handlers/request_process
+import ../utils/utils as globalUtils
+import ../utils/process_utils
+import ../configurations/configurations as configParser
+import ./[langserver_types, query_types]
 
 proc processLangserverQueue*(ls: LanguageServer): Future[void] {.async.} =
   ## Single coroutine that drains ls.langserverQueue in FIFO order.
@@ -65,52 +69,52 @@ proc processLangserverQueue*(ls: LanguageServer): Future[void] {.async.} =
                 state: SlotState.SPAWNING,
                 projectFile: projectFile,
                 ownedUris: initHashSet[string](),
-                ns: none(Future[NimSuggest]),
+                ns: none(Future[suggestapi_types.NimSuggest]),
                 queryMailbox: newAsyncQueue[NimsuggestQuery](),
                 lastCmdTime: times.now(),
-                isEntryPoint: projectPath == correctProjectFile,
+                isEntryPoint: projectFile == correctProjectFile,
                 crashedUris: initHashSet[string](),
               )
-              ls.pool.addSlot(s)
+              ls.pool.addSlot(newSlot)
               # Start the query queue running
-              let successfulSpawn: bool = await execSpawn(newSlot, pool, projectFile)
+              let successfulSpawn: bool = await execSpawn(newSlot, ls.pool, projectFile)
               if successfulSpawn:
                 discard await newSlot.ns.get()
-                ls.addFileToOpenFiles(fileIsKnown.get(), q.didOpen.textDocument)
-                asyncSpawn processQueries(newSlot, ls.pool)
+                ls.addFileToOpenFiles(newSlot, q.didOpen.textDocument)
+                asyncSpawn processNimsuggestQueries(newSlot, ls.pool)
               else:
-                pool.removeSlot(projectFile)
+                ls.pool.removeSlot(projectFile)
 
             else:
               # Pool at capacity — evict a slot.
               let slotToEvict = nimsuggestSlotToEvict(ls.pool)
               while slotToEvict.queryMailbox.len > 0:
-                let pendingQ = lruSlot.queryMailbox.popFirstNoWait()
+                let pendingQ = slotToEvict.queryMailbox.popFirstNoWait()
                 if not pendingQ.responseFuture.finished:
                   pendingQ.responseFuture.complete(@[])
 
-              let successfulStop = execStop(slotToEvict)
+              let successfulStop = await execStop(slotToEvict, ls.pool)
               if successfulStop:
-                ls.pool.removeSlot(slotToEvict)
-                
+                ls.pool.removeSlot(slotToEvict.projectFile)
+
               # Create a new slot
               let newSlot = NimsuggestSlot(
                 state: SlotState.SPAWNING,
                 projectFile: projectFile,
                 ownedUris: initHashSet[string](),
-                ns: none(Future[NimSuggest]),
+                ns: none(Future[suggestapi_types.NimSuggest]),
                 queryMailbox: newAsyncQueue[NimsuggestQuery](),
                 lastCmdTime: times.now(),
-                isEntryPoint: projectPath == correctProjectFile,
+                isEntryPoint: projectFile == correctProjectFile,
                 crashedUris: initHashSet[string](),
               )
-              ls.pool.addSlot(s)
+              ls.pool.addSlot(newSlot)
               # Start the query queue running
-              let successfulSpawn = await execSpawn(newSlot, pool, projectFile)
+              let successfulSpawn = await execSpawn(newSlot, ls.pool, projectFile)
               if successfulSpawn:
                 discard await newSlot.ns.get()
-                ls.addFileToOpenFiles(fileIsKnown.get(), q.didOpen.textDocument)
-                asyncSpawn processQueries(newSlot, ls.pool)
+                ls.addFileToOpenFiles(newSlot, q.didOpen.textDocument)
+                asyncSpawn processNimsuggestQueries(newSlot, ls.pool)
               else:
                 debug "Failed to spawn nimsuggest for file", uri = uri
             
@@ -263,11 +267,11 @@ proc processLangserverQueue*(ls: LanguageServer): Future[void] {.async.} =
             if path.endsWith(".nim"):
               let recompileQuery = NimsuggestQuery(
                 kind: NimsuggestQueryKind.RECOMPILE,
-                uri: pathToUri(slot.projectFile),
+                uri: pathToUri(fileInfo.slot.projectFile),
                 dirtyFile: "",
                 responseFuture: newFuture[seq[Suggest]]("recompile"),
               )
-              slot.queryMailbox.addLastNoWait(recompileQuery)
+              fileInfo.slot.queryMailbox.addLastNoWait(recompileQuery)
             ls.files.openFiles.del(uri)
 
       of FileAccessQueryKind.DID_CHANGE_CONFIGURATION:
@@ -281,7 +285,17 @@ proc processLangserverQueue*(ls: LanguageServer): Future[void] {.async.} =
           ls.configurations.configReady.fire()
           if oldConfiguration.nimsuggestPath != newConfiguration.nimsuggestPath or
               oldConfiguration.maxNimsuggestProcesses != newConfiguration.maxNimsuggestProcesses:
-            ls.restartAllNimsuggestInstances()
+            debug "Nimsuggest config changed, stopping all instances (restart not yet implemented)"
+            asyncSpawn ls.stopNimsuggestProcesses()
 
-    of FileAccessQueryKind.DID_CHANGE_CONFIGURATION:
-      discard #TODO
+      of FileAccessQueryKind.FORMATTING:
+        let uri = q.formatting.textDocument.uri
+        let nphPath = getNphPath()
+        if nphPath.isSome:
+          let formatTextEdit = await format(ls, nphPath.get(), uri)
+          if formatTextEdit.isSome:
+            q.formattingResponse.complete(@[formatTextEdit.get])
+          else:
+            q.formattingResponse.complete(@[])
+        else:
+          q.formattingResponse.complete(@[])

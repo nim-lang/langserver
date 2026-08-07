@@ -2,16 +2,31 @@ import std/[options, os, strutils, strscans, json, tables]
 import chronos
 import chronos/asyncproc
 import chronicles
-import ../protocol/types
+import ../protocol/[types, enums]
 import ../langserver/[langserver_types, utils, configurations, langserver]
-import ../nim_tools/compiler/testrunner
+import ../nim_compiler/testrunner
+import ../nim_compiler/nim_compiler
+import ../utils/process_utils
+import ../utils/utils as globalUtils
 
-# TODO!
 # === extension/macroExpand ===
+proc expand*(ls: LanguageServer, params: JsonNode): Future[JsonNode] {.async.} =
+  # TODO: implement macro expansion via nimExpandMacro
+  return newJNull()
+
 # === extension/status ===
+proc status*(ls: LanguageServer, params: NimLangServerStatusParams): Future[NimLangServerStatus] {.async.} =
+  return ls.getLspStatus()
+
 # === extension/capabilities ===
+proc extensionCapabilities*(ls: LanguageServer, params: JsonNode): Future[seq[LspExtensionCapability]] {.async.} =
+  return @[excRestartSuggest, excNimbleTask, excRunTests]
+
 # === extension/suggest ===
-# === extension/tasks ===
+proc extensionSuggest*(ls: LanguageServer, params: SuggestParams): Future[SuggestResult] {.async.} =
+  # TODO: implement restart/restartAll actions
+  debug "extensionSuggest called", action = $params.action, projectFile = params.projectFile
+  return SuggestResult(actionPerformed: params.action)
 
 proc startNimbleProcess(
   ls: LanguageServer, args: seq[string]

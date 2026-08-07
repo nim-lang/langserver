@@ -1,8 +1,9 @@
-import std/[options]
+import std/[json, options]
 import chronos
 import chronicles
 import ../protocol/types
 import ../configurations/[configurations, configuration_types]
+import ../configurations/constants
 import ./[langserver_types]
 
 proc getWorkspaceConfiguration*(ls: LanguageServer): NlsConfig =

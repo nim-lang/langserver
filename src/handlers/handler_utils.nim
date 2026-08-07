@@ -1,9 +1,12 @@
-import std/[options, tables, sequtils, strutils, strformat]
+import std/[options, tables, sequtils, strutils, strformat, sugar]
+import chronos
 import regex
 import with
 import ../protocol/[enums, types]
-import ../langserver/[utils, langserver_types]
-import ../nim_tools/nimsuggest/suggestapi
+import ../langserver/[utils, langserver_types, query_types, langserver]
+import ../nimsuggest/[suggestapi, suggestapi_types, nimsuggest_types]
+import ../utils/utils as globalUtils
+
 
 proc toUtf8Col*(
   ls: LanguageServer, uri: string, line: int, character: int
@@ -48,7 +51,7 @@ proc toMdLinks(s: string): string =
     let match = matches[i]
     result[match.boundaries] = fmt"[{s[match.captures[0]]}]({s[match.captures[1]]})"
 
-proc toMarkupContent(suggest: Suggest): MarkupContent =
+proc toMarkupContent*(suggest: Suggest): MarkupContent =
   result = MarkupContent(kind: "markdown", value: "```nim\n")
   result.value.add suggest.qualifiedPath.join(".")
   if suggest.forth.len != 0:
@@ -61,61 +64,8 @@ proc toMarkupContent(suggest: Suggest): MarkupContent =
     result.value.add toMdLinks(suggest.doc)
 
 proc processLocationQuery*(
+  ls: LanguageServer,
   nimsuggestResponse: seq[Suggest]
-): seq[Location] = 
+): seq[Location] =
   return nimsuggestResponse.map(x => x.toUtf16Pos(ls).toLocation)
 
-proc initNimsuggestPositionQuery*(
-  ls: LanguageServer,
-  id: int,
-  uri: string,
-  kind: NimsuggestQueryKind,
-  line, character: int,
-): Option[NimsuggestQuery] =
-  ## Create a position-based query (hover, definition, completion, …).
-  ## line is 0-based (LSP convention); converted to 1-based for nimsuggest internally."
-  ## The dirtyFile is resolved automatically from the stash.
-  let column = toUtf8Col(ls, line, character)
-  if column.isNone:
-    return none(NimsuggestQuery)
-  else:
-    ls.addProjectFileToPendingRequest(id.uint, uri)
-    return some(NimsuggestQuery(
-      id: id.uint,
-      kind: kind,
-      uri: uri,
-      dirtyFile: ls.uriToStash(uri),
-      responseFuture: newFuture[seq[Suggest]]("nimsuggestQuery"),
-      position: FilePosition(line: line + 1, col: column.get),
-    ))
-
-proc initNimsuggestFileQuery*(
-  ls: LanguageServer,
-  id: int,
-  uri: string,
-  kind: NimsuggestQueryKind,
-): Option[NimsuggestQuery] =
-  ## Create a position-based query (hover, definition, completion, …).
-  ## line is 0-based (LSP convention); converted to 1-based for nimsuggest internally."
-  ## The dirtyFile is resolved automatically from the stash.
-  let column = toUtf8Col(ls, line, character)
-  if column.isNone:
-    return none(NimsuggestQuery)
-  else:
-    ls.addProjectFileToPendingRequest(id.uint, uri)
-    return some(NimsuggestQuery(
-      id: id.uint,
-      kind: kind,
-      uri: uri,
-      dirtyFile: ls.uriToStash(uri),
-      responseFuture: newFuture[seq[Suggest]]("nimsuggestQuery"),
-    ))
-
-
-      let q = NimsuggestQuery(
-    kind: kind,
-    uri: uri,
-    dirtyFile: ls.uriToStash(uri),
-    responseFuture: newFuture[seq[Suggest]]("nimsuggestQuery"),
-  )
-  ls.routeQuery(uri, q)

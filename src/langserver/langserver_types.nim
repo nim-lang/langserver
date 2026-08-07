@@ -1,11 +1,12 @@
-import std/[json, options, tables, sets, streams]
+import std/[json, options, tables, sets, streams, times]
 import chronos
-import chronos/asyncproc
+import chronos/[asyncproc, threadsync]
 import json_rpc/servers/socketserver
 
 import ../protocol/types
-# import ../nim_tools/nimble/nimble_types
 import ../configurations/configuration_types
+import ../nimble/nimble_types
+import ../nimsuggest/nimsuggest_types
 import ./[query_types]
 
 type

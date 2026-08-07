@@ -12,11 +12,11 @@ import ./[
 
 import ./[handler_utils]
 
-export 
+export
   notification_process,
-  notification_files,
+  notification_files
 
-export 
+export
   request_extension,
   request_process,
   request_text_document,

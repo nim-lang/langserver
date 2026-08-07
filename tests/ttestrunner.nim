@@ -1,20 +1,32 @@
+## ttestrunner.nim — rewrite-compatible port of tests/ttestrunner.nim
+##
+## API changes from original:
+##   import ls        → import ../src/langserver/langserver_types
+##   import testrunner → import ../src/testrunner/testrunner
+##
+##   LanguageServer()   → LanguageServer(
+##                          capabilities: LanguageServerCapabilities(serverMode: lsp),
+##                          transport: LanguageServerTransport(transportMode: stdio),
+##                        )
+##   runTests(entryPoint, "nim", none(string), @[], "", ls)
+##     — signature unchanged in new code
+
 import std/[os, osproc, strscans, tables, sequtils, enumerate, strutils, options]
+import ../src/langserver/[langserver_types, messaging_types]
+import ../src/testrunner/testrunner
 import testhelpers
-import testrunner
 import chronos
-import ls
 import unittest2
 
 suite "Test Parser":
   test "should be able to list tests from an entry point":
-    #A project can have multiple entry points for the tests, they are specified in the test runner.
-    #We first need to install the project, as it uses a custom version of unittest2 (until it get merged).
+    echo "    >> should be able to list tests from an entry point"
     let projectDir = getCurrentDir() / "tests" / "projects" / "testrunner"
     cd projectDir:
       let (output, _) = execNimble("install", "-l")
       discard execNimble("setup")
       let (listTestsOutput, _) = execCmdEx("nim c -d:unittest2ListTests -r ./tests/test1.nim")
-      let testProjectInfo = extractTestInfo(listTestsOutput)     
+      let testProjectInfo = extractTestInfo(listTestsOutput)
       check testProjectInfo.suites.len == 1
       check testProjectInfo.suites["test1.nim"].tests.len == 1
       check testProjectInfo.suites["test1.nim"].tests[0].name == "can add"
@@ -22,6 +34,7 @@ suite "Test Parser":
       check testProjectInfo.suites["test1.nim"].tests[0].line == 10
 
   test "should be able to list tests and suites":
+    echo "    >> should be able to list tests and suites"
     let projectDir = getCurrentDir() / "tests" / "projects" / "testrunner"
     cd projectDir:
       let (listTestsOutput, _) = execCmdEx("nim c -d:unittest2ListTests -r ./tests/sampletests.nim")
@@ -36,8 +49,12 @@ suite "Test Parser":
 
 suite "Test Runner":
   test "should be able to run tests and retrieve results":
+    echo "    >> should be able to run tests and retrieve results"
     let entryPoint = getCurrentDir() / "tests" / "projects" / "testrunner" / "tests" / "sampletests.nim"
-    let ls = LanguageServer()
+    let ls = LanguageServer(
+      capabilities: LanguageServerCapabilities(serverMode: lsp),
+      transport: LanguageServerTransport(transportMode: stdio),
+    )
     let testProjectResult = waitFor runTests(entryPoint, "nim", none(string), @[], "", ls)
     check testProjectResult.suites.len == 4
     check testProjectResult.suites[0].name == "Sample Tests"

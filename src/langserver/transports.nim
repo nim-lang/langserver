@@ -1,8 +1,10 @@
 import json_rpc/[servers/socketserver, private/jrpc_sys, jsonmarshal, rpcclient, router]
 import chronicles, chronos
 import std/[syncio, os, json, strutils, strformat, streams, oids, sequtils, times]
-import ./[utils, langserver_types, messaging_types, constants, langserver]
+import ../configurations/constants
+import ./[utils, langserver_types, langserver]
 import ../protocol/types
+import ../utils/utils as globalUtils
 import chronos/threadsync
 
 type

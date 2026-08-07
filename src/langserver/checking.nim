@@ -1,12 +1,17 @@
+import std/[options, sets, sequtils, strformat, sugar, json]
 import chronos
 import chronicles
 
 import ../protocol/types
-import ../nim_tools/nimsuggest/[nimsuggest_types, nimsuggest]
-import ../nim_tools/nimcheck/nimcheck
-import ../nim_tools/compiler/nim_compiler
-import ./[configurations, langserver_types, constants, utils, queue_types, dispatcher_utils, diagnostics]
+import ../nimsuggest/[nimsuggest_types, suggestapi_types, nimsuggest_slots]
+import ../nim_check/nim_check
+import ../nim_compiler/nim_compiler
+import ../configurations/constants
+import ./[configurations, langserver_types, utils, query_types, dispatcher_utils, diagnostics, langserver]
+import ../utils/utils as globalUtils
 
+
+proc checkFile*(ls: LanguageServer, uri: string): Future[void] {.async.}
 
 proc scheduleFileCheck(ls: LanguageServer, uri: string) {.gcsafe, raises: [].} =
   if not ls.getWorkspaceConfiguration().autoCheckFile.get(true):
@@ -23,17 +28,22 @@ proc scheduleFileCheck(ls: LanguageServer, uri: string) {.gcsafe, raises: [].} =
   var cancelFuture = newFuture[void]()
   fileData.cancelFileCheck = cancelFuture
 
-  sleepAsync(FILE_CHECK_DELAY).addCallback do():
+  proc doCheck() {.async.} =
+    await sleepAsync(FILE_CHECK_DELAY)
     if not cancelFuture.finished:
       fileData.checkInProgress = true
-      ls.checkFile(uri).addCallback do() {.gcsafe, raises: [].}:
-        try:
-          ls.files.openFiles[uri].checkInProgress = false
-          if fileData.needsChecking:
-            fileData.needsChecking = false
-            ls.scheduleFileCheck(uri)
-        except KeyError:
-          discard
+      try:
+        await ls.checkFile(uri)
+      except CatchableError:
+        discard
+      try:
+        ls.files.openFiles[uri].checkInProgress = false
+        if fileData.needsChecking:
+          fileData.needsChecking = false
+          ls.scheduleFileCheck(uri)
+      except KeyError:
+        discard
+  asyncSpawn doCheck()
 
 proc cancelPendingFileChecks*(ls: LanguageServer, slot: NimsuggestSlot) =
   ## Cancel file-level checks for all URIs owned by this slot.
@@ -99,13 +109,7 @@ proc checkProject*(ls: LanguageServer, uri: string): Future[void] {.async.} =
   ls.workDoneProgressCreate(token)
   ls.progress(token, "begin", fmt "Checking project {uri.uriToPath}")
 
-  let q = NimsuggestQuery(
-    kind: NimsuggestQueryKind.CHECK_PROJECT,
-    uri: uri,
-    dirtyFile: ls.uriToStash(uri),
-    responseFuture: newFuture[seq[Suggest]]("checkProject"),
-  )
-  let diagnostics = await slot.query(q) #???
+  let diagnostics = await ls.queryFile(uri, NimsuggestQueryKind.CHECK_PROJECT)
   ls.progress(token, "end")
 
   proc getFilepath(s: Suggest): string = s.filePath

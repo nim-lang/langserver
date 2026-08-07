@@ -2,8 +2,8 @@ import std/[options, json, times]
 import chronos
 import chronicles
 import ../protocol/types
-import ../langserver/[langserver_types, configurations, messaging_types, utils]
-import ../langserver/nimsuggest_slots
+import ../langserver/[langserver_types, configurations, utils, nimsuggest_processes]
+import ../nimsuggest/nimsuggest_slots
 
 # === initialized ===
 proc initialized*(ls: LanguageServer, _: JsonNode): Future[void] {.async.} =

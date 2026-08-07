@@ -1,7 +1,7 @@
 import std/[os, osproc, strutils, options]
 import chronicles
 
-import ../../langserver/configuration_types
+import ../configurations/configuration_types
 
 proc getNimVersion*(nimDir: string): string =
   let cmd =

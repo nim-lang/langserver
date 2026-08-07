@@ -6,10 +6,13 @@ import json_serialization
 import stew/byteutils
 import with
 
-import ../nim_tools/nimsuggest/suggestapi
-import ../nim_tools/compiler/nimexpand
-import ../nim_tools/nimcheck/nimcheck
-import ../langserver/[utils, langserver_types, langserver, configurations, constants, diagnostics, queue_types]
+import ../nimsuggest/[suggestapi, suggestapi_types, nimsuggest_types]
+import ../nim_compiler/nim_expand
+import ../nim_compiler/nim_compiler
+import ../nim_check/nim_check
+import ../utils/utils as globalUtils
+import ../configurations/[constants, configuration_types]
+import ../langserver/[utils, langserver_types, langserver, configurations, diagnostics, query_types]
 import ../protocol/[enums, types]
 
 import ./[handler_utils, queries_nimsuggest, queries_file_access]
@@ -43,7 +46,7 @@ proc completion*(
     return @[]
   else:
     let response = await ls.addQueryToQueue(query.get)
-    return processCompletionQuery(ls, query, response)
+    return processCompletionQuery(ls, query.get, response)
 
 # === textDocument/definition ===
 proc definition*(
@@ -60,7 +63,7 @@ proc definition*(
     return @[]
   else:
     let response = await ls.addQueryToQueue(query.get)
-    return processLocationQuery(response)
+    return processLocationQuery(ls, response)
 
 # === textDocument/declaration ===
 proc declaration*(
@@ -77,7 +80,7 @@ proc declaration*(
     return @[]
   else:
     let response = await ls.addQueryToQueue(query.get)
-    return processLocationQuery(response)
+    return processLocationQuery(ls, response)
 
 # === textDocument/typeDefinition ===
 proc typeDefinition*(
@@ -94,12 +97,14 @@ proc typeDefinition*(
     return @[]
   else:
     let response = await ls.addQueryToQueue(query.get)
-    return processLocationQuery(response)
+    return processLocationQuery(ls, response)
 
 # === textDocument/references ===
 func processTypeDefinitionQuery(
+  ls: LanguageServer,
+  includeDeclaration: bool,
   nimsuggestResponse: seq[Suggest]
-): seq[Location] = 
+): seq[Location] =
   return nimsuggestResponse.filter(
     suggest => suggest.section != ideDef or includeDeclaration
   ).map(x => x.toUtf16Pos(ls).toLocation)
@@ -118,14 +123,14 @@ proc references*(
     return @[]
   else:
     let response = await ls.addQueryToQueue(query.get)
-    return processTypeDefinitionQuery(response)
+    return processTypeDefinitionQuery(ls, params.context.includeDeclaration, response)
 
 # === textDocument/hover ===
 proc processHoverQuery(
   ls: LanguageServer,
   query: NimsuggestQuery,
   nimsuggestResponse: seq[Suggest]
-): seq[Option[Hover]] {.async.} = 
+): Future[Option[Hover]] {.async.} = 
   if nimsuggestResponse.len == 0:
     return none(Hover)
 
@@ -199,8 +204,9 @@ func toDocumentHighlight(suggest: Suggest): DocumentHighlight =
   return DocumentHighlight %* {"range": toLabelRange(suggest)}
 
 func processDocumentHighlightQuery(
+  ls: LanguageServer,
   nimsuggestResponse: seq[Suggest]
-): seq[Location] = 
+): seq[DocumentHighlight] =
   return nimsuggestResponse.map(x => x.toUtf16Pos(ls).toDocumentHighlight)
 
 proc documentHighlight*(
@@ -217,7 +223,7 @@ proc documentHighlight*(
     return @[]
   else:
     let response = await ls.addQueryToQueue(query.get)
-    return processDocumentHighlightQuery(response)
+    return processDocumentHighlightQuery(ls, response)
 
 # === textDocument/signatureHelp ===
 proc toSignatureInformation(suggest: Suggest): SignatureInformation =
@@ -272,7 +278,7 @@ proc signatureHelp*(
       return none[SignatureHelp]()
     else:
       let response = await ls.addQueryToQueue(query.get)
-      return processSignatureHelpQuery(response)  
+      return processSignatureHelpQuery(ls, query.get, response)
   else:
     #Some clients doesnt support signatureHelp
     return none[SignatureHelp]()
@@ -288,8 +294,9 @@ proc toSymbolInformation*(suggest: Suggest): SymbolInformation =
       }
 
 proc processDocumentSymbolQuery(
+  ls: LanguageServer,
   nimsuggestResponse: seq[Suggest]
-): seq[SymbolInformation] = 
+): seq[SymbolInformation] =
   return nimsuggestResponse.map(x => x.toUtf16Pos(ls).toSymbolInformation)
 
 proc documentSymbols*(
@@ -300,17 +307,16 @@ proc documentSymbols*(
     params.textDocument.uri,
     NimsuggestQueryKind.DOCUMENT_SYMBOLS
   )
-  let response = await ls.addQueryToQueue(query.get)
-  return processDocumentSymbolQuery(response)
+  let response = await ls.addQueryToQueue(query)
+  return processDocumentSymbolQuery(ls, response)
 
 # === textDocument/prepareRename ===
 proc processPrepareRenameQuery(
   ls: LanguageServer,
   nimsuggestResponse: seq[Suggest]
-): seq[SymbolInformation] = 
+): JsonNode =
   let projectDir = ls.capabilities.lspInitializeParams.getRootPath
-  # TODO does this need a guard in case the length of nimsuggestResponse is 0/
-  if nimsuggestResponse[0].filePath.isRelTo(projectDir):
+  if nimsuggestResponse.len > 0 and nimsuggestResponse[0].filePath.isRelTo(projectDir):
     return %nimsuggestResponse[0].toLocation().range
   return newJNull()
 
@@ -320,7 +326,7 @@ proc prepareRename*(
   let query: Option[NimsuggestQuery] = ls.initNimsuggestPositionQuery(
     id,
     params.textDocument.uri,
-    NimsuggestQueryKind.SUGGEST, 
+    NimsuggestQueryKind.SUGGEST,
     params.position.line,
     params.position.character
   )
@@ -328,48 +334,43 @@ proc prepareRename*(
     return newJNull()
   else:
     let response = await ls.addQueryToQueue(query.get)
-    return processPrepareRenameQuery(ls, query, response)
+    return processPrepareRenameQuery(ls, response)
 
 # === textDocument/rename ===
 proc processRenameQuery(
-  ls: LanguageServer
+  ls: LanguageServer,
+  newName: string,
   nimsuggestResponse: seq[Suggest]
-): WorkspaceEdit = 
+): WorkspaceEdit =
   # Build up list of edits that the client needs to perform for each file
   let projectDir = ls.capabilities.lspInitializeParams.getRootPath
   var edits = newJObject()
-  for reference in references:
+  for reference in nimsuggestResponse:
     # Only rename symbols in the project.
     # If client supports prepareRename then an error will already have been thrown
-    if reference.uri.uriToPath().isRelTo(projectDir):
-      if reference.uri notin edits:
-        edits[reference.uri] = newJArray()
-      edits[reference.uri] &= %TextEdit(range: reference.range, newText: params.newName)
+    let uri = pathToUri(reference.filePath)
+    if reference.filePath.isRelTo(projectDir):
+      if uri notin edits:
+        edits[uri] = newJArray()
+      edits[uri] &= %TextEdit(range: reference.toLabelRange(), newText: newName)
   return WorkspaceEdit(changes: some edits)
 
 proc rename*(
   ls: LanguageServer, params: RenameParams, id: int
 ): Future[WorkspaceEdit] {.async.} =
-  # We reuse the references command as to not duplicate it  
+  # We reuse the references command as to not duplicate it
   let query: Option[NimsuggestQuery] = ls.initNimsuggestPositionQuery(
     id,
     params.textDocument.uri,
-    NimsuggestQueryKind.REFERENCES, 
+    NimsuggestQueryKind.REFERENCES,
     params.position.line,
     params.position.character
   )
-  # NOTE: In the original function these were the parameters:
-  # ReferenceParams(
-  #   context: ReferenceContext(includeDeclaration: true),
-  #   textDocument: params.textDocument,
-  #   position: params.position,
-  # )
-  # Is `context: ReferenceContext(includeDeclaration: true)` used?
   if query.isNone:
-    return @[]
+    return WorkspaceEdit()
   else:
     let response = await ls.addQueryToQueue(query.get)
-    return processRenameQuery(response)
+    return processRenameQuery(ls, params.newName, response)
 
 
 # === textDocument/inlayHint ====
@@ -425,7 +426,10 @@ proc toInlayHint(suggest: SuggestInlayHint, configuration: NlsConfig): InlayHint
     )
 
 proc processInlayHintQuery(
+  ls: LanguageServer,
+  uri: string,
   nimsuggestResponse: seq[Suggest],
+  configuration: NlsConfig,
   typeHintsEnabled: bool,
   exceptionHintsEnabled: bool,
   parameterHintsEnabled: bool,
@@ -440,7 +444,7 @@ proc inlayHint*(
 ): Future[seq[InlayHint]] {.async.} =
   debug "inlayHint received..."
   let configuration = ls.getWorkspaceConfiguration()
-  if not configuration.inlayHintsEnabled:
+  if configuration.inlayHints.isNone:
     debug "inlayHints not enabled in configuration"
     return @[]
 
@@ -461,11 +465,14 @@ proc inlayHint*(
     if ls.nsProtocolVersion(params.textDocument.uri) < 4:
       return @[]
 
+    let inlayHintsCfg = configuration.inlayHints.get()
     return processInlayHintQuery(
+      ls, params.textDocument.uri,
       response,
-      configuration.typeHintsEnabled,
-      configuration.exceptionHintsEnabled,
-      configuration.parameterHintsEnabled,
+      configuration,
+      inlayHintsCfg.typeHints.isSome and inlayHintsCfg.typeHints.get().enable.get(true),
+      inlayHintsCfg.exceptionHints.isSome and inlayHintsCfg.exceptionHints.get().enable.get(true),
+      inlayHintsCfg.parameterHints.isSome and inlayHintsCfg.parameterHints.get().enable.get(true),
     )
 
 # === textDocument/codeAction ===

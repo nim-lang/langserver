@@ -1,9 +1,13 @@
-import std/[json, sequtils, strformat, options]
+import std/[json, sequtils, strformat, options, sets, sugar]
 import chronos
 import chronicles
 import ../protocol/types
-import ../langserver/[langserver_types, constants, queue_types, langserver, utils]
-import ./[handler_utils, request_text_document]
+import ../configurations/constants
+import ../langserver/[langserver_types, query_types, langserver, utils, checking]
+import ../nimsuggest/[nimsuggest_types, nimsuggest_slots]
+import ../utils/process_utils
+import ../utils/utils as globalUtils
+import ./[handler_utils, queries_nimsuggest, request_text_document]
 
 # === workspace/executeCommand ===
 proc executeCommand*(
@@ -13,29 +17,24 @@ proc executeCommand*(
   case params.command
   of RESTART_COMMAND:
     debug "Restarting nimsuggest", projectFile = projectFile
-    if ls.pool != nil:
-      let slotOpt = ls.pool.findSlot(projectFile)
-      if slotOpt.isSome:
-        let slot = slotOpt.get
-        slot.crashedUris.clear()
-        slot.send SlotCommand(
-          kind: SlotCommandKind.RESTART,
-          spawnProjectFile: projectFile,
-          spawnTriggerUri: projectFile.pathToUri,
-        )
+    if ls.pool != nil and projectFile in ls.pool.slots:
+      let slot = ls.pool.slots[projectFile]
+      slot.crashedUris.clear()
+      discard await execStop(slot, ls.pool)
+      traceAsyncErrors execSpawn(slot, ls.pool, projectFile)
   of CHECK_PROJECT_COMMAND:
     debug "Checking project", projectFile = projectFile
     ls.checkProject(projectFile.pathToUri).traceAsyncErrors
   of RECOMPILE_COMMAND:
     debug "Clean build", projectFile = projectFile
-    if ls.pool != nil:
-      let slotOpt = ls.pool.findSlot(projectFile)
-      if slotOpt.isSome and slotOpt.get.isLive:
-        let slot = slotOpt.get
+    if ls.pool != nil and projectFile in ls.pool.slots:
+      let slot = ls.pool.slots[projectFile]
+      if slot.isLive:
         let token = fmt "Compiling {projectFile}"
         ls.workDoneProgressCreate(token)
         ls.progress(token, "begin", fmt "Compiling project {projectFile}")
-        slot.send SlotCommand(kind: SlotCommandKind.RECOMPILE)
+        discard await execStop(slot, ls.pool)
+        traceAsyncErrors execSpawn(slot, ls.pool, projectFile)
         ls.progress(token, "end")
         ls.checkProject(projectFile.pathToUri).traceAsyncErrors
 
@@ -50,10 +49,11 @@ proc workspaceSymbol*(
     return @[]
   var liveUri = ""
   for slot in ls.pool.slots.values:
-    if slot.resolvedNs.isSome and slot.ownedUris.len > 0:
+    if slot.isLive and slot.ownedUris.len > 0:
       liveUri = slot.ownedUris.toSeq[0]
       break
   if liveUri == "":
     return @[]
-  let symbols = await ls.queryWorkspaceSymbols(liveUri, params.query)
+  let q = ls.initNimsuggestFileQuery(id, liveUri, NimsuggestQueryKind.WORKSPACE_SYMBOLS)
+  let symbols = await ls.addQueryToQueue(q)
   result = symbols.map(x => x.toUtf16Pos(ls).toSymbolInformation)

@@ -1,3 +1,9 @@
+import std/[hashes, os, strutils, tables,  options]
+import ./langserver_types
+import ../nimsuggest/suggestapi_types
+import ../utils/utils
+import ../protocol/types
+
 proc uriStorageLocation*(ls: LanguageServer, uri: string): string =
   ls.files.storageDir / (hash(uri).toHex & ".nim")
 

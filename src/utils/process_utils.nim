@@ -1,4 +1,4 @@
-import std/[os]
+import std/[os, sugar, options, net]
 
 # unicode, uri, strformat, os, strutils, options, json, jsonutils, sugar, net, hashes]
 # import with

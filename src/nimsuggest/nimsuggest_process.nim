@@ -1,8 +1,10 @@
-import std/[options, tables, algorithm, os, sequtils, sugar]
+import std/[json, options, strformat, tables, algorithm, os, sequtils, sugar, sets, times]
 import chronos
 import chronicles
 import ../protocol/[enums, types]
+import ../utils/utils
 import ./[suggestapi, suggestapi_types, nimsuggest_types, nimsuggest_slots]
+import ../configurations/constants
 
 # === PROCESSING === 
 proc runNimsuggestQuery*(
@@ -90,14 +92,13 @@ proc processNimsuggestQueries*(slot: NimsuggestSlot, pool: NimsuggestPool) {.asy
           else: 0
           if backoffMs > 0:
             await sleepAsync(backoffMs.millis)
-          await execStop(slot, pool)
+          discard await execStop(slot, pool)
           slot.crashedUris.clear() # explicit restart = clean slate
-          await execSpawn(slot, pool, slot.projectFile, q.uri)
+          discard await execSpawn(slot, pool, slot.projectFile)
 
         else:
           error "processQueries: crash limit reached, slot permanently failed",
             projectFile = slot.projectFile, crashCount = slot.crashCount
-
           if pool.notifyProc != nil:
             pool.notifyProc(
               "window/showMessage",
@@ -106,7 +107,6 @@ proc processNimsuggestQueries*(slot: NimsuggestSlot, pool: NimsuggestPool) {.asy
                 "message": fmt"Nimsuggest for {slot.projectFile} failed after {MAX_CRASH_RETRIES} attempts.",
               },
             )
-
           pool.removeSlot(slot.projectFile)
 
       slot.crashedUris.incl(q.uri)
@@ -115,10 +115,10 @@ proc processNimsuggestQueries*(slot: NimsuggestSlot, pool: NimsuggestPool) {.asy
         q.responseFuture.complete(@[])
       continue
 
-    slot.lastCmdTime = now()
+    slot.lastCmdTime = times.now()
 
     try:
-      let queryResponse = await runNimsuggestQuery(q)
+      let queryResponse = await runNimsuggestQuery(ns, q)
       if not q.responseFuture.finished:
         q.responseFuture.complete(queryResponse)
 

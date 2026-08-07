@@ -1,21 +1,22 @@
 import std/[sequtils, sugar, strutils, json, options, sets]
-import with
 import chronicles
 
 import ../protocol/[types, enums]
-import ../nim_tools/nimsuggest/nimsuggest_types
-import ../nim_tools/nimcheck/nimcheck
-import ./[langserver_types, utils]
+import ../nimsuggest/[suggestapi_types, nimsuggest_types, suggestapi]
+import ../nim_check/nim_check
+import ../utils/utils
+import ./[langserver_types, utils as lsUtils]
+import ../utils/utils as globalUtils
 
 proc toUtf16Pos*(checkResult: CheckResult, ls: LanguageServer): CheckResult =
   result = checkResult
   let uri = pathToUri(checkResult.file)
-  let pos = toUtf16Pos(ls, uri, checkResult.line - 1, checkResult.column)
+  let pos = lsUtils.toUtf16Pos(ls, uri, checkResult.line - 1, checkResult.column)
   if pos.isSome:
     result.column = pos.get()
   for i in 0 ..< result.stacktrace.len:
     let stPos =
-      toUtf16Pos(ls, uri, result.stacktrace[i].line - 1, result.stacktrace[i].column)
+      lsUtils.toUtf16Pos(ls, uri, result.stacktrace[i].line - 1, result.stacktrace[i].column)
     if stPos.isSome:
       result.stacktrace[i].column = stPos.get()
 

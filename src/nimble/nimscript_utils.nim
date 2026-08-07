@@ -1,8 +1,9 @@
+import std/[os]
 import chronos, chronicles, chronos/asyncproc
 import stew/byteutils
 import ../protocol/types
 
-const NIM_SCRIPT_API_TEMPLATE* = staticRead("../templates/nimscriptapi.nim")
+const NIM_SCRIPT_API_TEMPLATE* = staticRead("./nimscriptapi.nim")
 
 proc getNimScriptAPITemplatePath*(): string =
   result = getCacheDir("quicknimlsp")

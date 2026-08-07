@@ -1,3 +1,6 @@
+## LSP socket client for tests — identical to tests/lspsocketclient.nim but
+## updated import paths for the new src/ module hierarchy.
+
 import ../src/langserver/[transports, utils]
 import ../src/langserver/langserver_types
 import ../src/protocol/types
@@ -5,7 +8,7 @@ import std/[options, unittest, json, os, jsonutils, tables, strutils, sequtils, 
 import json_rpc/[rpcclient]
 import chronicles
 
-#Utils
+# fixture paths are still under tests/ (shared with original test suite)
 proc fixtureUri*(path: string): string =
   result = pathToUri(getCurrentDir() / "tests" / path)
 
@@ -16,9 +19,7 @@ type
     notifications*: TableRef[string, NotificationRpc]
     routes*: TableRef[string, Rpc]
     calls*: TableRef[string, seq[JsonNode]]
-      #Stores all requests here from the server so we can test on them
     responses*: TableRef[int, Future[JsonNode]]
-      #id -> response. Stores the responses to the calls
 
 proc newLspSocketClient*(): LspSocketClient =
   result = LspSocketClient.new()
@@ -26,15 +27,13 @@ proc newLspSocketClient*(): LspSocketClient =
   result.notifications = newTable[string, NotificationRpc]()
   result.calls = newTable[string, seq[JsonNode]]()
   result.responses = newTable[int, Future[JsonNode]]()
-  # Default handler: respond to workspace/configuration requests with empty config.
-  # Without this the server's workspaceConfiguration future never completes.
+  # Respond to workspace/configuration so configReady fires after initialize.
   result.routes["workspace/configuration"] = proc(params: JsonNode): Future[JsonNode] {.async.} =
     return newJArray()
 
 method call*(
     client: LspSocketClient, name: string, params: JsonNode
 ): Future[JsonNode] {.async.} =
-  ## Remotely calls the specified RPC method.
   let id = client.getNextId()
   let reqJson = newJObject()
   reqJson["jsonrpc"] = %"2.0"
@@ -47,9 +46,7 @@ method call*(
     raise newException(
       JsonRpcError, "Transport is not initialised (missing a call to connect?)"
     )
-  # completed by processData.
   var newFut = newFuture[JsonNode]()
-  # add to awaiting responses
   client.responses[id.num] = newFut
   let res = await client.transport.write(jsonBytes)
   return await newFut
@@ -71,18 +68,16 @@ proc processMessage(client: LspSocketClient, msg: string) {.raises: [].} =
       let meth = serverReq["method"].jsonTo(string)
       debug "[Process Data Loop ]", meth = meth
       if "id" in serverReq:
-        # Server-to-client request: needs a response via client.routes
         if meth in client.routes:
           asyncSpawn runRpc(client, client.routes[meth], serverReq)
         else:
           error "Route not implemented ", meth = meth
       else:
-        # Server-to-client notification: no response needed
         if meth in client.notifications:
           asyncSpawn client.notifications[meth](serverReq["params"])
         else:
           error "Method not implemented ", meth = meth
-    elif "id" in serverReq: #Response here
+    elif "id" in serverReq:
       let id = serverReq["id"].jsonTo(int)
       client.responses[id].complete(serverReq["result"])
     else:
@@ -95,15 +90,10 @@ proc processData(client: LspSocketClient) {.async: (raises: []).} =
     var localException: ref JsonRpcError
     while true:
       try:
-        # var value = await client.transport.readLine(defaultMaxRequestLength)
         var value = await processContentLength(client.transport)
         if value == "":
-          # transmission ends
           await client.transport.closeWait()
           break
-        # echo "----------------------------ProcessData----------------------"
-        # echo value
-        # echo "----------------------------EndProcessData-------------------"
         client.processMessage(value)
       except TransportError as exc:
         localException = newException(JsonRpcError, exc.msg)
@@ -120,7 +110,6 @@ proc processData(client: LspSocketClient) {.async: (raises: []).} =
       if client.batchFut.isNil.not and not client.batchFut.completed():
         client.batchFut.fail(localException)
 
-    # async loop reconnection and waiting 
     try:
       info "Reconnect to server", address = `$`(client.address)
       client.transport = await connect(client.address)
@@ -140,7 +129,6 @@ proc connect*(client: LspSocketClient, address: string, port: Port) {.async.} =
 proc notify*(client: LspSocketClient, name: string, params: JsonNode) =
   proc wrap(): Future[void] {.async.} =
     discard await client.call(name, params)
-
   asyncSpawn wrap()
 
 proc register*(client: LspSocketClient, name: string, notRpc: NotificationRpc) =
@@ -150,7 +138,6 @@ proc register*(client: LspSocketClient, name: string, notRpc: NotificationRpc) =
 proc register*(client: LspSocketClient, name: string, rpc: Rpc) =
   client.routes[name] = rpc
 
-#Calls
 proc initialize*(
     client: LspSocketClient, initParams: LspInitializeParams
 ): Future[LspInitializeResult] {.async.} =
@@ -174,7 +161,6 @@ proc positionParams*(uri: string, line, character: int): TextDocumentPositionPar
     TextDocumentPositionParams %*
     {"position": {"line": line, "character": character}, "textDocument": {"uri": uri}}
 
-#Helper to hook notifications so we can check against them in the tests
 proc notificationHandle*(
     args: (LspSocketClient, string), params: JsonNode
 ): Future[void] =
@@ -182,14 +168,12 @@ proc notificationHandle*(
     let client = args[0]
     let name = args[1]
     if name in ["textDocument/publishDiagnostics", "$/progress"]:
-      #Too much noise. They are split so we can toggle to debug the tests
       debug "[NotificationHandled ] Called for ", name = name
     else:
       debug "[NotificationHandled ] Called for ", name = name, params = params
     client.calls[name].add params
   except CatchableError:
     discard
-
   result = newFuture[void]("notificationHandle")
 
 proc registerNotification*(client: LspSocketClient, names: varargs[string]) =
@@ -200,21 +184,23 @@ proc waitForNotification*(
     client: LspSocketClient,
     name: string,
     predicate: proc(json: JsonNode): bool {.gcsafe, raises: [CatchableError].},
-    accTime = 0,
 ): Future[bool] {.async.} =
+  ## Poll `client.calls[name]` every 100ms until predicate matches or 10s elapses.
+  ## Uses a while loop instead of tail recursion to avoid accumulating Future objects.
   let timeout = 10000
-  if accTime > timeout:
-    error "Couldn't match predicate ", calls = client.calls[name]
-    return false
-  try:
-    for call in client.calls[name]:
-      if predicate(call):
-        debug "[WaitForNotification Predicate Matches] ", name = name, call = call
-        return true
-  except CatchableError as ex:
-    error "[WaitForNotification]", ex = ex.msg
-  await sleepAsync(100)
-  await waitForNotification(client, name, predicate, accTime + 100)
+  var elapsed = 0
+  while elapsed <= timeout:
+    try:
+      for call in client.calls[name]:
+        if predicate(call):
+          debug "[WaitForNotification Predicate Matches] ", name = name, call = call
+          return true
+    except CatchableError as ex:
+      error "[WaitForNotification]", ex = ex.msg
+    await sleepAsync(100)
+    elapsed += 100
+  error "Couldn't match predicate ", calls = client.calls[name]
+  return false
 
 proc waitForNotificationMessage*(
     client: LspSocketClient, msg: string

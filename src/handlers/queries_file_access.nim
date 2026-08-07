@@ -1,6 +1,8 @@
 import std/json
 import chronos
-import ../langserver/[queue_types, langserver_types]
+import ../protocol/types
+import ../langserver/[query_types, langserver_types]
+import ../nimsuggest/[suggestapi_types, nimsuggest_types]
 
 proc initDidOpenQuery*(params: DidOpenTextDocumentParams): FileAccessQuery =
   FileAccessQuery(kind: FileAccessQueryKind.DID_OPEN, didOpen: params)
@@ -23,12 +25,12 @@ proc initDidDeleteFilesQuery*(params: DeleteFilesParams): FileAccessQuery =
 proc initDidChangeConfigurationQuery*(conf: JsonNode): FileAccessQuery =
   FileAccessQuery(
     kind: FileAccessQueryKind.DID_CHANGE_CONFIGURATION,
-    didChangeConfiguration: 
+    didChangeConfiguration: conf
   )
 
 # === Queues ===
 proc addQueryToQueue*(ls: LanguageServer, q: FileAccessQuery) =
-  ls.langserverQueue.addLastNoWait(q)
+  ls.langserverQueue.addLastNoWait(LangserverQuery(kind: LangserverQueryKind.FILE_ACCESS, fileAccess: q))
 
 proc addWillSaveQueryToQueue*(
   ls: LanguageServer, 
@@ -60,5 +62,5 @@ proc addFormattingQueryToQueue*(
     )
   )
   ls.langserverQueue.addLastNoWait(query)
-  return query.formatting.formattingResponse
+  return query.fileAccess.formattingResponse
 

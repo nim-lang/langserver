@@ -1,9 +1,13 @@
 import std/[syncio, os, json, strutils, strformat]
 import json_rpc/[servers/socketserver, private/jrpc_sys, jsonmarshal, rpcclient, router]
 import chronicles, chronos
-import langserver/[langserver, langserver_types, utils, transports, constants, messaging_types]
-import langserver/asyncprocmonitor
+import configurations/constants
+import langserver/[langserver, langserver_types, utils, transports, nimsuggest_processes, dispatcher]
+import utils/asyncprocmonitor
+import utils/process_utils
 import ./handlers/handlers as lsp
+
+import ./utils/utils as globalUtils
 
 import protocol/types
 when defined(posix):

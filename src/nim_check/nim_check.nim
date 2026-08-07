@@ -1,9 +1,12 @@
-import std/[strutils]
+import std/[json, strutils]
 import regex
 import chronos, chronos/asyncproc
 import stew/[byteutils]
 import chronicles
-import ../../langserver/utils
+import ../nimble/nimscript_utils
+import ../utils/[process_utils, utils]
+import ../protocol/enums
+import ../nimsuggest/suggestapi
 
 type
   CheckStacktrace* = object
@@ -104,7 +107,7 @@ proc nimCheck*(filePath: string, nimPath: string): Future[seq[CheckResult]] {.as
     await shutdownChildProcess(process)
 
 
-proc toDiagnosticJson(checkResult: CheckResult): JsonNode =
+proc toDiagnosticJson*(checkResult: CheckResult): JsonNode =
   let
     textStart = checkResult.msg.find('\'')
     textEnd = checkResult.msg.rfind('\'')

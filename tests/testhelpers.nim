@@ -41,7 +41,6 @@ proc execNimble*(args: varargs[string]): ProcessOutput =
     else:
       quotedArgs.join(" ")
   when defined(macosx):
-    # TODO: Yeah, this is really specific to my machine but for my own sanity...
     cmd = "DYLD_LIBRARY_PATH=/usr/local/opt/openssl@1.1/lib " & cmd
 
   result = execCmdEx(cmd)

@@ -1,7 +1,12 @@
-import ../[
-  nimlangserver, ls, lstransports, utils
-]
-import ../protocol/[enums, types]
+## tnimlangserver.nim — rewrite-compatible port of tests/tnimlangserver.nim
+##
+## API changes from original:
+##   ls.isShutdown         — unchanged (field on LanguageServer)
+##   main(cmdParams)       — unchanged (from src/quicknimlsp)
+
+import ../src/quicknimlsp
+import ../src/langserver/[langserver_types, utils, messaging_types]
+import ../src/protocol/[enums, types]
 import std/[options, json, os, jsonutils, sequtils, strutils, sugar, strformat]
 import json_rpc/[rpcclient]
 import chronicles
@@ -10,19 +15,20 @@ import unittest2
 
 suite "Nimlangserver":
   let cmdParams = CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
-  let ls = main(cmdParams) #we could accesss to the ls here to test against its state
+  let ls = main(cmdParams)
   let client = newLspSocketClient()
   client.registerNotification(
-  "window/showMessage", 
-  "window/workDoneProgress/create",
-  "workspace/configuration",
-  "extension/statusUpdate",
-  "textDocument/publishDiagnostics",
-  "$/progress"
+    "window/showMessage",
+    "window/workDoneProgress/create",
+    "workspace/configuration",
+    "extension/statusUpdate",
+    "textDocument/publishDiagnostics",
+    "$/progress"
   )
   waitFor client.connect("localhost", cmdParams.port)
-  
+
   test "initialize from the client should call initialized on the server":
+    echo "    >> initialize from the client should call initialized on the server"
     let initParams = LspInitializeParams %* {
         "processId": %getCurrentProcessId(),
         "rootUri": fixtureUri("projects/hw/"),
@@ -34,27 +40,24 @@ suite "Nimlangserver":
         }
     }
     let initializeResult = waitFor client.initialize(initParams)
-    
     check initializeResult.capabilities.textDocumentSync.isSome
 
 
 let helloWorldUri = fixtureUri("projects/hw/hw.nim")
 
-  
+
 suite "Suggest API selection":
   let cmdParams = CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
-  let ls = main(cmdParams) #we could accesss to the ls here to test against its state
+  let ls = main(cmdParams)
   let client = newLspSocketClient()
   client.registerNotification(
-    "window/showMessage", 
+    "window/showMessage",
     "window/workDoneProgress/create",
     "workspace/configuration",
     "extension/statusUpdate",
     "textDocument/publishDiagnostics",
     "$/progress"
-    )
-
-  
+  )
   waitFor client.connect("localhost", cmdParams.port)
   let initParams = LspInitializeParams %* {
         "processId": %getCurrentProcessId(),
@@ -70,8 +73,8 @@ suite "Suggest API selection":
   client.notify("initialized", newJObject())
 
   test "Suggest api":
-    #The client adds the notifications into the call table and we wait until they arrived.   
-    let helloWorldFile = "projects/hw/hw.nim"    
+    echo "    >> Suggest api"
+    let helloWorldFile = "projects/hw/hw.nim"
     client.notify("textDocument/didOpen", %createDidOpenParams(helloWorldFile))
 
     let hwAbsFile = helloWorldFile.fixtureUri.uriToPath
@@ -86,19 +89,19 @@ suite "Suggest API selection":
       hover = client.call("textDocument/hover", %hoverParams).waitFor
     check hover.kind == JNull
 
+
 suite "LSP features":
   let cmdParams = CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
-  let ls = main(cmdParams) #we could accesss to the ls here to test against its state
+  let ls = main(cmdParams)
   let client = newLspSocketClient()
   client.registerNotification(
-    "window/showMessage", 
+    "window/showMessage",
     "window/workDoneProgress/create",
     "workspace/configuration",
     "extension/statusUpdate",
     "textDocument/publishDiagnostics",
     "$/progress"
-    )
-
+  )
   waitFor client.connect("localhost", cmdParams.port)
 
   let initParams = LspInitializeParams %* {
@@ -111,18 +114,16 @@ suite "LSP features":
         "workspace": {"configuration": true}
       }
   }
-
   discard waitFor client.initialize(initParams)
-
   client.notify("initialized", newJObject())
   let didOpenParams = createDidOpenParams("projects/hw/hw.nim")
-
   client.notify("textDocument/didOpen", %didOpenParams)
   discard waitFor client.waitForNotificationMessage(
     fmt"Nimsuggest initialized for {uriToPath(helloWorldUri)}",
   )
 
   test "Sending hover.":
+    echo "    >> Sending hover."
     let
       hoverParams = positionParams(helloWorldUri, 1, 6)
       hover = client.call("textDocument/hover", %hoverParams).waitFor
@@ -145,6 +146,7 @@ suite "LSP features":
     check hover == expected
 
   test "Sending hover(no content)":
+    echo "    >> Sending hover(no content)"
     block:
       let
         hoverParams = positionParams(helloWorldUri, 1, 5)
@@ -157,6 +159,7 @@ suite "LSP features":
       check hover.kind == JNull
 
   test "Definitions.":
+    echo "    >> Definitions."
     let
       positionParams = positionParams(helloWorldUri, 1, 6)
       locations = to(waitFor client.call("textDocument/definition", %positionParams),
@@ -177,6 +180,7 @@ suite "LSP features":
     check %locations == %expected
 
   test "References.":
+    echo "    >> References."
     let referenceParams = ReferenceParams %* {
       "context": {
         "includeDeclaration": true
@@ -219,7 +223,8 @@ suite "LSP features":
     check %locations == %expected
 
   test "References(exclude def)":
-    let referenceParams =  ReferenceParams %* {
+    echo "    >> References(exclude def)"
+    let referenceParams = ReferenceParams %* {
       "context": {
         "includeDeclaration": false
       },
@@ -250,6 +255,7 @@ suite "LSP features":
     check %locations == %expected
 
   test "Prepare rename":
+    echo "    >> Prepare rename"
     let renameParams = PrepareRenameParams(
       textDocument: TextDocumentIdentifier(uri: helloWorldUri),
       position: Position(line: 2, character: 6)
@@ -261,8 +267,8 @@ suite "LSP features":
         "end":{"line":2,"character":7}
     }
 
-
   test "Prepare rename doesn't allow non-project symbols":
+    echo "    >> Prepare rename doesn't allow non-project symbols"
     let renameParams = PrepareRenameParams(
       textDocument: TextDocumentIdentifier(uri: helloWorldUri),
       position: Position(line: 8, character: 10)
@@ -272,6 +278,7 @@ suite "LSP features":
     check resp.kind == JNull
 
   test "Rename":
+    echo "    >> Rename"
     let renameParams = RenameParams(
         textDocument: TextDocumentIdentifier(uri: helloWorldUri),
         newName: "hello",
@@ -284,6 +291,7 @@ suite "LSP features":
     check changes[helloWorldUri].mapIt(it["newText"].getStr()) == @["hello", "hello", "hello"]
 
   test "didChange then sending hover.":
+    echo "    >> didChange then sending hover."
     let didChangeParams = DidChangeTextDocumentParams %* {
       "textDocument": {
         "uri": helloWorldUri,
@@ -294,7 +302,6 @@ suite "LSP features":
         }
       ]
     }
-
     client.notify("textDocument/didChange", %didChangeParams)
     let
       hoverParams = positionParams(fixtureUri("projects/hw/hw.nim"), 2, 0)
@@ -302,6 +309,7 @@ suite "LSP features":
     doAssert contains($hover, "hw.a: proc ()")
 
   test "Completion":
+    echo "    >> Completion"
     let completionParams = CompletionParams %* {
       "position": {
          "line": 3,
@@ -311,7 +319,6 @@ suite "LSP features":
          "uri": fixtureUri("projects/hw/hw.nim")
        }
     }
-
     let actualEchoCompletionItem =
       to(waitFor client.call("textDocument/completion", %completionParams),
          seq[CompletionItem])
@@ -323,27 +330,27 @@ suite "LSP features":
     doAssert actualEchoCompletionItem.documentation.isSome
 
   test "Shutdown":
+    echo "    >> Shutdown"
     let
       nullValue = newJNull()
       nullResponse = waitFor client.call("shutdown", nullValue)
-
     doAssert nullResponse == nullValue
-    doAssert ls.isShutdown    
+    doAssert ls.isShutdown
+
 
 suite "Null configuration:":
   let cmdParams = CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
   let ls = main(cmdParams)
   let client = newLspSocketClient()
   client.registerNotification(
-    "window/showMessage", 
+    "window/showMessage",
     "window/workDoneProgress/create",
     "workspace/configuration",
     "extension/statusUpdate",
     "extension/statusUpdate",
     "textDocument/publishDiagnostics",
     "$/progress"
-    )
-  
+  )
   waitFor client.connect("localhost", cmdParams.port)
 
   let initParams = LspInitializeParams %* {
@@ -358,11 +365,11 @@ suite "Null configuration:":
         }
       }
   }
-
   discard waitFor client.initialize(initParams)
   client.notify("initialized", newJObject())
 
   test "Null configuration":
+    echo "    >> Null configuration"
     client.notify("textDocument/didOpen", %createDidOpenParams("projects/hw/hw.nim"))
     let hoverParams = positionParams("projects/hw/hw.nim".fixtureUri, 2, 0)
     let hover = client.call("textDocument/hover", %hoverParams).waitFor

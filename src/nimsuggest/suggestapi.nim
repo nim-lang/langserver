@@ -1,4 +1,4 @@
-import std/[os, osproc, sequtils, sets, streams, strformat, strutils, times, deques, options]
+import std/[os, osproc, sequtils, sets, streams, strformat, strutils, times, deques, options, with, json]
 
 import chronos
 import chronos/asyncproc
@@ -7,6 +7,8 @@ import stew/byteutils
 
 import ../protocol/[enums, types]
 import ../utils/utils
+import ../utils/process_utils
+import ../nimble/nimscript_utils
 import ./suggestapi_types
 
 func canHandleUnknown*(ns: Nimsuggest): bool =
@@ -482,37 +484,45 @@ proc range*(startLine, startCharacter, endLine, endCharacter: int): Range =
     }
 
 proc toLabelRange*(suggest: Suggest): Range =
-  with suggest:
-    return range(line - 1, column, line - 1, column + utf16Len(qualifiedPath[^1]))
+  # with suggest:
+  return range(
+    suggest.line - 1, 
+    suggest.column, 
+    suggest.line - 1, 
+    suggest.column + utf16Len(suggest.qualifiedPath[^1])
+  )
 
 
-proc toDiagnosticJson(suggest: Suggest): JsonNode =
-  with suggest:
-    let
-      textStart = doc.find('\'')
-      textEnd = doc.rfind('\'')
-      endColumn =
-        if textStart >= 0 and textEnd > textStart:
-          column + utf16Len(doc[textStart + 1 ..< textEnd])
-        else:
-          column + 1
+proc toDiagnosticJson*(suggest: Suggest): JsonNode =
+  let
+    textStart = suggest.doc.find('\'')
+    textEnd = suggest.doc.rfind('\'')
+    endColumn =
+      if textStart >= 0 and textEnd > textStart:
+        suggest.column + utf16Len(suggest.doc[textStart + 1 ..< textEnd])
+      else:
+        suggest.column + 1
 
-    let r = range(line - 1, column, line - 1, endColumn)
-    result = %*{
-      "uri": pathToUri(filePath),
-      "range": %*{
-        "start": %*{"line": r.start.line, "character": r.start.character},
-        "end": %*{"line": r.`end`.line, "character": r.`end`.character},
-      },
-      "severity":
-        case forth
-        of "Error": DiagnosticSeverity.Error.int
-        of "Hint": DiagnosticSeverity.Hint.int
-        of "Warning": DiagnosticSeverity.Warning.int
-        else: DiagnosticSeverity.Error.int
-      ,
-      "message": doc,
-      "source": "nim",
-      "code": "nimsuggest chk",
-    }
+  let r = range(
+    suggest.line - 1, suggest.column, 
+    suggest.line - 1, endColumn
+  )
+  
+  return %*{
+    "uri": pathToUri(suggest.filePath),
+    "range": %*{
+      "start": %*{"line": r.start.line, "character": r.start.character},
+      "end": %*{"line": r.`end`.line, "character": r.`end`.character},
+    },
+    "severity":
+      case suggest.forth
+      of "Error": DiagnosticSeverity.Error.int
+      of "Hint": DiagnosticSeverity.Hint.int
+      of "Warning": DiagnosticSeverity.Warning.int
+      else: DiagnosticSeverity.Error.int
+    ,
+    "message": suggest.doc,
+    "source": "nim",
+    "code": "nimsuggest chk",
+  }
 

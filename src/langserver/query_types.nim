@@ -1,5 +1,6 @@
+import std/json
 import chronos
-import ../nim_tools/nimsuggest/nimsuggest_types
+import ../nimsuggest/nimsuggest_types
 import ../protocol/types
 
 # === FILE ACCESS QUERIES ===
@@ -36,7 +37,7 @@ type
     of FileAccessQueryKind.DID_CHANGE_CONFIGURATION:
       didChangeConfiguration*: JsonNode
     of FileAccessQueryKind.FORMATTING:
-      formating*: DocumentFormattingParams
+      formatting*: DocumentFormattingParams
       formattingResponse*: Future[seq[TextEdit]]
 
 # === LANGUAGE SERVER QUERIES ===
