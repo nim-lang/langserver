@@ -1,19 +1,17 @@
-import std/[os, sugar, sequtils, tables, strformat, strscans, times, json, strutils]
+import std/[sugar, sequtils, tables, strformat, strscans, json, strutils]
 import chronos
 import chronos/asyncproc
 import chronicles
 import json_serialization
-import stew/byteutils
 import with
 
 import ../nimsuggest/[suggestapi, suggestapi_types, nimsuggest_types]
 import ../nim_compiler/nim_expand
 import ../nim_compiler/nim_compiler
-import ../nim_check/nim_check
 import ../utils/utils as globalUtils
 import ../configurations/[constants, configuration_types]
-import ../langserver/[utils, langserver_types, langserver, configurations, diagnostics, query_types]
-import ../protocol/[enums, types]
+import ../langserver/[utils, langserver_types, langserver, configurations]
+import ../protocol/types
 
 import ./[handler_utils, queries_nimsuggest, queries_file_access]
 

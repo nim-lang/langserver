@@ -1,4 +1,4 @@
-import std/[os, osproc, sequtils, sets, streams, strformat, strutils, times, deques, options, with, json]
+import std/[os, osproc, sequtils, sets, streams, strformat, strutils, times, deques, options, json]
 
 import chronos
 import chronos/asyncproc

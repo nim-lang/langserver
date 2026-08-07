@@ -22,7 +22,7 @@
 ## architecture. It is documented here so that a fix can be verified by making
 ## this test pass.
 
-import ../test_fixes/tbughelpers
+import ./tbughelpers
 import unittest2
 
 suite "Known Bug 3 — assume-known-when-busy: no retry [EXPECTED FAIL]":

@@ -7,7 +7,7 @@ import ../nimsuggest/[nimsuggest_types, suggestapi_types, nimsuggest_slots]
 import ../nim_check/nim_check
 import ../nim_compiler/nim_compiler
 import ../configurations/constants
-import ./[configurations, langserver_types, utils, query_types, dispatcher_utils, diagnostics, langserver]
+import ./[configurations, langserver_types, utils, dispatcher_utils, diagnostics, langserver]
 import ../utils/utils as globalUtils
 
 

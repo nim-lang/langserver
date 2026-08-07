@@ -1,7 +1,6 @@
-import std/[options, sets, strformat, tables, algorithm, os, sequtils, sugar, times]
+import std/[options, sets, strformat, times, json]
 import chronos
 import chronicles
-import ../protocol/[enums, types]
 import ../utils/process_utils
 import ./[suggestapi, suggestapi_types, nimsuggest_types]
 import ../configurations/constants
@@ -50,7 +49,7 @@ proc execSpawn*(
       let backoffMs = min(1_000 * (1 shl min(slot.crashCount - 1, 14)), 30_000)
       debug "execSpawn: backing off before retry",
         projectFile = projectFile, backoffMs = backoffMs, attempt = slot.crashCount
-      await sleepAsync(backoffMs.millis)
+      await sleepAsync(backoffMs)
 
     debug "execSpawn: calling createNimsuggest",
       projectFile = projectFile, attempt = slot.crashCount + 1
@@ -62,6 +61,7 @@ proc execSpawn*(
         pool.timeout,
         proc(self: Nimsuggest) {.gcsafe, raises: [].} = discard,
         proc(self: Project) {.gcsafe, raises: [].} = discard,
+        workingDir = slot.workingDir,
       )
       let ns = await project.ns
       debug "execSpawn: createNimsuggest succeeded", projectFile = projectFile, port = ns.port
@@ -71,6 +71,9 @@ proc execSpawn*(
       slot.lastCmdTime = now()
       if pool.statusChangedProc != nil:
         pool.statusChangedProc()
+      if pool.notifyProc != nil:
+        pool.notifyProc("window/showMessage",
+          %*{"type": 3, "message": fmt"Nimsuggest initialized for {projectFile}"})
       for uri in slot.ownedUris:
         if uri notin slot.crashedUris:
           ns.openFiles.incl(uri)
@@ -99,7 +102,7 @@ proc execStop*(slot: NimsuggestSlot, pool: NimsuggestPool): Future[bool] {.async
   of SlotState.STOPPING:
     # Another coroutine is already stopping this slot — wait for it to finish.
     while slot.ns.isSome:
-      await sleepAsync(10.millis)
+      await sleepAsync(10)
     return true
 
   of SlotState.READY, SlotState.SPAWNING, SlotState.CRASHED:

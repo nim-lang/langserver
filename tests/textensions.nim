@@ -10,8 +10,10 @@
 ##       ls.configurations.configReady.fire()
 
 import ../src/quicknimlsp
-import ../src/langserver/[langserver, langserver_types, utils, messaging_types, configurations, configuration_types]
-import ../src/langserver/queues
+import ../src/langserver/[langserver, langserver_types, utils, configurations]
+import ../src/utils/utils
+import ../src/configurations/configuration_types
+import ../src/nimsuggest/nimsuggest_slots
 import ../src/protocol/[enums, types]
 import std/[options, json, os, jsonutils, sequtils, strutils, sugar, strformat]
 import json_rpc/[rpcclient]

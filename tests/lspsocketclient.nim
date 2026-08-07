@@ -2,6 +2,9 @@
 ## updated import paths for the new src/ module hierarchy.
 
 import ../src/langserver/[transports, utils]
+import ../src/utils/utils
+import ../src/utils/process_utils
+export process_utils.getNextFreePort
 import ../src/langserver/langserver_types
 import ../src/protocol/types
 import std/[options, unittest, json, os, jsonutils, tables, strutils, sequtils, sugar]
@@ -184,10 +187,11 @@ proc waitForNotification*(
     client: LspSocketClient,
     name: string,
     predicate: proc(json: JsonNode): bool {.gcsafe, raises: [CatchableError].},
+    timeoutMs: int = 10000,
 ): Future[bool] {.async.} =
-  ## Poll `client.calls[name]` every 100ms until predicate matches or 10s elapses.
+  ## Poll `client.calls[name]` every 100ms until predicate matches or timeoutMs elapses.
   ## Uses a while loop instead of tail recursion to avoid accumulating Future objects.
-  let timeout = 10000
+  let timeout = if timeoutMs == 0: 10000 else: timeoutMs
   var elapsed = 0
   while elapsed <= timeout:
     try:
@@ -203,8 +207,9 @@ proc waitForNotification*(
   return false
 
 proc waitForNotificationMessage*(
-    client: LspSocketClient, msg: string
+    client: LspSocketClient, msg: string, timeoutMs: int = 10000
 ): Future[bool] {.async.} =
   return await waitForNotification(
-    client, "window/showMessage", (json: JsonNode) => json["message"].to(string) == msg
+    client, "window/showMessage", (json: JsonNode) => json["message"].to(string) == msg,
+    timeoutMs,
   )

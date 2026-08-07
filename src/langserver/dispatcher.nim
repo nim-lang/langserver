@@ -1,14 +1,11 @@
-import std/[options, sets, strutils, tables, algorithm, os, sequtils, sugar, times]
+import std/[options, sets, strutils, tables, os]
 import chronos
 import chronicles
-import ../nimsuggest/[suggestapi, nimsuggest_types, suggestapi_types, nimsuggest_process]
-import ../nim_check/nim_check
-import ../nim_compiler/nim_compiler
-import ../protocol/[enums, types]
+import ../nimsuggest/[nimsuggest_types, suggestapi_types, nimsuggest_process]
+import ../protocol/types
 import ./checking
 import ../nph/formatting
 import ../nimsuggest/nimsuggest_slots
-import ../configurations/constants
 import ./[configurations, diagnostics, dispatcher_utils, nimsuggest_processes, utils]
 import ../handlers/request_process
 import ../utils/utils as globalUtils
@@ -63,17 +60,18 @@ proc processLangserverQueue*(ls: LanguageServer): Future[void] {.async.} =
             if correctProjectFile.len > 0:
               projectFile = correctProjectFile
             
+            let workingDir = ls.getWorkingDir(projectFile)
+            # Ensure nimsuggest path is set (may not be if initialized before config arrived).
+            if ls.pool.nimsuggestPath == "":
+              let (nsPath, nsVer) = await ls.getNimSuggestPathAndVersion(ls.getWorkspaceConfiguration(), workingDir)
+              ls.pool.nimsuggestPath = nsPath
+              ls.pool.nimVersion = nsVer
             if ls.pool.canSpawn:
               # Free slot available — create a new nimsuggest instance.
-              let newSlot = NimsuggestSlot(
-                state: SlotState.SPAWNING,
-                projectFile: projectFile,
-                ownedUris: initHashSet[string](),
-                ns: none(Future[suggestapi_types.NimSuggest]),
-                queryMailbox: newAsyncQueue[NimsuggestQuery](),
-                lastCmdTime: times.now(),
-                isEntryPoint: projectFile == correctProjectFile,
-                crashedUris: initHashSet[string](),
+              let newSlot = newSlot(
+                projectFile,
+                isEntryPoint = projectFile == correctProjectFile,
+                workingDir = workingDir,
               )
               ls.pool.addSlot(newSlot)
               # Start the query queue running
@@ -93,20 +91,16 @@ proc processLangserverQueue*(ls: LanguageServer): Future[void] {.async.} =
                 if not pendingQ.responseFuture.finished:
                   pendingQ.responseFuture.complete(@[])
 
+              slotToEvict.state = SlotState.STOPPING
               let successfulStop = await execStop(slotToEvict, ls.pool)
               if successfulStop:
                 ls.pool.removeSlot(slotToEvict.projectFile)
 
               # Create a new slot
-              let newSlot = NimsuggestSlot(
-                state: SlotState.SPAWNING,
-                projectFile: projectFile,
-                ownedUris: initHashSet[string](),
-                ns: none(Future[suggestapi_types.NimSuggest]),
-                queryMailbox: newAsyncQueue[NimsuggestQuery](),
-                lastCmdTime: times.now(),
-                isEntryPoint: projectFile == correctProjectFile,
-                crashedUris: initHashSet[string](),
+              let newSlot = newSlot(
+                projectFile,
+                isEntryPoint = projectFile == correctProjectFile,
+                workingDir = workingDir,
               )
               ls.pool.addSlot(newSlot)
               # Start the query queue running
@@ -117,6 +111,7 @@ proc processLangserverQueue*(ls: LanguageServer): Future[void] {.async.} =
                 asyncSpawn processNimsuggestQueries(newSlot, ls.pool)
               else:
                 debug "Failed to spawn nimsuggest for file", uri = uri
+                ls.pool.removeSlot(projectFile)
             
       of FileAccessQueryKind.DID_CHANGE:
         let uri = q.didChange.textDocument.uri
@@ -143,8 +138,7 @@ proc processLangserverQueue*(ls: LanguageServer): Future[void] {.async.} =
         debug "didSave: enter", uri = uri
         if uri in ls.files.openFiles:
           let fileInfo = ls.files.openFiles[uri]
-          let wasCrashed = uri in fileInfo.slot.crashedUris
-          if wasCrashed:
+          if fileInfo.slot != nil and uri in fileInfo.slot.crashedUris:
             fileInfo.slot.crashedUris.excl(uri)
 
         ls.files.openFiles[uri].changed = false
@@ -171,7 +165,7 @@ proc processLangserverQueue*(ls: LanguageServer): Future[void] {.async.} =
         let uri = q.didClose.textDocument.uri
         debug "Closed the following document:", uri = uri
         if uri notin ls.files.openFiles:
-          return
+          continue
         let fileInfo = ls.files.openFiles[uri]
         if fileInfo.changed:
           # TODO CHECK FILE
@@ -282,6 +276,7 @@ proc processLangserverQueue*(ls: LanguageServer): Future[void] {.async.} =
           let oldConfiguration = ls.getWorkspaceConfiguration()
           let newConfiguration = parseWorkspaceConfiguration(q.didChangeConfiguration)
           ls.configurations.currentConfig = some(newConfiguration)
+          clearCompiledRegexCache()
           ls.configurations.configReady.fire()
           if oldConfiguration.nimsuggestPath != newConfiguration.nimsuggestPath or
               oldConfiguration.maxNimsuggestProcesses != newConfiguration.maxNimsuggestProcesses:

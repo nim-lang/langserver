@@ -13,7 +13,7 @@
 ## Infrastructure: imports test_fixes/tbughelpers for startCombinedServer and
 ## 7-file path constants. That module already uses new src/ APIs.
 
-import ../test_fixes/tbughelpers
+import ./tbughelpers
 import unittest2
 
 suite "Stability — sequential open + hover, maxNs=2":

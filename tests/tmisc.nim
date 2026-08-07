@@ -27,8 +27,10 @@
 ##   ls.pendingRequests         → ls.messaging.pendingRequests
 
 import ../src/quicknimlsp
-import ../src/langserver/[langserver, langserver_types, utils, transports, messaging_types, configurations, configuration_types, queue_types]
-import ../src/nimsuggest/nimsuggest
+import ../src/langserver/[langserver, langserver_types, utils, transports, configurations, nimsuggest_processes]
+import ../src/utils/utils
+import ../src/configurations/configuration_types
+import ../src/nimsuggest/nimsuggest_types
 import ../src/protocol/[enums, types]
 import std/[options, json, os, jsonutils, sequtils, strutils, sugar, strformat, times]
 import json_rpc/[rpcclient]

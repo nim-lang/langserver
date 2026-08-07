@@ -1,7 +1,6 @@
 import std/[json, options]
 import chronos
 import chronicles
-import ../protocol/types
 import ./[configuration_types]
 
 func typeHintsEnabled*(cnf: NlsConfig): bool =

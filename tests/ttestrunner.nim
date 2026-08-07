@@ -12,8 +12,8 @@
 ##     — signature unchanged in new code
 
 import std/[os, osproc, strscans, tables, sequtils, enumerate, strutils, options]
-import ../src/langserver/[langserver_types, messaging_types]
-import ../src/testrunner/testrunner
+import ../src/langserver/langserver_types
+import ../src/nim_compiler/testrunner
 import testhelpers
 import chronos
 import unittest2

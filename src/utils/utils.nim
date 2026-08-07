@@ -1,13 +1,11 @@
-import std/[unicode, uri, strformat, os, strutils, options, json, jsonutils, sugar, net, hashes]
+import std/[unicode, uri, strformat, os, strutils, options, json, jsonutils, net]
 # import with
-import chronos, chronicles, chronos/asyncproc
+import chronos, chronicles
 import "$nim/compiler/pathutils"
 import json_rpc/private/jrpc_sys
 import macros
-import stew/byteutils
 # import ./langserver_types
 # import ../nim_tools/nimsuggest/nimsuggest_types
-import ../protocol/types
 
 type
   FingerTable = seq[tuple[u16pos, offset: int]]

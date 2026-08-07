@@ -1,10 +1,7 @@
-import std/[os, options, json, sequtils, strutils]
+import std/[os, sequtils, strutils]
 import chronos
-import chronos/asyncproc
 import chronicles
-import stew/byteutils
 
-import ../protocol/types
 import ./nimble_types
 
 proc getNimbleEntryPoints*(

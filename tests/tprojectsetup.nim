@@ -12,8 +12,10 @@
 ##   "Opening <uri>" notification → still sent by lsp.didOpen handler
 
 import ../src/quicknimlsp
-import ../src/langserver/[langserver, langserver_types, utils, messaging_types, configurations, configuration_types]
-import ../src/nimsuggest/nimsuggest
+import ../src/langserver/[langserver, langserver_types, utils, configurations, nimsuggest_processes]
+import ../src/utils/utils
+import ../src/configurations/configuration_types
+import ../src/nimsuggest/nimsuggest_types
 import ../src/protocol/[enums, types]
 import std/[options, json, os, jsonutils, sequtils, strutils, sugar, strformat]
 import json_rpc/[rpcclient]

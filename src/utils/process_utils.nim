@@ -1,15 +1,13 @@
-import std/[os, sugar, options, net]
+import std/[sugar, options, net]
 
 # unicode, uri, strformat, os, strutils, options, json, jsonutils, sugar, net, hashes]
 # import with
 import chronos, chronicles, chronos/asyncproc
-import "$nim/compiler/pathutils"
 import json_rpc/private/jrpc_sys
 import macros
 import stew/byteutils
 
 # import ../nim_tools/nimsuggest/nimsuggest_types
-import ../protocol/types
 
 proc shutdownChildProcess*(p: AsyncProcessRef): Future[void] {.async.} =
   try:

@@ -2,9 +2,9 @@ import std/[options, tables, sequtils, strutils, strformat, sugar]
 import chronos
 import regex
 import with
-import ../protocol/[enums, types]
-import ../langserver/[utils, langserver_types, query_types, langserver]
-import ../nimsuggest/[suggestapi, suggestapi_types, nimsuggest_types]
+import ../protocol/types
+import ../langserver/[utils, langserver_types]
+import ../nimsuggest/[suggestapi, suggestapi_types]
 import ../utils/utils as globalUtils
 
 

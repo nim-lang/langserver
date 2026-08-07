@@ -1,8 +1,7 @@
-import std/[sequtils, sugar, strutils, json, options, sets]
+import std/[sequtils, sugar, json, options, sets]
 import chronicles
 
-import ../protocol/[types, enums]
-import ../nimsuggest/[suggestapi_types, nimsuggest_types, suggestapi]
+import ../nimsuggest/[suggestapi_types, suggestapi]
 import ../nim_check/nim_check
 import ../utils/utils
 import ./[langserver_types, utils as lsUtils]

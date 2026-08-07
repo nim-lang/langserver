@@ -1,11 +1,10 @@
-import std/[options, tables, algorithm, os, sequtils, sugar, strutils, times]
+import std/[options, tables, algorithm, sequtils, strutils, times]
 import chronos
 import chronicles
 import ../nimsuggest/[suggestapi, suggestapi_types, nimsuggest_types]
-import ../protocol/[enums, types]
-import ../configurations/constants
-import ./[configurations, diagnostics, utils as lsUtils]
-import ./[langserver_types, query_types]
+import ../protocol/types
+import ./[utils as lsUtils]
+import ./langserver_types
 import ../utils/utils
 
 proc isKnownByNimsuggest*(ns: NimSuggest, filePath: string): Future[bool] {.async.} =

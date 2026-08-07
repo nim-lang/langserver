@@ -2,6 +2,7 @@ import std/[options, os, strutils, strscans, json, tables]
 import chronos
 import chronos/asyncproc
 import chronicles
+import stew/byteutils
 import ../protocol/[types, enums]
 import ../langserver/[langserver_types, utils, configurations, langserver, nimsuggest_processes]
 import ../nim_compiler/testrunner
@@ -76,7 +77,7 @@ proc tasks*(ls: LanguageServer, conf: JsonNode): Future[seq[NimbleTask]] {.async
     )
     await process.shutdownChildProcess()
     return @[]
-  let output = await process.stdoutStream.readLine()
+  let output = string.fromBytes(await process.stdoutStream.read())
   var name, desc: string
   for line in output.splitLines:
     if scanf(line, "$+  $*", name, desc):
@@ -145,10 +146,8 @@ proc cancelTest*(
 ): Future[CancelTestResult] {.async.} =
   debug "Cancelling test"
   if ls.testRunProcess.isSome:
-    #No need to cancel the runTests request. The client should handle it.
     await shutdownChildProcess(ls.testRunProcess.get)
     ls.testRunProcess = none(AsyncProcessRef)
-    CancelTestResult(cancelled: true)
-  else:
-    CancelTestResult(cancelled: false)
+    return CancelTestResult(cancelled: true)
+  return CancelTestResult(cancelled: false)
 

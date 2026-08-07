@@ -2,7 +2,6 @@ import std/json
 import chronos
 import ../protocol/types
 import ../langserver/[query_types, langserver_types]
-import ../nimsuggest/[suggestapi_types, nimsuggest_types]
 
 proc initDidOpenQuery*(params: DidOpenTextDocumentParams): FileAccessQuery =
   FileAccessQuery(kind: FileAccessQueryKind.DID_OPEN, didOpen: params)

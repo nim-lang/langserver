@@ -1,4 +1,4 @@
-import std/[hashes, json, options, sets, tables, times]
+import std/[hashes, json, options, os, sets, tables, times]
 import chronos
 import ./suggestapi_types
 
@@ -74,6 +74,7 @@ type
   NimsuggestSlot* = ref object
     state*: SlotState
     projectFile*: string # Entry-point .nim path. Stable across restarts. Key in pool.slots.
+    workingDir*: string  # Working directory passed to nimsuggest at spawn time. Stable across restarts.
     ownedUris*: HashSet[string]
       ## The single source of truth for which URIs this slot serves.
     ns*: Option[Future[NimSuggest]]
@@ -115,10 +116,11 @@ type
 proc newPool*(slots: Table[string, NimsuggestSlot], maxSlots: int): NimsuggestPool =
   NimsuggestPool(slots: slots, maxSlots: maxSlots)
 
-proc newSlot*(projectFile: string, isEntryPoint = false): NimsuggestSlot =
+proc newSlot*(projectFile: string, isEntryPoint = false, workingDir = getCurrentDir()): NimsuggestSlot =
   NimsuggestSlot(
     state: SlotState.SPAWNING,
     projectFile: projectFile,
+    workingDir: workingDir,
     ownedUris: initHashSet[string](),
     ns: none(Future[NimSuggest]),
     queryMailbox: newAsyncQueue[NimsuggestQuery](),

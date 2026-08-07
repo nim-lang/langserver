@@ -1,4 +1,4 @@
-import std/[os, sha1, strutils, tables, options]
+import std/[os, sha1, tables, options]
 import ./langserver_types
 import ../nimsuggest/suggestapi_types
 import ../utils/utils

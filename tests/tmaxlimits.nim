@@ -7,7 +7,7 @@
 ##
 ## Infrastructure: imports test_fixes/fixhelpers directly (already uses new src/ APIs).
 
-import ../test_fixes/fixhelpers
+import ./fixhelpers
 import std/[os, strutils, sequtils, json, options]
 import chronos
 import unittest2
@@ -27,26 +27,26 @@ import unittest2
 
 suite "Fix — checkFile sends changed() before chkFile":
   generateSimpleNimblePaths()
-  let (cmdParams, ls, client) = startServer("test_fixes/projects/simple")
+  let (cmdParams, ls, client) = startServer("tests/projects/simple")
   ls.configurations.currentConfig = some(NlsConfig(
     maxNimsuggestProcesses: some 1,
     projectMapping: some @[
       NlsNimsuggestConfig(
-        fileRegex: "test_fixes/projects/simple/src/.*\\.nim",
+        fileRegex: "tests/projects/simple/src/.*\\.nim",
         projectFile: simpleProjectFile()
       )
     ]
   ))
   ls.configurations.configReady.fire()
-  doInitialize(client, "test_fixes/projects/simple")
+  doInitialize(client, "tests/projects/simple")
   client.notify("initialized", newJObject())
 
   test "publishDiagnostics fires with errors after didChange, without didSave":
     echo "    >> publishDiagnostics fires with errors after didChange, without didSave"
-    sendDidOpen(client, "test_fixes/projects/simple/src/simple.nim")
+    sendDidOpen(client, "tests/projects/simple/src/simple.nim")
     check waitForNsInit(client, simpleProjectFile())
 
-    sendDidOpen(client, "test_fixes/projects/simple/src/widget.nim")
+    sendDidOpen(client, "tests/projects/simple/src/widget.nim")
     waitFor sleepAsync(200)
 
     const brokenWidget =
@@ -60,7 +60,7 @@ suite "Fix — checkFile sends changed() before chkFile":
       "proc perimeter*(w: Widget): int =\n" &
       "  2 * (w.x + w.y)\n"
 
-    sendDidChange(client, "test_fixes/projects/simple/src/widget.nim", 2, brokenWidget)
+    sendDidChange(client, "tests/projects/simple/src/widget.nim", 2, brokenWidget)
 
     check waitFor client.waitForNotification(
       "textDocument/publishDiagnostics",
@@ -84,25 +84,25 @@ suite "Fix — checkFile sends changed() before chkFile":
 
 suite "Fix #8 — config-first init: projectMapping applied on first open":
   generateSimpleNimblePaths()
-  let (cmdParams, ls, client) = startServer("test_fixes/projects/simple")
+  let (cmdParams, ls, client) = startServer("tests/projects/simple")
   # Complete configuration BEFORE sending initialized so the server's
   # waitForWorkspaceConfiguration() finds it immediately.
   ls.configurations.currentConfig = some(NlsConfig(
     maxNimsuggestProcesses: some 1,
     projectMapping: some @[
       NlsNimsuggestConfig(
-        fileRegex: "test_fixes/projects/simple/src/.*\\.nim",
+        fileRegex: "tests/projects/simple/src/.*\\.nim",
         projectFile: simpleProjectFile()
       )
     ]
   ))
   ls.configurations.configReady.fire()
-  doInitialize(client, "test_fixes/projects/simple")
+  doInitialize(client, "tests/projects/simple")
   client.notify("initialized", newJObject())
 
   test "opening widget.nim (non-entry) routes to simple.nim via projectMapping":
     echo "    >> opening widget.nim (non-entry) routes to simple.nim via projectMapping"
-    sendDidOpen(client, "test_fixes/projects/simple/src/widget.nim")
+    sendDidOpen(client, "tests/projects/simple/src/widget.nim")
     check waitForNsInit(client, simpleProjectFile())
 
   test "no Nimsuggest initialized message mentions widget.nim as a project root":
@@ -124,28 +124,28 @@ suite "Fix #8 — config-first init: projectMapping applied on first open":
 
 suite "Fix — concurrent didOpen respects maxNimsuggestProcesses=1":
   generateMonorepoNimblePaths()
-  let (cmdParams, ls, client) = startServer("test_fixes/projects/monorepo")
+  let (cmdParams, ls, client) = startServer("tests/projects/monorepo")
   ls.configurations.currentConfig = some(NlsConfig(
     maxNimsuggestProcesses: some 1,
     projectMapping: some @[
       NlsNimsuggestConfig(
-        fileRegex: "test_fixes/projects/monorepo/pkga/src/.*\\.nim",
+        fileRegex: "tests/projects/monorepo/pkga/src/.*\\.nim",
         projectFile: pkgaProjectFile()
       ),
       NlsNimsuggestConfig(
-        fileRegex: "test_fixes/projects/monorepo/pkgb/src/.*\\.nim",
+        fileRegex: "tests/projects/monorepo/pkgb/src/.*\\.nim",
         projectFile: pkgbProjectFile()
       )
     ]
   ))
   ls.configurations.configReady.fire()
-  doInitialize(client, "test_fixes/projects/monorepo")
+  doInitialize(client, "tests/projects/monorepo")
   client.notify("initialized", newJObject())
 
   test "at most one nimsuggest runs when two mapped files are opened before any init":
     echo "    >> at most one nimsuggest runs when two mapped files are opened before any init"
-    sendDidOpen(client, "test_fixes/projects/monorepo/pkga/src/pkga.nim")
-    sendDidOpen(client, "test_fixes/projects/monorepo/pkgb/src/pkgb.nim")
+    sendDidOpen(client, "tests/projects/monorepo/pkga/src/pkga.nim")
+    sendDidOpen(client, "tests/projects/monorepo/pkgb/src/pkgb.nim")
 
     let gotPkga = pkgaProjectFile()
     let gotPkgb = pkgbProjectFile()

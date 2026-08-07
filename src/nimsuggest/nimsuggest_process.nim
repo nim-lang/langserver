@@ -1,7 +1,6 @@
-import std/[json, options, strformat, tables, algorithm, os, sequtils, sugar, sets, times]
+import std/[json, options, strformat, sets, times]
 import chronos
 import chronicles
-import ../protocol/[enums, types]
 import ../utils/utils
 import ./[suggestapi, suggestapi_types, nimsuggest_types, nimsuggest_slots]
 import ../configurations/constants
@@ -91,7 +90,8 @@ proc processNimsuggestQueries*(slot: NimsuggestSlot, pool: NimsuggestPool) {.asy
             min(1_000 * (1 shl min(slot.crashCount - 1, 14)), 30_000)
           else: 0
           if backoffMs > 0:
-            await sleepAsync(backoffMs.millis)
+            await sleepAsync(backoffMs)
+          slot.state = SlotState.STOPPING
           discard await execStop(slot, pool)
           slot.crashedUris.clear() # explicit restart = clean slate
           discard await execSpawn(slot, pool, slot.projectFile)

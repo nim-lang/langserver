@@ -4,10 +4,9 @@ import
 import chronos, chronos/asyncproc
 import ../protocol/types
 import ../utils/process_utils
-import ../langserver/[langserver, langserver_types]
+import ../langserver/langserver_types
 import chronicles
 import stew/byteutils
-import ../langserver/utils
 
 proc extractTestInfo*(rawOutput: string): TestProjectInfo =
   result.suites = initTable[string, TestSuiteInfo]()

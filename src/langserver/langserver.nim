@@ -1,25 +1,22 @@
 import std/[
-  os, osproc, macros, options,
-  strformat, strutils, sequtils, sugar, with,
+  os, macros, options,
+  strformat, strutils, sequtils,
   hashes, tables, sets, setutils,
-  json, streams, times, uri,
+  json, times,
 ]
 
-import chronos/[threadsync, asyncproc]
-import stew/byteutils
+import chronos
 import json_serialization
 import json_rpc/[servers/socketserver]
 import chronicles
 
-import ../nimble/[nimble, nimble_types]
-import ../nimsuggest/[suggestapi, nimsuggest_types]
-import ../nim_check/nim_check
-import ../nim_compiler/nim_compiler
+import ../nimble/nimble_types
+import ../nimsuggest/nimsuggest_types
 import ../protocol/[enums, types]
 import ../configurations/configuration_types
 import ../nimsuggest/nimsuggest_slots
 import ../configurations/constants
-import ./[utils, langserver_types, configurations, diagnostics, dispatcher_utils, query_types, nimsuggest_processes]
+import ./[langserver_types, configurations, query_types, nimsuggest_processes]
 import ../utils/utils as globalUtils
 
 proc sendStatusChanged*(ls: LanguageServer) {.raises: [].}

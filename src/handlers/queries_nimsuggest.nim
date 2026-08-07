@@ -1,8 +1,7 @@
-import std/[options, times, strformat, json]
+import std/[options]
 import chronos
 import chronicles
-import ../nimsuggest/[nimsuggest_types, suggestapi_types, suggestapi]
-import ../configurations/constants
+import ../nimsuggest/[nimsuggest_types, suggestapi_types]
 import ../langserver/[utils, query_types, langserver_types, langserver]
 import ./handler_utils
 

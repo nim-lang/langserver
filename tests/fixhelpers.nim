@@ -1,5 +1,7 @@
 import std/[os, strutils, times, options, json, tables, sequtils, sugar]
-import ../src/langserver/[langserver_types, utils, configurations, configuration_types, messaging_types]
+import ../src/langserver/[langserver_types, utils, configurations]
+import ../src/utils/utils
+import ../src/configurations/configuration_types
 import ../src/protocol/types
 import ../src/quicknimlsp
 import ../tests/lspsocketclient  # import without alias so we can selectively re-export
@@ -12,7 +14,7 @@ export newLspSocketClient, notify, call, connect
 export waitForNotification, waitForNotificationMessage
 export registerNotification, positionParams, initialize, notificationHandle
 
-export langserver_types, utils, configurations, configuration_types, messaging_types,
+export langserver_types, utils, configurations, configuration_types,
   types, options, json, tables, sequtils, times, os, strutils, chronos
 
 # fixtureUri that resolves from repo root, NOT tests/ (overrides lspsocketclient version)
@@ -31,11 +33,11 @@ proc createDidOpenParams*(file: string): DidOpenTextDocumentParams =
   }
 
 proc generateSimpleNimblePaths*() =
-  let dir = absolutePath("test_fixes" / "projects" / "simple")
+  let dir = absolutePath("tests" / "projects" / "simple")
   writeFile(dir / "nimble.paths", "--noNimblePath\n")
 
 proc generateMonorepoNimblePaths*() =
-  let dir = absolutePath("test_fixes" / "projects" / "monorepo")
+  let dir = absolutePath("tests" / "projects" / "monorepo")
   let pkgbSrc = dir / "pkgb" / "src"
   writeFile(
     dir / "nimble.paths",
@@ -69,7 +71,8 @@ proc doInitialize*(client: LspSocketClient, rootRelPath: string) =
 
 proc waitForNsInit*(client: LspSocketClient, absProjectFile: string): bool =
   waitFor client.waitForNotificationMessage(
-    "Nimsuggest initialized for " & absProjectFile
+    "Nimsuggest initialized for " & absProjectFile,
+    timeoutMs = 30000,
   )
 
 proc waitForInstanceCount*(client: LspSocketClient, n: int, timeoutMs = 30000): bool =
@@ -118,19 +121,19 @@ proc sendDidRename*(client: LspSocketClient, oldRelPath, newRelPath: string) =
   })
 
 proc simpleProjectFile*(): string =
-  absolutePath("test_fixes" / "projects" / "simple" / "src" / "simple.nim")
+  absolutePath("tests" / "projects" / "simple" / "src" / "simple.nim")
 
 proc simpleOrphanFile*(): string =
-  absolutePath("test_fixes" / "projects" / "simple" / "src" / "orphan.nim")
+  absolutePath("tests" / "projects" / "simple" / "src" / "orphan.nim")
 
 proc simpleOrphan2File*(): string =
-  absolutePath("test_fixes" / "projects" / "simple" / "src" / "orphan2.nim")
+  absolutePath("tests" / "projects" / "simple" / "src" / "orphan2.nim")
 
 proc pkgaProjectFile*(): string =
-  absolutePath("test_fixes" / "projects" / "monorepo" / "pkga" / "src" / "pkga.nim")
+  absolutePath("tests" / "projects" / "monorepo" / "pkga" / "src" / "pkga.nim")
 
 proc pkgbProjectFile*(): string =
-  absolutePath("test_fixes" / "projects" / "monorepo" / "pkgb" / "src" / "pkgb.nim")
+  absolutePath("tests" / "projects" / "monorepo" / "pkgb" / "src" / "pkgb.nim")
 
 proc pkgaOrphanFile*(): string =
-  absolutePath("test_fixes" / "projects" / "monorepo" / "pkga" / "src" / "aorphan.nim")
+  absolutePath("tests" / "projects" / "monorepo" / "pkga" / "src" / "aorphan.nim")

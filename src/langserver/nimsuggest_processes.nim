@@ -1,17 +1,17 @@
-import std/[options, tables, algorithm, os, sequtils, sugar, strutils, times, strformat, json]
+import std/[options, tables, os, sequtils, strutils, times, strformat, json]
 import chronos
 import chronos/asyncproc
 import stew/byteutils
 import regex
 import chronicles
-import ../protocol/[enums, types]
+import ../protocol/enums
 import ../configurations/configuration_types
 import ../nimsuggest/[nimsuggest_types, nimsuggest_slots, nimsuggest_process]
 import ../nimble/[nimble, nimble_types]
 import ../nim_compiler/nim_compiler
 import ../utils/[process_utils]
 import ../configurations/constants
-import ./[langserver_types, configurations, utils, dispatcher_utils]
+import ./[langserver_types, configurations, utils]
 import ../utils/utils as globalUtils
 
 proc getWorkingDir*(ls: LanguageServer, path: string): string =
@@ -107,6 +107,11 @@ proc getCompiledRegex(pattern: string): Regex2 =
     compiledRegexCache[pattern] = re2(pattern)
   compiledRegexCache[pattern]
 
+proc clearCompiledRegexCache*() =
+  ## Invalidate the regex cache. Call after workspace configuration changes so
+  ## that stale projectMapping patterns are not reused across config updates.
+  compiledRegexCache.clear()
+
 proc getIntendedProject*(ls: LanguageServer, uri: string): string =
   ## ProjectMapping regex lookup only. No slot creation, no LRU fallback.
   ## Returns "" if no mapping matches.
@@ -136,6 +141,11 @@ proc initNimsuggestInstances*(ls: LanguageServer, rootPath: string) {.async.} =
   # Update maxSlots from config (pool was created with defaults in initLanguageServer)
   ls.pool.maxSlots = config.maxNimsuggestProcesses.get(NIM_MAX_NS_PROCESSES)
 
+  # Resolve the nimsuggest binary path and Nim version now that config is available.
+  let (nimsuggestPath, nimVersion) = await ls.getNimSuggestPathAndVersion(config, rootPath)
+  ls.pool.nimsuggestPath = nimsuggestPath
+  ls.pool.nimVersion = nimVersion
+
   # Discover entry points via nimble dump
   let nimbleFiles = walkFiles(rootPath / "*.nimble").toSeq
   if nimbleFiles.len > 0:
@@ -150,15 +160,16 @@ proc initNimsuggestInstances*(ls: LanguageServer, rootPath: string) {.async.} =
       if entryPoint notin ls.pool.slots:
         if ls.pool.canSpawn:
           let slot = newSlot(entryPoint, isEntryPoint = true)
-          slot.state = SlotState.SPAWNING # Reserve liveCount immediately
           ls.pool.addSlot(slot)
-          # asyncSpawn processCommands(slot, ls.pool)
-          asyncSpawn processNimsuggestQueries(slot, ls.pool)
-          # slot.send SlotCommand(
-          #   kind: SlotCommandKind.SPAWN,
-          #   spawnProjectFile: entryPoint,
-          #   spawnTriggerUri: entryPoint.pathToUri,
-          # )
+          # Await the spawn so the slot is live before processing the next
+          # entry point. initNimsuggestInstances is called via asyncSpawn from
+          # the initialized handler, so awaiting here does not block the LSP
+          # event loop — Chronos continues serving other messages while waiting.
+          let ok = await execSpawn(slot, ls.pool, entryPoint)
+          if ok:
+            asyncSpawn processNimsuggestQueries(slot, ls.pool)
+          else:
+            ls.pool.removeSlot(entryPoint)
         else:
           debug "Limit reached, skipping entry point", entryPoint = entryPoint
           break
@@ -166,6 +177,7 @@ proc initNimsuggestInstances*(ls: LanguageServer, rootPath: string) {.async.} =
 proc stopNimsuggestProcesses*(ls: LanguageServer) {.async.} =
   debug "stopping child nimsuggest processes"
   for slot in ls.pool.slots.values.toSeq:
+    slot.state = SlotState.STOPPING
     discard await execStop(slot, ls.pool)
 
 proc stopNimsuggestProcessesP*(ls: LanguageServer) =
@@ -173,6 +185,7 @@ proc stopNimsuggestProcessesP*(ls: LanguageServer) =
 
 proc restartSlot*(slot: NimsuggestSlot, pool: NimsuggestPool): Future[void] {.async.} =
   ## Stop and re-spawn a single slot without removing it from the pool.
+  slot.state = SlotState.STOPPING
   discard await execStop(slot, pool)
   discard await execSpawn(slot, pool, slot.projectFile)
 
@@ -210,6 +223,7 @@ proc removeIdleNimsuggests*(ls: LanguageServer) {.async.} =
       "type": MessageType.Info.int,
       "message": fmt"Nimsuggest for {slot.projectFile} was stopped because it was idle for too long",
     })
+    slot.state = SlotState.STOPPING
     let successfulStop = await execStop(slot, ls.pool)
     if successfulStop:
        debug "Stopped nimsuggest"

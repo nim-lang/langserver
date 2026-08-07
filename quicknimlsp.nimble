@@ -1,7 +1,7 @@
 mode = ScriptMode.Verbose
 
 packageName = "quicknimlsp"
-version = "1.15.0"
+version = "0.1.0"
 author = "David Pocknee and The core Nim team"
 description = "Alternative Nim language server for IDEs"
 license = "MIT"

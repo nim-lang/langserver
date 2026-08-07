@@ -5,7 +5,7 @@
 ## project.process and project.errorCallback still exist on Project.
 
 import ../src/nimsuggest/suggestapi
-import ../src/nimsuggest/nimsuggest_types
+import ../src/nimsuggest/[nimsuggest_types, suggestapi_types]
 import os, std/asyncnet, strutils, chronos, chronos/asyncproc, options
 import unittest2
 

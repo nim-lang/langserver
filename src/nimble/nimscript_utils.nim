@@ -1,7 +1,5 @@
 import std/[os]
-import chronos, chronicles, chronos/asyncproc
-import stew/byteutils
-import ../protocol/types
+import chronicles
 
 const NIM_SCRIPT_API_TEMPLATE* = staticRead("./nimscriptapi.nim")
 

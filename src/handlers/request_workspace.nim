@@ -1,13 +1,13 @@
-import std/[json, sequtils, strformat, options, sets, sugar]
+import std/[json, sequtils, strformat, sets, sugar]
 import chronos
 import chronicles
 import ../protocol/types
 import ../configurations/constants
-import ../langserver/[langserver_types, query_types, langserver, utils, checking]
+import ../langserver/[langserver_types, langserver, utils, checking]
 import ../nimsuggest/[nimsuggest_types, nimsuggest_slots]
 import ../utils/process_utils
 import ../utils/utils as globalUtils
-import ./[handler_utils, queries_nimsuggest, request_text_document]
+import ./[queries_nimsuggest, request_text_document]
 
 # === workspace/executeCommand ===
 proc executeCommand*(
@@ -20,6 +20,7 @@ proc executeCommand*(
     if ls.pool != nil and projectFile in ls.pool.slots:
       let slot = ls.pool.slots[projectFile]
       slot.crashedUris.clear()
+      slot.state = SlotState.STOPPING
       discard await execStop(slot, ls.pool)
       traceAsyncErrors execSpawn(slot, ls.pool, projectFile)
   of CHECK_PROJECT_COMMAND:
@@ -33,6 +34,7 @@ proc executeCommand*(
         let token = fmt "Compiling {projectFile}"
         ls.workDoneProgressCreate(token)
         ls.progress(token, "begin", fmt "Compiling project {projectFile}")
+        slot.state = SlotState.STOPPING
         discard await execStop(slot, ls.pool)
         traceAsyncErrors execSpawn(slot, ls.pool, projectFile)
         ls.progress(token, "end")

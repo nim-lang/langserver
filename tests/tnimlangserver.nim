@@ -5,7 +5,8 @@
 ##   main(cmdParams)       — unchanged (from src/quicknimlsp)
 
 import ../src/quicknimlsp
-import ../src/langserver/[langserver_types, utils, messaging_types]
+import ../src/langserver/[langserver, langserver_types, utils]
+import ../src/utils/utils
 import ../src/protocol/[enums, types]
 import std/[options, json, os, jsonutils, sequtils, strutils, sugar, strformat]
 import json_rpc/[rpcclient]
