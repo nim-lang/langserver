@@ -40,13 +40,16 @@ type
 
   ExecOptions* = ref object
     cwd*: cstring
+    env*: JsAssoc[cstring, cstring]
 
   SpawnOptions* = ref object
     cwd*: cstring
     shell*: bool
+    env*: JsAssoc[cstring, cstring]
 
   SpawnSyncOptions* = ref object
     cwd*: cstring
+    env*: JsAssoc[cstring, cstring]
 
   ChildProcessModule* = ref ChildProcessModuleObj
   ChildProcessModuleObj {.importc.} = object of JsRoot

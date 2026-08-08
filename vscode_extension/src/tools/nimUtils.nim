@@ -4,7 +4,7 @@ import platform/vscodeApi
 import platform/js/[jsNodeFs, jsNodePath, jsString]
 import std/[jscore, strformat, sequtils, hashes, os]
 
-import spec
+import ../state/state_types
 
 var ext*: ExtensionState
 

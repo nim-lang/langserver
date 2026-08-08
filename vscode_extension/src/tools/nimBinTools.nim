@@ -4,7 +4,8 @@ import platform/js/[jsNode, jsNodePath, jsString, jsNodeFs, jsNodeCp]
 
 import std/jsffi
 from std/sequtils import mapIt, foldl, filterIt, concat
-import ../[spec, nimUtils]
+import ../state/state_types
+import nimUtils
 var binPathsCache = newMap[cstring, cstring]()
 
 proc getBinPath*(tool: cstring, initialSearchPaths: openArray[cstring] = []): cstring =
@@ -67,6 +68,21 @@ proc getBinPath*(tool: cstring, initialSearchPaths: openArray[cstring] = []): cs
         discard #ignore
   binPathsCache[tool]
 
+proc getAugmentedEnv*(): JsAssoc[cstring, cstring] =
+  ## Returns a copy of process.env with ~/.nimble/bin prepended to PATH.
+  ## This ensures child processes can find nim/nimble/nimlangserver even
+  ## when VSCode was launched from the Dock without a full shell PATH.
+  let userHomeVarName = if process.platform == "win32": "USERPROFILE" else: "HOME"
+  let augmentedPath =
+    path.join(process.env[userHomeVarName], ".nimble", "bin") &
+    path.delimiter &
+    process.env["PATH"]
+  let env = newJsAssoc[cstring, cstring]()
+  for key, val in process.env.pairs():
+    env[key] = val
+  env["PATH"] = augmentedPath
+  return env
+
 proc getNimExecPath*(executable: cstring = "nim"): cstring =
   ## returns the path to the an executable by name, defaults to nim, returns an
   ## empty string in case it wasn't found.
@@ -100,7 +116,7 @@ proc getNimbleExecPath*(): cstring =
 
 proc execNimbleCmd*(args: seq[cstring], dirPath: cstring, onCloseCb: proc(code: cint, signal: cstring): void {.closure.}) = 
     var process = cp.spawn(
-      getNimbleExecPath(), @["setup".cstring], SpawnOptions(shell: true, cwd: dirPath)
+      getNimbleExecPath(), args, SpawnOptions(shell: true, cwd: dirPath, env: getAugmentedEnv())
     )
     process.stdout.onData(
       proc(data: Buffer) =

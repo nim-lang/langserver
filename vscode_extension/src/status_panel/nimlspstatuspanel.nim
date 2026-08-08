@@ -9,10 +9,11 @@ import
   platform/js/
     [jsNodeFs, jsNodePath, jsNodeCp, jsNodeUtil, jsNodeOs, jsNodeNet, jsPromise]
 
-import nimUtils
-from tools/nimBinTools import getNimbleExecPath, getBinPath
-import spec
-import nimLsp
+import ../tools/nimUtils
+from ../tools/nimBinTools import getNimbleExecPath, getBinPath
+import ../state/state_types
+import ../state/state
+import ../language_server/language_server
 
 proc getWebviewContent(status: NimLangServerStatus): cstring =
   result = cstring(
@@ -133,7 +134,7 @@ proc newNotificationItem*(notification: Notification): LspItem =
   item.notification = some(notification)
   # item.context.isNotification = true
   item.command = newJsObject()
-  item.command.command = "nim.showNotification".cstring
+  item.command.command = "nimTortoise.showNotification".cstring
   item.command.title = "Show Notification".cstring
   item.command.arguments = @[notification.message.toJs()]
   item.tooltip = notification.message
@@ -151,7 +152,7 @@ proc notificationActionItems(lspItem: LspItem): seq[LspItem] =
   let item = vscode.newTreeItem("Details", TreeItemCollapsibleState_None)
   # item.title = "Details"
   item.command = newJsObject()
-  item.command.command = "nim.showNotification".cstring
+  item.command.command = "nimTortoise.showNotification".cstring
   item.command.title = "Show Notification".cstring
   item.command.arguments = @[notification.message.toJs()]
   item.iconPath =
@@ -161,7 +162,7 @@ proc notificationActionItems(lspItem: LspItem): seq[LspItem] =
   let item2 = vscode.newTreeItem("Delete", TreeItemCollapsibleState_None)
   # item2.title = "Delete"
   item2.command = newJsObject()
-  item2.command.command = "nim.onDeleteNotification".cstring
+  item2.command.command = "nimTortoise.onDeleteNotification".cstring
   item2.command.title = "Delete Notification".cstring
   item2.iconPath =
     vscode.themeIcon("trash", vscode.themeColor("notificationsErrorIcon.foreground"))
@@ -173,7 +174,7 @@ proc globalNotificationActionItems(): seq[LspItem] =
     return @[]
   let item = vscode.newTreeItem("Clear All", TreeItemCollapsibleState_None)
   item.command = newJsObject()
-  item.command.command = "nim.onClearAllNotifications".cstring
+  item.command.command = "nimTortoise.onClearAllNotifications".cstring
   item.command.title = "Clear All Notifications".cstring
   item.iconPath =
     vscode.themeIcon("trash", vscode.themeColor("notificationsErrorIcon.foreground"))
@@ -251,7 +252,7 @@ proc newNimbleTaskItem*(task: NimbleTask): LspItem =
   let item = vscode.newTreeItem(task.name, TreeItemCollapsibleState_None)
   item.description = task.description
   item.command = newJsObject()
-  item.command.command = "nim.onNimbleTask".cstring
+  item.command.command = "nimTortoise.onNimbleTask".cstring
   item.command.title = task.name.cstring
   item.command.arguments = @[task.name.toJs()]
   # item.iconPath = vscode.themeIcon("debug-start", vscode.themeColor("notificationsInfoIcon.foreground"))
@@ -273,7 +274,7 @@ proc newNimbleTaskItem*(task: NimbleTask): LspItem =
 proc newRefreshNimbleTasksItem*(): LspItem =
   let item = vscode.newTreeItem("Refresh Nimble Tasks", TreeItemCollapsibleState_None)
   item.command = newJsObject()
-  item.command.command = "nim.onRefreshNimbleTasks".cstring
+  item.command.command = "nimTortoise.onRefreshNimbleTasks".cstring
   item.command.title = "Refresh Nimble Tasks".cstring
   item.iconPath = vscode.themeIcon("refresh", vscode.themeColor("notificationsInfoIcon.foreground"))
   cast[LspItem](item)
@@ -289,7 +290,7 @@ proc newRestartItem(title: string, pathToFile: string, action: static string): L
   # patth to file * == restart all
   let restartItem = vscode.newTreeItem(title, TreeItemCollapsibleState_None)
   restartItem.command = newJsObject()
-  restartItem.command.command = "nim.onLspSuggest".cstring
+  restartItem.command.command = "nimTortoise.onLspSuggest".cstring
   restartItem.command.title = title.cstring
   #Notice the actions here corresponds to SuggestAction in the lsp rathen than capabilities
   restartItem.command.arguments = @[cstring(action), pathToFile.cstring]

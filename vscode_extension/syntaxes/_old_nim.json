@@ -74,26 +74,36 @@
       ]
     },
     {
-      "comment": "A nim procedure or method. Converted from a begin/end rule (end: \"\\)\") to a match rule for two reasons: (1) the begin/end structure caused early termination on nested parens, e.g. proc foo(x: proc(a: int)) closed at the inner ')'; (2) a bare 'patterns' wrapper with no begin/end/match means the outer 'name' (meta.proc.nim) was never actually applied by the grammar engine — match fixes that.",
+      "comment": "A nim procedure or method",
       "name": "meta.proc.nim",
-      "match": "\\b(proc|method|template|macro|iterator|converter|func)\\s+\\`?([^\\:\\{\\s\\`\\*\\(]*)\\`?(\\s*\\*)?\\s*(?=\\(|\\=|:|\\[|\\n|\\{)",
-      "captures": {
-        "1": {
-          "name": "keyword.other.nim"
-        },
-        "2": {
-          "name": "entity.name.function.nim"
-        },
-        "3": {
-          "name": "storage.modifier.export.nim"
+      "patterns": [
+        {
+          "begin": "\\b(proc|method|template|macro|iterator|converter|func)\\s+\\`?([^\\:\\{\\s\\`\\*\\(]*)\\`?(\\s*\\*)?\\s*(?=\\(|\\=|:|\\[|\\n|\\{)",
+          "captures": {
+            "1": {
+              "name": "keyword.other"
+            },
+            "2": {
+              "name": "entity.name.function.nim"
+            },
+            "3": {
+              "name": "keyword.control.export"
+            }
+          },
+          "end": "\\)",
+          "patterns": [
+            {
+              "include": "source.nim"
+            }
+          ]
         }
-      }
+      ]
     },
     {
       "begin": "discard \"\"\"",
       "comment": "A discarded triple string literal comment",
       "end": "\"\"\"(?!\")",
-      "name": "comment.block.discarded.nim"
+      "name": "comment.line.discarded.nim"
     },
     {
       "include": "#custom_literal"
@@ -112,7 +122,7 @@
     {
       "captures": {
         "1": {
-          "name": "storage.modifier.export.nim"
+          "name": "keyword.control.export"
         }
       },
       "comment": "Export qualifier.",
@@ -126,7 +136,7 @@
           "name": "support.type.nim"
         },
         "2": {
-          "name": "storage.modifier.export.nim"
+          "name": "keyword.control.export"
         }
       }
     },
@@ -146,7 +156,7 @@
     {
       "comment": "Keyword boolean operators for expressions.",
       "match": "(\\b(and|in|is|isnot|not|notin|or|xor)\\b)",
-      "name": "keyword.operator.word.nim"
+      "name": "keyword.boolean.nim"
     },
     {
       "comment": "Generic operators for expressions.",
@@ -275,7 +285,7 @@
           "include": "source.nim"
         }
       ]
-    },
+    },    
     {
       "begin": "\\{\\.",
       "beginCaptures": {
@@ -517,6 +527,9 @@
               "captures": {
                 "1": {
                   "name": "keyword.operator.nim"
+                },
+                "2": {
+                  "name": "keyword.operator.nim"
                 }
               },
               "end": "\\}",
@@ -537,6 +550,11 @@
                 }
               },
               "end": "(\\{|\\n)",
+              "endCaptures": {
+                "1": {
+                  "name": "plain"
+                }
+              },
               "patterns": [
                 {
                   "include": "source.nim"
@@ -609,6 +627,9 @@
               "captures": {
                 "1": {
                   "name": "keyword.operator.nim"
+                },
+                "2": {
+                  "name": "keyword.operator.nim"
                 }
               },
               "end": "\\}",
@@ -629,6 +650,11 @@
                 }
               },
               "end": "(\\{|\\n)",
+              "endCaptures": {
+                "1": {
+                  "name": "plain"
+                }
+              },
               "patterns": [
                 {
                   "include": "source.nim"
@@ -701,6 +727,9 @@
               "captures": {
                 "1": {
                   "name": "keyword.operator.nim"
+                },
+                "2": {
+                  "name": "keyword.operator.nim"
                 }
               },
               "end": "\\}",
@@ -721,6 +750,11 @@
                 }
               },
               "end": "(\\{|\\n)",
+              "endCaptures": {
+                "1": {
+                  "name": "plain"
+                }
+              },
               "patterns": [
                 {
                   "include": "source.nim"
@@ -793,6 +827,9 @@
               "captures": {
                 "1": {
                   "name": "keyword.operator.nim"
+                },
+                "2": {
+                  "name": "keyword.operator.nim"
                 }
               },
               "end": "\\}",
@@ -813,6 +850,11 @@
                 }
               },
               "end": "(\\{|\\n)",
+              "endCaptures": {
+                "1": {
+                  "name": "plain"
+                }
+              },
               "patterns": [
                 {
                   "include": "source.nim"
@@ -885,6 +927,9 @@
               "captures": {
                 "1": {
                   "name": "keyword.operator.nim"
+                },
+                "2": {
+                  "name": "keyword.operator.nim"
                 }
               },
               "end": "\\}",
@@ -905,6 +950,11 @@
                 }
               },
               "end": "(\\{|\\n)",
+              "endCaptures": {
+                "1": {
+                  "name": "plain"
+                }
+              },
               "patterns": [
                 {
                   "include": "source.nim"
@@ -977,6 +1027,9 @@
               "captures": {
                 "1": {
                   "name": "keyword.operator.nim"
+                },
+                "2": {
+                  "name": "keyword.operator.nim"
                 }
               },
               "end": "\\}",
@@ -997,6 +1050,11 @@
                 }
               },
               "end": "(\\{|\\n)",
+              "endCaptures": {
+                "1": {
+                  "name": "plain"
+                }
+              },
               "patterns": [
                 {
                   "include": "source.nim"
@@ -1488,12 +1546,7 @@
           "name": "punctuation.definition.string.end.nim"
         }
       },
-      "name": "string.quoted.triple.nim",
-      "patterns": [
-        {
-          "include": "#string_escapes"
-        }
-      ]
+      "name": "string.quoted.triple.nim"
     },
     "string_quoted_triple_raw": {
       "begin": "r\"\"\"",
@@ -1563,6 +1616,10 @@
     },
     "integer_literal": {
       "patterns": [
+        {
+          "match": "(-?\\b0[xX][0-9a-fA-F][_0-9a-fA-F]*'[a-zA-Z_][a-zA-Z0-9_]*)",
+          "name": "constant.numeric.custom.lit.nim"
+        },
         {
           "match": "-?\\b(0[xX][0-9a-fA-F][_0-9a-fA-F]*)('(([iIuU](8|16|32|64))|[uU]))?",
           "name": "constant.numeric.integer.hexadecimal.nim"

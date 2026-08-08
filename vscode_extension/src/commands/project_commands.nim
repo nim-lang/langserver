@@ -85,7 +85,7 @@ proc getProjectFileInfo*(filename: cstring): ProjectFileInfo =
   return projects[0]
 
 proc processConfigProjects(conf: JsObject): void =
-  ## updates `projects` from config `nim.projects`, if `nim.projects` changed
+  ## updates `projects` from config `nimTortoise.projects`, if `nimTortoise.projects` changed
   ## ensure that process `processConfigProjectMapping` is called thereafter
   projects.setLen(0)
 
@@ -107,8 +107,8 @@ proc processConfigProjects(conf: JsObject): void =
       )
 
 proc processConfigProjectMapping(conf: JsObject): void =
-  ## updates `projectMapping` from config `nim.projectMapping`, if
-  ## `nim.projects` changed ensure that `procesConfigProjects` is called first
+  ## updates `projectMapping` from config `nimTortoise.projectMapping`, if
+  ## `nimTortoise.projects` changed ensure that `procesConfigProjects` is called first
 
   projectMapping.setLen(0)
 
@@ -133,9 +133,9 @@ proc processConfig*(conf: VscodeWorkspaceConfiguration): void =
 
 proc configUpdate*(cfgChg: VscodeConfigurationChangeEvent): void =
   let
-    projectsChanged = cfgChg.affectsConfiguration("nim.project")
-    mappingsChanged = cfgChg.affectsConfiguration("nim.projectMapping")
-    conf = vscode.workspace.getConfiguration("nim")
+    projectsChanged = cfgChg.affectsConfiguration("nimTortoise.project")
+    mappingsChanged = cfgChg.affectsConfiguration("nimTortoise.projectMapping")
+    conf = vscode.workspace.getConfiguration("nimTortoise")
 
   if projectsChanged:
     processConfigProjects(conf.get("project"))

@@ -1,9 +1,9 @@
 import platform/vscodeApi
 import std/[strformat, jsconsole, tables, options, sequtils]
-import spec, nimLsp
 import platform/js/jsNodeFs
-import nimProjects
-import nimUtils
+import ../state/state_types
+import ../language_server/language_server
+import ../tools/nimUtils
 
 var testController: VscodeTestController
 var runProfile: VscodeTestRunProfile = nil

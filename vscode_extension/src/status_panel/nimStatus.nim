@@ -6,10 +6,10 @@
 import platform/vscodeApi
 import std/jsconsole
 
-import nimMode
 
 var statusBarEntry: VscodeStatusBarItem
 var progressBarEntry: VscodeStatusBarItem
+
 
 proc showHideStatus*(): void =
   if statusBarEntry.isNil():
@@ -19,6 +19,8 @@ proc showHideStatus*(): void =
     statusBarEntry.hide()
     return
 
+  let mode: VscodeDocumentFilter = VscodeDocumentFilter{language: "nim", scheme: "file"}
+  
   if vscode.languages.match(mode, vscode.window.activeTextEditor.document) > 0:
     statusBarEntry.show()
     return

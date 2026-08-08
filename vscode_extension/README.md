@@ -1,20 +1,13 @@
-# Nim Extension
+# Nim Tortoise Language Server Extension
 
-This extension adds language support for the Nim language to VS Code, including:
+## "Slow and steady wins the race"
 
-* Syntax Highlight (nim, nimble, nim.cfg)
-* Code Completion
-* Signature Help
-* Goto Definition
-* Find References
-* File outline
-* Build-on-save
-* Workspace symbol search
-* Quick info
-* Problem Matchers for nim compiler and test output
-* Nim check result reported in `Nim` output channel (great for macro development)
-  ![output channel demo](images/nim_vscode_output_demo.gif "Demo of macro evaluation in the output channel")</details>
-* MCP server that allows Copilot to navigate the code more effectively.
+A Language Server for `nim` that prioritises correctness over speed.  
+
+This is the VS Code extension for the `nim tortoise language server`.  
+
+It is a fork of `vscode-nim` with a number of changes.  It now only supports a LSP backend, not nimsuggest.  This has allowed me to remove a lot of code to create a thin wrapper around the new language server.  This new version relies upon the language server to do nearly everything.
+
 
 ## Using
 
@@ -72,7 +65,6 @@ The following commands are provided by the extension:
 * `Nim: Run selected file` - compile and run selected file, it uses `c` compiler by default, but you can specify `cpp` in `nim.buildCommand` config parameter.
 This command available from file context menu or by `F6` keyboard shortcut.
 
-* `Nim: Restart nimsuggest` - restart `nimsuggest` process when using `nimsuggest`.
 ---
 
 ### Debugging
@@ -131,8 +123,6 @@ Then, you need to create a launch configuration in the project's launch.json fil
 
 You should be set up now to be able to debug from a given file in the native VS Code(ium) debugger.
 
-![Debugger preview screenshot](images/debugging-screenshot.png "debugger preview")
-
 ---
 
 ## [Experimental] Test runner
@@ -140,10 +130,7 @@ You should be set up now to be able to debug from a given file in the native VS 
 The extension also support running tests. The project must be using `unittest2 >= 0.2.4` and a test entry point must be defined in the settings `nim.test.entryPoint`. Alternativaly, one can use the `testEntryPoint` setting from `nimble` (starting at `nimble 0.20.0`). 
 
 
-Tests will be listed in the vscode Test Explorer. There is a command `Refresh Tests` that re-runs test listing. 
-
-![Test runner screenshot](images/testrunner.png "test runner")
-
+Tests will be listed in the vscode Test Explorer. There is a command `Refresh Tests` that re-runs test listing.
 
 ---
 

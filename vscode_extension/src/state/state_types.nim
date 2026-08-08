@@ -5,14 +5,14 @@ import platform/vscodeApi
 from platform/languageClientApi import VscodeLanguageClient
 
 type
-  Backend* = cstring
-  Timestamp* = cint
-  NimsuggestId* = cstring
+  # Backend* = cstring
+  # Timestamp* = cint
+  # NimsuggestId* = cstring
 
-  PendingRequestState* = enum
-    prsOnGoing = "OnGoing"
-    prsCancelled = "Cancelled"
-    prsComplete = "Complete"
+  # PendingRequestState* = enum
+  #   prsOnGoing = "OnGoing"
+  #   prsCancelled = "Cancelled"
+  #   prsComplete = "Complete"
 
   PendingRequestStatus* = object
     name*: cstring
@@ -76,7 +76,7 @@ type
     name*: cstring
     line*: int
     file*: cstring
-  
+
   TestSuiteInfo* = object
     name*: cstring #The suite name, empty if it's a global test
     tests*: seq[TestInfo]
@@ -91,7 +91,7 @@ type
 
   ListTestsResult* = object
     projectInfo*: TestProjectInfo
-  
+
   RunTestResult* = object
     name*: cstring
     time*: float
@@ -110,13 +110,16 @@ type
     entryPoint*: cstring
     suiteName*: cstring #Optional, if provided, only run tests in the suite
     testNames*: seq[cstring] #Optional, if provided, only run the specific tests
-    
+
   RunTestProjectResult* = object
     suites*: seq[RunTestSuiteResult]
     fullOutput*: cstring
 
   CancelTestResult* = object
     cancelled*: bool
+
+  LSPInstallPathKind* = enum
+    lspPathSetting, lspPathLocal, lspPathGlobal, lspPathInvalid
 
   LspExtensionCapability* = enum #List of extensions the lsp server support.
     excNone = "None"
@@ -141,89 +144,3 @@ type
     extensionReady*: bool
     onExtensionReadyHooks*: seq[proc()] #Called when the extension has stablished the connection with the lsp server and is initialized
     dumpTestEntryPoint*: cstring #Extracted from nimble dump. 
-   
-
-# type
-#   SolutionKind* {.pure.} = enum
-#     skSingleFile, skFolder, skWorkspace
-
-#   NimsuggestProcess* = ref object
-#     process*: ChildProcess
-#     rpc*: EPCPeer
-#     startingPath*: cstring
-#     projectPath*: cstring
-#     backend*: Backend
-#     nimble*: VscodeUri
-#     updateTime*: Timestamp
-
-#   ProjectKind* {.pure.} = enum
-#     pkNim, pkNims, pkNimble
-
-#   ProjectSource* {.pure.} = enum
-#     psDetected, psUserDefined
-
-#   Project* = ref object
-#     uri*: VscodeUri
-#     source*: ProjectSource
-#     nimsuggest*: NimsuggestId
-#     hasNimble*: bool
-#     matchesNimble*: bool
-#     case kind*: ProjectKind
-#     of pkNim:
-#       hasCfg*: bool
-#       hasNims*: bool
-#     of pkNims, pkNimble: discard
-
-#   ProjectCandidateKind* {.pure.} = enum
-#     pckNim, pckNims, pckNimble
-
-#   ProjectCandidate* = ref object
-#     uri*: VscodeUri
-#     kind*: ProjectCandidateKind
-
-proc getNimCmd*(state: ExtensionState): cstring =
-  if state.nimDir == "":
-    "nim ".cstring
-  else:
-    (state.nimDir & "/nim ").cstring
-
-proc getTaskByName*(state: ExtensionState, name: cstring): Option[NimbleTask] =
-  for task in state.nimbleTasks:
-    if task.name == name:
-      return some task
-  none(NimbleTask)
-
-proc markTaskAsRunning*(state: ExtensionState, name: cstring, isRunning: bool) =
-  for task in state.nimbleTasks.mitems:
-    if task.name == name:
-      task.isRunning = isRunning
-      break
-
-proc addExtensionCapabilities*(state: ExtensionState, caps: seq[cstring]) =
-  for cap in caps:
-    try:
-      let extCap = parseEnum[LspExtensionCapability]($cap)
-      state.lspExtensionCapabilities.incl extCap
-    except ValueError:
-      console.error(("Error parsing server extension capability " & cap))
-  # outputLine(fmt" Lsp Server Extension Capabilities: {state.lspExtensionCapabilities}".cstring)
-
-proc onExtensionReady*(state: ExtensionState) =
-  if state.extensionReady:
-    return
-  state.extensionReady = true
-  for hook in state.onExtensionReadyHooks:
-    hook()
-
-proc fetchLsp*[T, U](
-    state: ExtensionState, name: string, params: U
-): Future[T] {.async.} =
-  console.log("[FetchLsp] ", name, params.toJs())
-  let response = await state.client.sendRequest(name, params.toJs())
-  let res = jsonStringify(response).jsonParse(T)
-  console.log(res)
-  return res
-
-proc fetchLsp*[T](state: ExtensionState, name: string): Future[T] =
-  return fetchLsp[T, JsObject](state, name, ().toJs())
-

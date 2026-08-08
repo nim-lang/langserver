@@ -21,6 +21,7 @@ type
   ExecutableOptions* = ref ExecutableOptionsObj
   ExecutableOptionsObj {.importc.} = object of JsObject
     shell*: bool
+    env*: JsAssoc[cstring, cstring]
 
   Executable* = ref ExecutableObj
   ExecutableObj {.importc.} = object of JsObject
