@@ -90,7 +90,7 @@ proc receiveConfiguration(ls: LanguageServer, configFuture: Future[JsonNode]) {.
 proc maybeRequestConfigurationFromClient*(ls: LanguageServer) =
   if ls.supportsConfigurationRequest:
     debug "Requesting configuration from the client"
-    let configurationParams = %*{"items": [{"section": "nim"}]}
+    let configurationParams = %*{"items": [{"section": "nimTortoise"}, {"section": "nim"}]}
     let configFuture = ls.call("workspace/configuration", configurationParams)
     asyncSpawn ls.receiveConfiguration(configFuture)
   else:

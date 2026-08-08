@@ -13,4 +13,5 @@
       "fileRegex": "vscode_extension/src/.*\\.nim"
     },
   ],
+  "nimTortoise.maxNimsuggestProcesses": 2
 }
