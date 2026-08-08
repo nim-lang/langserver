@@ -45,6 +45,7 @@ suite "Nimlangserver extensions":
     let initializeResult = waitFor client.initialize(initParams)
     ls.configurations.currentConfig = some(NlsConfig())
     ls.configurations.configReady.fire()
+    client.notify("initialized", newJObject())
 
     check initializeResult.capabilities.textDocumentSync.isSome
 
