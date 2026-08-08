@@ -4,42 +4,43 @@ import chronicles
 import ../utils/process_utils
 import ./[suggestapi, suggestapi_types, nimsuggest_types]
 import ../configurations/constants
+import ../protocol/types
 
-proc newPool*(slots: Table[string, NimsuggestSlot], maxSlots: int): NimsuggestPool =
+proc newPool*(slots: Table[FilePath, NimsuggestSlot], maxSlots: int): NimsuggestPool =
   NimsuggestPool(slots: slots, maxSlots: maxSlots)
 
-proc newSlot*(projectFile: string, isEntryPoint = false, workingDir = getCurrentDir()): NimsuggestSlot =
+proc newSlot*(projectFile: FilePath, isEntryPoint = false, workingDir = getCurrentDir()): NimsuggestSlot =
   NimsuggestSlot(
     state: SlotState.SPAWNING,
     projectFile: projectFile,
     workingDir: workingDir,
-    ownedUris: initHashSet[string](),
+    ownedUris: initHashSet[FileUri](),
     ns: newFuture[NimSuggest]("pending"),
     queryMailbox: newAsyncQueue[NimsuggestQuery[LspFilePosition]](),
     lastCmdTime: now(),
     isEntryPoint: isEntryPoint,
-    crashedUris: initHashSet[string](),
+    crashedUris: initHashSet[FileUri](),
   )
 
 proc addSlot*(pool: NimsuggestPool, slot: NimsuggestSlot) =
   pool.slots[slot.projectFile] = slot
 
-proc removeSlot*(pool: NimsuggestPool, projectFile: string) =
+proc removeSlot*(pool: NimsuggestPool, projectFile: FilePath) =
   pool.slots.del(projectFile)
 
 proc canSpawn*(pool: NimsuggestPool): bool =
   pool.maxSlots == 0 or pool.slots.len < pool.maxSlots
 
-proc slotForUri*(pool: NimsuggestPool, uri: string): Option[NimsuggestSlot] =
+proc slotForUri*(pool: NimsuggestPool, uri: FileUri): Option[NimsuggestSlot] =
   for slot in pool.slots.values:
     if uri in slot.ownedUris:
       return some(slot)
   none(NimsuggestSlot)
 
-proc assignUri*(slot: NimsuggestSlot, uri: string) =
+proc assignUri*(slot: NimsuggestSlot, uri: FileUri) =
   slot.ownedUris.incl(uri)
 
-proc unassignUri*(slot: NimsuggestSlot, uri: string) =
+proc unassignUri*(slot: NimsuggestSlot, uri: FileUri) =
   slot.ownedUris.excl(uri)
 
 
@@ -51,7 +52,7 @@ proc isActive*(slot: NimsuggestSlot): bool =
   ## Live or currently starting up. Counts against maxSlots.
   slot.state in {SlotState.SPAWNING, SlotState.READY}
 
-proc ownsUri*(slot: NimsuggestSlot, uri: string): bool =
+proc ownsUri*(slot: NimsuggestSlot, uri: FileUri): bool =
   uri in slot.ownedUris
 
 proc resolvedNs*(slot: NimsuggestSlot): Option[NimSuggest] =
@@ -62,7 +63,7 @@ proc resolvedNs*(slot: NimsuggestSlot): Option[NimSuggest] =
 
 # === EXECS ===
 proc execSpawn*(
-  slot: NimsuggestSlot, pool: NimsuggestPool, projectFile: string
+  slot: NimsuggestSlot, pool: NimsuggestPool, projectFile: FilePath
 ): Future[bool] {.async.} =
   ## Start a nimsuggest process for `projectFile`, retrying up to MAX_CRASH_RETRIES times.
   ## Returns true if the spawn succeeded, false if all attempts failed.

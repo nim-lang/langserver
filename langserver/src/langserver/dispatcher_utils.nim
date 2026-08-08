@@ -16,7 +16,7 @@ func checkNimsuggestKnownResponse*(response: seq[Suggest]): bool =
   else:
     return response[0].forth == "true"
 
-proc checkNimsuggestSlotKnowsURI(slot: NimsuggestSlot, uri: string): Future[Option[NimsuggestSlot]] {.async.} =
+proc checkNimsuggestSlotKnowsURI(slot: NimsuggestSlot, uri: FileUri): Future[Option[NimsuggestSlot]] {.async.} =
   case slot.state
   of SlotState.SPAWNING:
     try:
@@ -25,7 +25,7 @@ proc checkNimsuggestSlotKnowsURI(slot: NimsuggestSlot, uri: string): Future[Opti
         id: 0.uint,
         kind: NimsuggestQueryKind.KNOWN,
         uri: uri,
-        dirtyFile: "",
+        dirtyFile: FilePath(""),
         responseFuture: newFuture[seq[Suggest]]("known"),
       )
       slot.queryMailbox.addLastNoWait(knownQuery)
@@ -44,7 +44,7 @@ proc checkNimsuggestSlotKnowsURI(slot: NimsuggestSlot, uri: string): Future[Opti
       id: 0.uint,
       kind: NimsuggestQueryKind.KNOWN,
       uri: uri,
-      dirtyFile: "",
+      dirtyFile: FilePath(""),
       responseFuture: newFuture[seq[Suggest]]("known"),
     )
     slot.queryMailbox.addLastNoWait(knownQuery)
@@ -58,7 +58,7 @@ proc checkNimsuggestSlotKnowsURI(slot: NimsuggestSlot, uri: string): Future[Opti
     return none(NimsuggestSlot)
 
 
-proc isKnownByANimsuggestSlot*(pool: NimsuggestPool, uri: string): Future[Option[NimsuggestSlot]] {.async.} =
+proc isKnownByANimsuggestSlot*(pool: NimsuggestPool, uri: FileUri): Future[Option[NimsuggestSlot]] {.async.} =
   var futures: seq[Future[Option[NimsuggestSlot]]]
 
   for slot in pool.slots.values.toSeq:
@@ -71,7 +71,7 @@ proc isKnownByANimsuggestSlot*(pool: NimsuggestPool, uri: string): Future[Option
     if res.isSome:
       possibleNimsuggestSlots.add(res.get())
 
-  possibleNimsuggestSlots.sort(proc(a, b: NimsuggestSlot): int = cmp(a.projectFile, b.projectFile))
+  possibleNimsuggestSlots.sort(proc(a, b: NimsuggestSlot): int = cmp(string(a.projectFile), string(b.projectFile)))
 
   if possibleNimsuggestSlots.len > 0:
     return some(possibleNimsuggestSlots[0])
@@ -86,13 +86,13 @@ proc addFileToOpenFiles*(
   # Write the initial stash file
   let storagePath = ls.uriStorageLocation(params.uri)
   try:
-    writeFile(storagePath, params.text)
+    writeFile(string(storagePath), params.text)
   except IOError as ex:
     warn "Failed to write stash file; hover/completion may show stale content",
-      path = storagePath, msg = ex.msg
+      path = string(storagePath), msg = ex.msg
   except OSError as ex:
     warn "Failed to write stash file; hover/completion may show stale content",
-      path = storagePath, msg = ex.msg
+      path = string(storagePath), msg = ex.msg
 
   # Build finger table for UTF-16 mapping
   var fingerTable: seq[seq[tuple[u16pos, offset: int]]] = @[]
@@ -163,15 +163,15 @@ proc nimsuggestSlotToEvict*(pool: NimsuggestPool): NimsuggestSlot =
   raiseAssert "nimsuggestSlotToEvict: pool has slots but none matched any state"
 
 
-proc queryFile*(ls: LanguageServer, uri: string, kind: NimsuggestQueryKind): Future[seq[Suggest]] =
+proc queryFile*(ls: LanguageServer, uri: FileUri, kind: NimsuggestQueryKind): Future[seq[Suggest]] =
   ## Creates a NimsuggestQuery and enqueues it on the owning slot's query mailbox.
   ## Returns a Future completed by processQueries when nimsuggest responds.
   result = newFuture[seq[Suggest]]("queryFile")
   let fileInfo = ls.files.openFiles.getOrDefault(uri)
-  if fileInfo == nil or fileInfo.slot == nil:
+  if fileInfo == nil:
     result.complete(@[])
     return
-  let dirtyFile = if fileInfo.changed: ls.uriStorageLocation(uri) else: ""
+  let dirtyFile = if fileInfo.changed: ls.uriStorageLocation(uri) else: FilePath("")
   fileInfo.slot.queryMailbox.addLastNoWait(NimsuggestQuery[LspFilePosition](
     kind: kind,
     uri: uri,

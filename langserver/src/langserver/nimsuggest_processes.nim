@@ -13,14 +13,15 @@ import ../utils/[process_utils]
 import ../configurations/constants
 import ./[langserver_types, configurations, utils]
 import ../utils/utils as globalUtils
+import ../protocol/types
 
-proc getWorkingDir*(ls: LanguageServer, path: string): string =
+proc getWorkingDir*(ls: LanguageServer, path: FilePath): string =
   let rootPath =
     case ls.capabilities.serverMode
     of lsp: ls.capabilities.lspInitializeParams.getRootPath
     of mcp: ls.capabilities.mcpInitializeParams.getRootPath
 
-  let pathRelativeToRoot = path.tryRelativeTo(rootPath)
+  let pathRelativeToRoot = string(path).tryRelativeTo(rootPath)
   let mapping = ls.getWorkspaceConfiguration().workingDirectoryMapping.get(@[])
   result = getCurrentDir()
   for m in mapping:
@@ -29,20 +30,20 @@ proc getWorkingDir*(ls: LanguageServer, path: string): string =
       break
 
 proc getNimbleDumpInfo*(
-    ls: LanguageServer, nimbleFile: string
+    ls: LanguageServer, nimbleFile: FilePath
 ): Future[NimbleDumpInfo] {.async.} =
-  if nimbleFile in ls.nimDumpCache:
-    return ls.nimDumpCache.getOrDefault(nimbleFile)
+  if string(nimbleFile) in ls.nimDumpCache:
+    return ls.nimDumpCache.getOrDefault(string(nimbleFile))
   var process: AsyncProcessRef
   try:
     let workDir =
-      if nimbleFile == "": getCurrentDir()
-      else: nimbleFile.parentDir
+      if string(nimbleFile) == "": getCurrentDir()
+      else: string(nimbleFile).parentDir
     let nimbleDirEnv = getEnv("NIMBLE_DIR", "<not set>")
     let homeEnv = getEnv("HOME", "<not set>")
     let pathEnv = getEnv("PATH", "<not set>")
     debug "getNimbleDumpInfo environment",
-      nimbleFile = nimbleFile, workDir = workDir,
+      nimbleFile = $nimbleFile, workDir = workDir,
       NIMBLE_DIR = nimbleDirEnv, HOME = homeEnv, PATH = pathEnv
     process = await startProcess(
       "nimble",
@@ -66,15 +67,15 @@ proc getNimbleDumpInfo*(
       if line.startsWith("entryPoints"):
         result.entryPoints =
           line[(1 + line.find '"') ..^ 2].split(',').mapIt(it.strip(chars = {' ', '"'}))
-    var nimbleFile = nimbleFile
-    if nimbleFile == "":
+    var nimbleFileStr = string(nimbleFile)
+    if nimbleFileStr == "":
       ls.nimDumpCache[""] = result
       if result.nimblePath.isSome:
-        nimbleFile = result.nimblePath.get
-    if nimbleFile != "":
-      ls.nimDumpCache[nimbleFile] = result
+        nimbleFileStr = result.nimblePath.get
+    if nimbleFileStr != "":
+      ls.nimDumpCache[nimbleFileStr] = result
   except CatchableError:
-    debug "Failed to get nimble dump info", nimbleFile = nimbleFile
+    debug "Failed to get nimble dump info", nimbleFile = $nimbleFile
   finally:
     if process != nil:
       await shutdownChildProcess(process)
@@ -82,7 +83,7 @@ proc getNimbleDumpInfo*(
 proc getNimSuggestPathAndVersion*(
   ls: LanguageServer, conf: NlsConfig, workingDir: string
 ): Future[(string, string)] {.async.} =
-  let nimbleDumpInfo = await ls.getNimbleDumpInfo("")
+  let nimbleDumpInfo = await ls.getNimbleDumpInfo(FilePath(""))
   let nimDir = nimbleDumpInfo.nimDir.get ""
   var nimsuggestPath = expandTilde(conf.nimsuggestPath.get(""))
   var nimVersion = ""
@@ -120,24 +121,24 @@ proc clearCompiledRegexCache*() =
   ## that stale projectMapping patterns are not reused across config updates.
   compiledRegexCache.clear()
 
-proc getIntendedProject*(ls: LanguageServer, uri: string): string =
+proc getIntendedProject*(ls: LanguageServer, uri: FileUri): FilePath =
   ## ProjectMapping regex lookup only. No slot creation, no LRU fallback.
-  ## Returns "" if no mapping matches.
+  ## Returns FilePath("") if no mapping matches.
   let path = uri.uriToPath
   let rootPath =
     case ls.capabilities.serverMode
     of lsp: ls.capabilities.lspInitializeParams.getRootPath
     of mcp: ls.capabilities.mcpInitializeParams.getRootPath
-  let pathRelativeToRoot = path.tryRelativeTo(rootPath)
+  let pathRelativeToRoot = string(path).tryRelativeTo(rootPath)
   let config = ls.getWorkspaceConfiguration()
   for mapping in config.projectMapping.get(@[]):
     var m: RegexMatch2
-    if find(path, getCompiledRegex(mapping.fileRegex), m):
+    if find(string(path), getCompiledRegex(mapping.fileRegex), m):
       if mapping.projectFile == "":
         return path  # regex matched but no projectFile — file is its own project
-      return if isAbsolute(mapping.projectFile): mapping.projectFile
-             else: rootPath / mapping.projectFile
-  return ""
+      return FilePath(if isAbsolute(mapping.projectFile): mapping.projectFile
+                      else: rootPath / mapping.projectFile)
+  return FilePath("")
 
 
 proc initNimsuggestInstances*(ls: LanguageServer, rootPath: string) {.async.} =
@@ -157,14 +158,14 @@ proc initNimsuggestInstances*(ls: LanguageServer, rootPath: string) {.async.} =
   # Discover entry points via nimble dump
   let nimbleFiles = walkFiles(rootPath / "*.nimble").toSeq
   if nimbleFiles.len > 0:
-    let nimbleFile = nimbleFiles[0]
-    debug "Starting nimble dump for", nimbleFile = nimbleFile
+    let nimbleFile = FilePath(nimbleFiles[0])
+    debug "Starting nimble dump for", nimbleFile = $nimbleFile
     let nimbleDumpInfo = await ls.getNimbleDumpInfo(nimbleFile)
-    let entryPoints = nimbleDumpInfo.getNimbleEntryPoints(rootPath)
-    debug "Finished nimble dump", nimbleFile = nimbleFile
+    let entryPoints = nimbleDumpInfo.getNimbleEntryPoints(rootPath).mapIt(FilePath(it))
+    debug "Finished nimble dump", nimbleFile = $nimbleFile
 
     for entryPoint in entryPoints:
-      debug "Starting nimsuggest for entry point", entry = entryPoint
+      debug "Starting nimsuggest for entry point", entry = $entryPoint
       if entryPoint notin ls.pool.slots:
         if ls.pool.canSpawn:
           let slot = newSlot(entryPoint, isEntryPoint = true)
@@ -179,7 +180,7 @@ proc initNimsuggestInstances*(ls: LanguageServer, rootPath: string) {.async.} =
           else:
             ls.pool.removeSlot(entryPoint)
         else:
-          debug "Limit reached, skipping entry point", entryPoint = entryPoint
+          debug "Limit reached, skipping entry point", entryPoint = $entryPoint
           break
 
 proc stopNimsuggestProcesses*(ls: LanguageServer) {.async.} =
@@ -209,7 +210,7 @@ proc idleSlots*(ls: LanguageServer): seq[NimsuggestSlot] =
   ## notification, since it has access to files.nim procs.
   let config = ls.getWorkspaceConfiguration()
   let timeout = config.nimsuggestIdleTimeout.get(DEFAULT_IDLE_TIMEOUT)
-  let cutoff = times.now() - initDuration(milliseconds = timeout)
+  let cutoff = times.now() - initDuration(minutes = timeout)
   for slot in ls.pool.slots.values.toSeq:
     # if slot.isEntryPoint or not slot.isLive:
     if slot.isLive == false:

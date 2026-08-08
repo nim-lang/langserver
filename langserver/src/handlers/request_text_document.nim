@@ -163,14 +163,14 @@ proc processHoverQuery(
       else:
         let nimPath = config.getNimPath()
         if nimPath.isSome:
-          let nimExpanded = await nimExpandMacro(nimPath.get, suggest, uriToPath(query.uri))
+          let nimExpanded = await nimExpandMacro(nimPath.get, suggest, string(uriToPath(query.uri)))
           content.value.add &"```nim\n{nimExpanded}\n```"
 
     if suggest.section == ideDef and suggest.symkind in ["skProc"] and config.nimExpandArc.get(NIM_EXPAND_ARC_BY_DEFAULT):
       debug "#Expanding arc", suggest = suggest[]
       let nimPath = config.getNimPath()
       if nimPath.isSome:
-        let expanded = await nimExpandArc(nimPath.get, suggest, uriToPath(query.uri))
+        let expanded = await nimExpandArc(nimPath.get, suggest, string(uriToPath(query.uri)))
         let arcContent = "#Expanded arc \n" & expanded
         content.value.add &"```nim\n{arcContent}\n```"
 
@@ -302,7 +302,7 @@ proc processPrepareRenameQuery(
   nimsuggestResponse: seq[Suggest]
 ): JsonNode =
   let projectDir = ls.capabilities.lspInitializeParams.getRootPath
-  if nimsuggestResponse.len > 0 and nimsuggestResponse[0].filePath.isRelTo(projectDir):
+  if nimsuggestResponse.len > 0 and string(nimsuggestResponse[0].filePath).isRelTo(projectDir):
     return %nimsuggestResponse[0].toLocation().range
   return newJNull()
 
@@ -332,10 +332,10 @@ proc processRenameQuery(
     # Only rename symbols in the project.
     # If client supports prepareRename then an error will already have been thrown
     let uri = pathToUri(reference.filePath)
-    if reference.filePath.isRelTo(projectDir):
-      if uri notin edits:
-        edits[uri] = newJArray()
-      edits[uri] &= %TextEdit(range: reference.toLabelRange(), newText: newName)
+    if string(reference.filePath).isRelTo(projectDir):
+      if string(uri) notin edits:
+        edits[string(uri)] = newJArray()
+      edits[string(uri)] &= %TextEdit(range: reference.toLabelRange(), newText: newName)
   return WorkspaceEdit(changes: some edits)
 
 proc rename*(
@@ -407,7 +407,7 @@ proc toInlayHint(suggest: SuggestInlayHint, configuration: NlsConfig): InlayHint
 
 proc processInlayHintQuery(
   ls: LanguageServer,
-  uri: string,
+  uri: FileUri,
   nimsuggestResponse: seq[Suggest],
   configuration: NlsConfig,
   typeHintsEnabled: bool,
@@ -459,7 +459,7 @@ proc codeAction*(
   let uri = params.textDocument.uri
   let fileInfo = ls.files.openFiles.getOrDefault(uri)
   let projectUri =
-    if fileInfo != nil and fileInfo.slot != nil:
+    if fileInfo != nil:
       fileInfo.slot.projectFile.pathToUri
     else:
       uri

@@ -1,0 +1,16 @@
+{
+  "nim.projectMapping": [
+    {
+      "projectFile": "langserver/src/nimtortoise.nim",
+      "fileRegex": "langserver/src/.*\\.nim"
+    },
+    {
+      "projectFile": "langserver/tests/all.nim",
+      "fileRegex": "langserver/tests/.*\\.nim"
+    },
+    {
+      "projectFile": "vscode_extension/src/vscode_nim_tortoise.nim",
+      "fileRegex": "vscode_extension/src/.*\\.nim"
+    },
+  ],
+}

@@ -122,7 +122,7 @@ proc parseSuggestDef*(line: string): Option[Suggest] =
     return none(Suggest)
   var sug = Suggest(
     qualifiedPath: tokens[2].parseQualifiedPath,
-    filePath: tokens[4],
+    filePath: FilePath(tokens[4]),
     line: parseInt(tokens[5]),
     column: parseInt(tokens[6]),
     doc: tokens[7].unescape(),
@@ -181,12 +181,12 @@ proc doWithTimeout*[T](fut: Future[T], timeout: int, s: string): owned(Future[bo
   return retFuture
 
 proc detectNimsuggestVersion(
-    root: string, nimsuggestPath: string, workingDir: string
+    root: FilePath, nimsuggestPath: string, workingDir: string
 ): int {.gcsafe.} =
   var process = startProcess(
     command = nimsuggestPath,
     workingDir = workingDir,
-    args = @[root, "--info:protocolVer"],
+    args = @[string(root), "--info:protocolVer"],
     options = {poUsePath},
   )
   var l: string
@@ -230,7 +230,7 @@ proc logNsError(project: Project) {.async.} =
   project.markFailed(err)
 
 proc createNimsuggest*(
-    root: string,
+    root: FilePath,
     nimsuggestPath: string,
     version: string,
     timeout: int,
@@ -244,8 +244,8 @@ proc createNimsuggest*(
   result = Project(file: root)
   result.ns = newFuture[NimSuggest]()
   result.errorCallback = some errorCallback
-  let isNimble = root.endsWith(".nimble")
-  let isNimScript = root.endsWith(".nims") or isNimble
+  let isNimble = string(root).endsWith(".nimble")
+  let isNimScript = string(root).endsWith(".nims") or isNimble
   var extraArgs = newSeq[string]()
   if isNimScript:
     extraArgs.add("--import: system/nimscript")
@@ -256,7 +256,7 @@ proc createNimsuggest*(
 
   let ns = Nimsuggest()
   ns.requestQueue = Deque[SuggestCall]()
-  ns.root = root
+  ns.root = root  # FilePath
   ns.timeout = timeout
   ns.timeoutCallback = timeoutCallback
   ns.nimSuggestPath = nimsuggestPath
@@ -264,13 +264,13 @@ proc createNimsuggest*(
   ns.project = result
 
   info "Starting nimsuggest",
-    root = root, timeout = timeout, path = nimsuggestPath, workingDir = workingDir
+    root = $root, timeout = timeout, path = nimsuggestPath, workingDir = workingDir
 
   if nimsuggestPath != "":
     ns.protocolVersion = detectNimsuggestVersion(root, nimsuggestPath, workingDir)
     if ns.protocolVersion > HighestSupportedNimSuggestProtocolVersion:
       ns.protocolVersion = HighestSupportedNimSuggestProtocolVersion
-    var args = @[root, "--v" & $ns.protocolVersion, "--autobind"] & extraArgs
+    var args = @[string(root), "--v" & $ns.protocolVersion, "--autobind"] & extraArgs
     if ns.protocolVersion >= 4:
       args.add("--clientProcessId:" & $getCurrentProcessId())
     if enableLog:
@@ -310,7 +310,7 @@ proc createNimsuggest*(
       nimsuggestPath = nimsuggestPath
     result.markFailed fmt "Unable to start nimsuggest. `{nimsuggestPath}` is not present on the PATH"
 
-proc createNimsuggest*(root: string): Future[Project] {.gcsafe.} =
+proc createNimsuggest*(root: FilePath): Future[Project] {.gcsafe.} =
   result = createNimsuggest(
     root,
     "nimsuggest",
@@ -394,15 +394,15 @@ proc processQueue(self: Nimsuggest): Future[void] {.async.} =
 proc call*(
     self: Nimsuggest,
     command: string,
-    file: string,
-    dirtyFile: string,
+    file: FilePath,
+    dirtyFile: FilePath,
     line: int,
     column: int,
     tag = "",
 ): Future[seq[Suggest]] =
   result = Future[seq[Suggest]]()
   let commandString =
-    if dirtyFile != "":
+    if string(dirtyFile) != "":
       fmt "{command} \"{file}\";\"{dirtyFile}\":{line}:{column}{tag}"
     else:
       fmt "{command} \"{file}\":{line}:{column}{tag}"
@@ -417,23 +417,23 @@ proc call*(
 
 template createFullCommand(command: untyped) {.dirty.} =
   proc command*(
-      self: Nimsuggest, file: string, dirtyfile = "", line: int, col: int, tag = ""
+      self: Nimsuggest, file: FilePath, dirtyfile = FilePath(""), line: int, col: int, tag = ""
   ): Future[seq[Suggest]] =
     return self.call(astToStr(command), file, dirtyfile, line, col, tag)
 
 template createFileOnlyCommand(command: untyped) {.dirty.} =
-  proc command*(self: Nimsuggest, file: string, dirtyfile = ""): Future[seq[Suggest]] =
+  proc command*(self: Nimsuggest, file: FilePath, dirtyfile = FilePath("")): Future[seq[Suggest]] =
     return self.call(astToStr(command), file, dirtyfile, 0, 0)
 
 template createGlobalCommand(command: untyped) {.dirty.} =
   proc command*(self: Nimsuggest): Future[seq[Suggest]] =
-    return self.call(astToStr(command), "-", "", 0, 0)
+    return self.call(astToStr(command), FilePath("-"), FilePath(""), 0, 0)
 
 template createRangeCommand(command: untyped) {.dirty.} =
   proc command*(
       self: Nimsuggest,
-      file: string,
-      dirtyfile = "",
+      file: FilePath,
+      dirtyfile = FilePath(""),
       startLine, startCol, endLine, endCol: int,
       extra: string,
   ): Future[seq[Suggest]] =
@@ -464,16 +464,16 @@ createFileOnlyCommand(globalSymbols)
 createGlobalCommand(recompile)
 createRangeCommand(inlayHints)
 
-proc isKnown*(nimsuggest: Nimsuggest, filePath: string): Future[bool] {.async.} =
+proc isKnown*(nimsuggest: Nimsuggest, filePath: FilePath): Future[bool] {.async.} =
   let res = await withTimeout(nimsuggest.known(filePath))
   if res.isNone:
     debug "Timeout reached running [isKnown], assuming the file is known (nimsuggest busy)",
-      file = filePath
+      file = $filePath
     return true
   let sug = res.get()
   if sug.len == 0:
     return false
-  debug "isKnown", filePath = filePath, sug = sug[0].forth
+  debug "isKnown", filePath = $filePath, sug = sug[0].forth
   return sug.len > 0 and sug[0].forth == "true"
 
 proc range*(startLine, startCharacter, endLine, endCharacter: int): Range =

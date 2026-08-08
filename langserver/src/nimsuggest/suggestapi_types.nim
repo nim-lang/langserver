@@ -39,7 +39,7 @@ type
   Suggest* = ref object
     section*: IdeCmd
     qualifiedPath*: seq[string] # part of 'qualifiedPath'
-    filePath*: string
+    filePath*: FilePath
     line*: int # Starts at 1
     column*: int # Starts at 0
     doc*: string # Not escaped (yet)
@@ -79,10 +79,10 @@ type
   NimsuggestImpl* = object
     checkProjectInProgress*: bool
     needsCheckProject*: bool
-    openFiles*: OrderedSet[string]
+    openFiles*: OrderedSet[FileUri]
     successfullCall*: bool
     port*: int
-    root*: string
+    root*: FilePath
     requestQueue*: Deque[SuggestCall]
     processing*: bool
     timeout*: int
@@ -97,7 +97,7 @@ type
 
   Project* = ref object
     ns*: Future[NimSuggest]
-    file*: string
+    file*: FilePath
     process*: AsyncProcessRef
     errorCallback*: Option[ProjectCallback]
     errorMessage*: string

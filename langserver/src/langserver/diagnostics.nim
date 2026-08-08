@@ -20,9 +20,9 @@ proc toUtf16Pos*(checkResult: CheckResult, ls: LanguageServer): CheckResult =
       result.stacktrace[i].column = stPos.get()
 
 proc sendDiagnostics*(
-    ls: LanguageServer, diagnostics: seq[Suggest] | seq[CheckResult], path: string
+    ls: LanguageServer, diagnostics: seq[Suggest] | seq[CheckResult], path: FilePath
 ) =
-  trace "Sending diagnostics", count = diagnostics.len, path = path
+  trace "Sending diagnostics", count = diagnostics.len, path = $path
   let diagsJson = newJArray()
   for d in diagnostics.map(x => x.toUtf16Pos(ls).toDiagnosticJson):
     diagsJson.add(d)

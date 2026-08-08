@@ -1,6 +1,20 @@
-import json
-import options
-import tables
+import json, options, tables, hashes
+import std/jsonutils
+
+type
+  FileUri* = distinct string  ## A file:// URI (e.g. "file:///Users/foo/bar.nim")
+  FilePath* = distinct string ## A filesystem path (e.g. "/Users/foo/bar.nim")
+
+func `$`*(x: FileUri): string = string(x)
+func `$`*(x: FilePath): string = string(x)
+func `==`*(a, b: FileUri): bool = string(a) == string(b)
+func `==`*(a, b: FilePath): bool = string(a) == string(b)
+proc hash*(x: FileUri): Hash = result = string(x).hash; result = !$result
+proc hash*(x: FilePath): Hash = result = string(x).hash; result = !$result
+proc `%`*(x: FileUri): JsonNode = %string(x)
+proc `%`*(x: FilePath): JsonNode = %string(x)
+proc fromJsonHook*(a: var FileUri; b: JsonNode) = a = FileUri(b.getStr())
+proc fromJsonHook*(a: var FilePath; b: JsonNode) = a = FilePath(b.getStr())
 
 type
   OptionalSeq*[T] = Option[seq[T]]
@@ -19,7 +33,7 @@ type
     `end`*: Position
 
   Location* = ref object of RootObj
-    uri*: string
+    uri*: FileUri
     `range`*: Range
 
   Diagnostic* = ref object of RootObj
@@ -60,7 +74,7 @@ type
     uri*: DocumentUri
 
   TextDocumentItem* = ref object of RootObj
-    uri*: string
+    uri*: FileUri
     languageId*: string
     version*: int
     text*: string
@@ -113,7 +127,7 @@ type
     name*: string
     version*: Option[string]
 
-  DocumentUri = string
+  DocumentUri = FileUri
 
   # 'off' | 'messages' | 'verbose'
   TraceValue_str = string
@@ -646,14 +660,14 @@ type
     filters*: seq[FileOperationFilter]
 
   FileRename* = ref object of RootObj
-    oldUri*: string
-    newUri*: string
+    oldUri*: FileUri
+    newUri*: FileUri
 
   RenameFilesParams* = ref object of RootObj
     files*: seq[FileRename]
 
   FileDelete* = ref object of RootObj
-    uri*: string
+    uri*: FileUri
 
   DeleteFilesParams* = ref object of RootObj
     files*: seq[FileDelete]
@@ -804,7 +818,7 @@ type
     settings*: OptionalNode
 
   FileEvent* = ref object of RootObj
-    uri*: string
+    uri*: FileUri
     `type`*: int
 
   DidChangeWatchedFilesParams* = ref object of RootObj
@@ -864,7 +878,7 @@ type
     textDocument*: TextDocumentIdentifier
 
   PublishDiagnosticsParams* = ref object of RootObj
-    uri*: string
+    uri*: FileUri
     diagnostics*: OptionalSeq[Diagnostic]
 
   CompletionParams* = ref object of TextDocumentPositionParams

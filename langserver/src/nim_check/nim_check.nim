@@ -6,17 +6,18 @@ import chronicles
 import ../nimble/nimscript_utils
 import ../utils/[process_utils, utils]
 import ../protocol/enums
+import ../protocol/types
 import ../nimsuggest/suggestapi
 
 type
   CheckStacktrace* = object
-    file*: string
+    file*: FilePath
     line*: int
     column*: int
     msg*: string
 
   CheckResult* = object
-    file*: string
+    file*: FilePath
     line*: int
     column*: int
     msg*: string
@@ -60,7 +61,7 @@ proc parseCheckResults(lines: seq[string]): seq[CheckResult] =
 
         result.add(
           CheckResult(
-            file: file,
+            file: FilePath(file),
             line: lineNum,
             column: colNum,
             msg: msg,
@@ -75,10 +76,10 @@ proc parseCheckResults(lines: seq[string]): seq[CheckResult] =
   if messageText.len > 0 and result.len > 0:
     result[^1].msg &= "\n" & messageText
 
-proc nimCheck*(filePath: string, nimPath: string): Future[seq[CheckResult]] {.async.} =
-  debug "nimCheck", filePath = filePath, nimPath = nimPath
-  let isNimble = filePath.endsWith(".nimble")
-  let isNimScript = filePath.endsWith(".nims") or isNimble
+proc nimCheck*(filePath: FilePath, nimPath: string): Future[seq[CheckResult]] {.async.} =
+  debug "nimCheck", filePath = $filePath, nimPath = nimPath
+  let isNimble = string(filePath).endsWith(".nimble")
+  let isNimScript = string(filePath).endsWith(".nims") or isNimble
   var extraArgs = newSeq[string]()
   if isNimScript:
     extraArgs.add("--import: system/nimscript")
@@ -86,7 +87,7 @@ proc nimCheck*(filePath: string, nimPath: string): Future[seq[CheckResult]] {.as
     extraArgs.add("--include: " & getNimScriptAPITemplatePath())
   let process = await startProcess(
     nimPath,
-    arguments = @["check", "--listFullPaths"] & extraArgs & @[filePath],
+    arguments = @["check", "--listFullPaths"] & extraArgs & @[string(filePath)],
     options = {UsePath},
     stderrHandle = AsyncProcess.Pipe,
     stdoutHandle = AsyncProcess.Pipe,

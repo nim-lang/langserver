@@ -13,7 +13,7 @@ import ./[queries_nimsuggest, request_text_document]
 proc executeCommand*(
   ls: LanguageServer, params: ExecuteCommandParams
 ): Future[JsonNode] {.async.} =
-  let projectFile = params.arguments[0].getStr
+  let projectFile = FilePath(params.arguments[0].getStr)
   case params.command
   of RESTART_COMMAND:
     debug "Restarting nimsuggest", projectFile = projectFile
@@ -24,7 +24,7 @@ proc executeCommand*(
       traceAsyncErrors execSpawn(slot, ls.pool, projectFile)
   of CHECK_PROJECT_COMMAND:
     debug "Checking project", projectFile = projectFile
-    ls.checkProject(projectFile.pathToUri).traceAsyncErrors
+    ls.checkProject(pathToUri(projectFile)).traceAsyncErrors
   of RECOMPILE_COMMAND:
     debug "Clean build", projectFile = projectFile
     if ls.pool != nil and projectFile in ls.pool.slots:
@@ -36,7 +36,7 @@ proc executeCommand*(
         discard await execStop(slot, ls.pool)
         traceAsyncErrors execSpawn(slot, ls.pool, projectFile)
         ls.progress(token, "end")
-        ls.checkProject(projectFile.pathToUri).traceAsyncErrors
+        ls.checkProject(pathToUri(projectFile)).traceAsyncErrors
 
   result = newJNull()
 
@@ -47,12 +47,12 @@ proc workspaceSymbol*(
   # Route through any live slot's queryMailbox.
   if ls.pool == nil:
     return @[]
-  var liveUri = ""
+  var liveUri = FileUri("")
   for slot in ls.pool.slots.values:
     if slot.isLive and slot.ownedUris.len > 0:
       liveUri = slot.ownedUris.toSeq[0]
       break
-  if liveUri == "":
+  if string(liveUri) == "":
     return @[]
   let q = ls.initNimsuggestFileQuery(id, liveUri, NimsuggestQueryKind.WORKSPACE_SYMBOLS)
   let symbols = await ls.addQueryToQueue(q)

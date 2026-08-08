@@ -11,13 +11,10 @@ import ./[configurations, langserver_types, utils, dispatcher_utils, diagnostics
 import ../utils/utils as globalUtils
 
 
-proc checkFile*(ls: LanguageServer, uri: string): Future[void] {.async.} =
+proc checkFile*(ls: LanguageServer, uri: FileUri): Future[void] {.async.} =
   if uri notin ls.files.openFiles:
     return
   let fileInfo = ls.files.openFiles[uri]
-  if fileInfo.slot == nil:
-    return
-
   let conf = ls.getWorkspaceConfiguration()
   let useNimCheck = conf.useNimCheck.get(USE_NIM_CHECK_BY_DEFAULT)
   let nimPath = conf.getNimPath()
@@ -35,10 +32,10 @@ proc checkFile*(ls: LanguageServer, uri: string): Future[void] {.async.} =
   if fileInfo.changed:
     discard await ls.queryFile(uri, NimsuggestQueryKind.CHANGED)
   let results = await ls.queryFile(uri, NimsuggestQueryKind.CHECK_FILE)
-  ls.sendDiagnostics(results.filter(s => s.filePath != "???"), path)
+  ls.sendDiagnostics(results.filter(s => string(s.filePath) != "???"), path)
 
 
-proc scheduleFileCheck*(ls: LanguageServer, uri: string) {.gcsafe, raises: [].} =
+proc scheduleFileCheck*(ls: LanguageServer, uri: FileUri) {.gcsafe, raises: [].} =
   if not ls.getWorkspaceConfiguration().autoCheckFile.get(true):
     return
   # schedule file check after the file is modified
@@ -80,7 +77,7 @@ proc cancelPendingFileChecks*(ls: LanguageServer, slot: NimsuggestSlot) =
         cancelFileCheck.complete()
       fileData.needsChecking = false
 
-proc checkProject*(ls: LanguageServer, uri: string): Future[void] {.async.} =
+proc checkProject*(ls: LanguageServer, uri: FileUri): Future[void] {.async.} =
   if ls.checkInProgress:
     return
   ls.checkInProgress = true
@@ -94,11 +91,11 @@ proc checkProject*(ls: LanguageServer, uri: string): Future[void] {.async.} =
   let nimPath = getNimPath(conf)
 
   if useNimCheck and nimPath.isSome:
-    proc getFilePath(c: CheckResult): string = c.file
+    proc getFilePath(c: CheckResult): FilePath = c.file
     let token = fmt "Checking {uri}"
     ls.workDoneProgressCreate(token)
     ls.progress(token, "begin", fmt "Checking project {uri}")
-    if uri == "":
+    if string(uri) == "":
       warn "Checking project with empty uri", uri = uri
       ls.progress(token, "end")
       return
@@ -137,9 +134,9 @@ proc checkProject*(ls: LanguageServer, uri: string): Future[void] {.async.} =
   let diagnostics = await ls.queryFile(uri, NimsuggestQueryKind.CHECK_PROJECT)
   ls.progress(token, "end")
 
-  proc getFilepath(s: Suggest): string = s.filePath
+  proc getFilepath(s: Suggest): FilePath = s.filePath
 
-  let filtered = diagnostics.filter(sug => sug.filePath != "???")
+  let filtered = diagnostics.filter(sug => string(sug.filePath) != "???")
   let filesWithDiags = filtered.map(s => s.filePath).toHashSet
 
   for (path, diags) in groupBy(filtered, getFilepath):

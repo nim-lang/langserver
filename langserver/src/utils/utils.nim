@@ -1,20 +1,17 @@
-import std/[unicode, uri, strformat, os, strutils, options, json, jsonutils, net]
+import std/[unicode, uri, strformat, os, strutils, options, json, jsonutils, net, hashes]
 # import with
 import chronos, chronicles
 import "$nim/compiler/pathutils"
 import json_rpc/private/jrpc_sys
 import macros
-# import ./langserver_types
-# import ../nim_tools/nimsuggest/nimsuggest_types
+import ../protocol/types as protocolTypes
+export FileUri, FilePath
 
 type
-  FingerTable = seq[tuple[u16pos, offset: int]]
-
   UriParseError* = object of Defect
-    uri: string
+    uri: FileUri
 
-# const NIM_SCRIPT_API_TEMPLATE* = staticRead("../templates/nimscriptapi.nim")
-  #We add this file to nimsuggest and `nim check` to support nimble files
+  FingerTable = seq[tuple[u16pos, offset: int]]
 
 proc writeStackTrace*(ex = getCurrentException()) =
   try:
@@ -80,54 +77,63 @@ proc utf8to16*(fingerTable: FingerTable, utf8pos: int): int =
     else:
       break
 
-proc uriToPath*(uri: string): string =
+func toFileUri*(x: string): FileUri = FileUri(x)
+func toFilePath*(x: string): FilePath = FilePath(x)
+
+proc uriToPath*(uri: FileUri): FilePath =
   ## Convert an RFC 8089 file URI to a native, platform-specific, absolute path.
   #let startIdx = when defined(windows): 8 else: 7
   #normalizedPath(uri[startIdx..^1])
-  let parsed = uri.parseUri
+  let uriAsString = $(uri)
+  let parsed = parseUri(uriAsString)
   if parsed.scheme != "file":
     var e = newException(
       UriParseError,
-      "Invalid scheme in uri \"{uri}\": {parsed.scheme}, only \"file\" is supported".fmt,
+      fmt"""Invalid scheme in uri "{uriAsString}": {parsed.scheme}, only "file" is supported"""
     )
-    e.uri = uri
+    e.uri = FileUri(uriAsString)
     raise e
   if parsed.hostname != "":
     var e = newException(
       UriParseError,
-      "Invalid hostname in uri \"{uri}\": {parsed.hostname}, only empty hostname is supported".fmt,
+      fmt"""Invalid hostname in uri "{uriAsString}": {parsed.hostname}, only empty hostname is supported""",
     )
-    e.uri = uri
+    e.uri = FileUri(uriAsString)
     raise e
-  return normalizedPath(
+  return FilePath(normalizedPath(
     when defined(windows):
       parsed.path[1 ..^ 1]
     else:
       parsed.path
-  ).decodeUrl
+  ).decodeUrl())
 
-proc pathToUri*(path: string): string =
+
+
+proc pathToUri*(path: FilePath): FileUri =
   # This is a modified copy of encodeUrl in the uri module. This doesn't encode
   # the / character, meaning a full file path can be passed in without breaking
   # it.
-  result = "file://" & newStringOfCap(path.len + path.len shr 2)
+  let pathAsString = $(path)
+  var output = "file://" & newStringOfCap(pathAsString.len + pathAsString.len shr 2)
     # assume 12% non-alnum-chars
   when defined(windows):
-    add(result, '/')
-  for c in path:
+    output.add('/')
+  for c in pathAsString:
     case c
     # https://tools.ietf.org/html/rfc3986#section-2.3
     of 'a' .. 'z', 'A' .. 'Z', '0' .. '9', '-', '.', '_', '~', '/':
-      add(result, c)
+      output.add(c)
     of '\\':
       when defined(windows):
-        add(result, '/')
+        output.add('/')
       else:
-        add(result, '%')
-        add(result, toHex(ord(c), 2))
+        output.add('%')
+        output.add(toHex(ord(c), 2))
     else:
-      add(result, '%')
-      add(result, toHex(ord(c), 2))
+      output.add('%')
+      output.add(toHex(ord(c), 2))
+  
+  return FileUri(output)
 
 iterator groupBy*[T, U](
     s: openArray[T], f: proc(a: T): U {.gcsafe, raises: [].}

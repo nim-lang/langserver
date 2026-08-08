@@ -9,7 +9,7 @@ import ./handler_utils
 proc initNimsuggestPositionQuery*(
   ls: LanguageServer,
   id: int,
-  uri: string,
+  uri: FileUri,
   kind: NimsuggestQueryKind,
   line, character: int,
 ): NimsuggestQuery[LspFilePosition] =
@@ -33,7 +33,7 @@ proc initNimsuggestPositionQuery*(
 proc initNimsuggestInlayHintQuery*(
   ls: LanguageServer,
   id: int,
-  uri: string,
+  uri: FileUri,
   startLine, startCharacter: int,
   endLine, endCharacter: int,
   inlayHintsOptions: string
@@ -64,7 +64,7 @@ proc initNimsuggestInlayHintQuery*(
 proc initNimsuggestFileQuery*(
   ls: LanguageServer,
   id: int,
-  uri: string,
+  uri: FileUri,
   kind: NimsuggestQueryKind,
 ): NimsuggestQuery[LspFilePosition] =
   ls.addProjectFileToPendingRequest(id.uint, uri)

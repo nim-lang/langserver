@@ -28,8 +28,9 @@ proc extensionSuggest*(ls: LanguageServer, params: SuggestParams): Future[Sugges
   debug "extensionSuggest called", action = $params.action, projectFile = params.projectFile
   case params.action
   of saRestart:
-    if ls.pool.slots.hasKey(params.projectFile):
-      asyncSpawn restartSlot(ls.pool.slots[params.projectFile], ls.pool)
+    let projectFilePath = FilePath(params.projectFile)
+    if ls.pool.slots.hasKey(projectFilePath):
+      asyncSpawn restartSlot(ls.pool.slots[projectFilePath], ls.pool)
     else:
       debug "extensionSuggest: no slot found for project", projectFile = params.projectFile
   of saRestartAll:

@@ -36,9 +36,9 @@ proc initLanguageServer*(params: CommandLineParams, storageDir: string): Languag
       transportMode: params.transport.get(TransportMode.stdio),
     ),
     files: LanguageServerFiles(
-      openFiles: newTable[string, NlsFileInfo](),
-      idleOpenFiles: newTable[string, NlsFileInfo](),
-      filesWithDiags: initHashSet[string](),
+      openFiles: newTable[FileUri, NlsFileInfo](),
+      idleOpenFiles: newTable[FileUri, NlsFileInfo](),
+      filesWithDiags: initHashSet[FilePath](),
       storageDir: storageDir,
     ),
     messaging: LanguageServerMessaging(
@@ -56,7 +56,7 @@ proc initLanguageServer*(params: CommandLineParams, storageDir: string): Languag
   # Create the pool synchronously so ls.pool is never nil when event loop starts.
   # initNimsuggestInstances will update maxSlots from config and spawn entry points.
   result.pool = newPool(
-    slots = initTable[string, NimsuggestSlot](),
+    slots = initTable[FilePath, NimsuggestSlot](),
     maxSlots = NIM_MAX_NS_PROCESSES,
   )
   result.pool.timeout = 120_000 ## REQUEST_TIMEOUT
@@ -130,20 +130,20 @@ proc getLspStatus*(ls: LanguageServer): NimLangServerStatus {.raises: [].} =
             continue
           seenPorts.incl(ns.port)
           var nsStatus = NimSuggestStatus(
-            projectFile: slot.projectFile,
+            projectFile: string(slot.projectFile),
             capabilities: ns.capabilities.toSeq,
             version: ns.version,
             path: ns.nimSuggestPath,
             port: ns.port,
           )
           for open in ns.openFiles.toSeq:
-            nsStatus.openFiles.add open
+            nsStatus.openFiles.add string(open)
           result.nimsuggestInstances.add nsStatus
       except CatchableError:
         discard
   for openFile in ls.files.openFiles.keys:
-    let openFilePath = openFile.uriToPath
-    result.openFiles.add openFilePath
+    let openFilePath = uriToPath(openFile)
+    result.openFiles.add string(openFilePath)
 
   result.pendingRequests = ls.messaging.pendingRequests.values.toSeq.map(toPendingRequestStatus)
   result.projectErrors = ls.messaging.projectErrors
@@ -154,11 +154,11 @@ proc sendStatusChanged*(ls: LanguageServer) {.raises: [].} =
     ls.notify("extension/statusUpdate", status)
     ls.messaging.lastStatusSent = status
 
-proc addProjectFileToPendingRequest*(ls: LanguageServer, id: uint, uri: string) =
+proc addProjectFileToPendingRequest*(ls: LanguageServer, id: uint, uri: FileUri) =
   # WHAT DOES THIS ACTUALLY DO?
   try:
     if id in ls.messaging.pendingRequests:
-      ls.messaging.pendingRequests[id].projectFile = some uri.uriToPath()
+      ls.messaging.pendingRequests[id].projectFile = some string(uriToPath(uri))
       ls.sendStatusChanged
   except CatchableError as e:
     error "addProjectFileToPendingRequest failed", uri = uri, msg = e.msg
@@ -328,11 +328,11 @@ proc removeCompletedPendingRequests(
   for id in toRemove:
     ls.messaging.pendingRequests.del id
 
-proc resolvedSlot(ls: LanguageServer, uri: string): Option[NimsuggestSlot] =
+proc resolvedSlot(ls: LanguageServer, uri: FileUri): Option[NimsuggestSlot] =
   ## Return the current owning slot for uri, healing a stale fileInfo.slot
   ## pointer if execCheckKnown moved the URI to a different slot since open.
   let fileInfo = ls.files.openFiles.getOrDefault(uri)
-  if fileInfo == nil or fileInfo.slot == nil:
+  if fileInfo == nil:
     return none(NimsuggestSlot)
   if not fileInfo.slot.ownsUri(uri):
     let current = ls.pool.slotForUri(uri)
@@ -341,7 +341,7 @@ proc resolvedSlot(ls: LanguageServer, uri: string): Option[NimsuggestSlot] =
     fileInfo.slot = current.get
   some(fileInfo.slot)
 
-proc nsCapabilities*(ls: LanguageServer, uri: string): set[NimSuggestCapability] =
+proc nsCapabilities*(ls: LanguageServer, uri: FileUri): set[NimSuggestCapability] =
   ## Returns the live nimsuggest capabilities for the slot serving `uri`.
   ## Safe to call synchronously after queryAt/queryFile returns — by that point
   ## processQueries has already awaited slot.ns.get so the slot is READY.
@@ -353,7 +353,7 @@ proc nsCapabilities*(ls: LanguageServer, uri: string): set[NimSuggestCapability]
     return {}
   nsOpt.get.capabilities
 
-proc nsProtocolVersion*(ls: LanguageServer, uri: string): int =
+proc nsProtocolVersion*(ls: LanguageServer, uri: FileUri): int =
   ## Returns the nimsuggest protocol version for the slot serving `uri`.
   ## Safe to call synchronously after queryAt/queryFile returns.
   let slotOpt = ls.resolvedSlot(uri)

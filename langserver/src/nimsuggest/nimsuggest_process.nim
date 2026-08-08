@@ -4,11 +4,12 @@ import chronicles
 import ../utils/utils
 import ./[suggestapi, suggestapi_types, nimsuggest_types, nimsuggest_slots]
 import ../configurations/constants
+import ../protocol/types
 
 func toNimsuggestFilePosition*(
   position: LspFilePosition,
-  uri: string,
-  openFiles: TableRef[string, NlsFileInfo]
+  uri: FileUri,
+  openFiles: TableRef[FileUri, NlsFileInfo]
 ): Option[NimsuggestFilePosition] =
   # Finger tables are 0-based
   if uri in openFiles and int(position.line) < openFiles[uri].fingerTable.len:
@@ -22,7 +23,7 @@ func toNimsuggestFilePosition*(
 
 func toNimsuggestQuery*(
   q: NimsuggestQuery[LspFilePosition],
-  openFiles: TableRef[string, NlsFileInfo]
+  openFiles: TableRef[FileUri, NlsFileInfo]
 ): Option[NimsuggestQuery[NimsuggestFilePosition]] =
   ## Converts a LSP-space query to a nimsuggest-space query, translating
   ## positions from (0-based line, UTF-16 col) to (1-based line, UTF-8 col)
@@ -146,7 +147,7 @@ proc runNimsuggestQuery*(
 
 proc processNimsuggestQueries*(
   slot: NimsuggestSlot, pool: NimsuggestPool,
-  openFiles: TableRef[string, NlsFileInfo]
+  openFiles: TableRef[FileUri, NlsFileInfo]
 ) {.async.} =
   debug "processQueries: starting", projectFile = slot.projectFile
   while true:

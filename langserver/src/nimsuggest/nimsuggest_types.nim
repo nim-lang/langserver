@@ -2,6 +2,8 @@ import std/[hashes, json, options, os, sets, tables, times]
 import chronos
 import ./suggestapi_types
 import ../protocol/types
+import ../utils/utils as globalUtils
+export FileUri, FilePath
 
 # === NIMSUGGEST QUERIES ===
 # LSP File Position
@@ -17,7 +19,7 @@ type
   NimsuggestFilePosition* = object
     line*: int  ## 1-based (nimsuggest convention)
     col*: int   ## UTF-8 byte column
-  
+
 type
   NimsuggestQueryKind* {.pure.} = enum
     SUGGEST           ## sug          — completion items at position
@@ -40,9 +42,9 @@ type
 
   NimsuggestQuery*[P] = ref object
     id*: uint
-    uri*: string
+    uri*: FileUri
       ## Source URI. Used to resolve the on-disk path and stash path.
-    dirtyFile*: string
+    dirtyFile*: FilePath
       ## Stash path when openFiles[uri].changed is true, else "".
     responseFuture*: Future[seq[Suggest]]
       ## Completed by the query processor when nimsuggest replies.
@@ -83,9 +85,9 @@ type
 
   NimsuggestSlot* = ref object
     state*: SlotState
-    projectFile*: string # Entry-point .nim path. Stable across restarts. Key in pool.slots.
+    projectFile*: FilePath # Entry-point .nim path. Stable across restarts. Key in pool.slots.
     workingDir*: string  # Working directory passed to nimsuggest at spawn time. Stable across restarts.
-    ownedUris*: HashSet[string]
+    ownedUris*: HashSet[FileUri]
       ## The single source of truth for which URIs this slot serves.
     ns*: Future[NimSuggest]
       ## pending = SPAWNING, completed = READY, failed = CRASHED.
@@ -99,7 +101,7 @@ type
       ## Protected from idle eviction by removeIdleNimsuggests.
     crashCount*: int
       ## Incremented on unhandled exit. Reset to 0 on successful init.
-    crashedUris*: HashSet[string]
+    crashedUris*: HashSet[FileUri]
       ## URIs that caused a SIGSEGV in this slot's process.
       ## Cleared by RESTART (explicit user action = clean slate).
 
@@ -109,7 +111,7 @@ type
   StatusChangedProc* = proc() {.gcsafe, raises: [].}
 
   NimsuggestPool* = ref object
-    slots*: Table[string, NimsuggestSlot]
+    slots*: Table[FilePath, NimsuggestSlot]
     maxSlots*: int
     nimsuggestPath*: string  ## Path to nimsuggest binary. Set in initNimsuggestInstances.
     nimVersion*: string      ## Nim version string for logging.
@@ -125,8 +127,8 @@ type
 type
   NlsFileInfo* = ref object of RootObj
     slot*: NimsuggestSlot
-      ## The pool slot responsible for this file. Assigned synchronously during
-      ## didOpenFile. Never nil after assignment.
+      ## The pool slot responsible for this file. Assigned in addFileToOpenFiles.
+      ## Always non-nil for any file present in ls.files.openFiles.
     changed*: bool
     fingerTable*: seq[seq[tuple[u16pos, offset: int]]]
     cancelFileCheck*: Future[void]
@@ -136,8 +138,8 @@ type
 
 type
   LanguageServerFiles* = object
-    openFiles*: TableRef[string, NlsFileInfo]
-    idleOpenFiles*: TableRef[string, NlsFileInfo]
-    filesWithDiags*: HashSet[string]
+    openFiles*: TableRef[FileUri, NlsFileInfo]
+    idleOpenFiles*: TableRef[FileUri, NlsFileInfo]
+    filesWithDiags*: HashSet[FilePath]
     storageDir*: string
   

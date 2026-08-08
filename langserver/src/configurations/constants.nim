@@ -24,5 +24,5 @@ const
 const
   CONFIG_WAIT_TIMEOUT_MS* = 30_000
   CONFIG_WAIT_POLL_MS* = 50
-  DEFAULT_IDLE_TIMEOUT* = 120 ## idle timeout in minutes
+  DEFAULT_IDLE_TIMEOUT* = 10 ## idle timeout in minutes
   MAX_CRASH_RETRIES* = 3 ## auto-restart attempts before giving up on a crashed slot

@@ -8,17 +8,17 @@ import ../langserver/[langserver_types, langserver, utils]
 
 # === textDocument/formatting ===
 proc format*(
-  ls: LanguageServer, nphPath, uri: string
+  ls: LanguageServer, nphPath: string, uri: FileUri
 ): Future[Option[TextEdit]] {.async.} =
   let filePath = ls.uriStorageLocation(uri)
-  if not fileExists(filePath):
+  if not fileExists(string(filePath)):
     warn "File doesn't exist ", filePath = filePath, uri = uri
     return none(TextEdit)
 
   debug "nph starts", nphPath = nphPath, filePath = filePath
   let process = await startProcess(
     nphPath,
-    arguments = @[filePath],
+    arguments = @[string(filePath)],
     options = {UsePath},
     stderrHandle = AsyncProcess.Pipe,
   )
@@ -29,8 +29,8 @@ proc format*(
     ls.showMessage(&"Error formating {uri}:{err}", MessageType.Error)
     return none(TextEdit)
 
-  #if enough time has passed since last modification, we skip the formatting:   
-  let lastModified = getLastModificationTime(filePath)
+  #if enough time has passed since last modification, we skip the formatting:
+  let lastModified = getLastModificationTime(string(filePath))
   let timeSinceLastModified = getTime() - lastModified
   let cond = timeSinceLastModified >= initDuration(seconds = 2)
 
@@ -38,7 +38,7 @@ proc format*(
     error "Skipping formatting because the file was modifyed long ago"
     return none(TextEdit)
 
-  let formattedText = readFile(filePath)
+  let formattedText = readFile(string(filePath))
   if formattedText.len < 2:
     error "Failed to format document", uri = uri
     return none(TextEdit)
