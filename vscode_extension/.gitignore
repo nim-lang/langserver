@@ -1,0 +1,10 @@
+out
+node_modules
+/*.db
+nimsuggest/nimcache
+nimsuggest/nimsuggest.exe
+nimsuggest/nimsuggest
+*.vsix
+nimble.develop
+nimble.paths
+nimbledeps
