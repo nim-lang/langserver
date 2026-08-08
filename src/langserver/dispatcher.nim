@@ -13,6 +13,56 @@ import ../utils/process_utils
 import ../configurations/configurations as configParser
 import ./[langserver_types, query_types]
 
+proc createNewSuggestSlotAndConsolidate(
+  ls: LanguageServer, 
+  filePath: string, 
+  params: TextDocumentItem
+): Future[NimsuggestSlot] {.async.} =
+
+  let workingDir = ls.getWorkingDir(filePath)
+  let newSlot = newSlot(filePath, isEntryPoint = true, workingDir)
+  ls.pool.addSlot(newSlot)
+
+  let successfulSpawn = await execSpawn(newSlot, ls.pool, filePath)
+  if successfulSpawn:
+    ls.addFileToOpenFiles(newSlot, params)
+    asyncSpawn processNimsuggestQueries(newSlot, ls.pool, ls.files.openFiles)
+    # Consolidation: for each other slot, check if the new slot subsumes it.
+    var slotsToRemove: seq[string] = @[]
+    for projectPath, oldSlot in ls.pool.slots:
+      if oldSlot.projectFile == filePath: continue
+      let knownQuery = NimsuggestQuery[LspFilePosition](
+        id: 0.uint,
+        kind: NimsuggestQueryKind.KNOWN,
+        uri: pathToUri(oldSlot.projectFile),
+        dirtyFile: "",
+        responseFuture: newFuture[seq[Suggest]]("known"),
+      )
+      newSlot.queryMailbox.addLastNoWait(knownQuery)
+      let response = await knownQuery.responseFuture
+      let newSlotKnowsOldSlot = checkNimsuggestKnownResponse(response)
+      if newSlotKnowsOldSlot:
+        # New slot knows old slot's entry point → it imported old slot entirely.
+        # Transfer all owned URIs and shut the old slot down.
+        for oldSlotUri in oldSlot.ownedUris.toSeq:
+          oldSlot.unassignUri(oldSlotUri)
+          newSlot.assignUri(oldSlotUri)
+          if newSlot.state == SlotState.READY:
+            newSlot.ns.read.openFiles.incl(oldSlotUri)
+
+          if oldSlotUri in ls.files.openFiles:
+            ls.files.openFiles[oldSlotUri].slot = newSlot
+        
+        discard await execStop(oldSlot, ls.pool)
+        slotsToRemove.add(oldSlot.projectFile)
+    
+    for s in slotsToRemove:
+      ls.pool.removeSlot(s)
+  else:
+    ls.pool.removeSlot(filePath)
+  return newSlot
+
+
 proc processLangserverQueue*(ls: LanguageServer): Future[void] {.async.} =
   ## Single coroutine that drains ls.langserverQueue in FIFO order.
   ##
@@ -85,50 +135,66 @@ proc processLangserverQueue*(ls: LanguageServer): Future[void] {.async.} =
               # Check there is a free nimsuggest slot
               let filePath = uriToPath(uri)
 
-              debug "didOpen: spawning standalone slot for orphan file", uri = uri, filePath = filePath
-
-              let standaloneWorkingDir = ls.getWorkingDir(filePath)
-              let newSlot = newSlot(filePath, isEntryPoint = true, workingDir = standaloneWorkingDir)
-              ls.pool.addSlot(newSlot)
-              let successfulSpawn = await execSpawn(newSlot, ls.pool, filePath)
-              if successfulSpawn:
-                ls.addFileToOpenFiles(newSlot, q.didOpen.textDocument)
-                asyncSpawn processNimsuggestQueries(newSlot, ls.pool, ls.files.openFiles)
-                # Consolidation: for each other slot, check if the new slot subsumes it.
-                var slotsToRemove: seq[string] = @[]
-                for projectPath, oldSlot in ls.pool.slots:
-                  if oldSlot.projectFile == filePath: continue
-                  let knownQuery = NimsuggestQuery[LspFilePosition](
+              debug "didOpen: Check if it is a true orphan", uri = uri, filePath = filePath
+              # Check if it is a true orphan
+              # does it have a project file?
+              let intendedProjectPath = getIntendedProject(ls, uri)
+              # If so, spawn a project based on the project file.
+              if (intendedProjectPath != "" and intendedProjectPath != filePath):
+                debug "didOpen: It has an intended project file ", uri = uri, intendedProjectPath = intendedProjectPath
+                let projectWorkingDir = ls.getWorkingDir(intendedProjectPath)
+                let newProjectSlot = newSlot(
+                  intendedProjectPath, 
+                  isEntryPoint = true, 
+                  workingDir = projectWorkingDir
+                )
+                ls.pool.addSlot(newProjectSlot)
+                let intendedProjectSpawn = await execSpawn(newProjectSlot, ls.pool, intendedProjectPath)
+                if intendedProjectSpawn:
+                  # Does the project know about this file?
+                  debug "didOpen: Does the project know the current file? "
+                  # ls.addFileToOpenFiles(newProjectSlot, q.didOpen.textDocument)
+                  asyncSpawn processNimsuggestQueries(newProjectSlot, ls.pool, ls.files.openFiles)
+                  let projectKnownQuery = NimsuggestQuery[LspFilePosition](
                     id: 0.uint,
                     kind: NimsuggestQueryKind.KNOWN,
-                    uri: pathToUri(oldSlot.projectFile),
+                    uri: uri,
                     dirtyFile: "",
                     responseFuture: newFuture[seq[Suggest]]("known"),
                   )
-                  newSlot.queryMailbox.addLastNoWait(knownQuery)
-                  let response = await knownQuery.responseFuture
-                  let newSlotKnowsOldSlot = checkNimsuggestKnownResponse(response)
-                  if newSlotKnowsOldSlot:
-                    # New slot knows old slot's entry point → it imported old slot entirely.
-                    # Transfer all owned URIs and shut the old slot down.
-                    for oldSlotUri in oldSlot.ownedUris.toSeq:
-                      oldSlot.unassignUri(oldSlotUri)
-                      newSlot.assignUri(oldSlotUri)
-                      if newSlot.state == SlotState.READY:
-                        newSlot.ns.read.openFiles.incl(oldSlotUri)
+                  newProjectSlot.queryMailbox.addLastNoWait(projectKnownQuery)
+                  let projectResponse = await projectKnownQuery.responseFuture
+                  let thisProjectKnowsTheFile = checkNimsuggestKnownResponse(projectResponse)
+                  # If so, carry on using this projectfile
+                  if thisProjectKnowsTheFile:
+                    debug "didOpen: The project does know the current file. "
+                    # Great use the projectFile.
+                    ls.addFileToOpenFiles(newProjectSlot, q.didOpen.textDocument)
 
-                      if oldSlotUri in ls.files.openFiles:
-                        ls.files.openFiles[oldSlotUri].slot = newSlot
-                    
-                    discard await execStop(oldSlot, ls.pool)
-                    slotsToRemove.add(oldSlot.projectFile)
-                
-                for s in slotsToRemove:
-                  ls.pool.removeSlot(s)
+                  else:  
+                    # If not, close that nimsuggest instance and spin up a new one with this true orphan
+                    debug "didOpen: The project does not know the current file. "
+                    discard await execStop(newProjectSlot, ls.pool)
+                    ls.pool.removeSlot(intendedProjectPath)
+                    debug "didOpen: Spin up a new standalone orphan. "
+                    discard await createNewSuggestSlotAndConsolidate(ls, filePath, q.didOpen.textDocument)
+                else: 
+                  # Failed spawn
+                  ls.pool.removeSlot(intendedProjectPath)
+
+              elif ls.pool.slots.hasKey(intendedProjectPath):
+                # Spin up standalone instance
+                debug "didOpen: It's project file is already running but doesn't import it so spin up a standalone instance ", uri = uri, filePath = filePath
+                discard await createNewSuggestSlotAndConsolidate(ls, filePath, q.didOpen.textDocument)
 
               else:
-                ls.pool.removeSlot(filePath)
-
+                # It has a project File!  Use that!
+                if intendedProjectPath == "":
+                  debug "didOpen: There was no valid project file so we'll spin up a new nimsuggest instance. "
+                  discard await createNewSuggestSlotAndConsolidate(ls, filePath, q.didOpen.textDocument)
+                else:
+                  debug "didOpen: There is a project file so we'll use that. "
+                  discard await createNewSuggestSlotAndConsolidate(ls, intendedProjectPath, q.didOpen.textDocument)
 
               let needToEvict = ls.pool.maxSlots > 0 and ls.pool.slots.len > ls.pool.maxSlots
                 
@@ -142,6 +208,7 @@ proc processLangserverQueue*(ls: LanguageServer): Future[void] {.async.} =
 
                 let successfulStop = await execStop(slotToEvict, ls.pool)
                 if successfulStop:
+                  debug "didOpen: Removing from slot: ", projectFile = slotToEvict.projectFile
                   ls.pool.removeSlot(slotToEvict.projectFile)
             
       of FileAccessQueryKind.DID_CHANGE:
@@ -219,9 +286,16 @@ proc processLangserverQueue*(ls: LanguageServer): Future[void] {.async.} =
 
         if fileInfo.slot != nil:
           fileInfo.slot.unassignUri(uri)
-        ls.files.openFiles.del(uri)
+          # I check here that the file being closed is a  project file of a nimsuggest slot with no other open files - in this case it's slot should be closed.  This is especially important if it is a orphan file!
+          debug "Check the amount of owned uris for this slot:", uri = uri, ownedUris = fileInfo.slot.ownedUris.len
+          if fileInfo.slot.ownedUris.len == 0:
+            debug "Stopping this slot:", uri = uri
+            discard await execStop(fileInfo.slot, ls.pool)
+            ls.pool.removeSlot(uriToPath(uri))
+        # ls.files.openFiles.del(uri)
         if fileInfo.cancelFileCheck != nil and not fileInfo.cancelFileCheck.finished:
           fileInfo.cancelFileCheck.complete()
+
 
       of FileAccessQueryKind.WILL_SAVE_WAIT_UNTIL:
         let uri = q.willSave.textDocument.uri

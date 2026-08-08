@@ -203,7 +203,8 @@ proc idleSlots*(ls: LanguageServer): seq[NimsuggestSlot] =
   let timeout = config.nimsuggestIdleTimeout.get(DEFAULT_IDLE_TIMEOUT)
   let cutoff = times.now() - initDuration(milliseconds = timeout)
   for slot in ls.pool.slots.values.toSeq:
-    if slot.isEntryPoint or not slot.isLive:
+    # if slot.isEntryPoint or not slot.isLive:
+    if slot.isLive == false:
       continue
     if slot.lastCmdTime > cutoff:
       continue
