@@ -57,7 +57,5 @@ suite "LSP features (failing)":
     client.notify("textDocument/didChange", %didChangeParams)
     sleep(1000)
     let hoverParams = positionParams(fixtureUri("projects/hw/hw.nim"), 2, 0)
-    # echo "HOVER PARAMS ", $hoverParams
     let hoverResponse = client.call("textDocument/hover", %hoverParams).waitFor
-    echo "hover response ", $hoverResponse
     check contains($hoverResponse, "hw.a: proc ()")

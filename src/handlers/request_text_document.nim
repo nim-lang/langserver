@@ -114,7 +114,6 @@ proc processHoverQuery(
   query: NimsuggestQuery[LspFilePosition],
   nimsuggestResponse: seq[Suggest]
 ): Future[Option[Hover]] {.async.} = 
-  echo "HOVER QUERY ", nimsuggestResponse.len
   if nimsuggestResponse.len == 0:
     return none(Hover)
   

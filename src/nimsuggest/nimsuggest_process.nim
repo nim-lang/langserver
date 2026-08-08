@@ -45,7 +45,6 @@ func toNimsuggestQuery*(
     NimsuggestQueryKind.SIGNATURE_HELP:
     let posOpt = toNimsuggestFilePosition(q.position, q.uri, openFiles)
     if posOpt.isNone:
-      debugEcho "posOpt none "
       return none(NimsuggestQuery[NimsuggestFilePosition])
     # Two-step construction required: Nim disallows putting both a runtime
     # discriminant (kind: q.kind) and a variant field (position:) in the
@@ -56,7 +55,6 @@ func toNimsuggestQuery*(
       kind: q.kind,
     )
     converted.position = posOpt.get()
-    debugEcho "posOpt ", $(int(converted.position.line)), " ", $(converted.position.col)
     some(converted)
   of NimsuggestQueryKind.INLAY_HINTS:
     let startOpt = toNimsuggestFilePosition(q.inlayHints.start, q.uri, openFiles)
