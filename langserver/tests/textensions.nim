@@ -9,7 +9,7 @@
 ##     → ls.configurations.currentConfig = some(NlsConfig())
 ##       ls.configurations.configReady.fire()
 
-import ../src/quicknimlsp
+import ../src/nimtortoise
 import ../src/langserver/[langserver, langserver_types, utils, configurations]
 import ../src/utils/utils
 import ../src/configurations/configuration_types

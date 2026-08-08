@@ -1,8 +1,0 @@
-{
-    "nim.projectMapping": [{
-            "projectFile": "src/quicknimlsp.nim",
-            "fileRegex": "(src|tests)/.*\\.nim"
-        }
-    ],
-    // "nim.test.entryPoint": "tests/all.nim"
-}

@@ -4,7 +4,7 @@ import chronicles
 const NIM_SCRIPT_API_TEMPLATE* = staticRead("./nimscriptapi.nim")
 
 proc getNimScriptAPITemplatePath*(): string =
-  result = getCacheDir("quicknimlsp")
+  result = getCacheDir("nimtortoise")
   createDir(result)
   result = result / "nimscriptapi.nim"
 

@@ -11,7 +11,7 @@
 ##       (synchronous after configReady; must await configReady first)
 ##   "Opening <uri>" notification → still sent by lsp.didOpen handler
 
-import ../src/quicknimlsp
+import ../src/nimtortoise
 import ../src/langserver/[langserver, langserver_types, utils, configurations, nimsuggest_processes]
 import ../src/utils/utils
 import ../src/configurations/configuration_types

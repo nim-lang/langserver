@@ -203,7 +203,7 @@ proc partial*[A, B, C, D](
     return fn(a, b, c)
 
 proc ensureStorageDir*(): string =
-  result = getTempDir() / "quicknimlsp"
+  result = getTempDir() / "nimtortoise"
   discard existsOrCreateDir(result)
 
 proc either*[T](fut1, fut2: Future[T]): Future[T] {.async.} =

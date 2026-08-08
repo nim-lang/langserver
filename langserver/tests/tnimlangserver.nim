@@ -2,9 +2,9 @@
 ##
 ## API changes from original:
 ##   ls.isShutdown         — unchanged (field on LanguageServer)
-##   main(cmdParams)       — unchanged (from src/quicknimlsp)
+##   main(cmdParams)       — unchanged (from src/nimtortoise)
 
-import ../src/quicknimlsp
+import ../src/nimtortoise
 import ../src/langserver/[langserver, langserver_types, utils]
 import ../src/utils/utils
 import ../src/protocol/[enums, types]

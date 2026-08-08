@@ -89,10 +89,18 @@ proc getNimSuggestPathAndVersion*(
   if nimsuggestPath == "":
     if nimDir != "" and nimDir.dirExists:
       nimVersion = getNimVersion(nimDir) & " from " & nimDir
-      nimsuggestPath = nimDir / "nimsuggest"
+      nimsuggestPath = nimDir / "nimsuggest".addFileExt(ExeExt)
     else:
       nimVersion = getNimVersion("")
       nimsuggestPath = findExe "nimsuggest"
+      # Fallback for restricted PATH environments (e.g. Dock launch on macOS where
+      # PATH is /usr/bin:/bin:/usr/sbin:/sbin and ~/.nimble/bin is not included,
+      # or Linux desktop launches that only source ~/.profile). Uses ExeExt so
+      # the check works on Windows ("nimsuggest.exe") too.
+      if nimsuggestPath == "":
+        let nimbleBinPath = getHomeDir() / ".nimble" / "bin" / "nimsuggest".addFileExt(ExeExt)
+        if fileExists(nimbleBinPath):
+          nimsuggestPath = nimbleBinPath
   else:
     nimVersion = getNimVersion(nimsuggestPath.parentDir)
   debug "Using nimsuggest", nimVersion = nimVersion, path = nimsuggestPath

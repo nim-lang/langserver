@@ -105,7 +105,7 @@ proc registerLspRoutes(srv: RpcSocketServer, ls: LanguageServer) =
   srv.register("$/setTrace", wrapRpc(partial(lsp.setTrace, ls)))
 
 proc showHelp() =
-  echo "quicknimlsp: The Nim Language Server"
+  echo "nimtortoise: The Nim Language Server"
   echo "Version: ", LSPVersion
   echo ""
   echo "Options:"
@@ -118,7 +118,7 @@ proc showHelp() =
   echo "  --port=<port>            Port to use for socket transport"
   echo "  --clientProcessId=<pid>  Exit when the given process ID terminates"
   echo ""
-  const readme = staticRead("README.md")
+  const readme = staticRead("../README.md")
   echo "CONFIGURATION OPTIONS"
 
   proc formatForConsole(md: string): string =
@@ -214,9 +214,9 @@ proc tickLs*(ls: LanguageServer, time = 1.seconds) {.async.} =
     await sleepAsync(time)
 
 proc main*(cmdLineParams: CommandLineParams): LanguageServer =
-  debug "Starting quicknimlsp", version = LSPVersion, params = cmdLineParams
+  debug "Starting nimtortoise", version = LSPVersion, params = cmdLineParams
   #[
-  `quicknimlsp` supports both transports: stdio and socket. By default it uses stdio transport.
+  `nimtortoise` supports both transports: stdio and socket. By default it uses stdio transport.
     But we do construct a RPC socket server even in stdio mode, so that we can reuse the same code for both transports.
   ]#
   result = initLanguageServer(cmdLineParams, ensureStorageDir())

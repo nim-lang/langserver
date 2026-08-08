@@ -141,8 +141,8 @@ proc execStop*(slot: NimsuggestSlot, pool: NimsuggestPool): Future[bool] {.async
     return true
 
   of SlotState.READY, SlotState.SPAWNING, SlotState.CRASHED, SlotState.STOPPED:
+    let nsOpt = slot.resolvedNs  # capture before state change; resolvedNs checks state == READY
     slot.state = SlotState.STOPPING
-    let nsOpt = slot.resolvedNs
     if nsOpt.isSome:
       debug "execStop: stopping nimsuggest", projectFile = slot.projectFile
       try:

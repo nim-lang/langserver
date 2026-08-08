@@ -3,7 +3,7 @@ import ../src/langserver/[langserver_types, utils, configurations]
 import ../src/utils/utils
 import ../src/configurations/configuration_types
 import ../src/protocol/types
-import ../src/quicknimlsp
+import ../src/nimtortoise
 import ../tests/lspsocketclient  # import without alias so we can selectively re-export
 import chronos
 import unittest2

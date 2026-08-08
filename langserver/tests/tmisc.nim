@@ -26,7 +26,7 @@
 ##
 ##   ls.pendingRequests         → ls.messaging.pendingRequests
 
-import ../src/quicknimlsp
+import ../src/nimtortoise
 import ../src/langserver/[langserver, langserver_types, utils, transports, configurations, nimsuggest_processes]
 import ../src/utils/utils
 import ../src/configurations/configuration_types

@@ -2,16 +2,16 @@ import std/[strutils]
 
 proc getVersionFromNimble(): string =
   #We should static run nimble dump instead
-  const content = staticRead("../../quicknimlsp.nimble")
+  const content = staticRead("../../nimtortoise.nimble")
   for v in content.splitLines:
     if v.startsWith("version"):
       return v.split("=")[^1].strip(chars = {' ', '"'})
   return "unknown"
 
 const
-  RESTART_COMMAND* = "quicknimlsp.restart"
-  RECOMPILE_COMMAND* = "quicknimlsp.recompile"
-  CHECK_PROJECT_COMMAND* = "quicknimlsp.checkProject"
+  RESTART_COMMAND* = "nimtortoise.restart"
+  RECOMPILE_COMMAND* = "nimtortoise.recompile"
+  CHECK_PROJECT_COMMAND* = "nimtortoise.checkProject"
   FILE_CHECK_DELAY* = 1000
   LSPVersion* = getVersionFromNimble()
   CRLF* = "\r\n"

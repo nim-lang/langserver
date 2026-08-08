@@ -1,6 +1,10 @@
-# Quicknimlsp
+# Nim Tortoise Language Server
 
-`quicknimlsp` is a fork of the `nimlangserver`.  It aims to solve a number of problems when using the combination of `nimlangserver` and it's accompanying `VS Code` extension.
+## "Slow and steady wins the race"
+
+A Language Server for `nim` that prioritises correctness over speed.  
+
+A fork and rewrite of `nimlangserver`.  It aims to solve a number of problems when using the combination of `nimlangserver` and it's accompanying `VS Code` extension.
 
 Earlier on in this project, I created pull requests of many of the improvements I made to `nimlangserver` to the main github repo, but after a while, I realized there were some architectural choices in the original that necessitated a major rewrite of its internals.  
 

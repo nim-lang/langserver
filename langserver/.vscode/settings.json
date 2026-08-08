@@ -1,0 +1,12 @@
+{
+  "nim.projectMapping": [
+    {
+      "projectFile": "src/nimtortoise.nim",
+      "fileRegex": "src/.*\\.nim"
+    },
+    {
+      "projectFile": "tests/all.nim",
+      "fileRegex": "tests/.*\\.nim"
+    },
+  ],
+}

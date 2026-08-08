@@ -1,6 +1,6 @@
 import std/[options, json, os, jsonutils, sequtils, strutils, sugar, strformat]
 
-import ../src/quicknimlsp
+import ../src/nimtortoise
 import ../src/langserver/[langserver, langserver_types, utils]
 import ../src/utils/utils
 import ../src/protocol/[enums, types]
