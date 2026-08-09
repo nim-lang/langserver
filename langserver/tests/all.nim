@@ -7,10 +7,7 @@ import
   tmisc,
   tmonorepo2,
   tmonorepo3,
-  tmonorepo4,
-  tmonorepo5,
   tnimlangserver,
-  tprojectsetup,
   tstability,
   tsuggestapi,
   ttestrunner
