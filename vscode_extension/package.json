@@ -1,8 +1,8 @@
 {
     "name": "vscode-nim-tortoise",
     "displayName": "Nim Tortoise",
-    "description": "Nim extension maintained by the Nim compiler team.",
-    "version": "1.8.1",
+    "description": "Fork and rewrite of nimlangserver.",
+    "version": "0.1.1",
     "publisher": "YOUR_PUBLISHER_ID",
     "author": {
         "name": "David Pocknee"
@@ -481,10 +481,21 @@
                     "default": 120000,
                     "description": "The timeout in ms after which an idle nimsuggest will be stopped. If not specified the default is 120 seconds."
                 },
+                "nimTortoise.fileCheckDelay":{
+                    "type": "number",
+                    "default": 1000,
+                    "description": "The quiet period in ms after the last edit before per-file diagnostics are run. Lower values give faster feedback; higher values reduce CPU usage during rapid edits."
+                },
                 "nimTortoise.test.entryPoint":{
                     "type": "string",
                     "default": "",
-                    "description": "The entry point for the tests. If empty, the extension will ignore tests."
+                    "description": "Single test entry point (deprecated — use nimTortoise.test.entryPoints for monorepo support). If both are empty, tests are disabled."
+                },
+                "nimTortoise.test.entryPoints":{
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "default": [],
+                    "description": "List of test entry points, one per sub-project. Paths are relative to the workspace root (e.g. [\"langserver/tests/all.nim\"]). Takes precedence over nimTortoise.test.entryPoint."
                 }
             }
         },

@@ -70,11 +70,12 @@ proc tickFileChecks*(ls: LanguageServer): Future[void] {.async.} =
   ## been quiet for at least FILE_CHECK_DELAY ms. Sequential: awaits each
   ## checkFile so only one chkFile is in-flight at a time.
   while true:
-    await sleepAsync(FILE_CHECK_DELAY)
+    let fileCheckDelayMs = ls.getWorkspaceConfiguration().fileCheckDelay.get(FILE_CHECK_DELAY)
+    await sleepAsync(fileCheckDelayMs)
     if not ls.getWorkspaceConfiguration().autoCheckFile.get(true):
       continue
     let now = times.now()
-    let delay = initDuration(milliseconds = FILE_CHECK_DELAY)
+    let delay = initDuration(milliseconds = fileCheckDelayMs)
     # Snapshot keys to avoid mutating the table while iterating across awaits.
     for uri in ls.files.openFiles.keys.toSeq:
       let fileInfo = ls.files.openFiles.getOrDefault(uri)

@@ -207,11 +207,6 @@ proc processLangserverQueue*(ls: LanguageServer): Future[void] {.async.} =
 
             else:
               # True orphan (no mapping) or file is its own entry point.
-              # if intendedProjectPath == filePath and ls.pool.slots.hasKey(filePath):
-              #   # This file is already running as its own slot — assign directly.
-              #   debug "didOpen: File is its own project and slot already running, assigning directly", uri = uri
-              #   ls.addFileToOpenFiles(ls.pool.slots[filePath], q.didOpen.textDocument)
-              # else:
               let entryPoint = if string(intendedProjectPath) != "": intendedProjectPath else: filePath
               debug "didOpen: Spawning standalone nimsuggest", entryPoint = entryPoint
               discard await createNewSuggestSlotAndConsolidate(ls, entryPoint, q.didOpen.textDocument)
@@ -315,7 +310,8 @@ proc processLangserverQueue*(ls: LanguageServer): Future[void] {.async.} =
         fileInfo.slot.unassignUri(uri)
         # If the slot has no remaining tracked files, shut it down — important for standalone orphan slots.
         debug "Check the amount of owned uris for this slot:", uri = uri, ownedUris = fileInfo.slot.ownedUris.len
-        if fileInfo.slot.ownedUris.len == 0:
+        if fileInfo.slot.ownedUris.len == 0 and ls.pool.slots.len > 1:
+          # The ls.pool.slots.len > 1 qualification means that if there is only one slot left, it is persisted, so nimsuggest is not constantly spawning and stopping.
           debug "Stopping this slot:", uri = uri
           discard await execStop(fileInfo.slot, ls.pool)
           ls.pool.removeSlot(fileInfo.slot.projectFile)

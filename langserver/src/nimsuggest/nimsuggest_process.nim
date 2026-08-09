@@ -180,7 +180,7 @@ proc processNimsuggestQueries*(
           q.responseFuture.complete(@[])
         continue
       let fileInfo = openFiles.getOrDefault(q.uri)
-      if fileInfo != nil and now() - fileInfo.lastEditTime < initDuration(milliseconds = FILE_CHECK_DELAY):
+      if fileInfo != nil and now() - fileInfo.lastEditTime < initDuration(milliseconds = pool.fileCheckDelayMs):
         debug "processQueries: skipping stale query (file recently edited)", kind = $q.kind, uri = q.uri
         if not q.responseFuture.finished:
           q.responseFuture.complete(@[])

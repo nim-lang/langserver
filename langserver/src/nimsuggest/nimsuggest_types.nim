@@ -116,6 +116,7 @@ type
   NimsuggestPool* = ref object
     slots*: Table[FilePath, NimsuggestSlot]
     maxSlots*: int
+    fileCheckDelayMs*: int   ## Quiet-period threshold in ms before per-file diagnostics run. Set in initNimsuggestInstances.
     nimsuggestPath*: string  ## Path to nimsuggest binary. Set in initNimsuggestInstances.
     nimVersion*: string      ## Nim version string for logging.
     timeout*: int            ## Per-request timeout in ms.
