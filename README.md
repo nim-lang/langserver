@@ -2,7 +2,10 @@
 
 > *Slow and steady wins the race.*
 
-A Nim language server and VS Code extension that prioritise **correctness** over speed — a fork and rewrite of [`nimlangserver`](https://github.com/nim-lang/langserver) and [`vscode-nim`](https://github.com/nim-lang/vscode-nim).
+A Nim language server and VS Code extension that prioritise **correctness** over speed.  In other words, it might work slower than the other nim language servers, but it will give you the correct information and not crash every 10 minutes.
+
+This is a fork and rewrite of [`nimlangserver`](https://github.com/nim-lang/langserver) and [`vscode-nim`](https://github.com/nim-lang/vscode-nim).
+
 
 ---
 

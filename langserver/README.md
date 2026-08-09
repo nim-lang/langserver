@@ -23,6 +23,121 @@ On large projects you will frequently see:
 
 ---
 
+
+## Root Causes in the Original `nimlangserver`
+
+The improvements in this fork address several interacting architectural problems:
+
+### 1. Nimble's SAT solver on the critical path
+
+When VS Code is launched from the Dock rather than a terminal, its `PATH` is minimal. The extension would pick up an older Homebrew `nimble` instead of the correct `~/.nimble/bin/nimble`. The older binary cannot find the required Nim version in its database, causing `findMinimalFailingSet` — an exponential-time UNSAT prover — to run to completion before `nimble dump` produced a single byte of output. This was the primary cause of the 1+ minute startup delay.
+
+Additionally, without `nimble.paths` forwarded to nimsuggest, the Nim compiler inside nimsuggest had to call nimble for every unresolved import, hitting the SAT solver repeatedly on a cold start.
+
+### 2. `maxNimsuggestProcesses` effectively ignored
+
+The limit was checked in some places but bypassed at three spawn sites (`getProjectFile` for regex-matched files, `initNimsuggestInstances` for entry points, `getNimsuggestInner` for missing project keys). On startup, multiple `didOpen` requests arrive simultaneously. All of them checked the count before any single nimsuggest had finished starting and all saw zero — so all spawned unconditionally, regardless of the configured limit.
+
+### 3. Race conditions from uncontrolled async
+
+Concurrent LSP handlers called nimsuggest and the suggestapi procs directly, sharing the same TCP socket with no serialisation. This broke LRU tracking, caused concurrent writes to the same TCP connection, and meant there was no guarantee nimsuggest was ready before a command was sent.
+
+A deeper version of this problem: the same table held both canonical project entries and redirect aliases. Every code path had to reason about whether it was looking at a real entry or a stale alias. Two separate tracking sets had to be kept in sync by convention at every mutation site, with no structural enforcement.
+
+### 4. Mishandled `nimsuggest` lifecycle
+
+- `checkFile` called `chkFile` without first calling `changed()`, so nimsuggest checked the stale cached AST from the last save. Squiggles only updated on save.
+- `workspace/didRenameFiles` had no handler. After a file move, the stash buffer was stranded at the old path.
+- Nimsuggest was spawned from the `initialize` handler, before VS Code had sent the `workspace/configuration` response — so `projectMapping` and `maxNimsuggestProcesses` were always default at spawn time.
+- After a crash and restart, only the single URI that triggered the respawn was re-registered. All other editor tabs were silently absent.
+- Crash loops ran at full speed with no backoff.
+
+---
+
+## Architecture & Refactor
+
+The rewrite (`dp-rewrite` branch) addresses all of these root causes with a clean architecture designed around two principles: **serialise all state mutations** and **make ownership explicit at the type level**.
+
+### Queue-based dispatcher
+
+All LSP work flows through a two-level queue system:
+
+```
+LSP handler
+  → ls.langserverQueue          (single FIFO queue)
+  → processLangserverQueue      (drains in order)
+      → FILE_ACCESS branch      (didOpen, didChange, didSave, didClose, …)
+      → NIMSUGGEST branch       → slot.queryMailbox (per-slot FIFO)
+                                → processNimsuggestQueries (TCP dispatch)
+```
+
+`ls.langserverQueue` is the single serialisation point for all file and nimsuggest work. Because `processLangserverQueue` drains it in FIFO order, a `didChange` stash write is guaranteed to be applied before any subsequent hover query is dispatched to the per-slot mailbox. There is no race between "write the stash" and "read the stash".
+
+Each `NimsuggestSlot` has its own `queryMailbox`. `processNimsuggestQueries` (one coroutine per slot) drains it and dispatches to the nimsuggest TCP socket. Commands for the same slot are serialised; commands for different slots run concurrently. The "thin dispatcher" pattern means the top-level LSP message dispatcher never awaits handler results — it only `asyncSpawn`s — so it cannot become a bottleneck.
+
+### Single-table ownership model
+
+The old architecture used a redirect-alias pattern: `ls.projectFiles[A] = ls.projectFiles[B]` as a shorthand for "files that used to be served by A are now served by B". Every guard had to check `ls.projectFiles[K].file == K` to distinguish a real entry from an alias.
+
+The rewrite eliminates this entirely. Each `NlsFileInfo` holds a direct `slot: NimsuggestSlot` reference. The slot is the stable identity — it survives process restarts, can be queued to, and owns the set of URIs assigned to it. There are no redirect aliases.
+
+File ownership is tracked in exactly two places:
+- `ls.files.openFiles[uri].slot` — "which slot owns this file?"
+- (slot) `ownedUris` — "which files does this slot own?"
+
+Both are updated together, synchronously, with no `await` between them. Under Chronos's cooperative scheduler, the absence of an `await` between two statements is sufficient for atomicity.
+
+### Module hierarchy
+
+The rewrite uses a clean module structure with no import cycles:
+
+```
+src/
+├── configurations/      — NlsConfig type; no LanguageServer dependency
+├── langserver/          — LanguageServer type, dispatcher, transports
+├── handlers/            — LSP request/notification handlers (enqueue onto langserverQueue)
+├── nimsuggest/          — NimsuggestSlot, pool, TCP protocol (suggestapi)
+├── nimble/              — nimble dump, entry point discovery
+├── nim_check/           — nim check runner
+├── nim_compiler/        — nim binary discovery, macro/ARC expansion, test runner
+├── nph/                 — nph-based document formatting
+└── utils/               — general utilities, async process monitor
+```
+
+Handlers enqueue work onto `langserverQueue` and never touch `suggestapi` directly. The dispatcher is the only code that routes between the queue and per-slot mailboxes.
+
+### Correct nimsuggest lifecycle
+
+- **Spawned after config**: `initNimsuggestInstances` is called from the `initialized` handler (after `workspace/configuration` is received), so `projectMapping` and `maxNimsuggestProcesses` are always correct at spawn time.
+- **`nimble.paths` forwarding**: `findNimblePaths` walks up the directory tree to the nearest `nimble.paths` file and passes its `--path:` entries directly to nimsuggest. The internal Nim compiler resolves all imports from disk without calling nimble. This reduced cold-compile time from ~53 seconds to ~11 seconds.
+- **Live diagnostics**: `checkFile` calls `changed()` with the stash path before `chkFile`, so nimsuggest always checks the live editor buffer. Squiggles update while you type.
+- **Rename handling**: `workspace/didRenameFiles` migrates stash file, `openFiles` entry, and triggers `recompile` on the running nimsuggest instance — cheap (preserves NimCache) compared to a full process restart.
+- **Crash recovery with backoff**: restarts use exponential backoff (1s, 2s, 4s, …, capped at 30s). After `MAX_CRASH_RETRIES`, the user is notified and the dead slot is removed from the pool so the next `didOpenFile` starts fresh.
+
+### Reduction of async surface
+
+A significant source of bugs in the original was async procs that did not strictly need to be async. Under Chronos's cooperative scheduler, sync procs are implicitly atomic — nothing else can run between two statements. The rewrite de-asynced many procs that only performed table mutations or queue enqueue operations, making their atomicity explicit rather than relying on correct placement of `await` points.
+
+Infinite-loop coroutines use `while true` + `await sleepAsync(...)`, never tail recursion. Each tail-recursive call in Nim async creates a new closure-backed `Future` that is not freed until the entire chain resolves — for an infinite loop, that is never — leading to unbounded heap growth.
+
+---
+
+## Measured Improvements
+
+All figures from instrumented LSP trace logs:
+
+| Metric | Before | After |
+|--------|--------|-------|
+| VS Code startup (Dock launch, wrong nimble binary) | 1+ minute | addressed in extension separately |
+| `nimble dump` | tens of seconds (SAT UNSAT) | 1–4 seconds |
+| Nimsuggest cold-compile (empty NimCache) | ~53 seconds | ~11 seconds |
+| `extension/tasks` (NimScript compile) | ~13 seconds | ~1 second |
+| Server crashes per session | frequent (SIGSEGV loop) | zero |
+
+The cold-compile reduction from 53s to 11s is the direct effect of `nimble.paths` forwarding. The remaining 11 seconds is pure Nim compiler parse and type-check time for the project's import tree — unavoidable for a cold start. Subsequent requests are fast (< 1 second) because nimsuggest caches the compiled AST in NimCache on disk, which persists between VS Code sessions.
+
+---
+
 ## How nimsuggest and the Language Server Work Together
 
 Understanding this relationship is the key to a well-functioning setup. Most configuration mistakes come from misunderstanding one or more of these points.
@@ -276,12 +391,25 @@ Each entry maps a regex (matched against the file path) to a project entry-point
 
 ```json
 {
-  "fileRegex":   "mypackage/(src|tests)/.*\\.nim",
+  "fileRegex":   "mypackage/src/.*\\.nim",
   "projectFile": "mypackage/src/mypackage.nim"
 }
 ```
 
-Note the `(src|tests)` pattern. Without it, opening a test file launches `nimsuggest` with the test file as root, which cannot see the library it is testing.
+I recommend against using the  `(src|tests)` pattern that works with some of the other language servers, as resolving the `tests` and `src` will not work correctly - the `mypackage/src/mypackage.nim` does not usually import the `tests` (it is usually the other way around!).  So the tests know about `mypackage/src/mypackage.nim` through transitive imports, but a `nimsuggest` instance with a project file of `mypackage/src/mypackage.nim` would not know about the tests, as it doesn't import them.  Instead, I recommend setting up two different routings for the src and tests for each package:
+
+```json
+[
+  {
+    "fileRegex":   "mypackage/src/.*\\.nim",
+    "projectFile": "mypackage/src/mypackage.nim"
+  },
+  {
+    "fileRegex":   "mypackage/tests/.*\\.nim",
+    "projectFile": "mypackage/tests/all.nim"
+  }
+]
+```
 
 **Keep `projectMapping` in sync with the files on disk.** When you rename a package, update both `entryPoints` in the `.nimble` file and the `projectFile` in `projectMapping`. A mapping whose `projectFile` points to a non-existent file causes `nimsuggest` to crash for every matched file.
 
@@ -405,119 +533,6 @@ This is safe — the cache is rebuilt automatically on the next build or `nimsug
 
 ---
 
-## Root Causes in the Original `nimlangserver`
-
-The improvements in this fork address several interacting architectural problems:
-
-### 1. Nimble's SAT solver on the critical path
-
-When VS Code is launched from the Dock rather than a terminal, its `PATH` is minimal. The extension would pick up an older Homebrew `nimble` instead of the correct `~/.nimble/bin/nimble`. The older binary cannot find the required Nim version in its database, causing `findMinimalFailingSet` — an exponential-time UNSAT prover — to run to completion before `nimble dump` produced a single byte of output. This was the primary cause of the 1+ minute startup delay.
-
-Additionally, without `nimble.paths` forwarded to nimsuggest, the Nim compiler inside nimsuggest had to call nimble for every unresolved import, hitting the SAT solver repeatedly on a cold start.
-
-### 2. `maxNimsuggestProcesses` effectively ignored
-
-The limit was checked in some places but bypassed at three spawn sites (`getProjectFile` for regex-matched files, `initNimsuggestInstances` for entry points, `getNimsuggestInner` for missing project keys). On startup, multiple `didOpen` requests arrive simultaneously. All of them checked the count before any single nimsuggest had finished starting and all saw zero — so all spawned unconditionally, regardless of the configured limit.
-
-### 3. Race conditions from uncontrolled async
-
-Concurrent LSP handlers called nimsuggest and the suggestapi procs directly, sharing the same TCP socket with no serialisation. This broke LRU tracking, caused concurrent writes to the same TCP connection, and meant there was no guarantee nimsuggest was ready before a command was sent.
-
-A deeper version of this problem: the same table held both canonical project entries and redirect aliases. Every code path had to reason about whether it was looking at a real entry or a stale alias. Two separate tracking sets had to be kept in sync by convention at every mutation site, with no structural enforcement.
-
-### 4. Mishandled `nimsuggest` lifecycle
-
-- `checkFile` called `chkFile` without first calling `changed()`, so nimsuggest checked the stale cached AST from the last save. Squiggles only updated on save.
-- `workspace/didRenameFiles` had no handler. After a file move, the stash buffer was stranded at the old path.
-- Nimsuggest was spawned from the `initialize` handler, before VS Code had sent the `workspace/configuration` response — so `projectMapping` and `maxNimsuggestProcesses` were always default at spawn time.
-- After a crash and restart, only the single URI that triggered the respawn was re-registered. All other editor tabs were silently absent.
-- Crash loops ran at full speed with no backoff.
-
----
-
-## Architecture & Refactor
-
-The rewrite (`dp-rewrite` branch) addresses all of these root causes with a clean architecture designed around two principles: **serialise all state mutations** and **make ownership explicit at the type level**.
-
-### Queue-based dispatcher
-
-All LSP work flows through a two-level queue system:
-
-```
-LSP handler
-  → ls.langserverQueue          (single FIFO queue)
-  → processLangserverQueue      (drains in order)
-      → FILE_ACCESS branch      (didOpen, didChange, didSave, didClose, …)
-      → NIMSUGGEST branch       → slot.queryMailbox (per-slot FIFO)
-                                → processNimsuggestQueries (TCP dispatch)
-```
-
-`ls.langserverQueue` is the single serialisation point for all file and nimsuggest work. Because `processLangserverQueue` drains it in FIFO order, a `didChange` stash write is guaranteed to be applied before any subsequent hover query is dispatched to the per-slot mailbox. There is no race between "write the stash" and "read the stash".
-
-Each `NimsuggestSlot` has its own `queryMailbox`. `processNimsuggestQueries` (one coroutine per slot) drains it and dispatches to the nimsuggest TCP socket. Commands for the same slot are serialised; commands for different slots run concurrently. The "thin dispatcher" pattern means the top-level LSP message dispatcher never awaits handler results — it only `asyncSpawn`s — so it cannot become a bottleneck.
-
-### Single-table ownership model
-
-The old architecture used a redirect-alias pattern: `ls.projectFiles[A] = ls.projectFiles[B]` as a shorthand for "files that used to be served by A are now served by B". Every guard had to check `ls.projectFiles[K].file == K` to distinguish a real entry from an alias.
-
-The rewrite eliminates this entirely. Each `NlsFileInfo` holds a direct `slot: NimsuggestSlot` reference. The slot is the stable identity — it survives process restarts, can be queued to, and owns the set of URIs assigned to it. There are no redirect aliases.
-
-File ownership is tracked in exactly two places:
-- `ls.files.openFiles[uri].slot` — "which slot owns this file?"
-- (slot) `ownedUris` — "which files does this slot own?"
-
-Both are updated together, synchronously, with no `await` between them. Under Chronos's cooperative scheduler, the absence of an `await` between two statements is sufficient for atomicity.
-
-### Module hierarchy
-
-The rewrite uses a clean module structure with no import cycles:
-
-```
-src/
-├── configurations/      — NlsConfig type; no LanguageServer dependency
-├── langserver/          — LanguageServer type, dispatcher, transports
-├── handlers/            — LSP request/notification handlers (enqueue onto langserverQueue)
-├── nimsuggest/          — NimsuggestSlot, pool, TCP protocol (suggestapi)
-├── nimble/              — nimble dump, entry point discovery
-├── nim_check/           — nim check runner
-├── nim_compiler/        — nim binary discovery, macro/ARC expansion, test runner
-├── nph/                 — nph-based document formatting
-└── utils/               — general utilities, async process monitor
-```
-
-Handlers enqueue work onto `langserverQueue` and never touch `suggestapi` directly. The dispatcher is the only code that routes between the queue and per-slot mailboxes.
-
-### Correct nimsuggest lifecycle
-
-- **Spawned after config**: `initNimsuggestInstances` is called from the `initialized` handler (after `workspace/configuration` is received), so `projectMapping` and `maxNimsuggestProcesses` are always correct at spawn time.
-- **`nimble.paths` forwarding**: `findNimblePaths` walks up the directory tree to the nearest `nimble.paths` file and passes its `--path:` entries directly to nimsuggest. The internal Nim compiler resolves all imports from disk without calling nimble. This reduced cold-compile time from ~53 seconds to ~11 seconds.
-- **Live diagnostics**: `checkFile` calls `changed()` with the stash path before `chkFile`, so nimsuggest always checks the live editor buffer. Squiggles update while you type.
-- **Rename handling**: `workspace/didRenameFiles` migrates stash file, `openFiles` entry, and triggers `recompile` on the running nimsuggest instance — cheap (preserves NimCache) compared to a full process restart.
-- **Crash recovery with backoff**: restarts use exponential backoff (1s, 2s, 4s, …, capped at 30s). After `MAX_CRASH_RETRIES`, the user is notified and the dead slot is removed from the pool so the next `didOpenFile` starts fresh.
-
-### Reduction of async surface
-
-A significant source of bugs in the original was async procs that did not strictly need to be async. Under Chronos's cooperative scheduler, sync procs are implicitly atomic — nothing else can run between two statements. The rewrite de-asynced many procs that only performed table mutations or queue enqueue operations, making their atomicity explicit rather than relying on correct placement of `await` points.
-
-Infinite-loop coroutines use `while true` + `await sleepAsync(...)`, never tail recursion. Each tail-recursive call in Nim async creates a new closure-backed `Future` that is not freed until the entire chain resolves — for an infinite loop, that is never — leading to unbounded heap growth.
-
----
-
-## Measured Improvements
-
-All figures from instrumented LSP trace logs:
-
-| Metric | Before | After |
-|--------|--------|-------|
-| VS Code startup (Dock launch, wrong nimble binary) | 1+ minute | addressed in extension separately |
-| `nimble dump` | tens of seconds (SAT UNSAT) | 1–4 seconds |
-| Nimsuggest cold-compile (empty NimCache) | ~53 seconds | ~11 seconds |
-| `extension/tasks` (NimScript compile) | ~13 seconds | ~1 second |
-| Server crashes per session | frequent (SIGSEGV loop) | zero |
-
-The cold-compile reduction from 53s to 11s is the direct effect of `nimble.paths` forwarding. The remaining 11 seconds is pure Nim compiler parse and type-check time for the project's import tree — unavoidable for a cold start. Subsequent requests are fast (< 1 second) because nimsuggest caches the compiled AST in NimCache on disk, which persists between VS Code sessions.
-
----
 
 ## Requirements
 

@@ -236,6 +236,8 @@ To debug the extension in VS Code, press **F5** in the dev workspace. The `.vsco
 * Run `nimble vsix` to build the extension package to `out/nimvscode-<version>.vsix`
 * Run `nimble install_vsix` if you have VS Code on `PATH`, or select **Install from VSIX** from the command palette and choose the `.vsix` file.
 
+Then choose the built `nimtortoise` binary as the langsuage server path in the settings.
+
 ---
 
 ## Acknowledgments
@@ -243,3 +245,6 @@ To debug the extension in VS Code, press **F5** in the dev workspace. The `.vsco
 This extension started out as a fork of the [@saem](https://github.com/saem) extension [vscode-nim](https://github.com/saem/vscode-nim), which was itself a port of an extension written in [TypeScript](https://marketplace.visualstudio.com/items?itemName=kosz78.nim) by @kosz78 for the Nim language.
 
 Thank you Saem for your work and letting us build on top of it.
+
+
+
