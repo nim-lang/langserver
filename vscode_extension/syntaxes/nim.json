@@ -1163,16 +1163,16 @@
       "applyEndPatternLast": true,
       "patterns": [
         {
-          "begin": ":",
-          "end": "(?=\\})",
-          "name": "meta.template.format-specifier.nim"
-        },
-        {
           "match": "\\\\\"",
           "name": "constant.character.escape.double-quote.nim"
         },
         {
           "include": "source.nim"
+        },
+        {
+          "begin": ":",
+          "end": "(?=\\})",
+          "name": "meta.template.format-specifier.nim"
         }
       ],
       "name": "meta.template.expression.nim"
@@ -1234,10 +1234,10 @@
         }
       },
       "applyEndPatternLast": true,
-      "name": "string.quoted.double.raw.nim",
+      "name": "string.quoted.double.nim",
       "patterns": [
         {
-          "include": "#raw_string_escapes"
+          "include": "#string_escapes"
         },
         {
           "include": "#fmt_escaped_open_brace"

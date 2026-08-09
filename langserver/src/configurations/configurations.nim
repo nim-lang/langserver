@@ -46,6 +46,7 @@ proc mergeConfigs*(primary, fallback: NlsConfig): NlsConfig =
   if result.nimExpandArc.isNone:            result.nimExpandArc            = fallback.nimExpandArc
   if result.nimExpandMacro.isNone:          result.nimExpandMacro          = fallback.nimExpandMacro
   if result.maxNimsuggestProcesses.isNone:  result.maxNimsuggestProcesses  = fallback.maxNimsuggestProcesses
+  if result.fileCheckDelay.isNone:          result.fileCheckDelay          = fallback.fileCheckDelay
 
 proc parseWorkspaceConfiguration*(conf: JsonNode): NlsConfig =
   # Format A: {"settings": {"nimTortoise": {...}}} or {"settings": {"nim": {...}}}

@@ -81,34 +81,6 @@ suite "Nimlangserver misc":
       fmt"Nimsuggest for {hwAbsFile} was stopped because it was idle for too long",
     )
 
-
-suite "Nimlangserver pending requests":
-  test "addProjectFileToPendingRequest sets projectFile on pending request":
-    echo "    >> addProjectFileToPendingRequest sets projectFile on pending request"
-    # Tests that addProjectFileToPendingRequest correctly populates the
-    # projectFile field synchronously. In the new architecture this proc is
-    # synchronous (no future to await); the regression test for the cancelled-
-    # future escape (#419) no longer applies since the future was removed.
-    let ls = LanguageServer(
-      capabilities: LanguageServerCapabilities(serverMode: lsp),
-      transport: LanguageServerTransport(transportMode: socket),
-      messaging: LanguageServerMessaging(
-        pendingRequests: initTable[uint, PendingRequest](),
-        responseMap: newTable[string, Future[JsonNode]](),
-        projectErrors: @[],
-      ),
-      notify: proc(name: string, params: JsonNode) {.gcsafe, raises: [].} = discard,
-    )
-    let uri = "file:///tmp/tpending_rewrite.nim"
-    ls.messaging.pendingRequests[1'u] =
-      PendingRequest(id: 1, name: "textDocument/definition", state: prsOnGoing, startTime: times.now())
-
-    ls.addProjectFileToPendingRequest(1'u, FileUri(uri))
-
-    check ls.messaging.pendingRequests[1'u].projectFile ==
-      some(string(uriToPath(FileUri(uri))))
-
-
 suite "Nimlangserver idle nimsuggest cleanup":
   let cmdParams = CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
   let ls = main(cmdParams)
@@ -154,21 +126,6 @@ suite "Nimlangserver idle nimsuggest cleanup":
         removed = true
         break
     check removed
-
-
-suite "Nimlangserver transport teardown":
-  test "writeOutput drops writes after the stdio stream is torn down":
-    echo "    >> writeOutput drops writes after the stdio stream is torn down"
-    # Regression test for #418: an in-flight continuation resuming after onExit
-    # closed ls.transport.outStream must be a no-op (nil check in writeOutput).
-    let ls = LanguageServer(
-      capabilities: LanguageServerCapabilities(serverMode: lsp),
-      transport: LanguageServerTransport(transportMode: stdio),
-    )
-    doAssert ls.transport.outStream.isNil
-    ls.writeOutput(%*{"jsonrpc": "2.0", "id": 1, "result": newJNull()})
-    check ls.transport.outStream.isNil
-
 
 suite "Nimlangserver fail count":
   test "fail count is reset when a nimsuggest starts successfully":

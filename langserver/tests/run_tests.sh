@@ -11,12 +11,18 @@ TIMEOUT=${1:-120}
 PASS=0
 FAIL=0
 FILES=(
-  tests_rewrite/tsuggestapi.nim
-  tests_rewrite/tnimlangserver.nim
-  tests_rewrite/tprojectsetup.nim
-  tests_rewrite/textensions.nim
-  tests_rewrite/tmisc.nim
-  tests_rewrite/ttestrunner.nim
+  bin/textensions
+  bin/tfindnimblepaths
+  bin/thover
+  bin/tknownbug3
+  bin/tmaxlimits
+  bin/tmisc
+  bin/tmonorepo2
+  bin/tmonorepo3
+  bin/tnimlangserver
+  bin/tstability
+  bin/tsuggestapi
+  bin/ttestrunner
 )
 
 for f in "${FILES[@]}"; do

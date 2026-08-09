@@ -105,6 +105,8 @@ proc addFileToOpenFiles*(
     changed: false,
     fingerTable: fingerTable,
     textDocument: params,
+    lastEditTime: times.now(),
+    lastChecked: times.now(),
   )
   ls.files.openFiles[params.uri] = fileInfo
 

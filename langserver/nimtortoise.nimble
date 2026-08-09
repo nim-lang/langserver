@@ -1,9 +1,9 @@
 mode = ScriptMode.Verbose
 
 packageName = "nimtortoise"
-version = "0.1.0"
-author = "David Pocknee and The core Nim team"
-description = "Alternative Nim language server for IDEs"
+version = "0.1.2"
+author = "David Pocknee building on the work of the core Nim team"
+description = "Fork and rewrite of the nim language server for IDEs"
 license = "MIT"
 srcDir = "src"
 bin = @["nimtortoise"]

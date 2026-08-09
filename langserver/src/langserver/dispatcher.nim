@@ -1,4 +1,4 @@
-import std/[options, sets, strutils, tables, os, sequtils]
+import std/[options, sets, strutils, tables, os, sequtils, times, sugar]
 import chronos
 import chronicles
 import ../nimsuggest/[nimsuggest_types, suggestapi_types, nimsuggest_process]
@@ -117,7 +117,18 @@ proc processLangserverQueue*(ls: LanguageServer): Future[void] {.async.} =
       if fileInfo != nil:
         debug "dispatcher: adding to slot mailbox", uri = q.uri, projectFile = fileInfo.slot.projectFile
         # NimsuggestSlot is a ref object, so fileInfo.slot is just a pointer to the same heap object that lives in pool.slots[projectFile].
-        fileInfo.slot.queryMailbox.addLastNoWait(q)
+        # Fix 2: deduplicate CHANGED queries — the stash is updated in-place on every
+        # DID_CHANGE, so one pending CHANGED per URI is always sufficient.
+        if q.kind == NimsuggestQueryKind.CHANGED:
+          if q.uri in fileInfo.slot.pendingChangedUris:
+            debug "dispatcher: dropping duplicate CHANGED (already pending)", uri = q.uri
+            if not q.responseFuture.finished:
+              q.responseFuture.complete(@[])
+          else:
+            fileInfo.slot.pendingChangedUris.incl(q.uri)
+            fileInfo.slot.queryMailbox.addLastNoWait(q)
+        else:
+          fileInfo.slot.queryMailbox.addLastNoWait(q)
       else:
         debug "dispatcher: fileInfo is nil, completing with empty", uri = q.uri
         q.responseFuture.complete(@[])
@@ -196,11 +207,6 @@ proc processLangserverQueue*(ls: LanguageServer): Future[void] {.async.} =
 
             else:
               # True orphan (no mapping) or file is its own entry point.
-              # if intendedProjectPath == filePath and ls.pool.slots.hasKey(filePath):
-              #   # This file is already running as its own slot — assign directly.
-              #   debug "didOpen: File is its own project and slot already running, assigning directly", uri = uri
-              #   ls.addFileToOpenFiles(ls.pool.slots[filePath], q.didOpen.textDocument)
-              # else:
               let entryPoint = if string(intendedProjectPath) != "": intendedProjectPath else: filePath
               debug "didOpen: Spawning standalone nimsuggest", entryPoint = entryPoint
               discard await createNewSuggestSlotAndConsolidate(ls, entryPoint, q.didOpen.textDocument)
@@ -216,6 +222,7 @@ proc processLangserverQueue*(ls: LanguageServer): Future[void] {.async.} =
                 let pendingQ = slotToEvict.queryMailbox.popFirstNoWait()
                 if not pendingQ.responseFuture.finished:
                   pendingQ.responseFuture.complete(@[])
+              slotToEvict.pendingChangedUris.clear()
 
               let successfulStop = await execStop(slotToEvict, ls.pool)
               if successfulStop:
@@ -244,7 +251,7 @@ proc processLangserverQueue*(ls: LanguageServer): Future[void] {.async.} =
           ls.files.openFiles[uri].fingerTable.add line.createUTFMapping()
           file.writeLine line
         file.close()
-        ls.scheduleFileCheck(uri)
+        ls.files.openFiles[uri].lastEditTime = times.now()
         # Queue CHANGED immediately at the front so it is processed before any
         # position query (hover, definition, completion) already in the queue.
         # addFirstNoWait matches the pattern used by DID_SAVE.
@@ -297,20 +304,18 @@ proc processLangserverQueue*(ls: LanguageServer): Future[void] {.async.} =
           continue
         let fileInfo = ls.files.openFiles[uri]
         if fileInfo.changed:
-          # TODO CHECK FILE
-          asyncSpawn ls.checkFile(uri)
+          let checkQuery = await ls.queryFile(uri, NimsuggestQueryKind.CHECK_FILE)
+          ls.sendDiagnostics(checkQuery.filter(s => string(s.filePath) != "???"), uriToPath(uri))
 
         fileInfo.slot.unassignUri(uri)
         # If the slot has no remaining tracked files, shut it down — important for standalone orphan slots.
         debug "Check the amount of owned uris for this slot:", uri = uri, ownedUris = fileInfo.slot.ownedUris.len
-        if fileInfo.slot.ownedUris.len == 0:
+        if fileInfo.slot.ownedUris.len == 0 and ls.pool.slots.len > 1:
+          # The ls.pool.slots.len > 1 qualification means that if there is only one slot left, it is persisted, so nimsuggest is not constantly spawning and stopping.
           debug "Stopping this slot:", uri = uri
           discard await execStop(fileInfo.slot, ls.pool)
           ls.pool.removeSlot(fileInfo.slot.projectFile)
         ls.files.openFiles.del(uri)
-        if fileInfo.cancelFileCheck != nil and not fileInfo.cancelFileCheck.finished:
-          fileInfo.cancelFileCheck.complete()
-
 
       of FileAccessQueryKind.WILL_SAVE_WAIT_UNTIL:
         let uri = q.willSave.textDocument.uri
@@ -360,6 +365,8 @@ proc processLangserverQueue*(ls: LanguageServer): Future[void] {.async.} =
               slot: slot,
               changed: fileInfo.changed,
               fingerTable: fileInfo.fingerTable,
+              lastEditTime: fileInfo.lastEditTime,
+              lastChecked: fileInfo.lastChecked,
               textDocument: TextDocumentItem(
                 uri: newUri,
                 languageId: fileInfo.textDocument.languageId,
@@ -404,7 +411,7 @@ proc processLangserverQueue*(ls: LanguageServer): Future[void] {.async.} =
             ls.files.openFiles.del(uri)
 
       of FileAccessQueryKind.DID_CHANGE_CONFIGURATION:
-        debug "Changed configuration: ", conf = q.didChangeConfiguration
+        debug "Changed configuration: ", config = q.didChangeConfiguration
         if ls.usePullConfigurationModel:
           ls.maybeRequestConfigurationFromClient
         else:

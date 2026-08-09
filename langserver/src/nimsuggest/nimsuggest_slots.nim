@@ -7,7 +7,7 @@ import ../configurations/constants
 import ../protocol/types
 
 proc newPool*(slots: Table[FilePath, NimsuggestSlot], maxSlots: int): NimsuggestPool =
-  NimsuggestPool(slots: slots, maxSlots: maxSlots)
+  NimsuggestPool(slots: slots, maxSlots: maxSlots, fileCheckDelayMs: FILE_CHECK_DELAY)
 
 proc newSlot*(projectFile: FilePath, isEntryPoint = false, workingDir = getCurrentDir()): NimsuggestSlot =
   NimsuggestSlot(
@@ -20,6 +20,7 @@ proc newSlot*(projectFile: FilePath, isEntryPoint = false, workingDir = getCurre
     lastCmdTime: now(),
     isEntryPoint: isEntryPoint,
     crashedUris: initHashSet[FileUri](),
+    pendingChangedUris: initHashSet[FileUri](),
   )
 
 proc addSlot*(pool: NimsuggestPool, slot: NimsuggestSlot) =

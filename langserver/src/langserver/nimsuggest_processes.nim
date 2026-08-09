@@ -147,8 +147,9 @@ proc initNimsuggestInstances*(ls: LanguageServer, rootPath: string) {.async.} =
 
   let config = ls.getWorkspaceConfiguration()
 
-  # Update maxSlots from config (pool was created with defaults in initLanguageServer)
+  # Update pool settings from config (pool was created with defaults in initLanguageServer)
   ls.pool.maxSlots = config.maxNimsuggestProcesses.get(NIM_MAX_NS_PROCESSES)
+  ls.pool.fileCheckDelayMs = config.fileCheckDelay.get(FILE_CHECK_DELAY)
 
   # Resolve the nimsuggest binary path and Nim version now that config is available.
   let (nimsuggestPath, nimVersion) = await ls.getNimSuggestPathAndVersion(config, rootPath)
@@ -219,8 +220,6 @@ proc idleSlots*(ls: LanguageServer): seq[NimsuggestSlot] =
       continue
     result.add slot
 
-
-# IMPORTANT: WHat are the async functions here?  It is not clear.
 proc removeIdleNimsuggests*(ls: LanguageServer) {.async.} =
   ## Kept for direct test calls — delegates to idleSlots + per-slot stop.
   ## File eviction and notification are duplicated here to keep tmisc working

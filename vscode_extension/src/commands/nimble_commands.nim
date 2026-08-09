@@ -70,8 +70,9 @@ proc provideNimbleTasksCodeLenses*(document: VscodeTextDocument, token: VscodeCa
     if taskName.isSome:
       let range = vscode.newRange(line, 0, line, 0)
       let command = VscodeCommands()
+      let dirPath = path.dirname(document.fileName)
       command.command = "nimTortoise.onNimbleTask"
       command.title = "$(play-circle) Run task"
-      command.arguments = @[taskName.get.toJs()]
+      command.arguments = @[taskName.get.toJs(), dirPath.toJs()]
       result.add(vscode.newCodeLens(range, command))
     inc line

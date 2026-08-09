@@ -1134,9 +1134,11 @@ type
   NimbleTask* = object
     name*: string
     description*: string
+    projectDir*: string ## absolute directory where nimble was run
 
   RunTaskParams* = object
     command*: seq[string] #command and args
+    workingDir*: string ## directory in which to run the task
 
   RunTaskResult* = object
     command*: seq[string] #command and args
@@ -1154,10 +1156,10 @@ type
   TestProjectInfo* = object
     entryPoint*: string
     suites*: Table[string, TestSuiteInfo]
-    error*: Option[string]
+    error*: string ## empty string means no error
 
   ListTestsParams* = object
-    entryPoint*: Option[string]
+    entryPoint*: string
       #can be patterns? if empty we could do the same as nimble does or just run `nimble test args`
 
   ListTestsResult* = object
@@ -1166,7 +1168,7 @@ type
   RunTestResult* = object
     name*: string
     time*: float
-    failure*: Option[string]
+    failure*: string ## empty string means the test passed
 
   RunTestSuiteResult* = object
     name*: string
@@ -1179,9 +1181,8 @@ type
 
   RunTestParams* = object
     entryPoint*: string
-    suiteName*: Option[string]
-      #Optional, if provided, only run tests in the suite. Takes precedence over testName
-    testNames*: Option[seq[string]] #Optional, if provided, only run the specific tests
+    suiteName*: string ## empty string means no suite filter
+    testNames*: seq[string] ## empty seq means no test filter
 
   RunTestProjectResult* = object
     suites*: seq[RunTestSuiteResult]

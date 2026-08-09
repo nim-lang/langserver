@@ -52,7 +52,7 @@ proc parseTestResult*(node: XmlNode): RunTestResult =
   # Add handling for failure node
   let failureNode = node.child("failure")
   if not failureNode.isNil:
-    result.failure = some failureNode.attr("message")
+    result.failure = failureNode.attr("message")
 
 proc parseTestSuite*(node: XmlNode): RunTestSuiteResult =
   parseObject(result, node)
@@ -96,7 +96,7 @@ proc listTests*(
         for line in error.splitLines:
           error "Error line: ", line = line
         error "Command args: ", args = args
-        result = TestProjectInfo(error: some error)
+        result = TestProjectInfo(error: error)
     else:
       let rawOutput = await process.stdoutStream.readAllOutput()
       debug "list test raw output", rawOutput = rawOutput
@@ -107,7 +107,7 @@ proc listTests*(
 proc runTests*(
     entryPoint: string,
     nimPath: string,
-    suiteName: Option[string],
+    suiteName: string,
     testNames: seq[string],
     workspaceRoot: string,
     ls: LanguageServer,
@@ -121,8 +121,8 @@ proc runTests*(
   let executableDir = (getTempDir() / entryPoint.splitFile.name).absolutePath
   var args =
     @["c", "--outdir:" & executableDir, "-r", entryPoint, fmt"--xml:{resultFile}"]
-  if suiteName.isSome:
-    args.add(fmt"{suiteName.get()}::")
+  if suiteName != "":
+    args.add(fmt"{suiteName}::")
   else:
     for testName in testNames:
       args.add(testName)

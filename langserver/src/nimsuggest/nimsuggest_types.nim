@@ -104,6 +104,9 @@ type
     crashedUris*: HashSet[FileUri]
       ## URIs that caused a SIGSEGV in this slot's process.
       ## Cleared by RESTART (explicit user action = clean slate).
+    pendingChangedUris*: HashSet[FileUri]
+      ## URIs that have a CHANGED query already in queryMailbox.
+      ## Prevents duplicate CHANGED queries accumulating during rapid edits.
 
 # === NIMSUGGEST POOL TYPES ===
 type
@@ -113,6 +116,7 @@ type
   NimsuggestPool* = ref object
     slots*: Table[FilePath, NimsuggestSlot]
     maxSlots*: int
+    fileCheckDelayMs*: int   ## Quiet-period threshold in ms before per-file diagnostics run. Set in initNimsuggestInstances.
     nimsuggestPath*: string  ## Path to nimsuggest binary. Set in initNimsuggestInstances.
     nimVersion*: string      ## Nim version string for logging.
     timeout*: int            ## Per-request timeout in ms.
@@ -131,9 +135,11 @@ type
       ## Always non-nil for any file present in ls.files.openFiles.
     changed*: bool
     fingerTable*: seq[seq[tuple[u16pos, offset: int]]]
-    cancelFileCheck*: Future[void]
-    checkInProgress*: bool
-    needsChecking*: bool
+    lastEditTime*: DateTime
+      ## Updated on every DID_CHANGE. Used by tickFileChecks to detect unseen edits.
+    lastChecked*: DateTime
+      ## Set to now() when a chkFile or checkProject completes for this URI.
+      ## Prevents duplicate checks within FILE_CHECK_DELAY of each other.
     textDocument*: TextDocumentItem
 
 type

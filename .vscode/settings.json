@@ -1,5 +1,5 @@
 {
-  "nim.projectMapping": [
+  "nimTortoise.projectMapping": [
     {
       "projectFile": "langserver/src/nimtortoise.nim",
       "fileRegex": "langserver/src/.*\\.nim"
@@ -13,5 +13,8 @@
       "fileRegex": "vscode_extension/src/.*\\.nim"
     },
   ],
-  "nimTortoise.maxNimsuggestProcesses": 2
+  "nimTortoise.maxNimsuggestProcesses": 2,
+  "nimTortoise.test.entryPoints": [
+    "langserver/tests/all.nim"
+  ]
 }
