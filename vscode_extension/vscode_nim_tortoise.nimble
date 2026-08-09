@@ -1,7 +1,7 @@
 import std/strformat
 # Package
 
-version = "0.1.1"
+version = "0.1.2"
 author = "David Pocknee"
 description = "The VS Code extension for the Nim Tortoise Language Server, a Language Server for nim that prioritises correctness over speed."
 license = "MIT"

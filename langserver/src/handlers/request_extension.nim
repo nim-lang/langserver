@@ -1,4 +1,4 @@
-import std/[options, os, strutils, strscans, json, tables]
+import std/[options, os, strutils, strscans, json, tables, sequtils]
 import chronos
 import chronos/asyncproc
 import chronicles
@@ -40,14 +40,17 @@ proc extensionSuggest*(ls: LanguageServer, params: SuggestParams): Future[Sugges
   return SuggestResult(actionPerformed: params.action)
 
 proc startNimbleProcess(
-  ls: LanguageServer, args: seq[string]
+  ls: LanguageServer, args: seq[string], workingDir: string = ""
 ): Future[AsyncProcessRef] {.async.} =
+  let dir =
+    if workingDir != "": workingDir
+    else: ls.capabilities.lspInitializeParams.getRootPath
   let nimbleDirEnv = getEnv("NIMBLE_DIR", "<not set>")
   let homeEnv = getEnv("HOME", "<not set>")
   let pathEnv = getEnv("PATH", "<not set>")
   debug "startNimbleProcess environment",
     args = args,
-    workingDir = ls.capabilities.lspInitializeParams.getRootPath,
+    workingDir = dir,
     NIMBLE_DIR = nimbleDirEnv,
     HOME = homeEnv,
     PATH = pathEnv
@@ -55,7 +58,7 @@ proc startNimbleProcess(
     "nimble",
     arguments = args,
     options = {UsePath},
-    workingDir = ls.capabilities.lspInitializeParams.getRootPath,
+    workingDir = dir,
     stdoutHandle = AsyncProcess.Pipe,
     stderrHandle = AsyncProcess.Pipe,
   )
@@ -67,31 +70,46 @@ proc tasks*(ls: LanguageServer, conf: JsonNode): Future[seq[NimbleTask]] {.async
     NIMBLE_DIR_before = getEnv("NIMBLE_DIR", "<not set>"),
     HOME = getEnv("HOME", "<not set>")
   delEnv "NIMBLE_DIR"
-  let process = await ls.startNimbleProcess(@["tasks"])
-  let exitCode = await process.waitForExit(InfiniteDuration)
-  if exitCode != 0:
-    warn "nimble tasks failed", exitCode = exitCode
-    ls.showMessage(
-      "Failed to list nimble tasks (exit code " & $exitCode &
-        "). Check that a .nimble file exists in the project root.",
-      MessageType.Warning,
-    )
-    await process.shutdownChildProcess()
+
+  # Find nimble directories: check the workspace root first, then one level deep.
+  var nimbleDirs: seq[string]
+  if walkFiles(rootPath / "*.nimble").toSeq.len > 0:
+    nimbleDirs.add(rootPath)
+  else:
+    for entry in walkDir(rootPath):
+      if entry.kind == pcDir:
+        if walkFiles(entry.path / "*.nimble").toSeq.len > 0:
+          nimbleDirs.add(entry.path)
+
+  if nimbleDirs.len == 0:
+    warn "No .nimble files found in workspace root or immediate subdirectories",
+      rootPath = rootPath
     return @[]
-  let output = string.fromBytes(await process.stdoutStream.read())
-  var name, desc: string
-  for line in output.splitLines:
-    if scanf(line, "$+  $*", name, desc):
-      #first run of nimble tasks can compile nim and output the result of the compilation
-      if name.isWord:
-        result.add NimbleTask(name: name.strip(), description: desc.strip())
-  await process.shutdownChildProcess()
+
+  for dir in nimbleDirs:
+    debug "Running nimble tasks in directory", dir = dir
+    let process = await ls.startNimbleProcess(@["tasks"], workingDir = dir)
+    let exitCode = await process.waitForExit(InfiniteDuration)
+    if exitCode != 0:
+      warn "nimble tasks failed", dir = dir, exitCode = exitCode
+      await process.shutdownChildProcess()
+      continue
+    let output = string.fromBytes(await process.stdoutStream.read())
+    var name, desc: string
+    for line in output.splitLines:
+      if scanf(line, "$+  $*", name, desc):
+        #first run of nimble tasks can compile nim and output the result of the compilation
+        if name.isWord:
+          result.add NimbleTask(
+            name: name.strip(), description: desc.strip(), projectDir: dir
+          )
+    await process.shutdownChildProcess()
 
 # === extension/runTask ===
 proc runTask*(
     ls: LanguageServer, params: RunTaskParams
 ): Future[RunTaskResult] {.async.} =
-  let process = await ls.startNimbleProcess(params.command)
+  let process = await ls.startNimbleProcess(params.command, workingDir = params.workingDir)
   let res = await process.waitForExit(InfiniteDuration)
   result.command = params.command
   let prefix = "\""
@@ -116,11 +134,11 @@ proc listTests*(
     error "Nim path not found when listing tests"
     return ListTestsResult(
       projectInfo: TestProjectInfo(
-        entryPoint: params.entryPoint.get(""), suites: initTable[string, TestSuiteInfo]()
+        entryPoint: params.entryPoint, suites: initTable[string, TestSuiteInfo]()
       )
     )
   let workspaceRoot = ls.capabilities.lspInitializeParams.getRootPath
-  let testProjectInfo = await listTests(params.entryPoint.get(""), nimPath.get(), workspaceRoot)
+  let testProjectInfo = await listTests(params.entryPoint, nimPath.get(), workspaceRoot)
   result.projectInfo = testProjectInfo
 
 # === extension/runTest === 
@@ -137,7 +155,7 @@ proc runTests*(
     params.entryPoint,
     nimPath.get(),
     params.suiteName,
-    params.testNames.get(@[]),
+    params.testNames,
     workspaceRoot,
     ls,
   )

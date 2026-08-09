@@ -58,7 +58,7 @@ proc renderTestResult(
     test: VscodeTestItem, result: RunTestResult,
     run: VscodeTestRun, fullOutput: cstring = "") =
   let duration = result.time * 1000
-  if result.failure.isNull:
+  if $result.failure == "":
     run.passed(test, duration = duration)
     run.appendOutput(&"[{test.label}] Test passed in {duration:.4f}ms\n")
   else:
@@ -240,7 +240,7 @@ proc loadTests(state: ExtensionState, isRefresh: bool = false): Future[void] {.a
   for ep in entryPoints:
     let listRes = await fetchListTests(state, ListTestsParams(entryPoint: ep))
 
-    if listRes.projectInfo.error != nil:
+    if $listRes.projectInfo.error != "":
       vscode.window.showErrorMessage(
         "Error loading tests for " & $ep & " (see lsp output):\n" & listRes.projectInfo.error
       )

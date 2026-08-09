@@ -454,6 +454,59 @@ I recommend against using the  `(src|tests)` pattern that works with some of the
 }
 ```
 
+### 7. Configure tests and nimble tasks for monorepos
+
+In a monorepo with multiple Nim packages, each package has its own test entry point and its own `.nimble` file. Nim Tortoise supports this directly.
+
+#### Running tests across multiple packages
+
+The VS Code Testing panel (the beaker icon in the Activity Bar) shows a grouped view of all test suites and individual tests. Tests are discovered by compiling the entry point with `-d:unittest2ListTests` — the test file must use the `unittest2` library.
+
+Configure each package's test entry point in `.vscode/settings.json` at the workspace root:
+
+```json
+{
+  "nimTortoise.test.entryPoints": [
+    "packages/core/tests/all.nim",
+    "packages/server/tests/all.nim",
+    "packages/client/tests/all.nim"
+  ]
+}
+```
+
+Each entry point appears as a top-level project in the Testing panel, grouped by its parent directory name. You can run all tests, a single suite, or a single test case independently.
+
+The legacy single-entry setting `nimTortoise.test.entryPoint` is still accepted for backwards compatibility but is deprecated. Only the workspace-root `.vscode/settings.json` is read — settings files in subdirectories are silently ignored by VS Code.
+
+#### Nimble tasks in monorepos
+
+The Nim panel in the sidebar lists all nimble tasks available in the repository, grouped by package. Task discovery works without any configuration:
+
+- If the workspace root contains a `.nimble` file, tasks are listed from that file.
+- Otherwise, the server walks one level deep and discovers all subdirectories that contain a `.nimble` file.
+
+Each package's tasks appear under a collapsible group labelled with the package directory name. Clicking a task runs it in the correct working directory (the directory containing the `.nimble` file).
+
+No additional configuration is needed for nimble task discovery. The only requirement is that the `.nimble` files exist in the expected locations.
+
+#### Example `.vscode/settings.json` for a monorepo
+
+```json
+{
+  "nimTortoise.maxNimsuggestProcesses": 3,
+  "nimTortoise.projectMapping": [
+    { "fileRegex": "packages/core/src/.*\\.nim",    "projectFile": "packages/core/src/core.nim" },
+    { "fileRegex": "packages/core/tests/.*\\.nim",  "projectFile": "packages/core/tests/all.nim" },
+    { "fileRegex": "packages/server/src/.*\\.nim",  "projectFile": "packages/server/src/server.nim" },
+    { "fileRegex": "packages/server/tests/.*\\.nim","projectFile": "packages/server/tests/all.nim" }
+  ],
+  "nimTortoise.test.entryPoints": [
+    "packages/core/tests/all.nim",
+    "packages/server/tests/all.nim"
+  ]
+}
+```
+
 ---
 
 ## Verifying Your Setup
@@ -524,6 +577,7 @@ This is safe — the cache is rebuilt automatically on the next build or `nimsug
 - [ ] Run `nimble setup` to generate `nimble.paths`
 - [ ] Add an entry to `.vscode/settings.json` under `nimTortoise.projectMapping` covering both `src/` and `tests/` subdirectories
 - [ ] Verify the `projectFile` path has no trailing spaces and the file exists
+- [ ] Add the package's test entry point to `nimTortoise.test.entryPoints` in the workspace-root `.vscode/settings.json`
 
 ### When renaming or moving a package
 

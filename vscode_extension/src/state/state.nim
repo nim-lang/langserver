@@ -11,15 +11,19 @@ proc getNimCmd*(state: ExtensionState): cstring =
   else:
     (state.nimDir & "/nim ").cstring
 
-proc getTaskByName*(state: ExtensionState, name: cstring): Option[NimbleTask] =
+proc getTaskByName*(
+    state: ExtensionState, name: cstring, projectDir: cstring = ""
+): Option[NimbleTask] =
   for task in state.nimbleTasks:
-    if task.name == name:
+    if task.name == name and (projectDir == "" or task.projectDir == projectDir):
       return some task
   none(NimbleTask)
 
-proc markTaskAsRunning*(state: ExtensionState, name: cstring, isRunning: bool) =
+proc markTaskAsRunning*(
+    state: ExtensionState, name: cstring, projectDir: cstring, isRunning: bool
+) =
   for task in state.nimbleTasks.mitems:
-    if task.name == name:
+    if task.name == name and task.projectDir == projectDir:
       task.isRunning = isRunning
       break
 

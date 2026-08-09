@@ -80,6 +80,7 @@ proc newLspItem*(
   statusItem.notification = notification
   statusItem.pendingRequest = pendingRequest
   statusItem.projectError = projectError
+  statusItem.nimbleProjectDir = ""
   if projectError.isSome():
     let pe = projectError.get()
     outputLine(fmt"Error executing command: \n {pe.lastKnownCmd}".cstring)
@@ -180,14 +181,14 @@ proc globalNotificationActionItems(): seq[LspItem] =
     vscode.themeIcon("trash", vscode.themeColor("notificationsErrorIcon.foreground"))
   @[cast[LspItem](item)]
 
-proc onNimbleTask*(name: cstring) {.async.} =  
-  let task = ext.getTaskByName(name)
+proc onNimbleTask*(name: cstring, projectDir: cstring = "") {.async.} =
+  let task = ext.getTaskByName(name, projectDir)
   if task.isNone or task.get.isRunning:
     console.log("Task already running or not found")
     return
-  console.log("Executing onNimbleTask", name)
-  let taskParams = RunTaskParams(command: @[name])
-  
+  console.log("Executing onNimbleTask", name, projectDir)
+  let taskParams = RunTaskParams(command: @[name], workingDir: projectDir)
+
   vscode.window
   .withProgress(
     VscodeProgressOptions{
@@ -196,12 +197,12 @@ proc onNimbleTask*(name: cstring) {.async.} =
       title: cstring(fmt"Nim: running task '{name}'..."),
     },
     proc(): Promise[RunTaskResult] =
-      ext.markTaskAsRunning(name, true)
+      ext.markTaskAsRunning(name, projectDir, true)
       fetchLsp[RunTaskResult, RunTaskParams](ext, "extension/runTask", taskParams),
   )
   .then(
     proc(taskResult: RunTaskResult) =
-      ext.markTaskAsRunning(name, false)
+      ext.markTaskAsRunning(name, projectDir, false)
       outputLine(fmt"Task {name} finished".cstring)
       for line in taskResult.output:
         outputLine(line)
@@ -248,13 +249,20 @@ proc onNimbleTask*(name: cstring) {.async.} =
       console.error("nimvscode - onNimbleTask Failed", reason)
   )
 
+proc newNimbleProjectItem*(projectDir: cstring): LspItem =
+  let label = ($projectDir).split("/")[^1].cstring
+  let item = newLspItem(label, "", "", TreeItemCollapsibleState_Collapsed)
+  item.iconPath = vscode.themeIcon("folder", vscode.themeColor("terminal.ansiCyan"))
+  item.nimbleProjectDir = projectDir
+  item
+
 proc newNimbleTaskItem*(task: NimbleTask): LspItem =
   let item = vscode.newTreeItem(task.name, TreeItemCollapsibleState_None)
   item.description = task.description
   item.command = newJsObject()
   item.command.command = "nimTortoise.onNimbleTask".cstring
   item.command.title = task.name.cstring
-  item.command.arguments = @[task.name.toJs()]
+  item.command.arguments = @[task.name.toJs(), task.projectDir.toJs()]
   # item.iconPath = vscode.themeIcon("debug-start", vscode.themeColor("notificationsInfoIcon.foreground"))
   
   # Set different icon based on running state
@@ -444,8 +452,18 @@ proc getChildrenImpl(
         nsItems.insert(restartItem, 0)
       return nsItems
     elif element.label == "Nimble Tasks":
-      return @[newRefreshNimbleTasksItem()] &
-        ext.nimbleTasks.mapIt(newNimbleTaskItem(it))
+      # One collapsible group per distinct projectDir, preceded by the refresh button.
+      var seen: seq[cstring]
+      var groupItems: seq[LspItem] = @[newRefreshNimbleTasksItem()]
+      for task in ext.nimbleTasks:
+        if task.projectDir notin seen:
+          seen.add(task.projectDir)
+          groupItems.add(newNimbleProjectItem(task.projectDir))
+      return groupItems
+    elif cast[LspItem](element).nimbleProjectDir != "":
+      # Children of a project group: all tasks belonging to this projectDir.
+      let dir = cast[LspItem](element).nimbleProjectDir
+      return ext.nimbleTasks.filterIt(it.projectDir == dir).mapIt(newNimbleTaskItem(it))
     return @[]
 
 proc getTreeItemImpl(

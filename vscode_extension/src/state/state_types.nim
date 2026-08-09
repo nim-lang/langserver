@@ -46,6 +46,7 @@ type
   LspItem* = ref object of TreeItem
     instance*: Option[NimSuggestStatus]
     notification*: Option[Notification]
+    nimbleProjectDir*: cstring ## non-empty on nimble project group items in the tree
 
   Notification* = object
     message*: cstring
@@ -63,10 +64,12 @@ type
   NimbleTask* = object
     name*: cstring
     description*: cstring
+    projectDir*: cstring ## absolute directory where nimble was run
     isRunning*: bool
-  
+
   RunTaskParams* = object
     command*: seq[cstring] #command and args
+    workingDir*: cstring ## directory in which to run the task
   
   RunTaskResult* = object
     command*: seq[cstring] #command and args

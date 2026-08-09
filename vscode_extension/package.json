@@ -2,7 +2,7 @@
     "name": "vscode-nim-tortoise",
     "displayName": "Nim Tortoise",
     "description": "Fork and rewrite of nimlangserver.",
-    "version": "0.1.1",
+    "version": "0.1.2",
     "publisher": "YOUR_PUBLISHER_ID",
     "author": {
         "name": "David Pocknee"
