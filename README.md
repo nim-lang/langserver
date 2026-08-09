@@ -7,6 +7,8 @@ A Nim language server and VS Code extension that prioritise **correctness** over
 This is a fork and rewrite of [`nimlangserver`](https://github.com/nim-lang/langserver) and [`vscode-nim`](https://github.com/nim-lang/vscode-nim).
 
 
+*NOTE: This repo is in heavy development.*
+
 ---
 
 ## The Problem
@@ -99,11 +101,13 @@ Add to `.vscode/settings.json` in your project:
 
 ```json
 {
-  "nimTortoise.lsp.path": "/path/to/your/nimlangserver"
+  "nimTortoise.lsp.path": "/path/to/your/nimtortoise"
 }
 ```
 
-If omitted, the extension searches `~/.vscode-nim-tortoise/nimbledeps/bin/nimlangserver` then `nimlangserver` in `PATH`.
+Currently, I haven't set up the extension to automatically compile and use the nimtortoise server, so you'll have to build the server from source, using `nimble build`, store it somewhere, then build the extension, and set up the `settings.json` in your project to point the "nimTortoise.lsp.path" setting to the compiled `nimtortoise` binary.  This will be fixed in later versions.
+
+If omitted, the extension defaults to the `nimlangserver` server, and  searches `~/.vscode-nim-tortoise/nimbledeps/bin/nimlangserver` then `nimlangserver` in `PATH`.
 
 ---
 
