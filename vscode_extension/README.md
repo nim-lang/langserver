@@ -2,80 +2,155 @@
 
 ## "Slow and steady wins the race"
 
-A Language Server for `nim` that prioritises correctness over speed.  
+A VS Code extension for the Nim programming language that prioritises correctness over speed.
 
-This is the VS Code extension for the `nim tortoise language server`.  
+This is the VS Code extension for the [Nim Tortoise Language Server](../langserver/README.md). It is a fork of [`vscode-nim`](https://github.com/nim-lang/vscode-nim) refactored to be **LSP-only** — direct nimsuggest integration has been removed, leaving a thin wrapper around the language server. This makes the extension simpler and more reliable, as all language intelligence lives in one well-tested place.
 
-It is a fork of `vscode-nim` with a number of changes.  It now only supports a LSP backend, not nimsuggest.  This has allowed me to remove a lot of code to create a thin wrapper around the new language server.  This new version relies upon the language server to do nearly everything.
-
-
-## Using
-
-First, you will need to install [Visual Studio Code](https://code.visualstudio.com/) `1.27.0` or higher.
-In the command palette (`cmd-shift-p`) select `Install Extension` and choose `nim-lang.org`.
-
-The following tools are required for the extension:
-
-* Nim compiler - http://nim-lang.org
-
-_Note_: It is recommended to turn `Auto Save` on in Visual Studio Code (`File -> Auto Save`) when using this extension.
-
-### Options
-
-The following Visual Studio Code settings are available for the Nim extension.  These can be set in user preferences (`cmd+,`) or workspace settings (`.vscode/settings.json`).
-
-* `nim.buildOnSave` - perform build task from `tasks.json` file, to use this options you need declare build task according to [Tasks Documentation](https://code.visualstudio.com/docs/editor/tasks), for example:
-
-  ```json
-  {
-      "taskName": "Run module.nim",
-      "command": "nim",
-      "args": ["c", "-o:bin/${fileBasenameNoExtension}", "-r", "${fileBasename}"],
-      "options": {
-          "cwd": "${workspaceRoot}"
-      },
-      "type": "shell",
-      "group": {
-          "kind": "build",
-          "isDefault": true
-      }
-  }
-  ```
-* `nim.lintOnSave` - perform the project check for errors on save
-* `nim.project` - optional array of projects file, if nim.project is not defined then all nim files will be used as separate project
-* `nim.licenseString` - optional license text that will be inserted on nim file creation
-* `nim.notificationTimeout` - optional the timeout in seconds for the Nim language server notifications. Use 0 to disable the timeout.
-
-#### Example
-
-```json
-{
-    "nim.buildOnSave": false,
-    "nim.buildCommand": "c",
-    "nim.lintOnSave": true,
-    "nim.project": ["project.nim", "project2.nim"],
-    "nim.licenseString": "# Copyright 2020.\n\n"
-}
-```
-
-### Commands
-
-The following commands are provided by the extension:
-
-* `Nim: Run selected file` - compile and run selected file, it uses `c` compiler by default, but you can specify `cpp` in `nim.buildCommand` config parameter.
-This command available from file context menu or by `F6` keyboard shortcut.
+> **Note**: This extension **replaces** the original `vscode-nim` — the two cannot be installed simultaneously. If both are active, they will each try to start a language server for the same files.
 
 ---
 
+## What's New in This Fork
+
+- **LSP-only**: all language features (hover, completion, go-to-definition, inlay hints, diagnostics, macro expansion, ARC expansion, formatting) are provided by the language server. The extension manages the server lifecycle and communicates via the Language Server Protocol.
+- **`nimTortoise.` prefix**: all settings and commands use the `nimTortoise.` namespace to avoid conflicts with the original extension.
+- **Inlay hints**: type hints, parameter hints, and exception hints powered by nimsuggest.
+- **Macro and ARC expansion**: expand macro calls and ARC-transformed procs directly on hover.
+- **`nph` formatting**: format-on-save using `nph` when installed.
+- **Improved nimble integration**: automatic `nimble setup` detection, correct project-root invocation.
+
+---
+
+## Installation
+
+First, install [Visual Studio Code](https://code.visualstudio.com/) `1.99.0` or higher.
+
+Install the extension via `Install from VSIX` in the command palette (`cmd-shift-p`) and choose the `.vsix` file built from this repository.
+
+The following tools are required:
+
+* **Nim compiler** — http://nim-lang.org
+* **nimlangserver** (the Nim Tortoise language server binary) — built from the `langserver/` directory in this repository
+
+_Note_: It is recommended to enable `Auto Save` in VS Code (`File → Auto Save`) when using this extension.
+
+---
+
+## Options
+
+The following VS Code settings are available for the extension. Set them in user preferences (`cmd+,`) or workspace settings (`.vscode/settings.json`). All settings use the `nimTortoise.` prefix.
+
+### Language server
+
+* `nimTortoise.lsp.path` — explicit path to the Nim language server binary. If empty, the extension searches `~/.vscode-nim-tortoise/nimbledeps/bin/nimlangserver`, then `nimlangserver` in `PATH`.
+* `nimTortoise.lsp.trace.server` — trace LSP communication between VS Code and the language server (`off` / `messages` / `verbose`). Useful for debugging.
+* `nimTortoise.transportMode` — transport between extension and language server (`stdio` (default) or `socket`).
+* `nimTortoise.lspPort` — when `transportMode` is `socket`, the port to connect to. `0` means the extension starts the socket server itself. Useful for attaching an external debugger to the language server.
+* `nimTortoise.notificationVerbosity` — how much of the language server's output to surface as VS Code notifications (`none` / `error` / `warning` / `info`).
+* `nimTortoise.notificationTimeout` — seconds before a language server notification auto-dismisses. `0` to disable auto-dismiss.
+
+### Project configuration
+
+* `nimTortoise.project` — array of Nim project entry-point files. If empty, each open file is treated as its own project.
+* `nimTortoise.projectMapping` — array of `{ "fileRegex": "...", "projectFile": "..." }` objects for routing files to projects by regex. For example:
+  ```json
+  { "fileRegex": "(.*).inim", "projectFile": "$1.nim" }
+  ```
+* `nimTortoise.maxNimsuggestProcesses` — maximum number of nimsuggest processes to keep alive. `0` means unlimited. For monorepos, setting this to `1`–`3` keeps memory usage bounded.
+* `nimTortoise.nimsuggestIdleTimeout` — milliseconds before an idle nimsuggest process is stopped (default: `120000` = 2 minutes).
+* `nimTortoise.nimbleAutoSetup` — automatically run `nimble setup` when a `.nimble` file is detected in the workspace root (default: `true`). This generates `nimble.paths` and dramatically reduces language server startup time.
+
+### Inlay hints
+
+* `nimTortoise.inlayHints.typeHints.enable` — show inferred type annotations (default: `true`).
+* `nimTortoise.inlayHints.parameterHints.enable` — show parameter names at call sites (default: `true`).
+* `nimTortoise.inlayHints.exceptionHints.enable` — show exception annotations (default: `true`).
+* `nimTortoise.inlayHints.exceptionHints.hintStringLeft` — string displayed to the left of exception hints (default: `🔔`).
+* `nimTortoise.inlayHints.exceptionHints.hintStringRight` — string displayed to the right of exception hints (default: empty).
+
+### Hover expansions
+
+* `nimTortoise.nimExpandMacro` — expand macro call sites on hover (default: `false`).
+* `nimTortoise.nimExpandArc` — expand ARC-transformed proc definitions on hover (default: `false`).
+
+### Build and run
+
+* `nimTortoise.buildOnSave` — run the build task from `tasks.json` on save (default: `false`). Requires a build task declared in `.vscode/tasks.json`.
+* `nimTortoise.buildCommand` — Nim backend for compile/run commands (`c`, `cpp`, `doc`, etc.) (default: `c`).
+* `nimTortoise.runOutputDirectory` — output directory for the "Run selected file" command, relative to workspace root.
+
+### Formatting
+
+* `nimTortoise.formatOnSave` — format the file on save using `nph` (default: `false`). Requires `nph` to be on `PATH`.
+
+### Test runner
+
+* `nimTortoise.test.entryPoint` — entry point for the test runner. If empty, test discovery is disabled. Alternatively, set `testEntryPoint` in your `.nimble` file (requires `nimble >= 0.20.0`).
+
 ### Debugging
 
-Visual Studio Code includes a powerful debugging system, and the Nim tooling can take advantage of that. However, in order to do so, some setup is required.
+* `nimTortoise.debug.type` — debugger type to use with "Debug selected file" (default: `lldb`). The value corresponds to the `type` field in `launch.json`.
 
-#### Setting up
+### Other
 
-First, install a debugging extension, such as [CodeLLDB](https://open-vsx.org/extension/vadimcn/vscode-lldb), and any native packages the extension may require (such as clang and LLDB).
+* `nimTortoise.licenseString` — license text inserted at the top of new `.nim` files.
+* `nimTortoise.test-project` — optional separate test project file.
+* `nimTortoise.logNimsuggest` — enable verbose nimsuggest logging to the profile directory (default: `false`).
 
-Next, you need to create a `tasks.json` file for your project, under the `.vscode` directory of your project root. Here is an example for CodeLLDB:
+### Deprecated settings
+
+The following settings are deprecated and have no effect in LSP mode. They were part of the original extension's direct nimsuggest integration and may be removed in a future version:
+
+* `nimTortoise.lintOnSave` — use the LSP backend for diagnostics instead.
+* `nimTortoise.enableNimsuggest` — use the LSP backend instead.
+* `nimTortoise.provider` — always `lsp` in this fork.
+* `nimTortoise.useNimsuggestCheck` — use the LSP backend instead.
+
+---
+
+### Example `.vscode/settings.json`
+
+```json
+{
+    "nimTortoise.project": ["src/myproject.nim"],
+    "nimTortoise.maxNimsuggestProcesses": 2,
+    "nimTortoise.inlayHints.typeHints.enable": true,
+    "nimTortoise.formatOnSave": true,
+    "nimTortoise.notificationVerbosity": "warning"
+}
+```
+
+---
+
+## Commands
+
+The following commands are provided by the extension (accessible via the command palette `cmd-shift-p`, under the `Nim Tortoise` category):
+
+| Command | ID | Shortcut | Description |
+|---|---|---|---|
+| Run selected Nim file | `nimTortoise.run.file` | F6 | Compile and run the active file |
+| Debug selected Nim file | `nimTortoise.debug.file` | Shift+F5 | Build and launch debugger for the active file |
+| Check Nim project | `nimTortoise.check` | Ctrl+Alt+B | Run `nim check` on the project |
+| Run Selection/Line in Terminal | `nimTortoise.execSelectionInTerminal` | Shift+Enter | Execute the selected code in a Nim REPL terminal |
+| Clear internal caches | `nimTortoise.clearCaches` | — | Clear the extension's internal state caches |
+| List candidate nim projects | `nimTortoise.listCandidateProjects` | — | List project entry points the extension has detected |
+| Restart nimsuggest | `nimTortoise.restartNimsuggest` | — | Manually restart the nimsuggest process |
+| Open Generated File | `nimTortoise.openGeneratedFile` | — | Open the C/C++ file generated by the Nim compiler |
+| Refresh Tests | `nimTortoise.refreshTests` | — | Re-run test discovery and refresh the Test Explorer |
+
+`Run selected Nim file` and `Debug selected Nim file` are also available from the editor title run button and right-click context menu when a `.nim` file is open.
+
+---
+
+## Debugging
+
+VS Code includes a powerful debugging system, and the Nim tooling can take advantage of it. However, some setup is required.
+
+### Setting up
+
+First, install a debugging extension. [CodeLLDB](https://open-vsx.org/extension/vadimcn/vscode-lldb) is recommended. Install any native packages the extension may require (such as clang and LLDB).
+
+Next, create a `tasks.json` file in your project's `.vscode` directory:
 
 ```jsonc
 // .vscode/tasks.json
@@ -95,13 +170,13 @@ Next, you need to create a `tasks.json` file for your project, under the `.vscod
             "options": {
                 "cwd": "${workspaceRoot}"
             },
-            "type": "shell",
+            "type": "shell"
         }
     ]
 }
 ```
 
-Then, you need to create a launch configuration in the project's launch.json file. Again, this example works with CodeLLDB:
+Then create a `launch.json` in the same directory:
 
 ```jsonc
 // .vscode/launch.json
@@ -115,60 +190,56 @@ Then, you need to create a launch configuration in the project's launch.json fil
             "preLaunchTask": "nim: build current file (for debugging)",
             "program": "${workspaceFolder}/bin/${fileBasenameNoExtension}",
             "args": [],
-            "cwd": "${workspaceFolder}",
+            "cwd": "${workspaceFolder}"
         }
     ]
 }
 ```
 
-You should be set up now to be able to debug from a given file in the native VS Code(ium) debugger.
+The `nimTortoise.debug.type` setting controls which debugger type the "Debug selected file" command uses (default: `lldb`).
 
 ---
 
-## [Experimental] Test runner
+## Test Runner
 
-The extension also support running tests. The project must be using `unittest2 >= 0.2.4` and a test entry point must be defined in the settings `nim.test.entryPoint`. Alternativaly, one can use the `testEntryPoint` setting from `nimble` (starting at `nimble 0.20.0`). 
+The extension supports running tests via VS Code's Test Explorer. The project must use `unittest2 >= 0.2.4`.
 
+Set the test entry point in settings:
 
-Tests will be listed in the vscode Test Explorer. There is a command `Refresh Tests` that re-runs test listing.
+```json
+{
+    "nimTortoise.test.entryPoint": "tests/all.nim"
+}
+```
 
----
+Alternatively, set `testEntryPoint` in your `.nimble` file (requires `nimble >= 0.20.0`).
 
-## Code Completion
-
-This extension relies on the Nim Language Server for code completion. You can read more about it [here](https://github.com/nim-lang/langserver)
+Tests appear in the VS Code Test Explorer panel. Use the **Refresh Tests** command (`nimTortoise.refreshTests`) to re-run discovery after adding new test files.
 
 ---
 
 ## Developing the Extension
 
-* If this is the first time you're building the extension on your machine, do an npm install to get the dependencies
-* You should also copy (or create a symlink to) the `nimsuggest` directory from the Nim compiler sources into `src/nimsuggest`
-* Press `F5` or whatever your `Run -> Start Debugging` command short cut is
-* If prompted choose launch `Extension`
-* This launches a new VS Code Window which is running your patched extension
-* You can open a Nim code base to try it out
-  * If you want to try it out on the extension source itself, create a new workspace and add the source as a folder to the workspace so VS Code doesn't take you back to the development window
+The extension is written in **Nim** and compiled to JavaScript using the `js` backend.
 
-Alternatively, feel free to give side-loading a shot.
+| Task | Command |
+|------|---------|
+| Dev build (with source maps) | `nimble main` |
+| Release build | `nimble release` |
+| Package as VSIX | `nimble vsix` |
+| Install VSIX locally | `nimble install_vsix` |
+
+To debug the extension in VS Code, press **F5** in the dev workspace. The `.vscode/launch.json` runs `nimble build` and then launches an Extension Development Host window running the patched extension. Open a Nim project there to test.
 
 ### Side-loading the Extension
 
 * Run `nimble vsix` to build the extension package to `out/nimvscode-<version>.vsix`
-* Run `nimble install_vsix` if you have VS Code on `PATH`, otherwise select `Install from VSIX` from the command palette (`cmd-shift-p`) and choose `out/nimvscode-<version>.vsix`.
+* Run `nimble install_vsix` if you have VS Code on `PATH`, or select **Install from VSIX** from the command palette and choose the `.vsix` file.
 
 ---
 
 ## Acknowledgments
 
-This extension started out as a fork of the @saem extension [vscode-nim](https://github.com/saem/vscode-nim) which was a port of an extension written in [TypeScript](https://marketplace.visualstudio.com/items?itemName=kosz78.nim) for the Nim language.
+This extension started out as a fork of the [@saem](https://github.com/saem) extension [vscode-nim](https://github.com/saem/vscode-nim), which was itself a port of an extension written in [TypeScript](https://marketplace.visualstudio.com/items?itemName=kosz78.nim) by @kosz78 for the Nim language.
 
 Thank you Saem for your work and letting us build on top of it.
-
-## Roadmap
-
-The roadmap is located [here](https://github.com/nim-lang/RFCs/issues/544)
-
-## ChangeLog
-
-ChangeLog is located [here](https://github.com/nim-lang/vscode-nim/blob/main/CHANGELOG.md)

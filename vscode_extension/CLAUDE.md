@@ -146,8 +146,59 @@ Document clearly that this extension replaces, not supplements, the original `vs
 
 ---
 
+## Bundling the language server binary
+
+The extension can ship the `nimlangserver` binary directly so users don't need a separate
+install step. VS Code supports **platform-specific extensions** (separate `.vsix` per
+OS/arch), which is the recommended approach for native binaries.
+
+### How binary resolution works (current)
+
+`getLspPath` in `src/language_server/language_server.nim` resolves in this order:
+
+1. `nimTortoise.lsp.path` setting (user-specified)
+2. `~/.vscode-nim-tortoise/nimbledeps/bin/nimlangserver` (local install)
+3. `nimlangserver` in PATH (global install)
+
+### Adding a bundled-binary step
+
+To probe a binary shipped inside the extension, insert step 1.5:
+
+```nim
+# In getLspPath, after the lsp.path setting check:
+var langserverExec: cstring = "nimlangserver"
+if process.platform == "win32":
+  langserverExec = "nimlangserver.exe"
+let bundledPath = state.ctx.asAbsolutePath(path.join("bin", langserverExec))
+if isValidLspPath(bundledPath):
+  return (bundledPath, lspPathBundled)
+```
+
+`state.ctx` is `VscodeExtensionContext`; `asAbsolutePath` is bound at `vscodeApi.nim:1172`.
+Also add `lspPathBundled` to the `LSPInstallPathKind` enum in `state/state_types.nim`.
+
+### File placement
+
+Put the binary at `vscode_extension/bin/nimlangserver`. The `.vscodeignore` does not
+exclude `bin/`, so it is automatically included in the `.vsix` package.
+
+### Platform-specific packaging
+
+```bash
+# Build and package per platform (run from vscode_extension/):
+vsce package --target darwin-arm64
+vsce package --target darwin-x64
+vsce package --target linux-x64
+vsce package --target win32-x64
+```
+
+Full implementation details and CI example are in
+`langserver/rewrite_analysis/PACKAGING.md`.
+
+---
+
 ## Before publishing
 
 - Replace `YOUR_PUBLISHER_ID` in `package.json` (`name`, `author`, `publisher` fields)
 - Replace `YOUR_REPO_URL` in `package.json` (`homepage`, `repository.url`, `bugs.url`)
-- Ensure `version` in both `package.json` and `nimvscode.nimble` are in sync
+- Ensure `version` in both `package.json` and `vscode_nim_tortoise.nimble` are in sync
