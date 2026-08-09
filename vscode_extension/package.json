@@ -5,14 +5,14 @@
     "version": "1.8.1",
     "publisher": "YOUR_PUBLISHER_ID",
     "author": {
-        "name": "YOUR_PUBLISHER_ID"
+        "name": "David Pocknee"
     },
     "license": "MIT",
     "icon": "images/nim_icon.png",
-    "homepage": "YOUR_REPO_URL",
+    "homepage": "https://github.com/music-theories/nimtortoise",
     "categories": [
         "Programming Languages",
-        "Linters"
+        "Formatters"
     ],
     "galleryBanner": {
         "color": "#2C2A35",
@@ -20,10 +20,10 @@
     },
     "repository": {
         "type": "git",
-        "url": "YOUR_REPO_URL"
+        "url": "https://github.com/music-theories/nimtortoise"
     },
     "bugs": {
-        "url": "YOUR_REPO_URL/issues"
+        "url": "https://github.com/music-theories/nimtortoise/issues"
     },
     "scripts": {
         "vscode:prepublish": "nimble release"

@@ -7,7 +7,7 @@ A Nim language server and VS Code extension that prioritise **correctness** over
 This is a fork and rewrite of [`nimlangserver`](https://github.com/nim-lang/langserver) and [`vscode-nim`](https://github.com/nim-lang/vscode-nim).
 
 
-*NOTE: This repo is in heavy development.*
+*NOTE: This repo is in active, heavy development.*
 
 ---
 

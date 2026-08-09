@@ -20,6 +20,7 @@ proc newSlot*(projectFile: FilePath, isEntryPoint = false, workingDir = getCurre
     lastCmdTime: now(),
     isEntryPoint: isEntryPoint,
     crashedUris: initHashSet[FileUri](),
+    pendingChangedUris: initHashSet[FileUri](),
   )
 
 proc addSlot*(pool: NimsuggestPool, slot: NimsuggestSlot) =

@@ -2,7 +2,7 @@ import std/[syncio, os, json, strutils, strformat]
 import json_rpc/[servers/socketserver, private/jrpc_sys, jsonmarshal, rpcclient, router]
 import chronicles, chronos
 import configurations/constants
-import langserver/[langserver, langserver_types, transports, nimsuggest_processes, dispatcher]
+import langserver/[langserver, langserver_types, transports, nimsuggest_processes, dispatcher, checking]
 import utils/asyncprocmonitor
 import utils/process_utils
 import ./handlers/handlers as lsp
@@ -219,6 +219,8 @@ proc main*(cmdLineParams: CommandLineParams): LanguageServer =
   `nimtortoise` supports both transports: stdio and socket. By default it uses stdio transport.
     But we do construct a RPC socket server even in stdio mode, so that we can reuse the same code for both transports.
   ]#
+
+  let startupProgressToken = "startupMessage"
   result = initLanguageServer(cmdLineParams, ensureStorageDir())
   case result.transport.transportMode
   of stdio:
@@ -233,6 +235,7 @@ proc main*(cmdLineParams: CommandLineParams): LanguageServer =
     result.transport.srv.registerMcpRoutes(result)
 
   result.registerProcMonitor()
+
   asyncSpawn result.processLspMessages()
   asyncSpawn result.processLangserverQueue()
 
@@ -240,6 +243,7 @@ when isMainModule:
   try:
     let ls = main(handleParams())
     asyncSpawn ls.tickLs()
+    asyncSpawn ls.tickFileChecks()
 
     when defined(posix):
       onSignal(SIGINT, SIGTERM, SIGHUP, SIGQUIT, SIGPIPE):

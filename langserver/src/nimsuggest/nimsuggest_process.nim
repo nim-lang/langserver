@@ -155,6 +155,68 @@ proc processNimsuggestQueries*(
     let q = await slot.queryMailbox.popFirst()
     debug "processQueries: dequeued query", projectFile = slot.projectFile, kind = $q.kind, uri = q.uri
 
+    # Fix 1: honour $/cancelRequest — skip queries already cancelled by the client.
+    if q.cancelled:
+      debug "processQueries: query cancelled, skipping", kind = $q.kind, uri = q.uri
+      if not q.responseFuture.finished:
+        q.responseFuture.complete(@[])
+      continue
+
+    # Background queries: skip when edits are in flight or file was recently
+    # edited. VS Code re-requests these automatically once editing settles.
+    const backgroundQueries = {
+      NimsuggestQueryKind.DOCUMENT_SYMBOLS,
+      NimsuggestQueryKind.INLAY_HINTS,
+    }
+    if q.kind in backgroundQueries:
+      var hasPendingChanged = false
+      for pending in slot.queryMailbox.items():
+        if pending.kind == NimsuggestQueryKind.CHANGED and pending.uri == q.uri:
+          hasPendingChanged = true
+          break
+      if hasPendingChanged:
+        debug "processQueries: skipping stale query (CHANGED pending)", kind = $q.kind, uri = q.uri
+        if not q.responseFuture.finished:
+          q.responseFuture.complete(@[])
+        continue
+      let fileInfo = openFiles.getOrDefault(q.uri)
+      if fileInfo != nil and now() - fileInfo.lastEditTime < initDuration(milliseconds = FILE_CHECK_DELAY):
+        debug "processQueries: skipping stale query (file recently edited)", kind = $q.kind, uri = q.uri
+        if not q.responseFuture.finished:
+          q.responseFuture.complete(@[])
+        continue
+
+    # Position-based queries: skip if a newer one for the same URI is already
+    # queued (cursor has moved on), or if a CHANGED is still pending (AST is
+    # stale — results would be wrong anyway and VS Code will re-request).
+    const positionBasedQueries = {
+      NimsuggestQueryKind.SUGGEST,
+      NimsuggestQueryKind.SIGNATURE_HELP,
+      NimsuggestQueryKind.HOVER,
+      NimsuggestQueryKind.DOCUMENT_HIGHLIGHT,
+    }
+    if q.kind in positionBasedQueries:
+      var hasNewer = false
+      var hasPendingChanged = false
+      for pending in slot.queryMailbox.items():
+        if pending.uri == q.uri:
+          if pending.kind == q.kind:
+            hasNewer = true
+          if pending.kind == NimsuggestQueryKind.CHANGED:
+            hasPendingChanged = true
+        if hasNewer and hasPendingChanged:
+          break
+      if hasNewer:
+        debug "processQueries: skipping stale query (newer queued)", kind = $q.kind, uri = q.uri
+        if not q.responseFuture.finished:
+          q.responseFuture.complete(@[])
+        continue
+      if hasPendingChanged:
+        debug "processQueries: skipping stale query (CHANGED pending)", kind = $q.kind, uri = q.uri
+        if not q.responseFuture.finished:
+          q.responseFuture.complete(@[])
+        continue
+
     # Wait until the slot has a live process.
     # If the slot is stopped/crashed, we still drain the queue so callers
     # get @[] rather than hanging forever.
@@ -167,12 +229,16 @@ proc processNimsuggestQueries*(
         slot.crashedUris.incl(q.uri)
         if not q.responseFuture.finished:
           q.responseFuture.complete(@[])
+        if q.kind == NimsuggestQueryKind.CHANGED:
+          slot.pendingChangedUris.excl(q.uri)
         continue
 
     let nsOpt = slot.resolvedNs
     if nsOpt.isNone:
       if not q.responseFuture.finished:
         q.responseFuture.complete(@[])
+      if q.kind == NimsuggestQueryKind.CHANGED:
+        slot.pendingChangedUris.excl(q.uri)
       continue
 
     let ns = nsOpt.get
@@ -204,7 +270,8 @@ proc processNimsuggestQueries*(
           pool.removeSlot(slot.projectFile)
 
       slot.crashedUris.incl(q.uri)
-      
+      if q.kind == NimsuggestQueryKind.CHANGED:
+        slot.pendingChangedUris.excl(q.uri)
       if not q.responseFuture.finished:
         q.responseFuture.complete(@[])
       continue
@@ -233,3 +300,5 @@ proc processNimsuggestQueries*(
       if not q.responseFuture.finished:
         q.responseFuture.complete(@[]) # empty, not fail — see fix #17
 
+    if q.kind == NimsuggestQueryKind.CHANGED:
+      slot.pendingChangedUris.excl(q.uri)

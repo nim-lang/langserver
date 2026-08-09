@@ -432,15 +432,23 @@ I recommend against using the  `(src|tests)` pattern that works with some of the
   "nimTortoise.projectMapping": [
     {
       "projectFile": "packages/core/src/core.nim",
-      "fileRegex":   "packages/core/(src|tests)/.*\\.nim"
+      "fileRegex":   "packages/core/src/.*\\.nim"
+    },
+    {
+      "projectFile": "packages/core/tests/tests.nim",
+      "fileRegex":   "packages/core/tests/.*\\.nim"
     },
     {
       "projectFile": "packages/server/src/server.nim",
-      "fileRegex":   "packages/server/(src|tests)/.*\\.nim"
+      "fileRegex":   "packages/server/src/.*\\.nim"
+    },
+    {
+      "projectFile": "packages/server/tests/tests.nim",
+      "fileRegex":   "packages/server/tests/.*\\.nim"
     },
     {
       "projectFile": "packages/client/src/client.nim",
-      "fileRegex":   "packages/client/(src|tests)/.*\\.nim"
+      "fileRegex":   "packages/client/src/.*\\.nim"
     }
   ]
 }

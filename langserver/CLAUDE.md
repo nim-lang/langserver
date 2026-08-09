@@ -176,7 +176,7 @@ didn't manifest. Investigate before re-marking as excluded.
 
 ```
 src/
-├── nimtortoise.nim             # entry point; main(), registerLspRoutes(), tickLs()
+├── nimtortoise.nim             # entry point; main(), registerLspRoutes(), tickLs(), tickFileChecks()
 ├── protocol/
 │   ├── enums.nim               # LSP/MCP enums
 │   └── types.nim               # protocol type definitions
@@ -195,9 +195,9 @@ src/
 │   ├── configurations.nim      # getWorkspaceConfiguration, waitForWorkspaceConfiguration,
 │   │                           #   getAndWaitForWorkspaceConfiguration
 │   ├── diagnostics.nim         # sendDiagnostics, publishDiagnostics helpers
+│   ├── checking.nim            # checkProject, checkFile, tickFileChecks (periodic chkFile loop)
 │   ├── dispatcher.nim          # processLangserverQueue — drains ls.langserverQueue in FIFO;
-│   │                           #   handles NIMSUGGEST and FILE_ACCESS branches;
-│   │                           #   also checkProject, checkFile, didCloseFile, makeIdleFile
+│   │                           #   handles NIMSUGGEST and FILE_ACCESS branches
 │   ├── dispatcher_utils.nim    # isKnownByANimsuggestSlot, addFileToOpenFiles, queryFile,
 │   │                           #   nimsuggestSlotToEvict, getLeastRecentlyUsedNimsuggestSlotInFullPool
 │   ├── nimsuggest_processes.nim # getIntendedProject, getWorkingDir, getNimSuggestPathAndVersion,
@@ -229,8 +229,7 @@ src/
 │   ├── nimscript_utils.nim     # nimscript helper utilities
 │   └── nimscriptapi.nim        # nimscript API template
 ├── nim_check/
-│   ├── nimcheck.nim            # nim check runner (nimCheck proc)
-│   └── checking.nim            # checkProject helper, per-file check dispatch
+│   └── nim_check.nim           # nim check runner (nimCheck proc)
 ├── nim_compiler/
 │   ├── nim_compiler.nim        # getNimPath, getNimVersion
 │   ├── nimexpand.nim           # macro/ARC expansion
@@ -293,25 +292,26 @@ is dispatched to the per-slot mailbox.
 
 ### `NlsFileInfo` (current actual fields)
 
-Defined in `src/langserver/langserver_types.nim`:
+Defined in `src/nimsuggest/nimsuggest_types.nim`:
 
 ```nim
 NlsFileInfo* = ref object of RootObj
-  slot*:            NimsuggestSlot   # direct ref to pool slot; assigned in addFileToOpenFiles
-  changed*:         bool             # unsaved edits exist; stash is authoritative
-  fingerTable*:     seq[seq[tuple[u16pos, offset: int]]]  # UTF-8 → UTF-16 mapping
-  cancelFileCheck*: Future[void]     # cancel token for deferred checkFile
-  checkInProgress*: bool
-  needsChecking*:   bool
-  textDocument*:    TextDocumentItem
+  slot*:          NimsuggestSlot   # direct ref to pool slot; assigned in addFileToOpenFiles
+  changed*:       bool             # unsaved edits exist; stash is authoritative
+  fingerTable*:   seq[seq[tuple[u16pos, offset: int]]]  # UTF-8 → UTF-16 mapping
+  lastEditTime*:  DateTime         # updated on every DID_CHANGE; read by tickFileChecks
+  lastChecked*:   DateTime         # set when chkFile or checkProject runs for this URI
+  textDocument*:  TextDocumentItem
 ```
 
-The old `projectFile: Future[string]` two-hop lookup is gone. The slot ref is
-resolved synchronously during `addFileToOpenFiles` (in `dispatcher_utils.nim`) and stored
-directly. **⚠ `slot` may be nil** if `didClose` fires for a URI whose `didOpen` has not
-yet completed slot assignment (e.g. nimsuggest is still cold-compiling). Guard with
-`if fileInfo.slot != nil:` before accessing `fileInfo.slot.queryMailbox` or calling
-`fileInfo.slot.unassignUri`.
+`lastEditTime`/`lastChecked` replace the old `cancelFileCheck`/`checkInProgress`/`needsChecking`
+three-field state machine. `tickFileChecks` in `checking.nim` polls every `FILE_CHECK_DELAY` ms
+and runs `chkFile` for files where `lastEditTime > lastChecked` and the edit is old enough.
+
+The slot ref is resolved synchronously during `addFileToOpenFiles` (in `dispatcher_utils.nim`)
+and stored directly. **⚠ `slot` may be nil** if `didClose` fires for a URI whose `didOpen`
+has not yet completed slot assignment. Guard with `if fileInfo.slot != nil:` before accessing
+`fileInfo.slot.queryMailbox` or calling `fileInfo.slot.unassignUri`.
 
 ### `NimsuggestPool` and `NimsuggestSlot`
 
@@ -342,9 +342,10 @@ Key points:
 - `configurations/` — owns `NlsConfig` type and `parseWorkspaceConfiguration`; no LS dependency.
 - `nimsuggest/nimsuggest_types.nim` — `NimsuggestQuery`, `NimsuggestSlot`, `NimsuggestPool` types.
 - `nimsuggest/nimsuggest_slots.nim` — `execSpawn`, `execStop`; slot state machine.
-- `nimsuggest/nimsuggest_process.nim` — `processNimsuggestQueries`, `runNimsuggestQuery`; TCP dispatch.
+- `nimsuggest/nimsuggest_process.nim` — `processNimsuggestQueries`, `runNimsuggestQuery`; TCP dispatch. Contains two skip-rule groups: **background queries** (INLAY_HINTS, DOCUMENT_SYMBOLS) are dropped if CHANGED pending or file edited within `FILE_CHECK_DELAY` ms; **position-based queries** (SUGGEST, SIGNATURE_HELP, HOVER, DOCUMENT_HIGHLIGHT) are dropped if a newer same-kind query is already queued for the same URI, or if CHANGED is pending.
 - `nimsuggest/suggestapi.nim` — `createNimsuggest`, raw TCP protocol (sug/def/hover/chk/…).
-- `langserver/dispatcher.nim` — `processLangserverQueue` (FIFO queue drain), `checkProject`, `checkFile`, `didCloseFile`, `makeIdleFile`.
+- `langserver/checking.nim` — `checkProject`, `checkFile`, `tickFileChecks`. Note: `checkProject` sends `chk` with `slot.projectFile` (the nimsuggest entry point), not the saved URI.
+- `langserver/dispatcher.nim` — `processLangserverQueue` (FIFO queue drain).
 - `langserver/dispatcher_utils.nim` — `isKnownByANimsuggestSlot`, `addFileToOpenFiles`, `queryFile`, `nimsuggestSlotToEvict`.
 - `langserver/nimsuggest_processes.nim` — `getIntendedProject`, `idleSlots`, `initNimsuggestInstances`, `stopNimsuggestProcesses`.
 - `langserver/langserver.nim` — `initLanguageServer`, `tick`, `getLspStatus`, `nsCapabilities`, `nsProtocolVersion`, `getNimbleDumpInfo`.
@@ -623,8 +624,7 @@ when it detects the file is unknown to the running instance (fix #18).
 5. **`extension/macroExpand`** — stub; macro expansion completely unavailable.
 6. **`extension/suggest` (restart action)** — stub; no manual nimsuggest restart button.
 7. **`extension/status` / `extension/capabilities`** — stubs; VS Code status bar empty.
-8. **`checkFile`/`scheduleFileCheck` not wired** (`checking.nim` line 174 `# TODO CHECK FILE`):
-   diagnostic squiggles update only on `didSave`, not during editing.
+8. **Per-file diagnostics**: `tickFileChecks` in `checking.nim` is spawned from `nimtortoise.nim` alongside `tickLs`. It polls every `FILE_CHECK_DELAY` ms (1000ms) and runs `chkFile` for files with `lastEditTime > lastChecked` where the edit has settled. `scheduleFileCheck` and `cancelPendingFileChecks` are removed.
 9. **`didChangeConfiguration` incomplete** (`dispatcher.nim`): config changes to
    `nimsuggestIdleTimeout`, `projectMapping`, etc. are silently ignored.
 

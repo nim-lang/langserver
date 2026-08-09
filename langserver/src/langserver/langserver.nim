@@ -163,55 +163,6 @@ proc addProjectFileToPendingRequest*(ls: LanguageServer, id: uint, uri: FileUri)
   except CatchableError as e:
     error "addProjectFileToPendingRequest failed", uri = uri, msg = e.msg
 
-
-
-
-
-# proc getProjectFileAutoGuess*(
-#     ls: LanguageServer, fileUri: string
-# ): Future[string] {.async.} =
-#   let file = fileUri.decodeUrl
-#   debug "Auto-guessing project file for", file = file
-#   result = file
-#   let (dir, _, _) = result.splitFile()
-#   var
-#     path = dir
-#     certainty = Certainty.None
-#     up = 0
-
-#   let conf = ls.getWorkspaceConfiguration()
-#   let maxNimsuggestProcesses = conf.maxNimsuggestProcesses.get(NIM_MAX_NS_PROCESSES)
-#   let maxUp = if maxNimsuggestProcesses == 1: 0 else: 2
-#   while path.len > 0 and path != "/" and up < maxUp:
-#     let
-#       (dir, fname, ext) = path.splitFile()
-#       current = fname & ext
-#     if fileExists(path / current.addFileExt(".nim")) and certainty <= Folder:
-#       result = path / current.addFileExt(".nim")
-#       certainty = Folder
-#     if fileExists(path / current.addFileExt(".nim")) and (
-#       fileExists(path / current.addFileExt(".nim.cfg")) or
-#       fileExists(path / current.addFileExt(".nims"))
-#     ) and certainty <= Cfg:
-#       result = path / current.addFileExt(".nim")
-#       certainty = Cfg
-#     if certainty <= Nimble:
-#       for nimble in walkFiles(path / "*.nimble"):
-#         let dumpInfo = await ls.getNimbleDumpInfo(nimble)
-#         let name = dumpInfo.name
-#         let sourceDir = path / dumpInfo.srcDir
-#         let projectFile = sourceDir / (name & ".nim")
-#         if sourceDir.len != 0 and name.len != 0 and file.isRelTo(sourceDir) and
-#             fileExists(projectFile):
-#           debug "Found nimble project", projectFile = projectFile
-#           result = projectFile
-#           certainty = Nimble
-#           return
-#     if path == dir:
-#       break
-#     path = dir
-#     inc up
-
 proc progressSupported(ls: LanguageServer): bool =
   result = ls.capabilities.serverMode == lsp and
     ls.capabilities.lspInitializeParams.capabilities.window
@@ -225,95 +176,6 @@ proc progress*(ls: LanguageServer, token, kind: string, title = "") =
 proc workDoneProgressCreate*(ls: LanguageServer, token: string) =
   if ls.progressSupported:
     discard ls.call("window/workDoneProgress/create", %ProgressParams(token: token))
-
-# proc cancelPendingFileChecks*(ls: LanguageServer, slot: NimsuggestSlot) =
-#   ## Cancel file-level checks for all URIs owned by this slot.
-#   for uri in slot.ownedUris:
-#     let fileData = ls.files.openFiles.getOrDefault(uri)
-#     if fileData != nil:
-#       let cancelFileCheck = fileData.cancelFileCheck
-#       if cancelFileCheck != nil and not cancelFileCheck.finished:
-#         cancelFileCheck.complete()
-#       fileData.needsChecking = false
-
-# proc checkProject*(ls: LanguageServer, uri: string): Future[void] {.async.} =
-#   if ls.checkInProgress:
-#     return
-#   ls.checkInProgress = true
-#   defer:
-#     ls.checkInProgress = false
-
-#   let conf = ls.getWorkspaceConfiguration()
-#   if not conf.autoCheckProject.get(true):
-#     return
-#   let useNimCheck = conf.useNimCheck.get(USE_NIM_CHECK_BY_DEFAULT)
-#   let nimPath = getNimPath(conf)
-
-#   if useNimCheck and nimPath.isSome:
-#     proc getFilePath(c: CheckResult): string = c.file
-#     let token = fmt "Checking {uri}"
-#     ls.workDoneProgressCreate(token)
-#     ls.progress(token, "begin", fmt "Checking project {uri}")
-#     if uri == "":
-#       warn "Checking project with empty uri", uri = uri
-#       ls.progress(token, "end")
-#       return
-#     let diagnostics = await nimCheck(uriToPath(uri), nimPath.get)
-#     let filesWithDiags = diagnostics.map(r => r.file).toHashSet
-#     ls.progress(token, "end")
-
-#     debug "Found diagnostics", file = filesWithDiags
-#     for (path, diags) in groupBy(diagnostics, getFilePath):
-#       ls.sendDiagnostics(diags, path)
-
-#     for path in ls.files.filesWithDiags:
-#       if not filesWithDiags.contains path:
-#         debug "Sending zero diags", path = path
-#         let params =
-#           PublishDiagnosticsParams %* {"uri": pathToUri(path), "diagnostics": @[]}
-#         ls.notify("textDocument/publishDiagnostics", %params)
-#     ls.files.filesWithDiags = filesWithDiags
-#     return
-
-#   debug "Running diagnostics", uri = uri
-#   # Use the slot for this URI
-#   let slotOpt =
-#     if ls.pool != nil: ls.pool.slotForUri(uri)
-#     else: none(NimsuggestSlot)
-#   if slotOpt.isNone or not slotOpt.get.isLive:
-#     return
-#   let slot = slotOpt.get
-
-#   ls.cancelPendingFileChecks(slot)
-
-#   let token = fmt "Checking {uri}"
-#   ls.workDoneProgressCreate(token)
-#   ls.progress(token, "begin", fmt "Checking project {uri.uriToPath}")
-
-#   let q = NimsuggestQuery(
-#     kind: NimsuggestQueryKind.CHECK_PROJECT,
-#     uri: uri,
-#     dirtyFile: ls.uriToStash(uri),
-#     responseFuture: newFuture[seq[Suggest]]("checkProject"),
-#   )
-#   let diagnostics = await slot.query(q)
-#   ls.progress(token, "end")
-
-#   proc getFilepath(s: Suggest): string = s.filePath
-
-#   let filtered = diagnostics.filter(sug => sug.filePath != "???")
-#   let filesWithDiags = filtered.map(s => s.filePath).toHashSet
-
-#   for (path, diags) in groupBy(filtered, getFilepath):
-#     ls.sendDiagnostics(diags, path)
-
-#   for path in ls.files.filesWithDiags:
-#     if not filesWithDiags.contains path:
-#       debug "Sending zero diags", path = path
-#       let params =
-#         PublishDiagnosticsParams %* {"uri": pathToUri(path), "diagnostics": @[]}
-#       ls.notify("textDocument/publishDiagnostics", %params)
-#   ls.files.filesWithDiags = filesWithDiags
 
 proc removeCompletedPendingRequests(
     ls: LanguageServer, maxTimeAfterRequestWasCompleted = initDuration(seconds = 10)
@@ -363,22 +225,6 @@ proc nsProtocolVersion*(ls: LanguageServer, uri: FileUri): int =
   if nsOpt.isNone:
     return 0
   nsOpt.get.protocolVersion
-
-# proc tryGetNimsuggest*(ls: LanguageServer, uri: string): Future[Option[NimSuggest]] {.async.} =
-#   ## Compatibility helper: returns the live NimSuggest for the slot serving `uri`,
-#   ## or none if the slot isn't ready. Awaits spawning if the slot is currently starting.
-#   let fileInfo = ls.files.openFiles.getOrDefault(uri)
-#   if fileInfo == nil:
-#     return none(NimSuggest)
-#   let slot = fileInfo.slot
-#   if slot == nil:
-#     return none(NimSuggest)
-#   if slot.ns.isSome:
-#     try:
-#       discard await slot.ns.get
-#     except CatchableError:
-#       return none(NimSuggest)
-#   return slot.resolvedNs
 
 proc tick*(ls: LanguageServer): Future[void] {.async.} =
   try:
