@@ -1,0 +1,19 @@
+# ignore all executable files
+
+nimcache/
+bin
+
+*.log
+*.exe
+*.dSYM
+tests/all
+tests/nimbleDir
+/nimlangserver
+nimble.develop
+nimble.paths
+nimbledeps
+dprint.json
+.DS_Store
+
+rewrite_analysis/
+.DS_Store

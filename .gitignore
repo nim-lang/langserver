@@ -1,17 +1,1 @@
-# ignore all executable files
-
-nimcache/
-
-*.log
-*.exe
-*.dSYM
-tests/all
-tests/nimbleDir
-tests/projects
-/nimlangserver
-nimble.develop
-nimble.paths
-nimbledeps
-dprint.json
-
-docs/
+.DS_Store

@@ -1,0 +1,238 @@
+{
+    "procedure": {
+        "prefix": "proc",
+        "body": "proc ${1:name}(${2:arguments}): ${3:return type} =\n\t$0",
+        "description": "A procedure that might have side effects and can access global state"
+    },
+    "function": {
+        "prefix": "func",
+        "body": "func ${1:name}(${2:arguments}): ${3:return type} =\n\t$0",
+        "description": "A function is a procedure that cannot have side effects nor access non-const global state"
+    },
+    "method": {
+        "prefix": "method",
+        "body": "method ${1:name}(${2:arguments}): ${3:return type} =\n\t$0",
+        "description": "A method is a procedure that is dynamically dispatched"
+    },
+    "converter": {
+        "prefix": "converter",
+        "body": "converter ${1:name}(${2:arg}: ${3:FromType}): ${4:ToType} =\n\t$0",
+        "description": "An implicit type conversion procedure"
+    },
+    "iterator": {
+        "prefix": "iterator",
+        "body": "iterator ${1:name}(${2:arguments}): ${3:return type} =\n\t$0"
+    },
+    "template": {
+        "prefix": "template",
+        "body": "template ${1:name}(${2:arguments}): ${3:return type} =\n\t$0",
+        "description": "A simple substitution mechanism that generates code at compile-time"
+    },
+    "macro": {
+        "prefix": "macro",
+        "body": "macro ${1:name}(${2:arguments}): ${3:return type} =\n\t$0",
+        "description": "A function that is executed at compile-time and transforms a Nim syntax tree into a different tree"
+    },
+    "if": {
+        "prefix": "if",
+        "body": "if ${1:expression}:\n\t$0",
+        "description": "A run-time conditional statement"
+    },
+    "elif": {
+        "prefix": "elif",
+        "body": "elif ${1:expression}:\n\t$0"
+    },
+    "when": {
+        "prefix": "when",
+        "body": "when ${1:expression}:\n\t$0",
+        "description": "A compile-time conditional statement"
+    },
+    "when defined": {
+        "prefix": "whend",
+        "body": "when defined(${1:symbol}):\n\t$0",
+        "description": "Compile-time platform or feature flag check"
+    },
+    "for": {
+        "prefix": "for",
+        "body": "for ${1:index} in ${2:sequence}:\n\t$0"
+    },
+    "for (indexed)": {
+        "prefix": "fori",
+        "body": "for ${1:i} in 0..<${2:n}:\n\t$0",
+        "description": "Indexed integer loop from 0 up to (not including) n"
+    },
+    "while": {
+        "prefix": "while",
+        "body": "while ${1:expression}:\n\t$0"
+    },
+    "block": {
+        "prefix": "block",
+        "body": "block ${1:name}:\n\t$0"
+    },
+    "static block": {
+        "prefix": "static",
+        "body": "static:\n\t$0",
+        "description": "A block that is evaluated at compile time"
+    },
+    "case": {
+        "prefix": "case",
+        "body": "case ${1:value}\n$0"
+    },
+    "of": {
+        "prefix": "of",
+        "body": "of ${1:value}:\n\t$0"
+    },
+    "try-except": {
+        "prefix": "try",
+        "body": "try:\n\t$1\nexcept ${2:Exception}:\n\t$0"
+    },
+    "try-finally": {
+        "prefix": "tryf",
+        "body": "try:\n\t$1\nfinally:\n\t$0",
+        "description": "Try block with guaranteed cleanup on exit"
+    },
+    "try-except-finally": {
+        "prefix": "tryef",
+        "body": "try:\n\t$1\nexcept ${2:Exception}:\n\t$3\nfinally:\n\t$0",
+        "description": "Try block with both exception handling and guaranteed cleanup"
+    },
+    "defer": {
+        "prefix": "defer",
+        "body": "defer:\n\t$0",
+        "description": "Deferred cleanup block — runs when the current scope exits"
+    },
+    "raise": {
+        "prefix": "raise",
+        "body": "raise newException(${1:ValueError}, \"${2:message}\")",
+        "description": "Raise a new exception"
+    },
+    "assert": {
+        "prefix": "assert",
+        "body": "assert ${1:condition}, \"${2:message}\"",
+        "description": "Runtime assertion — optimised away in release builds"
+    },
+    "doAssert": {
+        "prefix": "doAssert",
+        "body": "doAssert ${1:condition}, \"${2:message}\"",
+        "description": "Runtime assertion that is never optimised away"
+    },
+    "let": {
+        "prefix": "let",
+        "body": "let ${1:name} = $0",
+        "description": "Immutable binding"
+    },
+    "var": {
+        "prefix": "var",
+        "body": "var ${1:name} = $0",
+        "description": "Mutable binding"
+    },
+    "const": {
+        "prefix": "const",
+        "body": "const ${1:name} = $0",
+        "description": "Compile-time constant"
+    },
+    "result": {
+        "prefix": "result",
+        "body": "result = $0",
+        "description": "Assign Nim's implicit return variable"
+    },
+    "import": {
+        "prefix": "import",
+        "body": "import ${1:module}"
+    },
+    "import from": {
+        "prefix": "from",
+        "body": "from ${1:module} import ${2:field}"
+    },
+    "import std bracket": {
+        "prefix": "imps",
+        "body": "import std/[${1:modules}]$0",
+        "description": "Modern multi-module import from the standard library"
+    },
+    "type": {
+        "prefix": "type",
+        "body": "type ${1:name} = $0"
+    },
+    "object": {
+        "prefix": "object",
+        "body": "object\n\t${1:field_name}: ${2:field_type}$0"
+    },
+    "ref object": {
+        "prefix": "refo",
+        "body": "ref object\n\t${1:field_name}: ${2:field_type}$0",
+        "description": "Heap-allocated object — the usual choice for OOP types"
+    },
+    "object of": {
+        "prefix": "objof",
+        "body": "object of ${1:Base}\n\t$0",
+        "description": "Object type that inherits from a base type"
+    },
+    "tuple": {
+        "prefix": "tuple",
+        "body": "tuple\n\t${1:field_name}: ${2:field_type}$0"
+    },
+    "enum": {
+        "prefix": "= enum",
+        "body": "= enum $0",
+        "description": "Define a regular enumeration type"
+    },
+    "enum (pure)": {
+        "prefix": "= pure enum",
+        "body": "{.pure.} = enum $0",
+        "description": "Define a 'pure' enumeration type"
+    },
+    "pure enum pragma": {
+        "prefix": "{.pure.}",
+        "body": "{.pure.} = enum $0",
+        "description": "Define a 'pure' enumeration type"
+    },
+    "array": {
+        "prefix": "array",
+        "body": "array[${1:length}, ${2:type}]$0",
+        "description": "A fixed length container"
+    },
+    "sequence": {
+        "prefix": "seq",
+        "body": "seq[${1:type}]$0",
+        "description": "A dynamic length container"
+    },
+    "pragma": {
+        "prefix": "pr",
+        "body": "{.${1:name}.}"
+    },
+    "{.inline.}": {
+        "prefix": "{.inline.}",
+        "body": "{.inline.}",
+        "description": "Hint to the compiler to inline this proc at call sites"
+    },
+    "{.noSideEffect.}": {
+        "prefix": "{.noSideEffect.}",
+        "body": "{.noSideEffect.}",
+        "description": "Assert that this proc has no side effects (like func, but applicable to methods etc.)"
+    },
+    "{.raises: [].}": {
+        "prefix": "{.raises.}",
+        "body": "{.raises: [${1:}].}",
+        "description": "Declare which exceptions this proc may raise (empty list means none)"
+    },
+    "echo": {
+        "prefix": "echo",
+        "body": "echo ",
+        "description": "Echo text to the console. Cannot be used inside a `func` or a `proc` with `{.noSideEffect.}` — use `debugEcho` instead"
+    },
+    "echo a variable using strformat": {
+        "prefix": "echo &",
+        "body": "echo &\"{${1:variable}=}\"",
+        "description": "Echo a variable (requires importing std/strformat)"
+    },
+    "debugEcho": {
+        "prefix": "debugEcho",
+        "body": "debugEcho ",
+        "description": "Equivalent to `echo` but can be used inside a `func` or a `proc` with `{.noSideEffect.}`"
+    },
+    "debugEcho a variable using strformat": {
+        "prefix": "debugEcho &",
+        "body": "debugEcho &\"{${1:variable}=}\"",
+        "description": "Echo a variable inside a `func` or `{.noSideEffect.}` proc (requires importing std/strformat)"
+    }
+}

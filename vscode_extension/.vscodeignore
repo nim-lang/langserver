@@ -1,0 +1,17 @@
+.vscode/**
+nimsuggest/nimcache/**
+nimsuggest/nimsuggest.exe
+nimsuggest/nimsuggest
+typings/**
+out/test/**
+tests/**
+src/**
+**/*.map
+*.db
+vscodeNim/**
+.gitignore
+tsconfig.json
+tslint.json
+nimbledeps/**
+out/*.map
+out/nimvscode-*
