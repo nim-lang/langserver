@@ -54,7 +54,7 @@ suite "nimble setup":
     check waitFor client.waitForNotificationMessage(
       fmt"Nimsuggest initialized for {entryPoint}",
     )
-    let convertedEntryPoint = pathToUri(entryPoint)
+    let convertedEntryPoint = pathToUri(FilePath(entryPoint))
     echo "convertedEntryPoint ", convertedEntryPoint
 
     let completionParams =
@@ -63,7 +63,7 @@ suite "nimble setup":
         "textDocument": {"uri": convertedEntryPoint },
       }
     # In the new code, pool.slots is keyed by projectFile path
-    let slotOpt = ls.pool.slots.getOrDefault(entryPoint)
+    let slotOpt = ls.pool.slots.getOrDefault(FilePath(entryPoint))
     check slotOpt != nil
 
     client.notify(
@@ -121,7 +121,7 @@ suite "Project Mapping":
     discard waitFor client.initialize(initParams)
     let configurationParams =
       @[NlsConfig(projectMapping: some @[NlsNimsuggestConfig(fileRegex: ".nonimble*")])]
-    let nonimbleProject = projectsDir / "nonimbleproject.nim"
+    let nonimbleProject = FilePath(projectsDir / "nonimbleproject.nim")
 
     # Supply config via the new mechanism
     ls.configurations.currentConfig = some(configurationParams[0])

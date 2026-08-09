@@ -71,7 +71,7 @@ suite "Nimlangserver extensions":
     # matches a NEW notification from the restart, not the one from initial spawn.
     client.calls["window/showMessage"] = @[]
 
-    let suggestParams = SuggestParams(action: saRestart, projectFile: hwAbsFile)
+    let suggestParams = SuggestParams(action: saRestart, projectFile: $hwAbsFile)
     discard client.call("extension/suggest", %suggestParams).waitFor
 
     # Wait for re-init notification that arrives after the restart completes.

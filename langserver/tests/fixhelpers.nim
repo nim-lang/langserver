@@ -18,8 +18,8 @@ export langserver_types, utils, configurations, configuration_types,
   types, options, json, tables, sequtils, times, os, strutils, chronos
 
 # fixtureUri that resolves from repo root, NOT tests/ (overrides lspsocketclient version)
-proc fixtureUri*(path: string): string =
-  pathToUri(getCurrentDir() / path)
+proc fixtureUri*(path: string): FileUri =
+  pathToUri(FilePath(getCurrentDir() / path))
 
 # Override createDidOpenParams to read from repo root
 proc createDidOpenParams*(file: string): DidOpenTextDocumentParams =

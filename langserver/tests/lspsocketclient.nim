@@ -12,8 +12,8 @@ import json_rpc/[rpcclient]
 import chronicles
 
 # fixture paths are still under tests/ (shared with original test suite)
-proc fixtureUri*(path: string): string =
-  result = pathToUri(getCurrentDir() / "tests" / path)
+proc fixtureUri*(path: string): FileUri =
+  result = pathToUri(FilePath(getCurrentDir() / "tests" / path))
 
 type
   NotificationRpc* = proc(params: JsonNode): Future[void] {.async.}
@@ -168,7 +168,7 @@ proc createDidOpenParams*(file: string): DidOpenTextDocumentParams =
       }
     }
 
-proc positionParams*(uri: string, line, character: int): TextDocumentPositionParams =
+proc positionParams*(uri: FileUri, line, character: int): TextDocumentPositionParams =
   return
     TextDocumentPositionParams %*
     {"position": {"line": line, "character": character}, "textDocument": {"uri": uri}}

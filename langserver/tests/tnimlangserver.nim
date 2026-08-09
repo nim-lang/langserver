@@ -287,8 +287,8 @@ suite "LSP features":
     let changes = client.call("textDocument/rename", %renameParams)
                         .waitFor().to(WorkSpaceEdit).changes.get()
     check changes.len == 1
-    check changes[helloWorldUri].len == 3
-    check changes[helloWorldUri].mapIt(it["newText"].getStr()) == @["hello", "hello", "hello"]
+    check changes[$helloWorldUri].len == 3
+    check changes[$helloWorldUri].mapIt(it["newText"].getStr()) == @["hello", "hello", "hello"]
 
   test "didChange then sending hover.":
     echo "    >> didChange then sending hover."

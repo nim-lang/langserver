@@ -103,10 +103,10 @@ suite "Nimlangserver pending requests":
     ls.messaging.pendingRequests[1'u] =
       PendingRequest(id: 1, name: "textDocument/definition", state: prsOnGoing, startTime: times.now())
 
-    ls.addProjectFileToPendingRequest(1'u, uri)
+    ls.addProjectFileToPendingRequest(1'u, FileUri(uri))
 
     check ls.messaging.pendingRequests[1'u].projectFile ==
-      some(uriToPath(uri))
+      some(string(uriToPath(FileUri(uri))))
 
 
 suite "Nimlangserver idle nimsuggest cleanup":

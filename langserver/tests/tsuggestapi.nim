@@ -6,6 +6,7 @@
 
 import ../src/nimsuggest/suggestapi
 import ../src/nimsuggest/[nimsuggest_types, suggestapi_types]
+import ../src/protocol/types
 import os, std/asyncnet, strutils, chronos, chronos/asyncproc, options
 import unittest2
 
@@ -14,7 +15,7 @@ const inputLineWithEndLine = "outline	skEnumField	system.bool.true	bool	basic_ty
 
 suite "Nimsuggest tests":
   let
-    helloWorldFile = getCurrentDir() / "tests/projects/hw/hw.nim"
+    helloWorldFile = FilePath(getCurrentDir() / "tests/projects/hw/hw.nim")
     nimSuggest = createNimsuggest(helloWorldFile).waitFor.ns.waitFor
 
   test "Parsing qualified path":
@@ -25,7 +26,7 @@ suite "Nimsuggest tests":
   test "Parsing suggest":
     echo "    >> Parsing suggest"
     doAssert parseSuggestDef(inputLine).get[] == Suggest(
-      filePath: "hw/hw.nim",
+      filePath: FilePath("hw/hw.nim"),
       qualifiedPath: @["hw", "a"],
       symKind: "skProc",
       line: 1,
@@ -38,7 +39,7 @@ suite "Nimsuggest tests":
     echo "    >> Parsing suggest with endLine"
     let res = parseSuggestDef(inputLineWithEndLine).get
     doAssert res[] == Suggest(
-      filePath: "basic_types.nim",
+      filePath: FilePath("basic_types.nim"),
       qualifiedPath: @["system", "bool", "true"],
       symKind: "skEnumField",
       line: 46,
@@ -83,7 +84,7 @@ suite "Nimsuggest error handling":
     # same project twice, concurrently. Suspend the child before issuing a
     # command so the command is in flight when the process is killed and both
     # paths run deterministically.
-    let helloWorldFile = getCurrentDir() / "tests/projects/hw/hw.nim"
+    let helloWorldFile = FilePath(getCurrentDir() / "tests/projects/hw/hw.nim")
     let project = createNimsuggest(helloWorldFile).waitFor
     let ns = project.ns.waitFor
     var errorCount = 0
