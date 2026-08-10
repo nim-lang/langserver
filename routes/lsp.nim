@@ -158,9 +158,11 @@ proc definition*(
   with (params.position, params.textDocument):
     asyncSpawn ls.addProjectFileToPendingRequest(id.uint, uri)
     let config = await ls.getWorkspaceConfiguration()
-    if config.useNimTrack.get(false):
-      if uri notin ls.openFiles or ls.openFiles[uri].changed:
-        return @[]
+    # `nim track` only works on files as saved on disk; it has no dirty-buffer
+    # support. Use it only when the file is open and has no unsaved changes,
+    # otherwise fall back to nimsuggest (which supports dirty buffers).
+    if config.useNimTrack.get(false) and uri in ls.openFiles and
+        not ls.openFiles[uri].changed:
       let ch = ls.getCharacter(uri, line, character)
       if ch.isNone:
         return @[]
@@ -459,9 +461,11 @@ proc references*(
 ): Future[seq[Location]] {.async.} =
   with (params.position, params.textDocument, params.context):
     let config = await ls.getWorkspaceConfiguration()
-    if config.useNimTrack.get(false):
-      if uri notin ls.openFiles or ls.openFiles[uri].changed:
-        return @[]
+    # `nim track` only works on files as saved on disk; it has no dirty-buffer
+    # support. Use it only when the file is open and has no unsaved changes,
+    # otherwise fall back to nimsuggest (which supports dirty buffers).
+    if config.useNimTrack.get(false) and uri in ls.openFiles and
+        not ls.openFiles[uri].changed:
       let ch = ls.getCharacter(uri, line, character)
       if ch.isNone:
         return @[]
