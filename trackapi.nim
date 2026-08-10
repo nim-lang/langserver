@@ -60,9 +60,9 @@ proc track*(
     if exitCode != 0:
       debug "nim track exit", exitCode = exitCode
     result = parseTrackOutput(stdoutBytes.toString)
-  except CancelledError:
+  except CancelledError as e:
     await shutdownChildProcess(process)
-    raise
+    raise e
   except CatchableError as e:
     debug "nim track exception", error = e.msg, name = e.name
     result = @[]
