@@ -212,7 +212,7 @@ proc runRpc(ls: LanguageServer, req: RequestRx, rpc: RpcProc): Future[void] {.as
     json["result"] = parseJson(res.string)
     ls.writeOutput(json)
   except CancelledError as ex:
-    debug "[RunRPC]Request cancelled", meth = req.method.get("")
+    debug "[RunRPC]Request cancelled", meth = req.meth
   except CatchableError as ex:
     error "[RunRPC] ", msg = ex.msg, req = req.`method`
     writeStackTrace(ex = ex)
@@ -223,16 +223,9 @@ proc processMessage(ls: LanguageServer, message: string) {.raises: [].} =
       #OPT oportunity reuse the same JSON already parsed
     let isReq = "method" in contentJson
     if isReq:
-      debug "[Processing Message]", request = contentJson["method"].getStr()
+      debug "[Processing Message]", request = contentJson["method"]
       var fut = Future[JsonString]()
-      # LSP allows null or absent params; json_rpc 0.6+ decoder requires array/object
-      if contentJson.getOrDefault("params").kind == JNull:
-        contentJson["params"] = newJObject()
-      # Notifications have no id; RequestRx.id is non-optional so inject null
-      # to avoid raiseIncompleteObject during decode.
-      if "id" notin contentJson:
-        contentJson["id"] = newJNull()
-      var req = JrpcSys.decode($contentJson, RequestRx)
+      var req = JrpcSys.decode(message, RequestRx)
       if req.params.kind == rpNamed and req.id.kind == riNumber:
         #Some requests have no id but for others we need to pass the id to the wrapRpc as the id information is lost in the rpc proc
         req.params.named.add ParamDescNamed(
@@ -241,9 +234,9 @@ proc processMessage(ls: LanguageServer, message: string) {.raises: [].} =
         req.params.named.add ParamDescNamed(
           name: "method", value: JsonString($(contentJson["method"]))
         )
-      let rpc = ls.srv.router.procs.getOrDefault(req.method.get(""))
+      let rpc = ls.srv.router.procs.getOrDefault(req.meth.get)
       if rpc.isNil:
-        error "[Processing Message] rpc method not found: ", msg = req.method.get("")
+        error "[Processing Message] rpc method not found: ", msg = req.meth.get
         return
       asyncSpawn ls.runRpc(req, rpc)
     else: #Response
