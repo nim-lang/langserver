@@ -1,4 +1,4 @@
-import std/[json, options]
+import std/[json, options, sequtils]
 import chronos
 import chronicles
 import ./[configuration_types]
@@ -101,3 +101,61 @@ proc inlayHintsConfigurationEquals*(a, b: NlsConfig): bool =
     result = inlayHintsConfigurationEquals(a.inlayHints.get, b.inlayHints.get)
   else:
     result = a.inlayHints.isSome == b.inlayHints.isSome
+
+func configurationChanged*(a, b: NlsConfig): bool =
+  ## Returns true if any field in b differs from a.
+  ## Handles seq-of-ref-object fields (projectMapping, workingDirectoryMapping)
+  ## by extracting their primitive fields for comparison.
+
+  # Primitive Option fields — == works directly.
+  if a.checkOnSave            != b.checkOnSave:            return true
+  if a.nimsuggestPath         != b.nimsuggestPath:         return true
+  if a.timeout                != b.timeout:                return true
+  if a.autoRestart            != b.autoRestart:            return true
+  if a.autoCheckFile          != b.autoCheckFile:          return true
+  if a.autoCheckProject       != b.autoCheckProject:       return true
+  if a.logNimsuggest          != b.logNimsuggest:          return true
+  if a.notificationVerbosity  != b.notificationVerbosity:  return true
+  if a.formatOnSave           != b.formatOnSave:           return true
+  if a.nimsuggestIdleTimeout  != b.nimsuggestIdleTimeout:  return true
+  if a.useNimCheck            != b.useNimCheck:            return true
+  if a.nimExpandArc           != b.nimExpandArc:           return true
+  if a.nimExpandMacro         != b.nimExpandMacro:         return true
+  if a.maxNimsuggestProcesses != b.maxNimsuggestProcesses: return true
+  if a.fileCheckDelay         != b.fileCheckDelay:         return true
+
+  # Seq-of-ref-object fields: map to primitive tuples so == compares by value.
+  let aPm = a.projectMapping.get(@[]).mapIt((it.projectFile, it.fileRegex))
+  let bPm = b.projectMapping.get(@[]).mapIt((it.projectFile, it.fileRegex))
+  if aPm != bPm: return true
+
+  let aWdm = a.workingDirectoryMapping.get(@[]).mapIt((it.projectFile, it.directory))
+  let bWdm = b.workingDirectoryMapping.get(@[]).mapIt((it.projectFile, it.directory))
+  if aWdm != bWdm: return true
+
+  # inlayHints: compare each sub-config field by field.
+  let aIH = a.inlayHints
+  let bIH = b.inlayHints
+  if aIH.isSome != bIH.isSome: return true
+  if aIH.isSome and bIH.isSome:
+    let aTH = aIH.get.typeHints
+    let bTH = bIH.get.typeHints
+    if aTH.isSome != bTH.isSome: return true
+    if aTH.isSome and bTH.isSome:
+      if aTH.get.enable != bTH.get.enable: return true
+
+    let aEH = aIH.get.exceptionHints
+    let bEH = bIH.get.exceptionHints
+    if aEH.isSome != bEH.isSome: return true
+    if aEH.isSome and bEH.isSome:
+      if aEH.get.enable          != bEH.get.enable:          return true
+      if aEH.get.hintStringLeft  != bEH.get.hintStringLeft:  return true
+      if aEH.get.hintStringRight != bEH.get.hintStringRight: return true
+
+    let aPH = aIH.get.parameterHints
+    let bPH = bIH.get.parameterHints
+    if aPH.isSome != bPH.isSome: return true
+    if aPH.isSome and bPH.isSome:
+      if aPH.get.enable != bPH.get.enable: return true
+
+  return false

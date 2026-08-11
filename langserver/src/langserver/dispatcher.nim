@@ -426,10 +426,9 @@ proc processLangserverQueue*(ls: LanguageServer): Future[void] {.async.} =
           ls.configurations.currentConfig = some(newConfiguration)
           clearCompiledRegexCache()
           ls.configurations.configReady.fire()
-          if oldConfiguration.nimsuggestPath != newConfiguration.nimsuggestPath or
-              oldConfiguration.maxNimsuggestProcesses != newConfiguration.maxNimsuggestProcesses:
-            debug "Nimsuggest config changed, stopping all instances (restart not yet implemented)"
-            asyncSpawn ls.stopNimsuggestProcesses()
+          if configurationChanged(oldConfiguration, newConfiguration):
+            debug "Configuration changed, restarting all nimsuggest instances"
+            ls.restartAllNimsuggestInstances()
 
       of FileAccessQueryKind.FORMATTING:
         let uri = q.formatting.textDocument.uri
