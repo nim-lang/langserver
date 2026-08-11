@@ -51,6 +51,17 @@ proc initJsonRange*(startLine, startCharacter, endLine, endCharacter: int): Rang
       "end": {"line": endLine, "character": endCharacter},
     }
 
+func getTokenLength(rawName: string): int = 
+  if rawName.startsWith(':'):    
+    # compiler-internal, no source token
+    # qualified path doesn't work for anonymous functions.
+    return 1
+  elif '`' in rawName:           
+    # gensym: strip suffix
+    return utf16Len(rawName[0 ..< rawName.find('`')])
+  else:
+    return utf16Len(rawName)
+
 proc initLabelRangeForOpenFiles*(
   response: Suggest,
   ls: LanguageServer,
@@ -64,10 +75,10 @@ proc initLabelRangeForOpenFiles*(
     uri,
     ls.files.openFiles
   )
-  let textLength = utf16Len(response.qualifiedPath[^1])
-  
   if asLspFilePositionStart.isSome:
     let startPos = asLspFilePositionStart.get()
+    var textLength = getTokenLength(response.qualifiedPath[^1])
+
     let rangeOutput = initJsonRange(
       int(startPos.line), int(startPos.character),
       int(startPos.line), int(startPos.character) + textLength,
@@ -133,7 +144,8 @@ proc initLabelRangeForAnyFile*(
   let filePosition = getLspFilePositionByOpeningFile(
     response.filePath, filePos
   )
-  let textLength = utf16Len(response.qualifiedPath[^1])
+  let textLength = getTokenLength(response.qualifiedPath[^1])
+
   return initJsonRange(
     int(filePosition.line), 
     int(filePosition.character), 

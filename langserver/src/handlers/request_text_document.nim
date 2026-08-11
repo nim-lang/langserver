@@ -1,4 +1,4 @@
-import std/[sugar, sequtils, tables, strformat, strscans, json, strutils]
+import std/[sugar, sequtils, tables, strformat, strscans, json, strutils, parsejson, sets]
 import chronos
 import chronos/asyncproc
 import chronicles
@@ -207,10 +207,15 @@ proc processDocumentHighlightResponses(
   ls: LanguageServer,
 ): seq[DocumentHighlight] =
   result = @[]
+  var seen: HashSet[tuple[line: int, col: int, section: IdeCmd]]
   for response in nimsuggestResponses:
+    let pos = (response.line, response.column, response.section)
+    if pos in seen: continue
     let documentHighlightJson = DocumentHighlight %* {
-      "range": initLabelRangeForAnyFile(response, ls)
+      "range": initLabelRangeForAnyFile(response, ls),
+      "kind": 1  # DocumentHighlightKind.Text
     }
+    seen.incl(pos)
     result.add(documentHighlightJson)      
 
 proc documentHighlight*(
@@ -224,7 +229,16 @@ proc documentHighlight*(
     params.position.character
   )
   let response = await ls.addQueryToQueue(query)
-  return processDocumentHighlightResponses(response, ls)
+  debug "documentHighlight: RESPONSES START"
+  for r in response:
+    debug "documentHighlight: suggest response", jsonOutput = $(%*r)
+
+  let processedResponses = processDocumentHighlightResponses(response, ls)
+
+  for r in processedResponses:
+    debug "documentHighlight: json response", jsonOutput = $(%*r)
+  debug "documentHighlight: RESPONSES END"
+  return processedResponses
 
 # === textDocument/signatureHelp ===
 proc toSignatureInformation(suggest: Suggest): SignatureInformation =
