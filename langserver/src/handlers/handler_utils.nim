@@ -51,7 +51,7 @@ proc initJsonRange*(startLine, startCharacter, endLine, endCharacter: int): Rang
       "end": {"line": endLine, "character": endCharacter},
     }
 
-proc initLabelRange*(
+proc initLabelRangeForOpenFiles*(
   response: Suggest,
   ls: LanguageServer,
 ): Option[Range] = 
@@ -76,12 +76,12 @@ proc initLabelRange*(
   else:
     return none(Range)
 
-proc toLocationJson*(
+proc toLocationJsonForOpenFiles*(
   response: Suggest,
   ls: LanguageServer,
 ): Option[Location] = 
   let uri = pathToUri(response.filepath)
-  let labelRange = initLabelRange(response, ls)
+  let labelRange = initLabelRangeForOpenFiles(response, ls)
   if labelRange.isSome:
     let rangeJson = labelRange.get()
     let locationJson = Location %* {
@@ -92,12 +92,70 @@ proc toLocationJson*(
   else:
     return none(Location)
 
-proc processLocationResponses*(
-  nimsuggestResponses: seq[Suggest],
+proc getLspFilePositionByOpeningFile*(
+  filepath: FilePath, 
+  position: NimsuggestFilePosition
+): LspFilePosition =
+  ## Convert a nimsuggest UTF-8 column to a UTF-16 column by reading the file from disk.
+  ## Falls back to utf8Col unchanged on any I/O error.
+  try:
+    let content = readFile(string(filepath))
+    let lines = content.splitLines()
+    let asLspLine = position.line - 1
+    if asLspLine >= 0 and asLspLine < lines.len:
+      let colValue = lines[asLspLine].createUTFMapping().utf8to16(position.col)
+      return LspFilePosition(
+        line: Line0Based(asLspLine),
+        character: Utf16Int(colValue)
+      )
+  except IOError, OSError:
+    discard
+
+  return LspFilePosition(
+    line: Line0Based(position.line - 1),
+    character: Utf16Int(position.col)
+  )
+
+proc initLabelRangeForAnyFile*(
+  response: Suggest, ls: LanguageServer,
+): Range = 
+  let filePos = NimsuggestFilePosition(
+    line: response.line,
+    col: response.column
+  )
+  let uri = pathToUri(response.filepath)
+  if uri in ls.files.openFiles:
+    let labelRange = initLabelRangeForOpenFiles(response, ls)
+    if labelRange.isSome:
+      let rangeJson = labelRange.get()
+      return rangeJson
+
+  let filePosition = getLspFilePositionByOpeningFile(
+    response.filePath, filePos
+  )
+  let textLength = utf16Len(response.qualifiedPath[^1])
+  return initJsonRange(
+    int(filePosition.line), 
+    int(filePosition.character), 
+    int(filePosition.line), 
+    int(filePosition.character) + textLength
+  )
+
+proc toLocationJsonForAnyFile*(
+  response: Suggest, ls: LanguageServer,
+): Location = 
+  let uri = pathToUri(response.filepath)
+  let labelRange = initLabelRangeForAnyFile(response, ls)
+  return Location %* {
+    "uri": uri, 
+    "range": labelRange
+  }
+
+proc processLocationResponsesForAnyFile*(
+  nimsuggestResponses: seq[Suggest], 
   ls: LanguageServer,
 ): seq[Location] =
+  ## Gets the range location for a file, either by querying the stored fingerTable, if it is an open file, or by reading the file directly from disk, if not
   result = @[]
   for response in nimsuggestResponses:
-    let locationJson = toLocationJson(response, ls)
-    if locationJson.isSome:
-      result.add(locationJson.get())
+    result.add(toLocationJsonForAnyFile(response, ls))

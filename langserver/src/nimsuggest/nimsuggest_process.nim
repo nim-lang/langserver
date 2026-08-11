@@ -7,22 +7,28 @@ import ../protocol/types
 
 proc getFilePath*(s: Suggest): FilePath = s.filePath
 
-func toNimsuggestFilePosition*(
+proc toNimsuggestFilePosition*(
   position: LspFilePosition,
   uri: FileUri,
   openFiles: TableRef[FileUri, NlsFileInfo]
 ): Option[NimsuggestFilePosition] =
   # Finger tables are 0-based
-  if uri in openFiles and int(position.line) < openFiles[uri].fingerTable.len:
-    return some(
-      NimsuggestFilePosition(
-        line: int(position.line) + 1,
-        col: openFiles[uri].fingerTable[int(position.line)].utf16to8(int(position.character))
-      ))
+  if uri in openFiles:
+    if int(position.line) < openFiles[uri].fingerTable.len:
+      let fingerTableLine = openFiles[uri].fingerTable[int(position.line)]
+      let colValue = utf16to8(fingerTableLine, int(position.character))
+      return some(
+        NimsuggestFilePosition(
+          line: int(position.line) + 1,
+          col: colValue
+        ))
+    else:
+      debug "toNimsuggestFilePosition: finger table is too short", uri = uri
   else:
+    debug "toNimsuggestFilePosition: uri is not in openFiles", uri = uri
     return none(NimsuggestFilePosition)
 
-func toNimsuggestQuery*(
+proc toNimsuggestQuery*(
   q: NimsuggestQuery[LspFilePosition],
   openFiles: TableRef[FileUri, NlsFileInfo]
 ): Option[NimsuggestQuery[NimsuggestFilePosition]] =
@@ -47,13 +53,17 @@ func toNimsuggestQuery*(
     NimsuggestQueryKind.SIGNATURE_HELP:
     let posOpt = toNimsuggestFilePosition(q.position, q.uri, openFiles)
     if posOpt.isNone:
+      debug "toNimsuggestQuery: toNimsuggestFilePosition failed."
       return none(NimsuggestQuery[NimsuggestFilePosition])
     # Two-step construction required: Nim disallows putting both a runtime
     # discriminant (kind: q.kind) and a variant field (position:) in the
     # same object constructor. Assign position after construction instead.
     var converted = NimsuggestQuery[NimsuggestFilePosition](
-      id: q.id, uri: q.uri, dirtyFile: q.dirtyFile,
-      responseFuture: q.responseFuture, cancelled: q.cancelled,
+      id: q.id, 
+      uri: q.uri, 
+      dirtyFile: q.dirtyFile,
+      responseFuture: q.responseFuture, 
+      cancelled: q.cancelled,
       kind: q.kind,
     )
     converted.position = posOpt.get()

@@ -63,7 +63,7 @@ proc definition*(
     params.position.character
   )
   let response = await ls.addQueryToQueue(query)
-  return processLocationResponses(response, ls)
+  return processLocationResponsesForAnyFile(response, ls)
 
 # === textDocument/declaration ===
 proc declaration*(
@@ -77,7 +77,7 @@ proc declaration*(
     params.position.character
   )
   let response = await ls.addQueryToQueue(query)
-  return processLocationResponses(response, ls)
+  return processLocationResponsesForAnyFile(response, ls)
 
 # === textDocument/typeDefinition ===
 proc typeDefinition*(
@@ -91,10 +91,10 @@ proc typeDefinition*(
     params.position.character
   )
   let response = await ls.addQueryToQueue(query)
-  return processLocationResponses(response, ls)
+  return processLocationResponsesForAnyFile(response, ls)
 
 # === textDocument/references ===
-func processTypeDefinitionQuery(
+proc processTypeDefinitionQuery(
   ls: LanguageServer,
   includeDeclaration: bool,
   nimsuggestResponse: seq[Suggest]
@@ -102,8 +102,7 @@ func processTypeDefinitionQuery(
   let filteredResponses = nimsuggestResponse.filter(
     suggest => suggest.section != ideDef or includeDeclaration
   )
-  return processLocationResponses(filteredResponses, ls)
-  # .map(x => x.toUtf16Pos(ls).toLocation)
+  return processLocationResponsesForAnyFile(filteredResponses, ls)
 
 proc references*(
   ls: LanguageServer, params: ReferenceParams, id: int
@@ -186,7 +185,7 @@ proc processHoverQuery(
 
     return some(Hover(
       contents: some(%content), 
-      `range`: initLabelRange(suggest, ls)
+      `range`: some(initLabelRangeForAnyFile(suggest, ls))
     ))
 
 proc hover*(
@@ -203,31 +202,16 @@ proc hover*(
   return await processHoverQuery(ls, query, response)
 
 # === textDocument/documentHighlight ===
-proc processDocumentHighlightResponses*(
+proc processDocumentHighlightResponses(
   nimsuggestResponses: seq[Suggest],
   ls: LanguageServer,
 ): seq[DocumentHighlight] =
   result = @[]
   for response in nimsuggestResponses:
-    let labelRange = initLabelRange(response, ls)
-    if labelRange.isSome:
-      let rangeJson = labelRange.get()
-
-      let documentHighlightJson = DocumentHighlight %* {
-        "range": rangeJson
-      }
-      result.add(documentHighlightJson)      
-
-# func toDocumentHighlight(suggest: Suggest): DocumentHighlight =
-#   return DocumentHighlight %* {"range": toLabelRange(suggest)}
-
-func processDocumentHighlightQuery(
-  ls: LanguageServer,
-  nimsuggestResponse: seq[Suggest]
-): seq[DocumentHighlight] =
-  return processDocumentHighlightResponses(
-    nimsuggestResponse, ls
-  )
+    let documentHighlightJson = DocumentHighlight %* {
+      "range": initLabelRangeForAnyFile(response, ls)
+    }
+    result.add(documentHighlightJson)      
 
 proc documentHighlight*(
   ls: LanguageServer, params: TextDocumentPositionParams, id: int
@@ -240,7 +224,7 @@ proc documentHighlight*(
     params.position.character
   )
   let response = await ls.addQueryToQueue(query)
-  return processDocumentHighlightQuery(ls, response)
+  return processDocumentHighlightResponses(response, ls)
 
 # === textDocument/signatureHelp ===
 proc toSignatureInformation(suggest: Suggest): SignatureInformation =
@@ -298,14 +282,6 @@ proc signatureHelp*(
     return none[SignatureHelp]()
 
 # === textDocument/documentSymbol ===
-# proc toSymbolInformation*(suggest: Suggest): SymbolInformation =
-#   return
-#     SymbolInformation %* {
-#       "location": toLocation(suggest),
-#       "kind": nimSymToLSPSymbolKind(suggest.symKind).int,
-#       "name": suggest.name,
-#     }
-
 proc processDocumentSymbolResponses*(
   nimsuggestResponses: seq[Suggest],
   ls: LanguageServer,
@@ -313,19 +289,17 @@ proc processDocumentSymbolResponses*(
   result = @[]
   for response in nimsuggestResponses:
     let uri = pathToUri(response.filepath)
-    let labelRange = initLabelRange(response, ls)
-    if labelRange.isSome:
-      let rangeJson = labelRange.get()
-      let locationJson = Location %* {
-        "uri": uri, 
-        "range": labelRange.get()
-      }
-      let symbolInformationJson = SymbolInformation %* {
-        "location": locationJson,
-        "kind": nimSymToLSPSymbolKind(response.symKind).int,
-        "name": response.name,
-      }
-      result.add(symbolInformationJson)  
+    let labelRange = initLabelRangeForAnyFile(response, ls)
+    let locationJson = Location %* {
+      "uri": uri, 
+      "range": labelRange
+    }
+    let symbolInformationJson = SymbolInformation %* {
+      "location": locationJson,
+      "kind": nimSymToLSPSymbolKind(response.symKind).int,
+      "name": response.name,
+    }
+    result.add(symbolInformationJson)  
 
 
 # proc processDocumentSymbolQuery(
@@ -352,11 +326,10 @@ proc processPrepareRenameQuery(
 ): JsonNode =
   let projectDir = ls.capabilities.lspInitializeParams.getRootPath
   if nimsuggestResponse.len > 0 and string(nimsuggestResponse[0].filePath).isRelTo(projectDir):
-    let locationJson = toLocationJson(
+    let locationJson = toLocationJsonForAnyFile(
       nimsuggestResponse[0], ls
     )
-    if locationJson.isSome:
-      return %locationJson.get().range
+    return %locationJson.range
   return newJNull()
 
 proc prepareRename*(
@@ -388,12 +361,11 @@ proc processRenameQuery(
     if string(reference.filePath).isRelTo(projectDir):
       if string(uri) notin edits:
         edits[string(uri)] = newJArray()
-      let labelRange = initLabelRange(reference, ls)
-      if labelRange.isSome:
-        edits[string(uri)] &= %TextEdit(
-          `range`: labelRange.get(), 
-          newText: newName
-        )
+
+      edits[string(uri)] &= %TextEdit(
+        `range`: initLabelRangeForAnyFile(reference, ls), 
+        newText: newName
+      )
   return WorkspaceEdit(changes: some edits)
 
 proc rename*(
@@ -421,47 +393,6 @@ proc convertInlayHintKind(kind: SuggestInlayHintKind): InlayHintKind_int =
   of sihkException:
     # LSP doesn't have an exception inlay hint type, so we pretend (i.e. lie) that it is a type hint.
     result = 1
-
-proc toInlayHint(suggest: SuggestInlayHint, configuration: NlsConfig): InlayHint =
-  let hint_line = suggest.line - 1
-  # suggest.column is already UTF-16 — callers apply toUtf16Pos before calling this proc.
-  var hint_col = suggest.column
-  var suggest = suggest
-  if suggest.label.contains("Error Type"):
-    suggest.label = ""
-  result = InlayHint(
-    position: Position(line: hint_line, character: hint_col),
-    label: suggest.label,
-    kind: some(convertInlayHintKind(suggest.kind)),
-    paddingLeft: some(suggest.paddingLeft),
-    paddingRight: some(suggest.paddingRight),
-  )
-  if suggest.kind == sihkException and suggest.label == "try " and
-      configuration.inlayHints.isSome and
-      configuration.inlayHints.get.exceptionHints.isSome and
-      configuration.inlayHints.get.exceptionHints.get.hintStringLeft.isSome:
-    result.label = configuration.inlayHints.get.exceptionHints.get.hintStringLeft.get
-  if suggest.kind == sihkException and suggest.label == "!" and
-      configuration.inlayHints.isSome and
-      configuration.inlayHints.get.exceptionHints.isSome and
-      configuration.inlayHints.get.exceptionHints.get.hintStringRight.isSome:
-    result.label = configuration.inlayHints.get.exceptionHints.get.hintStringRight.get
-  if suggest.tooltip != "":
-    result.tooltip = some(suggest.tooltip)
-  else:
-    result.tooltip = some("")
-  if suggest.allowInsert:
-    result.textEdits = some(
-      @[
-        TextEdit(
-          newText: suggest.label,
-          `range`: Range(
-            start: Position(line: hint_line, character: hint_col),
-            `end`: Position(line: hint_line, character: hint_col),
-          ),
-        )
-      ]
-    )
 
 func getInlayHintLabel(
   inlayLabel: string,
