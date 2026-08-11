@@ -153,7 +153,7 @@ proc mailboxHasQueryOfKind(
 ): bool = 
   result = false
   for queueQuery in slot.queryMailbox.items():
-    if queueQuery.kind == NimsuggestQueryKind.CHANGED and queueQuery.uri == uri:
+    if queueQuery.kind == queryKind and queueQuery.uri == uri:
       return true
 
 proc mailboxHasChangedQueryForSameUriAnyOtherUri(
@@ -358,4 +358,3 @@ proc processNimsuggestQueries*(
           
           if not q.responseFuture.finished:
             q.responseFuture.complete(@[]) # empty, not fail — see fix #17
-
