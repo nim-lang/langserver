@@ -1,12 +1,10 @@
-import std/[options, tables, sequtils, strutils, strformat, sugar]
+import std/[options, tables, sequtils, strutils, strformat]
 import chronos
 import regex
-import with
 import ../protocol/types
-import ../langserver/[utils, langserver_types]
-import ../nimsuggest/[suggestapi, suggestapi_types]
+import ../langserver/[langserver_types]
+import ../nimsuggest/[suggestapi_types, diagnostics, nimsuggest_types]
 import ../utils/utils as globalUtils
-
 
 proc toUtf8Col*(
   ls: LanguageServer, uri: FileUri, line: int, character: int
@@ -15,9 +13,6 @@ proc toUtf8Col*(
     return some(ls.files.openFiles[uri].fingerTable[line].utf16to8(character))
   else:
     return none(int)
-
-proc createRangeFromSuggest(suggest: Suggest): Range =
-  result = range(suggest.line - 1, 0, suggest.endLine - 1, suggest.endCol)
 
 proc fixIdentation(s: string, indent: int): string =
   result = s
@@ -29,20 +24,6 @@ proc fixIdentation(s: string, indent: int): string =
         it
     )
     .join("\n")
-
-proc toLocation*(suggest: Suggest): Location =
-  return
-    Location %* {"uri": pathToUri(suggest.filepath), "range": toLabelRange(suggest)}
-
-proc toCompletionItem*(suggest: Suggest): CompletionItem =
-  with suggest:
-    return
-      CompletionItem %* {
-        "label": qualifiedPath[^1].strip(chars = {'`'}),
-        "kind": nimSymToLSPKind(suggest).int,
-        "documentation": doc,
-        "detail": nimSymDetails(suggest),
-      }
 
 proc toMdLinks(s: string): string =
   result = s
@@ -63,9 +44,60 @@ proc toMarkupContent*(suggest: Suggest): MarkupContent =
     result.value.add "\n\n---\n"
     result.value.add toMdLinks(suggest.doc)
 
-proc processLocationQuery*(
-  ls: LanguageServer,
-  nimsuggestResponse: seq[Suggest]
-): seq[Location] =
-  return nimsuggestResponse.map(x => x.toUtf16Pos(ls).toLocation)
+proc initJsonRange*(startLine, startCharacter, endLine, endCharacter: int): Range =
+  return
+    Range %* {
+      "start": {"line": startLine, "character": startCharacter},
+      "end": {"line": endLine, "character": endCharacter},
+    }
 
+proc initLabelRange*(
+  response: Suggest,
+  ls: LanguageServer,
+): Option[Range] = 
+  let uri = pathToUri(response.filepath)
+  let asLspFilePositionStart = toLspFilePosition(
+    NimsuggestFilePosition(
+      line: response.line,
+      col: response.column
+    ),
+    uri,
+    ls.files.openFiles
+  )
+  let textLength = utf16Len(response.qualifiedPath[^1])
+  
+  if asLspFilePositionStart.isSome:
+    let startPos = asLspFilePositionStart.get()
+    let rangeOutput = initJsonRange(
+      int(startPos.line), int(startPos.character),
+      int(startPos.line), int(startPos.character) + textLength,
+    )
+    return some(rangeOutput)
+  else:
+    return none(Range)
+
+proc toLocationJson*(
+  response: Suggest,
+  ls: LanguageServer,
+): Option[Location] = 
+  let uri = pathToUri(response.filepath)
+  let labelRange = initLabelRange(response, ls)
+  if labelRange.isSome:
+    let rangeJson = labelRange.get()
+    let locationJson = Location %* {
+      "uri": uri, 
+      "range": rangeJson
+    }
+    return some(locationJson)
+  else:
+    return none(Location)
+
+proc processLocationResponses*(
+  nimsuggestResponses: seq[Suggest],
+  ls: LanguageServer,
+): seq[Location] =
+  result = @[]
+  for response in nimsuggestResponses:
+    let locationJson = toLocationJson(response, ls)
+    if locationJson.isSome:
+      result.add(locationJson.get())

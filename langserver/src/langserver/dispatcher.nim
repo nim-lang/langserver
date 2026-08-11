@@ -1,15 +1,13 @@
-import std/[options, sets, strutils, tables, os, sequtils, times, sugar]
+import std/[options, sets, strutils, tables, os, sequtils, times]
 import chronos
 import chronicles
 import ../nimsuggest/[nimsuggest_types, suggestapi_types, nimsuggest_process]
 import ../protocol/types
-import ./checking
 import ../nph/formatting
 import ../nimsuggest/nimsuggest_slots
-import ./[configurations, diagnostics, dispatcher_utils, nimsuggest_processes, utils]
+import ./[configurations, dispatcher_utils, nimsuggest_processes, utils]
 import ../handlers/request_process
 import ../utils/utils as globalUtils
-import ../utils/process_utils
 import ../configurations/configurations as configParser
 import ./[langserver_types, query_types]
 
@@ -73,7 +71,9 @@ proc createNewSuggestSlotAndConsolidate(
   if successfulSpawn:
     debug "createNewSuggestSlotAndConsolidate:add file to open files", filePath = $(filePath)
     ls.addFileToOpenFiles(newSlot, params)
-    asyncSpawn processNimsuggestQueries(newSlot, ls.pool, ls.files.openFiles)
+    asyncSpawn processNimsuggestQueries(
+      newSlot, ls.pool, ls.files.openFiles, ls.notify
+    )
     # Consolidation: for each other slot, check if the new slot subsumes it.
     discard await ls.consolidateNimsuggestInstances(newSlot)
     
@@ -111,28 +111,15 @@ proc processLangserverQueue*(ls: LanguageServer): Future[void] {.async.} =
       # so dirtyFile may have been captured as "" even though changed=true by now.
       q.dirtyFile = ls.uriToStash(q.uri)
       # First, check if the current file is owned by a nimsuggest instance
-      let fileInfo = ls.files.openFiles.getOrDefault(q.uri)
-      debug "dispatcher NIMSUGGEST branch", uri = q.uri, kind = $q.kind,
-        fileInfoIsNil = (fileInfo == nil)
-      if fileInfo != nil:
-        debug "dispatcher: adding to slot mailbox", uri = q.uri, projectFile = fileInfo.slot.projectFile
-        # NimsuggestSlot is a ref object, so fileInfo.slot is just a pointer to the same heap object that lives in pool.slots[projectFile].
-        # Fix 2: deduplicate CHANGED queries — the stash is updated in-place on every
-        # DID_CHANGE, so one pending CHANGED per URI is always sufficient.
-        if q.kind == NimsuggestQueryKind.CHANGED:
-          if q.uri in fileInfo.slot.pendingChangedUris:
-            debug "dispatcher: dropping duplicate CHANGED (already pending)", uri = q.uri
-            if not q.responseFuture.finished:
-              q.responseFuture.complete(@[])
-          else:
-            fileInfo.slot.pendingChangedUris.incl(q.uri)
-            fileInfo.slot.queryMailbox.addLastNoWait(q)
-        else:
-          fileInfo.slot.queryMailbox.addLastNoWait(q)
+      if q.uri in ls.files.openFiles:
+        let fileInfo = ls.files.openFiles[q.uri]
+        fileInfo.slot.queryMailbox.addLastNoWait(q)
+        
+        debug "processLangserverQueue: dispatcher added message to slot mailbox", uri = q.uri, kind = $q.kind, fileInfoIsNil = (fileInfo == nil), projectFile = fileInfo.slot.projectFile
+
       else:
-        debug "dispatcher: fileInfo is nil, completing with empty", uri = q.uri
-        q.responseFuture.complete(@[])
-      
+        debug "processLangserverQueue: Could not add message to mailbox, file is no longer open. ", uri = q.uri, kind = $q.kind
+
     of LangserverQueryKind.FILE_ACCESS:
       let q = query.fileAccess
       case q.kind
@@ -181,7 +168,9 @@ proc processLangserverQueue*(ls: LanguageServer): Future[void] {.async.} =
                 ls.pool.addSlot(newProjectSlot)
                 let intendedProjectSpawn = await execSpawn(newProjectSlot, ls.pool, intendedProjectPath)
                 if intendedProjectSpawn:
-                  asyncSpawn processNimsuggestQueries(newProjectSlot, ls.pool, ls.files.openFiles)
+                  asyncSpawn processNimsuggestQueries(
+                    newProjectSlot, ls.pool, ls.files.openFiles, ls.notify
+                  )
                   let projectKnownQuery = NimsuggestQuery[LspFilePosition](
                     id: 0.uint,
                     kind: NimsuggestQueryKind.KNOWN,
@@ -222,7 +211,7 @@ proc processLangserverQueue*(ls: LanguageServer): Future[void] {.async.} =
                 let pendingQ = slotToEvict.queryMailbox.popFirstNoWait()
                 if not pendingQ.responseFuture.finished:
                   pendingQ.responseFuture.complete(@[])
-              slotToEvict.pendingChangedUris.clear()
+              # slotToEvict.pendingChangedUris.clear()
 
               let successfulStop = await execStop(slotToEvict, ls.pool)
               if successfulStop:
@@ -237,46 +226,49 @@ proc processLangserverQueue*(ls: LanguageServer): Future[void] {.async.} =
       of FileAccessQueryKind.DID_CHANGE:
         let uri = q.didChange.textDocument.uri
         let contentChanges = q.didChange.contentChanges
+        let openFiles = ls.files.openFiles.keys.toSeq()
+        debug "Dispatcher: DID_CHANGE ", uri = uri, openFiles = openFiles
     
         if uri notin ls.files.openFiles:
           continue
-        let file = open(string(ls.uriStorageLocation(uri)), fmWrite)
+        let stashLocation = ls.uriStorageLocation(uri)
+        let file = open(string(stashLocation), fmWrite)
 
         ls.files.openFiles[uri].fingerTable = @[]
-        ls.files.openFiles[uri].changed = true
+        # ls.files.openFiles[uri].changed = true
         if contentChanges.len <= 0:
           file.close()
           continue
         for line in contentChanges[0].text.splitLines:
-          ls.files.openFiles[uri].fingerTable.add line.createUTFMapping()
-          file.writeLine line
+          # fingertable is 0-based.
+          ls.files.openFiles[uri].fingerTable.add(line.createUTFMapping())
+          file.writeLine(line)
         file.close()
-        ls.files.openFiles[uri].lastEditTime = times.now()
-        # Queue CHANGED immediately at the front so it is processed before any
-        # position query (hover, definition, completion) already in the queue.
-        # addFirstNoWait matches the pattern used by DID_SAVE.
+
+        # We should schedule a changed query, nimsuggets doesn't know it has changed.
+        # ls.files.openFiles[uri].changed = true
+        ls.files.openFiles[uri].lastChanged = times.now()
+
         let changedQuery = LangserverQuery(
           kind: LangserverQueryKind.NIMSUGGEST,
           nimsuggest: NimsuggestQuery[LspFilePosition](
-            id: 0,
+            id: 0, # NOTE: Check that this doesn't get cancelled accidentally
             kind: NimsuggestQueryKind.CHANGED,
             uri: uri,
-            dirtyFile: ls.uriToStash(uri),
+            dirtyFile: stashLocation, #ls.uriToStash(uri),
             responseFuture: newFuture[seq[Suggest]]("nimsuggestQuery"),
           )
         )
-        ls.langserverQueue.addFirstNoWait(changedQuery)
+        ls.langserverQueue.addLastNoWait(changedQuery)
 
       of FileAccessQueryKind.DID_SAVE:
         let uri = q.didSave.textDocument.uri
-        let config = ls.getWorkspaceConfiguration()
         debug "didSave: enter", uri = uri
         if uri in ls.files.openFiles:
           let fileInfo = ls.files.openFiles[uri]
           if uri in fileInfo.slot.crashedUris:
             fileInfo.slot.crashedUris.excl(uri)
 
-        ls.files.openFiles[uri].changed = false
         debug "didSave: sending CHANGED query", uri = uri
         # Directly query nimsuggest
         # WHy do we call this, if it has been saved?  It is not changed, no?
@@ -290,12 +282,29 @@ proc processLangserverQueue*(ls: LanguageServer): Future[void] {.async.} =
             responseFuture: newFuture[seq[Suggest]]("nimsuggestQuery"),
           )
         )
+        ls.langserverQueue.addLastNoWait(changedQuery)
 
-        ls.langserverQueue.addFirstNoWait(changedQuery)
-
-        if config.checkOnSave.get(true):
-          debug "Checking project", uri = uri
-          traceAsyncErrors ls.checkProject(uri)
+        # if config.checkOnSave.get(true):
+        # CHECK PROJECT 
+        # Send chk with the slot's project file, not the saved URI. nimsuggest's chk
+        # command takes the entry-point path it was spawned with; any other file would
+        # cause it to check the wrong scope.
+        
+        # NOTE: IS THIS NECESSARY ANY MORE?
+        # debug "Checking project", uri = uri
+        # let slotForUri = ls.pool.slotForUri(uri)
+        # if slotForUri.isSome:
+        #   let chkQuery = LangserverQuery(
+        #     kind: LangserverQueryKind.NIMSUGGEST,
+        #     nimsuggest: NimsuggestQuery[LspFilePosition](
+        #       id: 0,
+        #       kind: NimsuggestQueryKind.CHECK_PROJECT,
+        #       uri: pathToUri(slotForUri.get().projectFile),
+        #       dirtyFile: FilePath(""),
+        #       responseFuture: newFuture[seq[Suggest]]("checkProject"),
+        #     )
+        #   )
+        #   ls.langserverQueue.addLastNoWait(chkQuery)
 
       of FileAccessQueryKind.DID_CLOSE:
         let uri = q.didClose.textDocument.uri
@@ -303,9 +312,8 @@ proc processLangserverQueue*(ls: LanguageServer): Future[void] {.async.} =
         if uri notin ls.files.openFiles:
           continue
         let fileInfo = ls.files.openFiles[uri]
-        if fileInfo.changed:
-          let checkQuery = await ls.queryFile(uri, NimsuggestQueryKind.CHECK_FILE)
-          ls.sendDiagnostics(checkQuery.filter(s => string(s.filePath) != "???"), uriToPath(uri))
+        # if fileInfo.changed:
+        let checkQuery = await ls.queryFile(uri, NimsuggestQueryKind.CHECK_FILE)
 
         fileInfo.slot.unassignUri(uri)
         # If the slot has no remaining tracked files, shut it down — important for standalone orphan slots.
@@ -363,9 +371,8 @@ proc processLangserverQueue*(ls: LanguageServer): Future[void] {.async.} =
             slot.assignUri(newUri)
             ls.files.openFiles[newUri] = NlsFileInfo(
               slot: slot,
-              changed: fileInfo.changed,
               fingerTable: fileInfo.fingerTable,
-              lastEditTime: fileInfo.lastEditTime,
+              lastChanged: fileInfo.lastChanged,
               lastChecked: fileInfo.lastChecked,
               textDocument: TextDocumentItem(
                 uri: newUri,
@@ -375,7 +382,6 @@ proc processLangserverQueue*(ls: LanguageServer): Future[void] {.async.} =
               ),
             )
             ls.files.openFiles.del(oldUri)
-            ls.sendDiagnostics(newSeq[Suggest](), oldPath)
 
             if string(oldPath).endsWith(".nim"):
               # RECOMPILE The Nimsuggest Instance
@@ -411,7 +417,7 @@ proc processLangserverQueue*(ls: LanguageServer): Future[void] {.async.} =
             ls.files.openFiles.del(uri)
 
       of FileAccessQueryKind.DID_CHANGE_CONFIGURATION:
-        debug "Changed configuration: ", config = q.didChangeConfiguration
+        debug "Changed configuration: "
         if ls.usePullConfigurationModel:
           ls.maybeRequestConfigurationFromClient
         else:

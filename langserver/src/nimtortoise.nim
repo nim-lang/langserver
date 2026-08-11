@@ -2,7 +2,7 @@ import std/[syncio, os, json, strutils, strformat]
 import json_rpc/[servers/socketserver, private/jrpc_sys, jsonmarshal, rpcclient, router]
 import chronicles, chronos
 import configurations/constants
-import langserver/[langserver, langserver_types, transports, nimsuggest_processes, dispatcher, checking]
+import langserver/[langserver, langserver_types, transports, nimsuggest_processes, dispatcher]
 import utils/asyncprocmonitor
 import utils/process_utils
 import ./handlers/handlers as lsp
@@ -243,7 +243,6 @@ when isMainModule:
   try:
     let ls = main(handleParams())
     asyncSpawn ls.tickLs()
-    asyncSpawn ls.tickFileChecks()
 
     when defined(posix):
       onSignal(SIGINT, SIGTERM, SIGHUP, SIGQUIT, SIGPIPE):

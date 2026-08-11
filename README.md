@@ -151,7 +151,7 @@ Key settings at a glance:
 | Setting | Default | What it does |
 |---------|---------|--------------|
 | `nimTortoise.lsp.path` | `""` | Path to the language server binary |
-| `nimTortoise.maxNimsuggestProcesses` | `0` | Max nimsuggest processes (0 = unlimited) |
+| `nimTortoise.maxNimsuggestProcesses` | `2` | Max nimsuggest processes (0 = unlimited) |
 | `nimTortoise.nimsuggestIdleTimeout` | `120000` | Idle timeout in ms before stopping a process |
 | `nimTortoise.projectMapping` | `[]` | Per-file project mapping via regex |
 | `nimTortoise.inlayHints.typeHints.enable` | `true` | Show inferred type annotations |

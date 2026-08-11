@@ -1,5 +1,4 @@
 import json, options, tables, hashes
-import std/jsonutils
 
 type
   FileUri* = distinct string  ## A file:// URI (e.g. "file:///Users/foo/bar.nim")
@@ -456,7 +455,7 @@ type
     dynamicRegistration*: Option[bool]
 
   SemanticTokensClientCapabilities_requests* = ref object of RootObj
-    range*: OptionalNode # boolean | { }
+    `range`*: OptionalNode # boolean | { }
     full*: OptionalNode # boolean | { delta?: boolean; }
 
   # 'relative'
@@ -856,7 +855,7 @@ type
     contentChanges*: seq[TextDocumentContentChangeEvent]
 
   TextDocumentContentChangeEvent* = ref object of RootObj
-    range*: Option[Range]
+    `range`*: Option[Range]
     rangeLength*: Option[int]
     text*: string
 
@@ -925,7 +924,7 @@ type
   Hover* = ref object of RootObj
     contents*: OptionalNode
       # string or MarkedStringOption or [string] or [MarkedStringOption] or MarkupContent
-    range*: Option[Range]
+    `range`*: Option[Range]
 
   HoverParams* = ref object of TextDocumentPositionParams
 
@@ -1059,12 +1058,12 @@ type
     context*: Option[SignatureHelpContext]
 
   ExpandResult* = ref object of RootObj
-    range*: Range
+    `range`*: Range
     content*: string
 
   InlayHintParams* = ref object of RootObj # TODO: extends WorkDoneProgressParams
     textDocument*: TextDocumentIdentifier
-    range*: Range
+    `range`*: Range
 
   InlayHintKind_int* = int
 

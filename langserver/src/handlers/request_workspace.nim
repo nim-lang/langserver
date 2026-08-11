@@ -1,10 +1,10 @@
-import std/[json, sequtils, strformat, sets, sugar]
+import std/[json, sequtils, strformat, sets]
 import chronos
 import chronicles
 import ../protocol/types
 import ../configurations/constants
-import ../langserver/[langserver_types, langserver, utils, checking]
-import ../nimsuggest/[nimsuggest_types, nimsuggest_slots]
+import ../langserver/[langserver_types,query_types, langserver]
+import ../nimsuggest/[nimsuggest_types, suggestapi_types, nimsuggest_slots]
 import ../utils/process_utils
 import ../utils/utils as globalUtils
 import ./[queries_nimsuggest, request_text_document]
@@ -22,9 +22,21 @@ proc executeCommand*(
       slot.crashedUris.clear()
       discard await execStop(slot, ls.pool)
       traceAsyncErrors execSpawn(slot, ls.pool, projectFile)
+
   of CHECK_PROJECT_COMMAND:
     debug "Checking project", projectFile = projectFile
-    ls.checkProject(pathToUri(projectFile)).traceAsyncErrors
+    let chkQuery = LangserverQuery(
+      kind: LangserverQueryKind.NIMSUGGEST,
+      nimsuggest: NimsuggestQuery[LspFilePosition](
+        id: 0,
+        kind: NimsuggestQueryKind.CHECK_PROJECT,
+        uri: pathToUri(projectFile),
+        dirtyFile: FilePath(""),
+        responseFuture: newFuture[seq[Suggest]]("checkProject"),
+      )
+    )
+    ls.langserverQueue.addLastNoWait(chkQuery)
+
   of RECOMPILE_COMMAND:
     debug "Clean build", projectFile = projectFile
     if ls.pool != nil and projectFile in ls.pool.slots:
@@ -36,7 +48,17 @@ proc executeCommand*(
         discard await execStop(slot, ls.pool)
         traceAsyncErrors execSpawn(slot, ls.pool, projectFile)
         ls.progress(token, "end")
-        ls.checkProject(pathToUri(projectFile)).traceAsyncErrors
+        let chkQuery = LangserverQuery(
+          kind: LangserverQueryKind.NIMSUGGEST,
+          nimsuggest: NimsuggestQuery[LspFilePosition](
+            id: 0,
+            kind: NimsuggestQueryKind.CHECK_PROJECT,
+            uri: pathToUri(projectFile),
+            dirtyFile: FilePath(""),
+            responseFuture: newFuture[seq[Suggest]]("checkProject"),
+          )
+        )
+        ls.langserverQueue.addLastNoWait(chkQuery)
 
   result = newJNull()
 
@@ -56,4 +78,7 @@ proc workspaceSymbol*(
     return @[]
   let q = ls.initNimsuggestFileQuery(id, liveUri, NimsuggestQueryKind.WORKSPACE_SYMBOLS)
   let symbols = await ls.addQueryToQueue(q)
-  result = symbols.map(x => x.toUtf16Pos(ls).toSymbolInformation)
+  result = processDocumentSymbolResponses(
+    symbols, ls
+  )
+  # symbols.map(x => x.toUtf16Pos(ls).toSymbolInformation)

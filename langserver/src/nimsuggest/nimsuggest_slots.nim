@@ -6,8 +6,16 @@ import ./[suggestapi, suggestapi_types, nimsuggest_types]
 import ../configurations/constants
 import ../protocol/types
 
-proc newPool*(slots: Table[FilePath, NimsuggestSlot], maxSlots: int): NimsuggestPool =
-  NimsuggestPool(slots: slots, maxSlots: maxSlots, fileCheckDelayMs: FILE_CHECK_DELAY)
+# proc newPool*(
+#   slots: Table[FilePath, NimsuggestSlot], 
+#   maxSlots: int,
+
+# ): NimsuggestPool =
+#   return NimsuggestPool(
+#     slots: slots, 
+#     maxSlots: maxSlots, 
+#     fileCheckDelay: initDuration(milliseconds = FILE_CHECK_DELAY)
+  # )
 
 proc newSlot*(projectFile: FilePath, isEntryPoint = false, workingDir = getCurrentDir()): NimsuggestSlot =
   NimsuggestSlot(
@@ -20,7 +28,7 @@ proc newSlot*(projectFile: FilePath, isEntryPoint = false, workingDir = getCurre
     lastCmdTime: now(),
     isEntryPoint: isEntryPoint,
     crashedUris: initHashSet[FileUri](),
-    pendingChangedUris: initHashSet[FileUri](),
+    # pendingChangedUris: initHashSet[FileUri](),
   )
 
 proc addSlot*(pool: NimsuggestPool, slot: NimsuggestSlot) =
@@ -158,4 +166,29 @@ proc execStop*(slot: NimsuggestSlot, pool: NimsuggestPool): Future[bool] {.async
     slot.state = SlotState.STOPPED
     return false
 
-
+proc attemptCrashRespawn*(slot: NimsuggestSlot, pool: NimsuggestPool): Future[bool] {.async.} =
+  slot.state = SlotState.CRASHED
+  inc slot.crashCount
+  if slot.crashCount <= MAX_CRASH_RETRIES:
+    let backoffMs = if slot.crashCount > 0:
+      min(1_000 * (1 shl min(slot.crashCount - 1, 14)), 30_000)
+    else: 0
+    if backoffMs > 0:
+      await sleepAsync(backoffMs)
+    discard await execStop(slot, pool)
+    slot.crashedUris.clear() # explicit restart = clean slate
+    return await execSpawn(slot, pool, slot.projectFile)
+    
+  else:
+    error "processQueries: crash limit reached, slot permanently failed",
+      projectFile = slot.projectFile, crashCount = slot.crashCount
+    if pool.notifyProc != nil:
+      pool.notifyProc(
+        "window/showMessage",
+        %*{
+          "type": 1,
+          "message": fmt"Nimsuggest for {slot.projectFile} failed after {MAX_CRASH_RETRIES} attempts.",
+        },
+      )
+    pool.removeSlot(slot.projectFile)
+    return false

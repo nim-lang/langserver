@@ -77,8 +77,6 @@ type
     tooltip*: string
 
   NimsuggestImpl* = object
-    checkProjectInProgress*: bool
-    needsCheckProject*: bool
     openFiles*: OrderedSet[FileUri]
     successfullCall*: bool
     port*: int

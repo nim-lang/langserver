@@ -476,53 +476,17 @@ proc isKnown*(nimsuggest: Nimsuggest, filePath: FilePath): Future[bool] {.async.
   debug "isKnown", filePath = $filePath, sug = sug[0].forth
   return sug.len > 0 and sug[0].forth == "true"
 
-proc range*(startLine, startCharacter, endLine, endCharacter: int): Range =
+proc initJsonRange*(startLine, startCharacter, endLine, endCharacter: int): Range =
   return
     Range %* {
       "start": {"line": startLine, "character": startCharacter},
       "end": {"line": endLine, "character": endCharacter},
     }
 
-proc toLabelRange*(suggest: Suggest): Range =
-  # with suggest:
-  return range(
-    suggest.line - 1, 
-    suggest.column, 
-    suggest.line - 1, 
-    suggest.column + utf16Len(suggest.qualifiedPath[^1])
-  )
-
-
-proc toDiagnosticJson*(suggest: Suggest): JsonNode =
-  let
-    textStart = suggest.doc.find('\'')
-    textEnd = suggest.doc.rfind('\'')
-    endColumn =
-      if textStart >= 0 and textEnd > textStart:
-        suggest.column + utf16Len(suggest.doc[textStart + 1 ..< textEnd])
-      else:
-        suggest.column + 1
-
-  let r = range(
-    suggest.line - 1, suggest.column, 
-    suggest.line - 1, endColumn
-  )
-  
-  return %*{
-    "uri": pathToUri(suggest.filePath),
-    "range": %*{
-      "start": %*{"line": r.start.line, "character": r.start.character},
-      "end": %*{"line": r.`end`.line, "character": r.`end`.character},
-    },
-    "severity":
-      case suggest.forth
-      of "Error": DiagnosticSeverity.Error.int
-      of "Hint": DiagnosticSeverity.Hint.int
-      of "Warning": DiagnosticSeverity.Warning.int
-      else: DiagnosticSeverity.Error.int
-    ,
-    "message": suggest.doc,
-    "source": "nim",
-    "code": "nimsuggest chk",
-  }
-
+# proc toLabelRange*(suggest: Suggest): Range =
+#   return range(
+#     suggest.line - 1, 
+#     suggest.column, 
+#     suggest.line - 1, 
+#     suggest.column + utf16Len(suggest.qualifiedPath[^1])
+#   )

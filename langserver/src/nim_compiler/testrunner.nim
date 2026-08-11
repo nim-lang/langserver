@@ -68,41 +68,47 @@ proc parseTestResults*(xmlContent: string): RunTestProjectResult =
       result.suites.add(suite)
 
 proc listTests*(
-    entryPoint: string, nimPath: string, workspaceRoot: string
+  entryPoint: string, nimPath: string, workspaceRoot: string
 ): Future[TestProjectInfo] {.async.} =
-  var entryPoint = getFullPath(entryPoint, workspaceRoot)
-  if not fileExists(entryPoint):
-    debug "Listing tests: entry point does not exist, skipping", entryPoint = entryPoint
-    return TestProjectInfo()
-  let executableDir = (getTempDir() / entryPoint.splitFile.name).absolutePath
-  debug "Listing tests", entryPoint = entryPoint, exists = fileExists(entryPoint)
-  let args =
-    @["c", "--outdir:" & executableDir, "-d:unittest2ListTests", "-r", entryPoint]
-  let process = await startProcess(
-    nimPath,
-    arguments = args,
-    options = {UsePath},
-    stderrHandle = AsyncProcess.Pipe,
-    stdoutHandle = AsyncProcess.Pipe,
-  )
-  try:
-    let (error, res) = await readErrorOutputUntilExit(process, 15.seconds)
-    if res != 0:
-      result = extractTestInfo(error)
-      if result.suites.len == 0:
-        error "Failed to list tests",
-          nimPath = nimPath, entryPoint = entryPoint, res = res
-        error "An error occurred while listing tests"
-        for line in error.splitLines:
-          error "Error line: ", line = line
-        error "Command args: ", args = args
-        result = TestProjectInfo(error: error)
-    else:
-      let rawOutput = await process.stdoutStream.readAllOutput()
-      debug "list test raw output", rawOutput = rawOutput
-      result = extractTestInfo(rawOutput)
-  finally:
-    await shutdownChildProcess(process)
+  debug "TODO: Implement tests."
+  return TestProjectInfo()
+
+# proc listTests*(
+#   entryPoint: string, nimPath: string, workspaceRoot: string
+# ): Future[TestProjectInfo] {.async.} =
+#   var entryPoint = getFullPath(entryPoint, workspaceRoot)
+#   if not fileExists(entryPoint):
+#     debug "Listing tests: entry point does not exist, skipping", entryPoint = entryPoint
+#     return TestProjectInfo()
+#   let executableDir = (getTempDir() / entryPoint.splitFile.name).absolutePath
+#   debug "Listing tests", entryPoint = entryPoint, exists = fileExists(entryPoint)
+#   let args =
+#     @["c", "--outdir:" & executableDir, "-d:unittest2ListTests", "-r", entryPoint]
+#   let process = await startProcess(
+#     nimPath,
+#     arguments = args,
+#     options = {UsePath},
+#     stderrHandle = AsyncProcess.Pipe,
+#     stdoutHandle = AsyncProcess.Pipe,
+#   )
+#   try:
+#     let (error, res) = await readErrorOutputUntilExit(process, 15.seconds)
+#     if res != 0:
+#       result = extractTestInfo(error)
+#       if result.suites.len == 0:
+#         error "Failed to list tests",
+#           nimPath = nimPath, entryPoint = entryPoint, res = res
+#         error "An error occurred while listing tests"
+#         for line in error.splitLines:
+#           error "Error line: ", line = line
+#         error "Command args: ", args = args
+#         result = TestProjectInfo(error: error)
+#     else:
+#       let rawOutput = await process.stdoutStream.readAllOutput()
+#       debug "list test raw output", rawOutput = rawOutput
+#       result = extractTestInfo(rawOutput)
+#   finally:
+#     await shutdownChildProcess(process)
 
 proc runTests*(
     entryPoint: string,

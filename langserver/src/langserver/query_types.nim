@@ -17,7 +17,6 @@ type
     FORMATTING
 
   FileAccessQuery* = object
-    # id*: uint
     case kind*: FileAccessQueryKind
     of FileAccessQueryKind.DID_OPEN:
       didOpen*: DidOpenTextDocumentParams

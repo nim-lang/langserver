@@ -188,7 +188,7 @@ type
   VscodeMarkedStringObj {.importc.} = object of JsObject
 
   VscodeDecorationOptions* = ref object of VscodeDisposable
-    range*: VscodeRange
+    `range`*: VscodeRange
     hoverMessage*: cstring
     command*: VscodeCommands
 
@@ -595,7 +595,7 @@ type
 
   VscodeCodeLens* = ref VscodeCodeLensObj
   VscodeCodeLensObj {.importc.} = object of JsObject
-    range*: VscodeRange
+    `range`*: VscodeRange
     command*: VscodeCommands
   VscodeThemableDecorationAttachmentRenderOptions* = ref object of JsObject
     contentText*: cstring
@@ -1178,7 +1178,7 @@ type
     id*: cstring
     label*: cstring
     uri*: VscodeUri
-    range*: VscodeRange
+    `range`*: VscodeRange
     children*: VscodeTestItemCollection
   
   VscodeTestRunRequest* = ref object of JsObject

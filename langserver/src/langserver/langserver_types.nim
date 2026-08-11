@@ -1,4 +1,4 @@
-import std/[json, options, tables, sets, streams, times]
+import std/[json, options, tables, streams, times]
 import chronos
 import chronos/[asyncproc, threadsync]
 import json_rpc/servers/socketserver
@@ -120,10 +120,9 @@ type
     testRunProcess*: Option[AsyncProcessRef]
     cmdLineClientProcessId*: Option[int]
 
-    checkInProgress*: bool
     isShutdown*: bool
     nimDumpCache*: Table[string, NimbleDumpInfo]
     lsInitialized*: Future[void]
-      ## Completed after initNimsuggestInstances finishes (config + nimble dump + entry-point spawns).
-      ## DID_OPEN polls this before the spawn path so files are routed to the correct
-      ## pre-spawned entry-point slot rather than spawning nimsuggest using themselves.
+    ## Completed after initNimsuggestInstances finishes (config + nimble dump + entry-point spawns).
+    ## DID_OPEN polls this before the spawn path so files are routed to the correct
+    ## pre-spawned entry-point slot rather than spawning nimsuggest using themselves.

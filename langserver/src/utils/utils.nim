@@ -1,4 +1,4 @@
-import std/[unicode, uri, strformat, os, strutils, options, json, jsonutils, net, hashes]
+import std/[unicode, uri, strformat, os, strutils, options, json, jsonutils, net]
 # import with
 import chronos, chronicles
 import "$nim/compiler/pathutils"
@@ -47,8 +47,6 @@ proc createUTFMapping*(line: string): FingerTable =
       pos += 2
     else:
       discard
-
-  #echo fingerTable
 
 proc utf16Len*(utf8Str: string): int =
   result = 0
@@ -106,8 +104,6 @@ proc uriToPath*(uri: FileUri): FilePath =
     else:
       parsed.path
   ).decodeUrl())
-
-
 
 proc pathToUri*(path: FilePath): FileUri =
   # This is a modified copy of encodeUrl in the uri module. This doesn't encode

@@ -1,7 +1,7 @@
 import std/[options, sets, tables, algorithm, sequtils, strutils, times]
 import chronos
 import chronicles
-import ../nimsuggest/[suggestapi, suggestapi_types, nimsuggest_types, nimsuggest_slots]
+import ../nimsuggest/[suggestapi_types, nimsuggest_types, nimsuggest_slots]
 import ../protocol/types
 import ./[utils as lsUtils]
 import ./langserver_types
@@ -102,10 +102,10 @@ proc addFileToOpenFiles*(
   # Register in the file table (sync, atomic)
   let fileInfo = NlsFileInfo(
     slot: nimsuggestSlot,
-    changed: false,
+    # changed: true,
     fingerTable: fingerTable,
     textDocument: params,
-    lastEditTime: times.now(),
+    lastChanged: times.now(),
     lastChecked: times.now(),
   )
   ls.files.openFiles[params.uri] = fileInfo
@@ -173,11 +173,11 @@ proc queryFile*(ls: LanguageServer, uri: FileUri, kind: NimsuggestQueryKind): Fu
   if fileInfo == nil:
     result.complete(@[])
     return
-  let dirtyFile = if fileInfo.changed: ls.uriStorageLocation(uri) else: FilePath("")
+  let dirtyFile = ls.uriToStash(uri)
+  
   fileInfo.slot.queryMailbox.addLastNoWait(NimsuggestQuery[LspFilePosition](
     kind: kind,
     uri: uri,
     dirtyFile: dirtyFile,
     responseFuture: result,
   ))
-

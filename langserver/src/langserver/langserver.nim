@@ -2,7 +2,7 @@ import std/[
   os, macros, options,
   strformat, strutils, sequtils,
   hashes, tables, sets, setutils,
-  json, times,
+  json, times, tables
 ]
 
 import chronos
@@ -55,17 +55,32 @@ proc initLanguageServer*(params: CommandLineParams, storageDir: string): Languag
   )
   # Create the pool synchronously so ls.pool is never nil when event loop starts.
   # initNimsuggestInstances will update maxSlots from config and spawn entry points.
-  result.pool = newPool(
-    slots = initTable[FilePath, NimsuggestSlot](),
-    maxSlots = NIM_MAX_NS_PROCESSES,
-  )
-  result.pool.timeout = 120_000 ## REQUEST_TIMEOUT
-  let ls = result # capture ref for the closures below
-  result.pool.notifyProc = proc(meth: string, params: JsonNode) {.gcsafe, raises: [].} =
-    ls.notify(meth, params)
-  result.pool.statusChangedProc = proc() {.gcsafe, raises: [].} =
+  let ls = result
+  result.pool = NimsuggestPool(
+    slots: initTable[FilePath, NimsuggestSlot](), 
+    maxSlots:  NIM_MAX_NS_PROCESSES, 
+    fileCheckDelay: initDuration(milliseconds = FILE_CHECK_DELAY),
+    timeout: 120_000,
+    nimsuggestPath: "", # Set in initNimsuggestInstances
+    nimVersion: "", # Set in initNimsuggestInstances
+    notifyProc: proc(meth: string, params: JsonNode) {.gcsafe, raises: [].} =
+    ls.notify(meth, params),
+    statusChangedProc: proc() {.gcsafe, raises: [].} =
     {.cast(gcsafe).}:
       ls.sendStatusChanged()
+  )
+  
+  # newPool(
+  #   slots = initTable[FilePath, NimsuggestSlot](),
+  #   maxSlots = NIM_MAX_NS_PROCESSES,
+  # )
+  # result.pool.timeout = 120_000 ## REQUEST_TIMEOUT
+  # let ls = result # capture ref for the closures below
+  # result.pool.notifyProc = proc(meth: string, params: JsonNode) {.gcsafe, raises: [].} =
+  #   ls.notify(meth, params)
+  # result.pool.statusChangedProc = proc() {.gcsafe, raises: [].} =
+  #   {.cast(gcsafe).}:
+  #     ls.sendStatusChanged()
 
 proc supportSignatureHelp*(cc: LspClientCapabilities): bool =
   if cc.isNil:

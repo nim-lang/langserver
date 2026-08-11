@@ -149,7 +149,7 @@ proc initNimsuggestInstances*(ls: LanguageServer, rootPath: string) {.async.} =
 
   # Update pool settings from config (pool was created with defaults in initLanguageServer)
   ls.pool.maxSlots = config.maxNimsuggestProcesses.get(NIM_MAX_NS_PROCESSES)
-  ls.pool.fileCheckDelayMs = config.fileCheckDelay.get(FILE_CHECK_DELAY)
+  ls.pool.fileCheckDelay = initDuration(milliseconds = config.fileCheckDelay.get(FILE_CHECK_DELAY))
 
   # Resolve the nimsuggest binary path and Nim version now that config is available.
   let (nimsuggestPath, nimVersion) = await ls.getNimSuggestPathAndVersion(config, rootPath)
@@ -177,7 +177,9 @@ proc initNimsuggestInstances*(ls: LanguageServer, rootPath: string) {.async.} =
           # event loop — Chronos continues serving other messages while waiting.
           let ok = await execSpawn(slot, ls.pool, entryPoint)
           if ok:
-            asyncSpawn processNimsuggestQueries(slot, ls.pool, ls.files.openFiles)
+            asyncSpawn processNimsuggestQueries(
+              slot, ls.pool, ls.files.openFiles, ls.notify
+            )
           else:
             ls.pool.removeSlot(entryPoint)
         else:

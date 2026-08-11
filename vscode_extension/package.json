@@ -473,7 +473,7 @@
                 },
                 "nimTortoise.maxNimsuggestProcesses":{
                     "type": "number",
-                    "default": 0,
+                    "default": 2,
                     "description": "The maximum number of nimsuggest processes to keep alive in the lsp. 0 means unlimited."
                 },
                 "nimTortoise.nimsuggestIdleTimeout":{

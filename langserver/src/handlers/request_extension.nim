@@ -3,7 +3,7 @@ import chronos
 import chronos/asyncproc
 import chronicles
 import stew/byteutils
-import ../protocol/[types, enums]
+import ../protocol/[types]
 import ../langserver/[langserver_types, utils, configurations, langserver, nimsuggest_processes]
 import ../nim_compiler/testrunner
 import ../nim_compiler/nim_compiler

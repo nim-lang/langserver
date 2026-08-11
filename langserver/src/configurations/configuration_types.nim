@@ -53,3 +53,4 @@ type
       #max number of nimsuggest processes to keep alive. zero means unlimited
     fileCheckDelay*: Option[int]
       #delay in ms between file-change and per-file diagnostic check
+
