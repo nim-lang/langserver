@@ -159,3 +159,4 @@ proc processLocationResponsesForAnyFile*(
   result = @[]
   for response in nimsuggestResponses:
     result.add(toLocationJsonForAnyFile(response, ls))
+

@@ -368,3 +368,4 @@ proc processNimsuggestQueries*(
           
           if not q.responseFuture.finished:
             q.responseFuture.complete(@[]) # empty, not fail — see fix #17
+

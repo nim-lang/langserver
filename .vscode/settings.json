@@ -16,5 +16,13 @@
   "nimTortoise.maxNimsuggestProcesses": 2,
   "nimTortoise.test.entryPoints": [
     "langserver/tests/all.nim"
-  ]
+  ],
+  "editor.tokenColorCustomizations": {
+    "textMateRules": [
+      {
+        "scope": "punctuation.definition.template-expression.begin.nim, punctuation.definition.template-expression.end.nim",
+        "settings": { "foreground": "#FF8C00" }
+      }
+    ]
+  }
 }

@@ -82,14 +82,14 @@ The old architecture tracked file-to-project ownership in two separate tables th
 
 ```sh
 cd langserver
-nimble main       # produces the nimlangserver binary
+nimble build      # produces the nimtortoise binary
 ```
 
 ### Build and install the VS Code extension
 
 ```sh
 cd vscode_extension
-nimble vsix            # packages out/nimvscode-<version>.vsix
+nimble vsix            # packages out/vscode_nim_tortoise-<version>.vsix
 nimble install_vsix    # installs it into VS Code
 ```
 
