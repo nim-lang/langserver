@@ -2,7 +2,7 @@ import json_rpc/[servers/socketserver, private/jrpc_sys, jsonmarshal, rpcclient,
 import chronicles, chronos
 import std/[syncio, os, json, strutils, strformat, streams, oids, sequtils, times]
 import ../configurations/constants
-import ./[langserver_types, langserver, langserver_messaging]
+import ./[langserver_types, langserver_messaging]
 import ../protocol/types
 import ../utils/utils as globalUtils
 import chronos/threadsync

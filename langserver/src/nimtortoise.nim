@@ -3,7 +3,7 @@ import json_rpc/[servers/socketserver, private/jrpc_sys, jsonmarshal, rpcclient,
 import chronicles, chronos
 import ./configurations/configurations
 import ./nimsuggest/nimsuggest
-import ./langserver/[langserver, langserver_types, transports, langserver_nimsuggest, dispatcher]
+import ./langserver/[langserver, langserver_types, transports, dispatcher]
 import ./utils/process_utils
 import ./handlers/handlers as lsp
 import ./utils/utils as globalUtils

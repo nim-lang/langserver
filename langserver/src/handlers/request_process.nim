@@ -4,8 +4,7 @@ import chronicles
 import ../protocol/[types, enums]
 import ../utils/asyncprocmonitor
 import ../nimsuggest/nimsuggest
-import ../configurations/constants
-import ../langserver/[langserver_types, langserver_nimsuggest]
+import ../langserver/[langserver_types]
 
 proc getNphPath*(): Option[string] =
   let path = findExe "nph"

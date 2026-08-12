@@ -1,6 +1,6 @@
 import std/[
-  os, macros, options,
-  strformat, strutils, sequtils,
+  macros, options,
+  strformat, sequtils,
   hashes, tables, sets, setutils,
   json, times, tables
 ]
@@ -16,7 +16,7 @@ import ../configurations/configurations
 import ../nimsuggest/nimsuggest
 import ../utils/utils
 
-import ./[langserver_types, query_types, langserver_nimsuggest, langserver_messaging]
+import ./[langserver_types, query_types, langserver_messaging]
 
 # proc sendStatusChanged*(ls: LanguageServer) {.raises: [].}
 

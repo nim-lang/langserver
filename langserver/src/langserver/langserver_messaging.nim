@@ -1,10 +1,9 @@
 import std/[
-  os, macros, 
+  os, macros,
   options,
-  strformat, 
-  strutils, sequtils,
-  hashes, tables, sets, setutils,
-  json, times, tables
+  sequtils,
+  tables, sets,
+  json, times
 ]
 
 import chronos
@@ -12,13 +11,12 @@ import json_serialization
 import json_rpc/[servers/socketserver]
 import chronicles
 
-import ../nimble/nimble_types
 import ../protocol/[enums, types]
 import ../configurations/configurations
 import ../nimsuggest/nimsuggest
 import ../utils/utils
 
-import ./[langserver_types, query_types, langserver_nimsuggest]
+import ./[langserver_types]
 
 proc showMessage*(
   ls: LanguageServer, message: string, typ: MessageType

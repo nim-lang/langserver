@@ -156,6 +156,7 @@ proc processLangserverQueue*(ls: LanguageServer): Future[void] {.async.} =
             debug "didOpen: known file, calling addFileToOpenFiles", uri = uri
             ls.addFileToOpenFiles(fileIsKnown.get(), q.didOpen.textDocument)
             debug "didOpen: known file, addFileToOpenFiles done", uri = uri
+            discard ls.queryFile(uri, NimsuggestQueryKind.CHECK_FILE)
           else:
             # This file is not known by any running nimsuggest instance.
             # Check there is a free nimsuggest slot
@@ -205,6 +206,7 @@ proc processLangserverQueue*(ls: LanguageServer): Future[void] {.async.} =
                       #Here is where consolidation is needed.
                     ls.addFileToOpenFiles(newProjectSlot, q.didOpen.textDocument)
                     discard await ls.consolidateNimsuggestInstances(newProjectSlot)
+                    discard ls.queryFile(uri, NimsuggestQueryKind.CHECK_FILE)
                   else:
                     debug "didOpen: The project does not know the current file. Spin up a new standalone orphan."
                     discard await execStop(newProjectSlot, ls.pool)
@@ -313,23 +315,21 @@ proc processLangserverQueue*(ls: LanguageServer): Future[void] {.async.} =
         )
         ls.langserverQueue.addLastNoWait(changedQuery)
 
-        # if config.checkOnSave.get(true):
-        # CHECK PROJECT 
-        # NOTE: IS THIS NECESSARY ANY MORE?
-        # debug "Checking project", uri = uri
-        # let slotForUri = ls.pool.slotForUri(uri)
-        # if slotForUri.isSome:
-        #   let chkQuery = LangserverQuery(
-        #     kind: LangserverQueryKind.NIMSUGGEST,
-        #     nimsuggest: NimsuggestQuery[LspFilePosition](
-        #       id: 0,
-        #       kind: NimsuggestQueryKind.CHECK_PROJECT,
-        #       uri: pathToUri(slotForUri.get().projectFile),
-        #       dirtyFile: FilePath(""),
-        #       responseFuture: newFuture[seq[Suggest]]("checkProject"),
-        #     )
-        #   )
-        #   ls.langserverQueue.addLastNoWait(chkQuery)
+        if ls.configurations.currentConfig.checkOnSave:
+          debug "Checking project", uri = uri
+          let slotForUri = ls.pool.slotForUri(uri)
+          if slotForUri.isSome:
+            let chkQuery = LangserverQuery(
+              kind: LangserverQueryKind.NIMSUGGEST,
+              nimsuggest: NimsuggestQuery[LspFilePosition](
+                id: 0,
+                kind: NimsuggestQueryKind.CHECK_PROJECT,
+                uri: pathToUri(slotForUri.get().projectFile),
+                dirtyFile: FilePath(""),
+                responseFuture: newFuture[seq[Suggest]]("checkProject"),
+              )
+            )
+            ls.langserverQueue.addLastNoWait(chkQuery)
 
       of FileAccessQueryKind.DID_CLOSE:
         let uri = q.didClose.textDocument.uri

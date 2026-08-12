@@ -114,6 +114,16 @@ proc onLspSuggest*(action, projectFile: cstring) {.async.} =
   else:
     console.error("Action not supported")
 
+proc onCheckProject*() {.async.} =
+  var activeEditor: VscodeTextEditor = vscode.window.activeTextEditor
+  if activeEditor.isNil():
+    return
+  let projectFile = activeEditor.document.fileName
+  let params = newJsObject()
+  params.command = "nimtortoise.checkProject".cstring
+  params.arguments = @[projectFile.toJs()]
+  discard await ext.client.sendRequest("workspace/executeCommand", params)
+
 proc onShowNotification*(args: JsObject) =
   let message = args.to(cstring)
   vscode.window.showInformationMessage(
@@ -307,6 +317,15 @@ proc newRestartItem(title: string, pathToFile: string, action: static string): L
   )
   cast[LspItem](restartItem)
 
+proc newCheckProjectItem(): LspItem =
+  let item = vscode.newTreeItem("Check Project", TreeItemCollapsibleState_None)
+  item.tooltip = "Restart nimsuggest and run a full compile check for the active file's project"
+  item.iconPath = vscode.themeIcon("refresh", vscode.themeColor("terminal.ansiGreen"))
+  item.command = newJsObject()
+  item.command.command = "nimTortoise.checkProject".cstring
+  item.command.title = "Check Project".cstring
+  cast[LspItem](item)
+
 proc getChildrenImpl(
     self: NimLangServerStatusProvider, element: LspItem = nil
 ): seq[LspItem] =
@@ -334,9 +353,10 @@ proc getChildrenImpl(
             "Waiting for nimlangserver to init", "", "", TreeItemCollapsibleState_None
           )
         ]
-    if element.label == "LSP Status":      
-      var topElements =      
+    if element.label == "LSP Status":
+      var topElements =
         @[
+          newCheckProjectItem(),
           newLspItem("Langserver",  self.status.get.lspPath),
           newLspItem("Version", self.status.get.version),
           newLspItem("NimSuggest Instances", "", "", TreeItemCollapsibleState_Expanded),

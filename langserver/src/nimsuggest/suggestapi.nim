@@ -310,17 +310,17 @@ proc createNimsuggest*(
       nimsuggestPath = nimsuggestPath
     result.markFailed fmt "Unable to start nimsuggest. `{nimsuggestPath}` is not present on the PATH"
 
-proc createNimsuggest*(root: FilePath): Future[Project] {.gcsafe.} =
-  result = createNimsuggest(
-    root,
-    "nimsuggest",
-    "",
-    REQUEST_TIMEOUT,
-    proc(ns: Nimsuggest) =
-      discard,
-    proc(pr: Project) =
-      discard,
-  )
+# proc createNimsuggest*(root: FilePath): Future[Project] {.gcsafe.} =
+#   result = createNimsuggest(
+#     root,
+#     "nimsuggest",
+#     "",
+#     REQUEST_TIMEOUT,
+#     proc(ns: Nimsuggest) =
+#       discard,
+#     proc(pr: Project) =
+#       discard,
+#   )
 
 proc toString*(bytes: openarray[byte]): string =
   result = newString(bytes.len)

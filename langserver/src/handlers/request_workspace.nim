@@ -2,7 +2,6 @@ import std/[json, sequtils, strformat, sets]
 import chronos
 import chronicles
 import ../protocol/types
-import ../configurations/constants
 import ../langserver/langserver
 import ../nimsuggest/nimsuggest
 import ../utils/process_utils

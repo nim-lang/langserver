@@ -55,6 +55,7 @@ proc activate*(ctx: VscodeExtensionContext): void {.async.} =
   vscode.commands.registerCommand("nimTortoise.onNimbleTask", onNimbleTask)
   vscode.commands.registerCommand("nimTortoise.onRefreshNimbleTasks", refreshNimbleTasks)
   vscode.commands.registerCommand("nimTortoise.onLspSuggest", onLspSuggest)
+  vscode.commands.registerCommand("nimTortoise.checkProject", onCheckProject)
   vscode.commands.registerCommand("nimTortoise.openGeneratedFile", openGeneratedFile)
   vscode.commands.registerCommand("nimTortoise.refreshTests", refreshTests)
 

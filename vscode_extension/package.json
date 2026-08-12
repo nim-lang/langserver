@@ -189,6 +189,12 @@
                 "category": "Nim Tortoise"
             },
             {
+                "command": "nimTortoise.checkProject",
+                "title": "Check Project",
+                "category": "Nim Tortoise",
+                "icon": "$(refresh)"
+            },
+            {
                 "command": "nimTortoise.openGeneratedFile",
                 "title": "Open Generated File",
                 "category": "Nim Tortoise",
@@ -262,129 +268,112 @@
             "type": "object",
             "title": "Nim Tortoise configuration",
             "properties": {
-                "nimTortoise.project": {
-                    "type": "array",
-                    "default": [],
-                    "description": "Nim project file, if empty use current selected.",
-                    "scope": "resource"
-                },
                 "nimTortoise.projectMapping": {
                     "type": "array",
                     "default": [],
-                    "description": "For non project mode list of per file project mapping using regex, for example ```{\"fileRegex\": \"(.*).inim\", \"projectFile\": \"$1.nim\"}```",
-                    "properties": {
-                        "fileRegex": {
-                            "type": "string",
-                            "description": "Source file regex"
-                        },
-                        "projectFile": {
-                            "type": "string",
-                            "description": "Project file path"
+                    "description": "Per-file project mapping using regex. Each entry maps source files to a nimsuggest entry point, e.g. {\"fileRegex\": \"src/(.*).nim\", \"projectFile\": \"src/main.nim\"}.",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "fileRegex": {
+                                "type": "string",
+                                "description": "Regex matched against the source file path"
+                            },
+                            "projectFile": {
+                                "type": "string",
+                                "description": "Nimsuggest entry point to use for matching files"
+                            }
                         }
                     },
                     "scope": "resource"
                 },
-                "nimTortoise.test-project": {
-                    "type": "string",
-                    "default": "",
-                    "description": "Optional test project.",
+                "nimTortoise.workingDirectoryMapping": {
+                    "type": "array",
+                    "default": [],
+                    "description": "Override the working directory used when running nimsuggest for a given project file. Each entry maps a project file path to a working directory.",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "projectFile": {
+                                "type": "string",
+                                "description": "Project file path (relative to workspace root)"
+                            },
+                            "directory": {
+                                "type": "string",
+                                "description": "Working directory to use (relative to workspace root)"
+                            }
+                        }
+                    },
                     "scope": "resource"
                 },
-                "nimTortoise.buildOnSave": {
+                "nimTortoise.checkOnSave": {
                     "type": "boolean",
                     "default": false,
-                    "description": "Execute build task from tasks.json file on save.",
+                    "description": "Run project-wide diagnostics on save.",
                     "scope": "resource"
                 },
-                "nimTortoise.buildCommand": {
-                    "type": "string",
-                    "default": "c",
-                    "description": "Nim build command (c, cpp, doc, etc)",
-                    "scope": "resource"
-                },
-                "nimTortoise.runOutputDirectory": {
-                    "type": "string",
-                    "default": "",
-                    "description": "Output directory for run selected file command. The directory is relative to the workspace root.",
-                    "scope": "resource"
-                },
-                "nimTortoise.lintOnSave": {
+                "nimTortoise.formatOnSave": {
                     "type": "boolean",
                     "default": false,
-                    "description": "Check code by using 'nim check' on save.",
-                    "scope": "resource",
-                    "deprecationMessage": "Deprecated: Please use the Nim language server backend instead."
+                    "description": "Format the file on save using nph.",
+                    "scope": "resource"
                 },
-                "nimTortoise.enableNimsuggest": {
-                    "type": "boolean",
-                    "default": false,
-                    "description": "Enable calling nimsuggest process to provide completion suggestions, hover suggestions, etc.\nThis option requires restart to take effect.",
-                    "scope": "resource",
-                    "deprecationMessage": "Deprecated: Please use the Nim language server backend instead."
+                "nimTortoise.langserverTimeout": {
+                    "type": "integer",
+                    "default": 120000,
+                    "description": "Timeout in milliseconds for language server requests."
                 },
-                "nimTortoise.provider": {
+                "nimTortoise.fileCheckDelay": {
+                    "type": "integer",
+                    "default": 1000,
+                    "description": "Quiet period in ms after the last edit before per-file diagnostics are run. Lower values give faster feedback; higher values reduce CPU usage during rapid edits."
+                },
+                "nimTortoise.notificationVerbosity": {
                     "type": "string",
-                    "default": "lsp",
-                    "description": "The backend to use for language features.",
+                    "default": "info",
                     "enum": [
-                        "nimsuggest",
-                        "lsp",
-                        "none"
+                        "none",
+                        "error",
+                        "warning",
+                        "info"
                     ],
-                    "scope": "resource",
-                    "deprecationMessage": "Deprecated: Please use the lsp backend."
-                },
-                "nimTortoise.useNimsuggestCheck": {
-                    "type": "boolean",
-                    "default": false,
-                    "description": "Use nimsuggest in order to run check, instead of the nim compiler.",
-                    "scope": "resource",
-                    "deprecationMessage": "Deprecated: Please use the Nim language server backend instead."
+                    "description": "Verbosity of language server notifications shown in VS Code."
                 },
                 "nimTortoise.logNimsuggest": {
                     "type": "boolean",
                     "default": false,
-                    "description": "Enable verbose logging of nimsuggest to use profile directory."
+                    "description": "Enable verbose logging of nimsuggest."
                 },
-                "nimTortoise.licenseString": {
-                    "type": "string",
-                    "default": "",
-                    "description": "Optional license text that will be inserted on nim file creation.",
-                    "scope": "resource"
+                "nimTortoise.nimExpandArc": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Expand ARC on proc definition hover."
                 },
-                "nimTortoise.nimsuggestRestartTimeout": {
+                "nimTortoise.nimExpandMacro": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Expand macro calls on hover."
+                },
+                "nimTortoise.maxNimsuggestProcesses": {
                     "type": "integer",
-                    "default": 60,
-                    "description": "Nimsuggest will be restarted after this timeout in minutes, if 0 then restart disabled.\nThis option requires restart to take effect."
+                    "default": 2,
+                    "description": "Maximum number of nimsuggest processes to keep alive. 0 means unlimited."
                 },
-                "nimTortoise.nimprettyIndent": {
+                "nimTortoise.maxNimsuggestCrashRetries": {
                     "type": "integer",
-                    "default": 0,
-                    "description": "Nimpretty: set the number of spaces that is used for indentation\n--indent:0 means autodetection (default behaviour).",
+                    "default": 3,
+                    "description": "Number of times the language server will automatically restart a crashed nimsuggest before giving up."
+                },
+                "nimTortoise.nimsuggestPath": {
+                    "type": "string",
+                    "default": "nimsuggest",
+                    "description": "Path to the nimsuggest binary. If set to 'nimsuggest' the binary is looked up in PATH.",
                     "scope": "resource"
                 },
-                "nimTortoise.nimprettyMaxLineLen": {
+                "nimTortoise.nimsuggestIdleTimeout": {
                     "type": "integer",
-                    "default": 80,
-                    "description": "Nimpretty: set the desired maximum line length (default: 80).",
-                    "scope": "resource"
-                },
-                "nimTortoise.lsp.trace.server": {
-                    "scope": "window",
-                    "type": "string",
-                    "enum": [
-                        "off",
-                        "messages",
-                        "verbose"
-                    ],
-                    "default": "off",
-                    "description": "Traces the communication between VS Code and the Nim language server."
-                },
-                "nimTortoise.lsp.path":{
-                    "type": "string",
-                    "default": "",
-                    "description": "Path to the Nim language server executable. If empty, the extension will try to find the language server in the PATH environment variable.",
-                    "scope": "resource"
+                    "default": 120000,
+                    "description": "Timeout in ms after which an idle nimsuggest process is stopped."
                 },
                 "nimTortoise.inlayHints.typeHints.enable": {
                     "type": "boolean",
@@ -404,98 +393,87 @@
                 "nimTortoise.inlayHints.exceptionHints.hintStringLeft": {
                     "type": "string",
                     "default": "🔔",
-                    "description": "The string to use for exception hints. This string is displayed to the left of the symbol name."
+                    "description": "String displayed to the left of a symbol name in exception inlay hints."
                 },
                 "nimTortoise.inlayHints.exceptionHints.hintStringRight": {
                     "type": "string",
                     "default": "",
-                    "description": "The string to use for exception hints. This string is displayed to the right of the symbol name."
+                    "description": "String displayed to the right of a symbol name in exception inlay hints."
                 },
-                "nimTortoise.debug.type": {
+                "nimTortoise.lsp.trace.server": {
+                    "scope": "window",
                     "type": "string",
-                    "default": "lldb",
-                    "description": "The type of debugger to use when using Nim Tortoise: Debug selected file. The value is the same value as typically used in launch.json for the type attribute."
-                },
-                "nimTortoise.notificationVerbosity": {
-                    "type": "string",
-                    "default": "info",
                     "enum": [
-                        "none",
-                        "error",
-                        "warning",
-                        "info"
+                        "off",
+                        "messages",
+                        "verbose"
                     ],
-                    "description": "The verbosity of the Nim language server notifications."
+                    "default": "off",
+                    "description": "Traces the communication between VS Code and the Nim language server."
                 },
-                "nimTortoise.notificationTimeout": {
-                    "type": "integer",
-                    "default": 15,
-                    "description": "The timeout in seconds for the Nim language server notifications. Use 0 to disable the timeout."
+                "nimTortoise.lsp.path": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Path to the Nim language server executable. If empty, the extension looks for it in PATH.",
+                    "scope": "resource"
                 },
-                "nimTortoise.transportMode":{
+                "nimTortoise.transportMode": {
                     "type": "string",
                     "default": "stdio",
                     "enum": [
                         "stdio",
                         "socket"
                     ],
-                    "description": "The transport mode the lsp client will use."
+                    "description": "Transport mode used to connect to the language server."
                 },
-                "nimTortoise.lspPort":{
-                    "type": "number",
+                "nimTortoise.lspPort": {
+                    "type": "integer",
                     "default": 0,
-                    "description": "Useful for debugging. The port in which the lsp client will connect to when transport is socket. 0 implies the extension will start the socket server."
+                    "description": "Socket port for the language server when transportMode is 'socket'. 0 means the extension starts the server and assigns a port automatically."
                 },
-                "nimTortoise.formatOnSave":{
-                    "type": "boolean",
-                    "default": false,
-                    "description": "Format the file on save. Lsp backend only. Requires nph for formatting."
+                "nimTortoise.notificationTimeout": {
+                    "type": "integer",
+                    "default": 15,
+                    "description": "Timeout in seconds before language server notifications are automatically dismissed. Use 0 to disable."
                 },
-                "nimTortoise.useNimCheck":{
-                    "type": "boolean",
-                    "default": false,
-                    "description": "Use nim check instead of nimsuggest for linting. Controls lsp backend behavior."
+                "nimTortoise.debug.type": {
+                    "type": "string",
+                    "default": "lldb",
+                    "description": "Debugger type used by 'Debug selected file'. Matches the 'type' attribute in launch.json (e.g. 'lldb', 'cppdbg')."
                 },
-                "nimTortoise.nimExpandArc":{
-                    "type": "boolean",
-                    "default": false,
-                    "description": "Expand ARC on proc definition hover."
-                },
-                "nimTortoise.nimExpandMacro":{
-                    "type": "boolean",
-                    "default": false,
-                    "description": "Expand macro calls on hover."
-                },
-                "nimTortoise.nimbleAutoSetup":{
+                "nimTortoise.nimbleAutoSetup": {
                     "type": "boolean",
                     "default": true,
-                    "description": "Automatically run nimble setup when a .nimble file is detected in the current directory."
+                    "description": "Automatically run 'nimble setup' when a .nimble file is detected, to generate nimble.paths."
                 },
-                "nimTortoise.maxNimsuggestProcesses":{
-                    "type": "number",
-                    "default": 2,
-                    "description": "The maximum number of nimsuggest processes to keep alive in the lsp. 0 means unlimited."
+                "nimTortoise.project": {
+                    "type": "array",
+                    "default": [],
+                    "description": "Nim project files to track. If empty, the active file is used.",
+                    "scope": "resource"
                 },
-                "nimTortoise.nimsuggestIdleTimeout":{
-                    "type": "number",
-                    "default": 120000,
-                    "description": "The timeout in ms after which an idle nimsuggest will be stopped. If not specified the default is 120 seconds."
+                "nimTortoise.buildCommand": {
+                    "type": "string",
+                    "default": "c",
+                    "description": "Nim compiler backend used when building (c, cpp, js, etc.).",
+                    "scope": "resource"
                 },
-                "nimTortoise.fileCheckDelay":{
-                    "type": "number",
-                    "default": 1000,
-                    "description": "The quiet period in ms after the last edit before per-file diagnostics are run. Lower values give faster feedback; higher values reduce CPU usage during rapid edits."
-                },
-                "nimTortoise.test.entryPoint":{
+                "nimTortoise.runOutputDirectory": {
                     "type": "string",
                     "default": "",
-                    "description": "Single test entry point (deprecated — use nimTortoise.test.entryPoints for monorepo support). If both are empty, tests are disabled."
+                    "description": "Output directory for compiled binaries when using 'Run selected file'. Relative to workspace root.",
+                    "scope": "resource"
                 },
-                "nimTortoise.test.entryPoints":{
+                "nimTortoise.test.entryPoint": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Single test entry point. Prefer nimTortoise.test.entryPoints for monorepo support. If both are empty, tests are disabled."
+                },
+                "nimTortoise.test.entryPoints": {
                     "type": "array",
                     "items": { "type": "string" },
                     "default": [],
-                    "description": "List of test entry points, one per sub-project. Paths are relative to the workspace root (e.g. [\"langserver/tests/all.nim\"]). Takes precedence over nimTortoise.test.entryPoint."
+                    "description": "List of test entry points, one per sub-project. Paths relative to workspace root (e.g. [\"langserver/tests/all.nim\"]). Takes precedence over nimTortoise.test.entryPoint."
                 }
             }
         },

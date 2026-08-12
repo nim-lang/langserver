@@ -1,11 +1,8 @@
-import std/[options, tables, os, sequtils, strutils, times, strformat, json]
+import std/[options, tables, os, sequtils, strutils, times]
 import chronos
 import chronos/asyncproc
 import stew/byteutils
-import regex
 import chronicles
-
-import ../protocol/enums
 import ../nimble/[nimble, nimble_types]
 import ../nim_compiler/nim_compiler
 import ../configurations/configurations
@@ -16,6 +13,7 @@ import ./[langserver_types, langserver_utils]
 import ../protocol/types
 
 proc getWorkingDir*(ls: LanguageServer, path: FilePath): string =
+  ## Gets working directory.
   let rootPath =
     case ls.capabilities.serverMode
     of lsp: ls.capabilities.lspInitializeParams.getRootPath
@@ -28,7 +26,6 @@ proc getWorkingDir*(ls: LanguageServer, path: FilePath): string =
     if pathRelativeToRoot.isSome and m.projectFile == pathRelativeToRoot.get():
       result = rootPath / m.directory
       break
-
 
 proc getNimbleDumpInfo*(
     ls: LanguageServer, nimbleFile: FilePath
