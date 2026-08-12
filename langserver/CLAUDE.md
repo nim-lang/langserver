@@ -176,7 +176,7 @@ didn't manifest. Investigate before re-marking as excluded.
 
 ```
 src/
-├── nimtortoise.nim             # entry point; main(), registerLspRoutes(), tickLs(), tickFileChecks()
+├── nimtortoise.nim             # entry point; main(), registerLspRoutes(), tickLs()
 ├── protocol/
 │   ├── enums.nim               # LSP/MCP enums
 │   └── types.nim               # protocol type definitions
@@ -195,7 +195,6 @@ src/
 │   ├── configurations.nim      # getWorkspaceConfiguration, waitForWorkspaceConfiguration,
 │   │                           #   getAndWaitForWorkspaceConfiguration
 │   ├── diagnostics.nim         # sendDiagnostics, publishDiagnostics helpers
-│   ├── checking.nim            # checkProject, checkFile, tickFileChecks (periodic chkFile loop)
 │   ├── dispatcher.nim          # processLangserverQueue — drains ls.langserverQueue in FIFO;
 │   │                           #   handles NIMSUGGEST and FILE_ACCESS branches
 │   ├── dispatcher_utils.nim    # isKnownByANimsuggestSlot, addFileToOpenFiles, queryFile,
@@ -271,11 +270,11 @@ LanguageServer* = ref object
   notify*:          NotifyAction
   call*:            CallAction
   onExit*:          OnExitCallback
-  checkInProgress*: bool
   isShutdown*:      bool
   nimDumpCache*:    Table[string, NimbleDumpInfo]
   cmdLineClientProcessId*: Option[int]
   testRunProcess*:  Option[AsyncProcessRef]
+  lsInitialized*:   Future[void]
 ```
 
 `pool` is created synchronously in `initLanguageServer` (before the event loop starts)
@@ -297,21 +296,19 @@ Defined in `src/nimsuggest/nimsuggest_types.nim`:
 ```nim
 NlsFileInfo* = ref object of RootObj
   slot*:          NimsuggestSlot   # direct ref to pool slot; assigned in addFileToOpenFiles
-  changed*:       bool             # unsaved edits exist; stash is authoritative
   fingerTable*:   seq[seq[tuple[u16pos, offset: int]]]  # UTF-8 → UTF-16 mapping
-  lastEditTime*:  DateTime         # updated on every DID_CHANGE; read by tickFileChecks
+  lastChanged*:   DateTime         # updated on every DID_CHANGE
   lastChecked*:   DateTime         # set when chkFile or checkProject runs for this URI
   textDocument*:  TextDocumentItem
 ```
 
-`lastEditTime`/`lastChecked` replace the old `cancelFileCheck`/`checkInProgress`/`needsChecking`
-three-field state machine. `tickFileChecks` in `checking.nim` polls every `FILE_CHECK_DELAY` ms
-and runs `chkFile` for files where `lastEditTime > lastChecked` and the edit is old enough.
+Note: `changed: bool` was removed. Whether to pass the stash is now decided by `uriToStash`
+(in `langserver/utils.nim`), which always returns the stash path for any file present in
+`openFiles`. The stash file is written on every `DID_CHANGE`; `DID_SAVE` sends a `CHANGED`
+query with an empty `dirtyFile` to tell nimsuggest to switch back to the disk file.
 
 The slot ref is resolved synchronously during `addFileToOpenFiles` (in `dispatcher_utils.nim`)
-and stored directly. **⚠ `slot` may be nil** if `didClose` fires for a URI whose `didOpen`
-has not yet completed slot assignment. Guard with `if fileInfo.slot != nil:` before accessing
-`fileInfo.slot.queryMailbox` or calling `fileInfo.slot.unassignUri`.
+and stored directly.
 
 ### `NimsuggestPool` and `NimsuggestSlot`
 
@@ -319,13 +316,14 @@ See `src/nimsuggest/nimsuggest_types.nim` for the authoritative type definitions
 
 ```nim
 NimsuggestPool* = ref object
-  slots*: Table[string, NimsuggestSlot]   # projectFile → slot; all canonical (no aliases)
-  maxSlots*: int                           # pool capacity; 0 = unlimited
-  # Injected procs (set in initLanguageServer after construction):
-  spawnProc*:        proc(projectFile: string, paths: seq[string]): Future[NimSuggest]
-  stopProc*:         proc(ns: NimSuggest): Future[void]
-  notifyProc*:       proc(meth: string, params: JsonNode)  # window/showMessage etc.
-  statusChangedProc* proc()                                # ls.sendStatusChanged
+  slots*:              Table[FilePath, NimsuggestSlot]  # projectFile → slot; all canonical (no aliases)
+  maxSlots*:           int                              # pool capacity; 0 = unlimited
+  fileCheckDelay*:     times.Duration                   # quiet-period before per-file diagnostics run
+  nimsuggestPath*:     string                           # path to nimsuggest binary
+  nimVersion*:         string                           # Nim version string for logging
+  timeout*:            int                              # per-request timeout in ms
+  notifyProc*:         NotifyProc                       # sends JSON-RPC notification to client
+  statusChangedProc*:  StatusChangedProc                # triggers extension/statusUpdate
 ```
 
 Key points:
@@ -344,7 +342,6 @@ Key points:
 - `nimsuggest/nimsuggest_slots.nim` — `execSpawn`, `execStop`; slot state machine.
 - `nimsuggest/nimsuggest_process.nim` — `processNimsuggestQueries`, `runNimsuggestQuery`; TCP dispatch. Contains two skip-rule groups: **background queries** (INLAY_HINTS, DOCUMENT_SYMBOLS) are dropped if CHANGED pending or file edited within `FILE_CHECK_DELAY` ms; **position-based queries** (SUGGEST, SIGNATURE_HELP, HOVER, DOCUMENT_HIGHLIGHT) are dropped if a newer same-kind query is already queued for the same URI, or if CHANGED is pending.
 - `nimsuggest/suggestapi.nim` — `createNimsuggest`, raw TCP protocol (sug/def/hover/chk/…).
-- `langserver/checking.nim` — `checkProject`, `checkFile`, `tickFileChecks`. Note: `checkProject` sends `chk` with `slot.projectFile` (the nimsuggest entry point), not the saved URI.
 - `langserver/dispatcher.nim` — `processLangserverQueue` (FIFO queue drain).
 - `langserver/dispatcher_utils.nim` — `isKnownByANimsuggestSlot`, `addFileToOpenFiles`, `queryFile`, `nimsuggestSlotToEvict`.
 - `langserver/nimsuggest_processes.nim` — `getIntendedProject`, `idleSlots`, `initNimsuggestInstances`, `stopNimsuggestProcesses`.
@@ -399,46 +396,49 @@ The single most common source of bugs. Always think of them together:
 
 ```
 ls.files.openFiles   Table[uri → NlsFileInfo]      ← LSP ground truth, all open URIs
-slot.ns.openFiles    OrderedSet[uri]                ← Per-slot tracking, subset of openFiles
+slot.ownedUris       HashSet[uri]                   ← Per-slot tracking, subset of openFiles
 ```
 
 **They are deliberately separate** — there can be multiple nimsuggest slots each owning a
-disjoint subset of open files. The nimsuggest protocol has no "close" command, so
-`ns.openFiles` only tracks which URIs that instance was told to care about.
+disjoint subset of open files. `slot.ownedUris` tracks which URIs a given slot serves.
 
 **They must be kept in sync manually.** Every `ls.files.openFiles` insertion/deletion must
-be mirrored to the correct slot's `ns.openFiles`:
+be mirrored to the correct slot's `ownedUris` via `slot.assignUri(uri)` / `slot.unassignUri(uri)`:
 
-| Operation | `ls.files.openFiles` | `slot.ns.openFiles` |
+| Operation | `ls.files.openFiles` | `slot.ownedUris` |
 |---|---|---|
-| `didOpenFile` | `openFiles[uri] = new NlsFileInfo` | `ns.openFiles.incl(uri)` |
-| `didCloseFile` | `openFiles.del(uri)` | `slot.ns.openFiles.excl(uri)` |
-| `didRenameFile` | del old, insert new | excl old, incl new |
-| `didDeleteFile` | `openFiles.del(uri)` | `ns.openFiles.excl(uri)` |
-| `makeIdleFile` | del from `openFiles`, insert into `idleOpenFiles` | `ns.openFiles.excl(uri)` |
+| `didOpenFile` | `openFiles[uri] = new NlsFileInfo` | `slot.assignUri(uri)` |
+| `didCloseFile` | `openFiles.del(uri)` | `slot.unassignUri(uri)` |
+| `didRenameFile` | del old, insert new | `unassignUri(old)`, `assignUri(new)` |
+| `didDeleteFile` | `openFiles.del(uri)` | `slot.unassignUri(uri)` |
 
-**The deadly pattern**: a `for uri in ns.openFiles` loop that contains any `await` point.
-At each `await`, the Chronos event loop yields and `didCloseFile` can call `excl`, mutating
-the `OrderedSet` while the iterator is live. Nim detects this and raises a fatal exception.
-**Always snapshot first**: `for uri in ns.openFiles.toSeq:`.
+**The deadly pattern**: a `for uri in slot.ownedUris` loop that contains any `await` point.
+At each `await`, the Chronos event loop yields and `didCloseFile` can call `unassignUri`,
+mutating the set while the iterator is live. **Always snapshot first**: `for uri in slot.ownedUris.toSeq:`.
 
 ---
 
 ## The stash (dirtyfile) mechanism
 
-1. `textDocument/didChange` → write content to `storageDir/(hash(uri).toHex & ".nim")`,
-   set `fileInfo.changed = true`.
-2. Any nimsuggest request checks `fileInfo.changed`. If true, the stash path is passed
-   as the `dirtyfile` argument: `sug "/disk/file.nim";"/stash/abc.nim":42:15`.
-3. `textDocument/didSave` → `ns.changed(file, "")` (empty dirtyfile = use disk),
-   then `fileInfo.changed = false`.
+1. `textDocument/didChange` → DID_CHANGE writes the new content to
+   `storageDir/(sha1(uri) & ".nim")` (the stash), updates `fileInfo.lastChanged`.
+2. When `processLangserverQueue` dispatches any nimsuggest query, it sets `q.dirtyFile`
+   at dispatch time (not at query-creation time):
+   - If `q.kind == CHANGED and q.saved`: `q.dirtyFile = ""` (use disk)
+   - Otherwise: `q.dirtyFile = ls.uriToStash(q.uri)` — which returns the stash path for
+     any file currently in `openFiles`, or `""` if the file is closed.
+3. `textDocument/didSave` → enqueues a `CHANGED` query with `saved=true` and `dirtyFile=""`,
+   telling nimsuggest to switch back to the on-disk file. After the `CHANGED` completes,
+   `CHECK_FILE` is enqueued automatically (no stash).
+
+**⚠ Known bug**: after `didSave`, the stash file still exists on disk. Subsequent HOVER /
+INLAY_HINTS queries pass the stash path (because `uriToStash` always returns it for open
+files), so nimsuggest uses the pre-save stash content instead of the saved disk content.
+The `CHANGED` command cleared nimsuggest's dirty-file state, but then HOVER re-sets it.
+Fix: delete (or overwrite) the stash file in `DID_SAVE` so `uriToStash` returns `""`.
 
 In v4, nimsuggest calls `msgs.setDirtyFile(fileIndex, dirtyfile)` before any command logic,
-so position commands always use the stash content when one is provided — no prior `changed`
-call needed for hover/definition/etc.
-
-⚠ **Stash path collision risk** (P1): `hash(uri).toHex` is collision-prone. Two URIs with
-the same hash silently overwrite each other's edit buffer. See invariant #15.
+so position commands always use the stash content when one is provided.
 
 ---
 
@@ -577,12 +577,12 @@ structure above).
 |---|---|---|---|
 | `initialized` | `notification_process.nim` | none | `pool`, `entryPoints` |
 | `textDocument/didOpen` | `notification_files.nim` → `dispatcher.nim` | `known` | `openFiles`, pool slots |
-| `textDocument/didChange` | `notification_files.nim` | none (deferred) | `fileInfo.changed`, stash file |
+| `textDocument/didChange` | `notification_files.nim` | none (deferred) | stash file, `lastChanged` |
 | `textDocument/willSaveWaitUntil` | `notification_files.nim` | none | — |
-| `textDocument/didSave` | `notification_files.nim` | `changed`, `chk` | `fileInfo.changed`, `crashedUris` |
-| `textDocument/didClose` | `notification_files.nim` → `dispatcher.nim` | none | `openFiles`, `ns.openFiles` |
-| `workspace/didRenameFiles` | `notification_files.nim` | `recompile` | `openFiles`, `ns.openFiles` |
-| `workspace/didDeleteFiles` | `notification_files.nim` | `recompile` | `openFiles`, `ns.openFiles` |
+| `textDocument/didSave` | `notification_files.nim` | `changed` (saved=true) | `crashedUris` |
+| `textDocument/didClose` | `notification_files.nim` → `dispatcher.nim` | none | `openFiles`, `slot.ownedUris` |
+| `workspace/didRenameFiles` | `notification_files.nim` | `recompile` | `openFiles`, `slot.ownedUris` |
+| `workspace/didDeleteFiles` | `notification_files.nim` | `recompile` | `openFiles`, `slot.ownedUris` |
 | `workspace/didChangeConfiguration` | `notification_files.nim` | none/restart all | config — **incomplete** |
 | `$/cancelRequest` | `notification_process.nim` | none | `pendingRequests` |
 | `$/setTrace` | `notification_process.nim` | none | — |
@@ -613,8 +613,10 @@ when it detects the file is unknown to the running instance (fix #18).
    `asyncSpawn`; assign slot to `openFiles` optimistically with pending state.
 2. **DID_OPEN re-entry race**: no guard after `await isKnownByANimsuggestSlot` returns;
    concurrent DID_OPENs for the same URI can split ownership between two slots.
-3. **Stash path hash collision** (`dispatcher_utils.nim`): `hash(uri).toHex` is
-   collision-prone. Replace with a monotonic counter or full URI as escaped path.
+3. **Stash persists after save** (`dispatcher.nim` DID_SAVE): the stash file is written on
+   `didChange` but never deleted on `didSave`. `uriToStash` always returns the stash path
+   for open files, so post-save HOVER/INLAY_HINTS pass the pre-save stash to nimsuggest.
+   Fix: delete the stash file in the DID_SAVE path so `uriToStash` returns `""`.
 4. **Slot eviction mailbox drain race** (`dispatcher.nim`): futures completed with `@[]`
    while `processNimsuggestQueries` may be completing the same futures — violates
    single-write invariant.
@@ -624,7 +626,11 @@ when it detects the file is unknown to the running instance (fix #18).
 5. **`extension/macroExpand`** — stub; macro expansion completely unavailable.
 6. **`extension/suggest` (restart action)** — stub; no manual nimsuggest restart button.
 7. **`extension/status` / `extension/capabilities`** — stubs; VS Code status bar empty.
-8. **Per-file diagnostics**: `tickFileChecks` in `checking.nim` is spawned from `nimtortoise.nim` alongside `tickLs`. It polls every `FILE_CHECK_DELAY` ms (1000ms) and runs `chkFile` for files with `lastEditTime > lastChecked` where the edit has settled. `scheduleFileCheck` and `cancelPendingFileChecks` are removed.
+8. **Per-file diagnostics only triggered by save**: `tickFileChecks` and `checking.nim` no
+   longer exist. Diagnostics (`CHECK_FILE`) are only enqueued after a `CHANGED` command
+   completes in `processNimsuggestQueries`. Files that are open but not explicitly saved
+   receive no periodic re-check; `lastChanged`/`lastChecked` exist on `NlsFileInfo` but
+   are not currently used to drive any background polling loop.
 9. **`didChangeConfiguration` incomplete** (`dispatcher.nim`): config changes to
    `nimsuggestIdleTimeout`, `projectMapping`, etc. are silently ignored.
 
@@ -640,9 +646,9 @@ These constraints must hold in all future code. Learned from hard-to-debug crash
    and launching a competing auto-restart. Established by fix #13/14; currently upheld in
    the `restart` template and `warnIfUnknown`. Any new code that stops a project must do the same.
 
-2. **Snapshot `ns.openFiles` before async iteration** — `for uri in ns.openFiles.toSeq:` not
-   `for uri in ns.openFiles:`. Any `await` inside the loop body allows `didCloseFile` to call
-   `excl` on the live set, which Nim detects as a fatal mutation during iteration (fix #14).
+2. **Snapshot `slot.ownedUris` before async iteration** — `for uri in slot.ownedUris.toSeq:` not
+   `for uri in slot.ownedUris:`. Any `await` inside the loop body allows `didCloseFile` to call
+   `unassignUri`, mutating the set while the iterator is live (fix #14).
 
 3. **`didSave` must unblock `crashedFiles` before `tryGetNimsuggest`** — `tryGetNimsuggest`
    returns early if `project.failed`. Unblocking must come first so the save triggers recovery,
@@ -695,7 +701,7 @@ These constraints must hold in all future code. Learned from hard-to-debug crash
     `createOrRestartNimsuggest` checks `fileInfo.projectFile.read() == projectFile`
     (where `projectFile` is the new standalone path). If the reassignment happens AFTER the
     call, the callback may fire before the future is updated and miss adding `uri` to the
-    new `ns.openFiles`. Reassign first, then spawn.
+    new slot's `ownedUris`. Reassign first, then spawn.
 
 *(Invariants 13–16 apply to the `dp-rewrite` branch architecture only.)*
 
@@ -711,10 +717,9 @@ These constraints must hold in all future code. Learned from hard-to-debug crash
     ls.files.openFiles` before proceeding. A single guard before the first `await` is
     insufficient.
 
-15. **Stash path must be collision-resistant** — `hash(uri).toHex & ".nim"` as a stash
-    filename is vulnerable to hash collisions. Two URIs mapping to the same hash silently
-    overwrite each other's edit buffer; nimsuggest then hovers on the wrong code with no
-    error. Use a monotonic counter or the full URI with separators replaced as the key.
+15. **Stash path uses SHA-1** (`langserver/utils.nim`: `uriStorageLocation`) — fixed.
+    `secureHash(string(uri)) & ".nim"` gives ~2^-80 collision probability, acceptable.
+    Previous versions used `hash(uri).toHex` (64-bit, collision-prone); that is gone.
 
 16. **Guard `fileInfo.slot` before use in `didClose`/`didSave` paths** — `slot` in
     `NlsFileInfo` may be nil if `didClose` fires for a URI whose `didOpen` has not yet

@@ -249,7 +249,6 @@ proc processLangserverQueue*(ls: LanguageServer): Future[void] {.async.} =
         file.close()
 
         # We should schedule a changed query, nimsuggets doesn't know it has changed.
-        # ls.files.openFiles[uri].changed = true
         ls.files.openFiles[uri].lastChanged = times.now()
 
         let changedQuery = LangserverQuery(
@@ -267,11 +266,20 @@ proc processLangserverQueue*(ls: LanguageServer): Future[void] {.async.} =
 
       of FileAccessQueryKind.DID_SAVE:
         let uri = q.didSave.textDocument.uri
-        debug "didSave: enter", uri = uri
+        debug "didSave: file", uri = uri
         if uri in ls.files.openFiles:
           let fileInfo = ls.files.openFiles[uri]
           if uri in fileInfo.slot.crashedUris:
             fileInfo.slot.crashedUris.excl(uri)
+
+          if q.didSave.text.isSome:
+            let stashLocation = ls.uriStorageLocation(uri)
+            let file = open(string(stashLocation), fmWrite)
+            fileInfo.fingerTable = @[]
+            for line in q.didSave.text.get.splitLines:
+              fileInfo.fingerTable.add(line.createUTFMapping())
+              file.writeLine(line)
+            file.close()
 
         debug "didSave: sending CHANGED query", uri = uri
         # Directly query nimsuggest
@@ -282,7 +290,7 @@ proc processLangserverQueue*(ls: LanguageServer): Future[void] {.async.} =
             id: 0,
             kind: NimsuggestQueryKind.CHANGED,
             uri: uri,
-            dirtyFile: FilePath(""), # NOTE: Maybe this should be empty?
+            dirtyFile: ls.uriStorageLocation(uri),
             saved: true,
             responseFuture: newFuture[seq[Suggest]]("nimsuggestQuery"),
           )
@@ -291,10 +299,6 @@ proc processLangserverQueue*(ls: LanguageServer): Future[void] {.async.} =
 
         # if config.checkOnSave.get(true):
         # CHECK PROJECT 
-        # Send chk with the slot's project file, not the saved URI. nimsuggest's chk
-        # command takes the entry-point path it was spawned with; any other file would
-        # cause it to check the wrong scope.
-        
         # NOTE: IS THIS NECESSARY ANY MORE?
         # debug "Checking project", uri = uri
         # let slotForUri = ls.pool.slotForUri(uri)
