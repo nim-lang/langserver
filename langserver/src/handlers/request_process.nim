@@ -98,7 +98,11 @@ proc initialize*(
       workspaceSymbolProvider: some(true),
       executeCommandProvider: some(
         ExecuteCommandOptions(
-          commands: some(@[RESTART_COMMAND, RECOMPILE_COMMAND, CHECK_PROJECT_COMMAND])
+          commands: some(@[
+            "nimtortoise.recompile",
+            "nimtortoise.restart",
+            "nimtortoise.checkProject"
+          ])
         )
       ),
       inlayHintProvider: some(InlayHintOptions(resolveProvider: some(false))),

@@ -67,12 +67,13 @@ type
       expand*: tuple[position: P, tag: string]
     of NimsuggestQueryKind.DOCUMENT_SYMBOLS,
       NimsuggestQueryKind.WORKSPACE_SYMBOLS,
-      NimsuggestQueryKind.CHANGED,
       NimsuggestQueryKind.CHECK_FILE,
       NimsuggestQueryKind.CHECK_PROJECT,
       NimsuggestQueryKind.RECOMPILE,
       NimsuggestQueryKind.KNOWN:
       discard
+    of NimsuggestQueryKind.CHANGED:
+      saved*: bool
 
 # === NIMSUGGEST SLOT TYPES ====
 type
@@ -98,16 +99,11 @@ type
       ## Updated after each successful query. Drives LRU eviction policy.
     isEntryPoint*: bool
       ## Discovered via nimble dump during `initialized`.
-      ## Protected from idle eviction by removeIdleNimsuggests.
     crashCount*: int
       ## Incremented on unhandled exit. Reset to 0 on successful init.
     crashedUris*: HashSet[FileUri]
       ## URIs that caused a SIGSEGV in this slot's process.
       ## Cleared by RESTART (explicit user action = clean slate).
-    # NOTE: MAYBE REMOVE THIS?!:  
-    # pendingChangedUris*: HashSet[FileUri]
-      ## URIs that have a CHANGED query already in queryMailbox.
-      ## Prevents duplicate CHANGED queries accumulating during rapid edits.
 
 # === NIMSUGGEST POOL TYPES ===
 type

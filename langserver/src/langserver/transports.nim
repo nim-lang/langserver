@@ -131,7 +131,7 @@ proc addRpcToCancellable*(ls: LanguageServer, rpc: Rpc): Rpc =
 proc processContentLength*(inputStream: FileStream): string =
   try:
     result = inputStream.readLine()
-    if result.startsWith(CONTENT_LENGTH):
+    if result.startsWith("Content-Length: "):
       let parts = result.split(" ")
       let length = parseInt(parts[1])
       discard inputStream.readLine() # skip the \r\n
@@ -148,7 +148,7 @@ proc processContentLength*(
 ): Future[string] {.async: (raises: []).} =
   try:
     result = await transport.readLine()
-    if result.startsWith(CONTENT_LENGTH):
+    if result.startsWith("Content-Length: "):
       let parts = result.split(" ")
       let length = parseInt(parts[1])
       discard await transport.readLine() # skip the \r\n
@@ -183,7 +183,7 @@ proc readMcpStdin*(ctx: ptr ReadStdinContext) {.thread.} =
 
 proc wrapContentWithContentLength*(content: string): string =
   let contentLength = content.len + 1
-  &"{CONTENT_LENGTH}{contentLength}{CRLF}{CRLF}{content}\n"
+  &"Content-Length: {contentLength}{CRLF}{CRLF}{content}\n"
 
 proc writeOutput*(ls: LanguageServer, content: JsonNode) =
   let res =

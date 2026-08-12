@@ -9,18 +9,12 @@ proc getVersionFromNimble(): string =
   return "unknown"
 
 const
-  RESTART_COMMAND* = "nimtortoise.restart"
-  RECOMPILE_COMMAND* = "nimtortoise.recompile"
-  CHECK_PROJECT_COMMAND* = "nimtortoise.checkProject"
   FILE_CHECK_DELAY* = 1000
   LSPVersion* = getVersionFromNimble()
   CRLF* = "\r\n"
-  CONTENT_LENGTH* = "Content-Length: "
   NIM_EXPAND_ARC_BY_DEFAULT* = false
   NIM_EXPAND_MACRO_BY_DEFAULT* = false
   NIM_MAX_NS_PROCESSES* = 2
-
-  # USE_NIM_CHECK_BY_DEFAULT* = false DEPRECATED
 
 const
   CONFIG_WAIT_TIMEOUT_MS* = 30_000

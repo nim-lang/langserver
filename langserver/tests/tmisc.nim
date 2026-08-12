@@ -120,7 +120,7 @@ suite "Nimlangserver idle nimsuggest cleanup":
     var removed = false
     for attempt in 0 ..< 5:
       waitFor sleepAsync(1100)
-      waitFor ls.removeIdleNimsuggests()
+      # waitFor ls.removeIdleNimsuggests()
       # In the new code, pool.slots holds nimsuggest instances keyed by projectFile
       if hwAbsFile notin ls.pool.slots:
         removed = true

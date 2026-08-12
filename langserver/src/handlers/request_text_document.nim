@@ -538,7 +538,7 @@ proc codeAction*(
         "kind": "source",
         "command": {
           "title": "Clean build",
-          "command": RECOMPILE_COMMAND,
+          "command": "nimtortoise.recompile",
           "arguments": @[projectUri],
         },
       },
@@ -547,7 +547,7 @@ proc codeAction*(
         "kind": "source",
         "command": {
           "title": "Refresh project errors",
-          "command": CHECK_PROJECT_COMMAND,
+          "command": "nimtortoise.checkProject",
           "arguments": @[projectUri],
         },
       },
@@ -556,7 +556,7 @@ proc codeAction*(
         "kind": "source",
         "command": {
           "title": "Restart nimsuggest",
-          "command": RESTART_COMMAND,
+          "command": "nimtortoise.restart",
           "arguments": @[projectUri],
         },
       },

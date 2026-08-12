@@ -109,7 +109,10 @@ proc processLangserverQueue*(ls: LanguageServer): Future[void] {.async.} =
       # Refresh dirtyFile at dispatch time. The query was constructed in the LSP
       # handler before any FILE_ACCESS (DID_CHANGE) in front of it was processed,
       # so dirtyFile may have been captured as "" even though changed=true by now.
-      q.dirtyFile = ls.uriToStash(q.uri)
+      if q.kind == NimsuggestQueryKind.CHANGED and q.saved:
+        q.dirtyFile = FilePath("")
+      else:
+        q.dirtyFile = ls.uriToStash(q.uri)
       # First, check if the current file is owned by a nimsuggest instance
       if q.uri in ls.files.openFiles:
         let fileInfo = ls.files.openFiles[q.uri]
@@ -257,6 +260,7 @@ proc processLangserverQueue*(ls: LanguageServer): Future[void] {.async.} =
             uri: uri,
             dirtyFile: stashLocation, #ls.uriToStash(uri),
             responseFuture: newFuture[seq[Suggest]]("nimsuggestQuery"),
+            saved: false
           )
         )
         ls.langserverQueue.addLastNoWait(changedQuery)
@@ -278,7 +282,8 @@ proc processLangserverQueue*(ls: LanguageServer): Future[void] {.async.} =
             id: 0,
             kind: NimsuggestQueryKind.CHANGED,
             uri: uri,
-            dirtyFile: ls.uriToStash(uri),
+            dirtyFile: FilePath(""), # NOTE: Maybe this should be empty?
+            saved: true,
             responseFuture: newFuture[seq[Suggest]]("nimsuggestQuery"),
           )
         )
@@ -352,6 +357,8 @@ proc processLangserverQueue*(ls: LanguageServer): Future[void] {.async.} =
           debug "File renamed", oldUri = oldUri, newUri = newUri
           let oldStash = ls.uriStorageLocation(oldUri)
           let newStash = ls.uriStorageLocation(newUri)
+          let oldPath: FilePath = uriToPath(oldUri)
+          let newPath: FilePath = uriToPath(newUri)
 
           if string(oldStash).fileExists:
             try:
@@ -360,10 +367,10 @@ proc processLangserverQueue*(ls: LanguageServer): Future[void] {.async.} =
               debug "Failed to move stash file on rename",
                 oldStash = oldStash, newStash = newStash, msg = e.msg
 
-          let oldPath: FilePath = uriToPath(oldUri)
           if string(oldPath).endsWith(".nimble"):
             ls.nimDumpCache.del(string(oldPath))
             ls.nimDumpCache.del(string(uriToPath(newUri)))
+
           if oldUri in ls.files.openFiles:
             let fileInfo = ls.files.openFiles[oldUri]
             let slot = fileInfo.slot
@@ -383,18 +390,16 @@ proc processLangserverQueue*(ls: LanguageServer): Future[void] {.async.} =
             )
             ls.files.openFiles.del(oldUri)
 
-            if string(oldPath).endsWith(".nim"):
+            if string(newPath).endsWith(".nim"):
               # RECOMPILE The Nimsuggest Instance
-              let nsOpt = slot.resolvedNs
-              if nsOpt.isSome:
-                debug "processCommands: sending recompile", projectFile = slot.projectFile
-                let recompileQuery = NimsuggestQuery[LspFilePosition](
-                  kind: NimsuggestQueryKind.RECOMPILE,
-                  uri: pathToUri(slot.projectFile),
-                  dirtyFile: FilePath(""),
-                  responseFuture: newFuture[seq[Suggest]]("recompile"),
-                )
-                slot.queryMailbox.addLastNoWait(recompileQuery)
+              debug "processCommands: sending recompile", projectFile = slot.projectFile
+              let recompileQuery = NimsuggestQuery[LspFilePosition](
+                kind: NimsuggestQueryKind.RECOMPILE,
+                uri: pathToUri(slot.projectFile),
+                dirtyFile: FilePath(""),
+                responseFuture: newFuture[seq[Suggest]]("recompile"),
+              )
+              slot.queryMailbox.addLastNoWait(recompileQuery)
 
       of FileAccessQueryKind.DID_DELETE_FILES:
         for f in q.deleteFiles.files:
@@ -406,6 +411,8 @@ proc processLangserverQueue*(ls: LanguageServer): Future[void] {.async.} =
           if uri in ls.files.openFiles:
             let fileInfo = ls.files.openFiles[uri]
             fileInfo.slot.unassignUri(uri)
+            ls.files.openFiles.del(uri)
+
             if string(path).endsWith(".nim"):
               let recompileQuery = NimsuggestQuery[LspFilePosition](
                 kind: NimsuggestQueryKind.RECOMPILE,
@@ -414,7 +421,6 @@ proc processLangserverQueue*(ls: LanguageServer): Future[void] {.async.} =
                 responseFuture: newFuture[seq[Suggest]]("recompile"),
               )
               fileInfo.slot.queryMailbox.addLastNoWait(recompileQuery)
-            ls.files.openFiles.del(uri)
 
       of FileAccessQueryKind.DID_CHANGE_CONFIGURATION:
         debug "Changed configuration: "

@@ -159,6 +159,7 @@ proc runTests*(
     workspaceRoot,
     ls,
   )
+
 # === extension/cancelTest === 
 proc cancelTest*(
     ls: LanguageServer, params: JsonNode
@@ -170,3 +171,7 @@ proc cancelTest*(
     return CancelTestResult(cancelled: true)
   return CancelTestResult(cancelled: false)
 
+# === extension/recompile === 
+# === extension/restartServer === 
+
+# TODO

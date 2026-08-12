@@ -15,15 +15,16 @@ proc executeCommand*(
 ): Future[JsonNode] {.async.} =
   let projectFile = FilePath(params.arguments[0].getStr)
   case params.command
-  of RESTART_COMMAND:
+  of "nimtortoise.restart": 
     debug "Restarting nimsuggest", projectFile = projectFile
     if ls.pool != nil and projectFile in ls.pool.slots:
       let slot = ls.pool.slots[projectFile]
       slot.crashedUris.clear()
+      # TODO: Make this a command so it goes through the queue?
       discard await execStop(slot, ls.pool)
       traceAsyncErrors execSpawn(slot, ls.pool, projectFile)
 
-  of CHECK_PROJECT_COMMAND:
+  of "nimtortoise.recompile":
     debug "Checking project", projectFile = projectFile
     let chkQuery = LangserverQuery(
       kind: LangserverQueryKind.NIMSUGGEST,
@@ -37,7 +38,7 @@ proc executeCommand*(
     )
     ls.langserverQueue.addLastNoWait(chkQuery)
 
-  of RECOMPILE_COMMAND:
+  of "nimtortoise.checkProject":
     debug "Clean build", projectFile = projectFile
     if ls.pool != nil and projectFile in ls.pool.slots:
       let slot = ls.pool.slots[projectFile]

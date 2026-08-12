@@ -475,18 +475,3 @@ proc isKnown*(nimsuggest: Nimsuggest, filePath: FilePath): Future[bool] {.async.
     return false
   debug "isKnown", filePath = $filePath, sug = sug[0].forth
   return sug.len > 0 and sug[0].forth == "true"
-
-proc initJsonRange*(startLine, startCharacter, endLine, endCharacter: int): Range =
-  return
-    Range %* {
-      "start": {"line": startLine, "character": startCharacter},
-      "end": {"line": endLine, "character": endCharacter},
-    }
-
-# proc toLabelRange*(suggest: Suggest): Range =
-#   return range(
-#     suggest.line - 1, 
-#     suggest.column, 
-#     suggest.line - 1, 
-#     suggest.column + utf16Len(suggest.qualifiedPath[^1])
-#   )

@@ -220,21 +220,21 @@ proc idleSlots*(ls: LanguageServer): seq[NimsuggestSlot] =
       continue
     if slot.lastCmdTime > cutoff:
       continue
-    result.add slot
+    result.add(slot)
 
-proc removeIdleNimsuggests*(ls: LanguageServer) {.async.} =
-  ## Kept for direct test calls — delegates to idleSlots + per-slot stop.
-  ## File eviction and notification are duplicated here to keep tmisc working
-  ## without a separate tick loop; langserver.nim tick() can call this too.
-  for slot in ls.idleSlots():
-    debug "Removing idle nimsuggest", projectFile = slot.projectFile
-    ls.notify("window/showMessage", %*{
-      "type": MessageType.Info.int,
-      "message": fmt"Nimsuggest for {slot.projectFile} was stopped because it was idle for too long",
-    })
-    let successfulStop = await execStop(slot, ls.pool)
-    if successfulStop:
-       debug "Stopped nimsuggest"
-      # slot.send SlotCommand(kind: SlotCommandKind.STOP)
-    ls.pool.removeSlot(slot.projectFile)
+# proc removeIdleNimsuggests*(ls: LanguageServer) {.async.} =
+#   ## Kept for direct test calls — delegates to idleSlots + per-slot stop.
+#   ## File eviction and notification are duplicated here to keep tmisc working
+#   ## without a separate tick loop; langserver.nim tick() can call this too.
+#   for slot in ls.idleSlots():
+#     debug "Removing idle nimsuggest", projectFile = slot.projectFile
+#     ls.notify("window/showMessage", %*{
+#       "type": MessageType.Info.int,
+#       "message": fmt"Nimsuggest for {slot.projectFile} was stopped because it was idle for too long",
+#     })
+#     let successfulStop = await execStop(slot, ls.pool)
+#     if successfulStop:
+#        debug "Stopped nimsuggest"
+#       # slot.send SlotCommand(kind: SlotCommandKind.STOP)
+#     ls.pool.removeSlot(slot.projectFile)
 
