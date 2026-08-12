@@ -1,9 +1,12 @@
 import std/[options, strutils, sets, tables, times, json]
 import chronos
 import chronicles
+
 import ../utils/utils
-import ./[suggestapi, suggestapi_types, nimsuggest_types, nimsuggest_slots, diagnostics, nimsuggest_utils]
+import ../configurations/configurations
 import ../protocol/types
+
+import ./[suggestapi, suggestapi_types, nimsuggest_types, nimsuggest_slots, diagnostics, nimsuggest_utils]
 
 # === PROCESSING ===
 proc runNimsuggestQuery*(
@@ -55,11 +58,11 @@ proc runNimsuggestQuery*(
   of NimsuggestQueryKind.KNOWN:
     return await ns.known(path)
 
-
 proc processNimsuggestQueries*(
   slot: NimsuggestSlot, 
   pool: NimsuggestPool,
   openFiles: TableRef[FileUri, NlsFileInfo],
+  config: NlsConfig,
   notifyProc: proc(name: string, params: JsonNode) {.gcsafe, raises: [].} #Send a notification to the client
 ) {.async.} =
   debug "processNimsuggestQueries: starting", projectFile = slot.projectFile
@@ -171,7 +174,7 @@ proc processNimsuggestQueries*(
 
     of SlotState.READY:
       if slot.ns.read().project.failed:
-        let respawnWasSuccessful = await attemptCrashRespawn(slot, pool)
+        let respawnWasSuccessful = await attemptCrashRespawn(slot, pool, config)
         if not respawnWasSuccessful:
           slot.crashedUris.incl(originalQuery.uri)
           if not originalQuery.responseFuture.finished:

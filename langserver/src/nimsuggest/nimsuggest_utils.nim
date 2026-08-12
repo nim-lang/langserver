@@ -5,7 +5,6 @@ import ../utils/utils
 import ./[suggestapi_types, nimsuggest_types]
 import ../protocol/types
 
-
 proc mailboxHasQueryOfKind*(
   slot: NimsuggestSlot, 
   queryKind: NimsuggestQueryKind,

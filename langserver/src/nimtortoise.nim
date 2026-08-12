@@ -1,13 +1,14 @@
 import std/[syncio, os, json, strutils, strformat]
 import json_rpc/[servers/socketserver, private/jrpc_sys, jsonmarshal, rpcclient, router]
 import chronicles, chronos
-import configurations/constants
-import langserver/[langserver, langserver_types, transports, nimsuggest_processes, dispatcher]
-import utils/asyncprocmonitor
-import utils/process_utils
+import ./configurations/configurations
+import ./nimsuggest/nimsuggest
+import ./langserver/[langserver, langserver_types, transports, langserver_nimsuggest, dispatcher]
+import ./utils/process_utils
 import ./handlers/handlers as lsp
 import ./utils/utils as globalUtils
-import protocol/types
+import ./utils/asyncprocmonitor
+import ./protocol/types
 
 when defined(posix):
   import posix
@@ -192,7 +193,7 @@ proc registerProcMonitor(ls: LanguageServer) =
     proc onCmdLineClientProcessExitAsync(): Future[void] {.async.} =
       debug "onCmdLineClientProcessExitAsync"
 
-      await ls.stopNimsuggestProcesses
+      await ls.pool.stopNimsuggestProcesses()
       waitFor ls.onExit()
 
     proc onCmdLineClientProcessExit() {.closure.} =
@@ -247,7 +248,7 @@ when isMainModule:
     when defined(posix):
       onSignal(SIGINT, SIGTERM, SIGHUP, SIGQUIT, SIGPIPE):
         debug "Terminated via signal", sig
-        ls.stopNimsuggestProcessesP()
+        ls.pool.stopNimsuggestProcessesP()
         exitnow(1)
     runForever()
   except Exception as e:

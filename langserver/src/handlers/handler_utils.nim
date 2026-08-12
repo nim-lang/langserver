@@ -1,4 +1,4 @@
-import std/[options, tables, sequtils, strutils, strformat]
+import std/[options, tables, sequtils, strutils, strformat, json]
 import chronos
 import regex
 import ../protocol/types

@@ -230,16 +230,16 @@ proc logNsError(project: Project) {.async.} =
   project.markFailed(err)
 
 proc createNimsuggest*(
-    root: FilePath,
-    nimsuggestPath: string,
-    version: string,
-    timeout: int,
-    timeoutCallback: NimsuggestCallback,
-    errorCallback: ProjectCallback,
-    workingDir = getCurrentDir(),
-    enableLog: bool = false,
-    enableExceptionInlayHints: bool = false,
-    nimPaths: seq[string] = @[],
+  root: FilePath,
+  nimsuggestPath: string,
+  version: string,
+  timeout: int,
+  timeoutCallback: NimsuggestCallback,
+  errorCallback: ProjectCallback,
+  workingDir = getCurrentDir(),
+  enableLog: bool = false,
+  enableExceptionInlayHints: bool = false,
+  nimPaths: seq[string] = @[],
 ): Future[Project] {.async.} =
   result = Project(file: root)
   result.ns = newFuture[NimSuggest]()

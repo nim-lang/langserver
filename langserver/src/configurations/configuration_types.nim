@@ -1,5 +1,4 @@
-import std/[options]
-import ../protocol/types
+import chronos
 
 type
   NlsNimsuggestConfig* = ref object of RootObj
@@ -11,20 +10,20 @@ type
     directory*: string
 
   NlsInlayTypeHintsConfig* = ref object of RootObj
-    enable*: Option[bool]
+    enable*: bool
 
   NlsInlayExceptionHintsConfig* = ref object of RootObj
-    enable*: Option[bool]
-    hintStringLeft*: Option[string]
-    hintStringRight*: Option[string]
+    enable*: bool
+    hintStringLeft*: string
+    hintStringRight*: string
 
   NlsInlayParameterHintsConfig* = ref object of RootObj
-    enable*: Option[bool]
+    enable*: bool
 
   NlsInlayHintsConfig* = ref object of RootObj
-    typeHints*: Option[NlsInlayTypeHintsConfig]
-    exceptionHints*: Option[NlsInlayExceptionHintsConfig]
-    parameterHints*: Option[NlsInlayParameterHintsConfig]
+    typeHints*:       NlsInlayTypeHintsConfig
+    exceptionHints*:  NlsInlayExceptionHintsConfig
+    parameterHints*:  NlsInlayParameterHintsConfig
 
   NlsNotificationVerbosity* = enum
     nvNone = "none"
@@ -32,25 +31,31 @@ type
     nvWarning = "warning"
     nvInfo = "info"
 
+type
   NlsConfig* = ref object of RootObj
-    projectMapping*: OptionalSeq[NlsNimsuggestConfig]
-    workingDirectoryMapping*: OptionalSeq[NlsWorkingDirectoryMaping]
-    checkOnSave*: Option[bool]
-    nimsuggestPath*: Option[string]
-    timeout*: Option[int]
-    autoRestart*: Option[bool]
-    autoCheckFile*: Option[bool]
-    autoCheckProject*: Option[bool]
-    logNimsuggest*: Option[bool]
-    inlayHints*: Option[NlsInlayHintsConfig]
-    notificationVerbosity*: Option[NlsNotificationVerbosity]
-    formatOnSave*: Option[bool]
-    nimsuggestIdleTimeout*: Option[int] #idle timeout in ms
-    useNimCheck*: Option[bool]
-    nimExpandArc*: Option[bool]
-    nimExpandMacro*: Option[bool]
-    maxNimsuggestProcesses*: Option[int]
-      #max number of nimsuggest processes to keep alive. zero means unlimited
-    fileCheckDelay*: Option[int]
-      #delay in ms between file-change and per-file diagnostic check
-
+    # --- Files/Folders ---
+    projectMapping*: seq[NlsNimsuggestConfig]
+    workingDirectoryMapping*: seq[NlsWorkingDirectoryMaping]
+    # --- Save Settings ---
+    checkOnSave*: bool
+    formatOnSave*: bool
+    # --- Langserver settings --- 
+    langserverTimeout*: int
+    fileCheckDelay*: int
+    # -- Nimsuggest Settings ---
+    maxNimsuggestProcesses*: int
+    maxNimsuggestCrashRetries*: int
+    nimsuggestPath*: string
+    nimsuggestIdleTimeout*: int
+    logNimsuggest*: bool
+    inlayHints*: NlsInlayHintsConfig
+    notificationVerbosity*: NlsNotificationVerbosity
+    nimExpandArc*: bool
+    nimExpandMacro*: bool
+      
+type
+  LanguageServerConfigurations* = object
+    currentConfig*: NlsConfig
+      ## Parsed config. none until first workspace/configuration response arrives.
+    configReady*: AsyncEvent
+      ## Fired when currentConfig is first populated, and re-fired after each change.

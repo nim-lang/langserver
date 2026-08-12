@@ -2,7 +2,7 @@ import json_rpc/[servers/socketserver, private/jrpc_sys, jsonmarshal, rpcclient,
 import chronicles, chronos
 import std/[syncio, os, json, strutils, strformat, streams, oids, sequtils, times]
 import ../configurations/constants
-import ./[langserver_types, langserver]
+import ./[langserver_types, langserver, langserver_messaging]
 import ../protocol/types
 import ../utils/utils as globalUtils
 import chronos/threadsync
@@ -109,7 +109,7 @@ proc addRpcToCancellable*(ls: LanguageServer, rpc: Rpc): Rpc =
       let name = get[string](params, "method")
       ls.messaging.pendingRequests[idRequest] =
         PendingRequest(id: idRequest, name: name, startTime: now(), state: prsOnGoing)
-      ls.sendStatusChanged
+      ls.sendStatusChanged()
       var fut = rpc(params)
       ls.messaging.pendingRequests[idRequest].request = fut
         #we need to add it before because the rpc may access to the pendingRequest to set the projectFile

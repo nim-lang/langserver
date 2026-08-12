@@ -4,7 +4,7 @@ import chronos/asyncproc
 import stew/byteutils
 import chronicles
 import ../protocol/[enums, types]
-import ../langserver/[langserver_types, langserver, utils]
+import ../langserver/[langserver_types, langserver, langserver_utils, langserver_messaging]
 
 # === textDocument/formatting ===
 proc format*(

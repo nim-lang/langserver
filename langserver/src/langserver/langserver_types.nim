@@ -7,6 +7,7 @@ import ../protocol/types
 import ../configurations/configuration_types
 import ../nimble/nimble_types
 import ../nimsuggest/nimsuggest_types
+import ../configurations/configuration_types
 import ./[query_types]
 
 type
@@ -61,12 +62,6 @@ type
       mcpServerCapabilities*: McpServerCapabilities
       mcpInitializeParams*: McpInitializeParams
     extensionCapabilities*: set[LspExtensionCapability]
-
-  LanguageServerConfigurations* = object
-    currentConfig*: Option[NlsConfig]
-      ## Parsed config. none until first workspace/configuration response arrives.
-    configReady*: AsyncEvent
-      ## Fired when currentConfig is first populated, and re-fired after each change.
 
 type
   LanguageServerTransport* = object

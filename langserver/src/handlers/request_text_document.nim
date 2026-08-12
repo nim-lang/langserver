@@ -4,12 +4,12 @@ import chronos/asyncproc
 import chronicles
 import json_serialization
 
-import ../nimsuggest/[suggestapi, suggestapi_types, nimsuggest_types, diagnostics]
 import ../nim_compiler/nim_expand
 import ../nim_compiler/nim_compiler
-import ../utils/utils as globalUtils
-import ../configurations/[constants, configuration_types]
-import ../langserver/[utils, langserver_types, langserver, configurations]
+import ../nimsuggest/nimsuggest
+import ../langserver/langserver
+import ../configurations/configurations
+import ../utils/utils
 import ../protocol/types
 
 import ./[handler_utils, queries_nimsuggest, queries_file_access]
@@ -23,6 +23,25 @@ proc toCompletionItem(suggest: Suggest): CompletionItem =
       "documentation": suggest.doc,
       "detail": nimSymDetails(suggest),
     }
+
+proc supportSignatureHelp*(cc: LspClientCapabilities): bool =
+  if cc.isNil:
+    return false
+  let caps = cc.textDocument
+  caps.isSome and caps.get.signatureHelp.isSome
+
+
+proc nsCapabilities*(ls: LanguageServer, uri: FileUri): set[NimSuggestCapability] =
+  ## Returns the live nimsuggest capabilities for the slot serving `uri`.
+  ## Safe to call synchronously after queryAt/queryFile returns — by that point
+  ## processQueries has already awaited slot.ns.get so the slot is READY.
+  let slotOpt = resolvedSlot(ls.pool, ls.files.openFiles, uri)
+  if slotOpt.isNone:
+    return {}
+  let nsOpt = slotOpt.get.resolvedNs
+  if nsOpt.isNone:
+    return {}
+  nsOpt.get.capabilities
 
 proc processCompletionQuery(
   ls: LanguageServer, 
@@ -131,7 +150,7 @@ proc processHoverQuery(
     return some(Hover(contents: some(%toMarkupContent(suggest))))
 
   else:
-    let config = ls.getWorkspaceConfiguration()
+    let config = ls.configurations.currentConfig
     # Convert cursor position from UTF-16 (LSP) to UTF-8 (nimsuggest) for column comparison.
     let utf8Col = ls.getCharacter(
       query.uri,
@@ -148,7 +167,7 @@ proc processHoverQuery(
           break
 
     var content = toMarkupContent(suggest)
-    if suggest.symkind == "skMacro" and config.nimExpandMacro.get(NIM_EXPAND_MACRO_BY_DEFAULT):
+    if suggest.symkind == "skMacro" and config.nimExpandMacro:
       # Build a hover query at the macro definition site to fetch its doc string.
       # suggest.line is 1-based → convert to 0-based for LspFilePosition.
       # suggest.column is UTF-8 → convert to UTF-16 via fingerTable.
@@ -170,14 +189,14 @@ proc processHoverQuery(
       if expandedResponse.len > 0 and expandedResponse[0].doc != "":
         content.value.add &"```nim\n{expandedResponse[0].doc}\n```"
       else:
-        let nimPath = config.getNimPath()
+        let nimPath = getNimPath(config)
         if nimPath.isSome:
           let nimExpanded = await nimExpandMacro(nimPath.get, suggest, string(uriToPath(query.uri)))
           content.value.add &"```nim\n{nimExpanded}\n```"
 
-    if suggest.section == ideDef and suggest.symkind in ["skProc"] and config.nimExpandArc.get(NIM_EXPAND_ARC_BY_DEFAULT):
+    if suggest.section == ideDef and suggest.symkind in ["skProc"] and config.nimExpandArc:
       debug "#Expanding arc", suggest = suggest[]
-      let nimPath = config.getNimPath()
+      let nimPath = getNimPath(config)
       if nimPath.isSome:
         let expanded = await nimExpandArc(nimPath.get, suggest, string(uriToPath(query.uri)))
         let arcContent = "#Expanded arc \n" & expanded
@@ -411,45 +430,28 @@ proc convertInlayHintKind(kind: SuggestInlayHintKind): InlayHintKind_int =
 func getInlayHintLabel(
   inlayLabel: string,
   inlayKind: SuggestInlayHintKind,
-  inlayHintsCfg: Option[NlsInlayHintsConfig]
+  inlayHintsCfg: NlsInlayHintsConfig
 ): string = 
   result = inlayLabel
   if inlayLabel.contains("Error Type"): 
     result = ""
 
-  if inlayKind == sihkException and inlayLabel == "try " and
-    inlayHintsCfg.isSome and
-    inlayHintsCfg.get.exceptionHints.isSome and
-    inlayHintsCfg.get.exceptionHints.get.hintStringLeft.isSome:
-              
-    result = inlayHintsCfg.get.exceptionHints.get.hintStringLeft.get
+  if inlayKind == sihkException and inlayLabel == "try " and inlayHintsCfg.exceptionHints.enable:
+    result = inlayHintsCfg.exceptionHints.hintStringLeft
 
-  if inlayKind == sihkException and inlayLabel == "!" and
-    inlayHintsCfg.isSome and
-    inlayHintsCfg.get.exceptionHints.isSome and
-    inlayHintsCfg.get.exceptionHints.get.hintStringRight.isSome:
-
-    result = inlayHintsCfg.get.exceptionHints.get.hintStringRight.get
+  if inlayKind == sihkException and inlayLabel == "!" and inlayHintsCfg.exceptionHints.enable:
+    result = inlayHintsCfg.exceptionHints.hintStringRight
 
 proc processInlayHintResponses(
   nimsuggestResponses: seq[Suggest],
   uri: FileUri,
   ls: LanguageServer,
-  inlayHintsCfg: Option[NlsInlayHintsConfig]
+  inlayHintsCfg: NlsInlayHintsConfig
 ): seq[InlayHint] =
-  var typeHintsEnabled = true
-  var parameterHintsEnabled = true
-  var exceptionHintsEnabled = true
+  var typeHintsEnabled = inlayHintsCfg.typeHints.enable
+  var parameterHintsEnabled = inlayHintsCfg.parameterHints.enable
+  var exceptionHintsEnabled = inlayHintsCfg.exceptionHints.enable
 
-  if inlayHintsCfg.isSome:
-    let cfg = inlayHintsCfg.get()
-    if cfg.typeHints.isSome:
-      typeHintsEnabled = cfg.typeHints.get().enable.get(true)
-    if cfg.parameterHints.isSome:
-      parameterHintsEnabled = cfg.parameterHints.get().enable.get(true)
-    if cfg.exceptionHints.isSome:
-      exceptionHintsEnabled = cfg.exceptionHints.get().enable.get(true)
-      
   for response in nimsuggestResponses:
     let showHint = (response.inlayHintInfo.kind == sihkType) and typeHintsEnabled
     let showException = (response.inlayHintInfo.kind == sihkException) and exceptionHintsEnabled
@@ -464,6 +466,7 @@ proc processInlayHintResponses(
         uri,
         ls.files.openFiles
       )
+
       if asLspFilePosition.isSome:
         let pos = asLspFilePosition.get()
         let label = getInlayHintLabel(response.inlayHintInfo.label, response.inlayHintInfo.kind, inlayHintsCfg)
@@ -493,13 +496,12 @@ proc processInlayHintResponses(
           result.add(outputHint)
 
 proc inlayHint*(
-  ls: LanguageServer, params: InlayHintParams, id: int
+  ls: LanguageServer, 
+  params: InlayHintParams, 
+  id: int
 ): Future[seq[InlayHint]] {.async.} =
   debug "inlayHint received..."
-  let configuration = ls.getWorkspaceConfiguration()
-  if configuration.inlayHints.isNone:
-    debug "inlayHints not enabled in configuration"
-    return @[]
+  let configuration = ls.configurations.currentConfig
 
   let query = ls.initNimsuggestInlayHintQuery(
     id, 
@@ -512,7 +514,10 @@ proc inlayHint*(
   )
   let responses = await ls.addQueryToQueue(query)
   # nsProtocolVersion is valid now — slot is READY after queryInlayHints returns
-  if ls.nsProtocolVersion(params.textDocument.uri) < 4:
+  let protocolVersion = nsProtocolVersion(
+    ls.pool, ls.files.openFiles, params.textDocument.uri
+  )
+  if protocolVersion < 4:
     return @[]
 
   return processInlayHintResponses(

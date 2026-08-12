@@ -1,7 +1,11 @@
-import std/[os, sequtils, strutils]
+import std/[os, sequtils, strutils, strformat, options, tables]
 import chronos
+import chronos/asyncproc
+import stew/byteutils
 import chronicles
 
+import ../utils/[process_utils]
+import ../protocol/types
 import ./nimble_types
 
 proc getNimbleEntryPoints*(
@@ -43,3 +47,55 @@ proc findNimblePaths*(fromFile: string): seq[string] =
     if parent == dir:
       break
     dir = parent
+
+# proc getNimbleDumpInfo*(
+#   nimDumpCache: ref Table[string, NimbleDumpInfo],
+#   nimbleFile: FilePath
+# ): Future[NimbleDumpInfo] {.async.} =
+#   if string(nimbleFile) in nimDumpCache:
+#     return nimDumpCache.getOrDefault(string(nimbleFile))
+#   var process: AsyncProcessRef
+#   try:
+#     let workDir =
+#       if string(nimbleFile) == "": getCurrentDir()
+#       else: string(nimbleFile).parentDir
+#     let nimbleDirEnv = getEnv("NIMBLE_DIR", "<not set>")
+#     let homeEnv = getEnv("HOME", "<not set>")
+#     let pathEnv = getEnv("PATH", "<not set>")
+#     debug "getNimbleDumpInfo environment",
+#       nimbleFile = $nimbleFile, workDir = workDir,
+#       NIMBLE_DIR = nimbleDirEnv, HOME = homeEnv, PATH = pathEnv
+#     process = await startProcess(
+#       "nimble",
+#       workingDir = workDir,
+#       arguments = @["dump"],
+#       options = {UsePath},
+#       stderrHandle = AsyncProcess.Pipe,
+#       stdoutHandle = AsyncProcess.Pipe,
+#     )
+#     let info = string.fromBytes(process.stdoutStream.read().await)
+#     debug "getNimbleDumpInfo result ", info
+#     for line in info.splitLines:
+#       if line.startsWith("srcDir"):
+#         result.srcDir = line[(1 + line.find '"') ..^ 2]
+#       if line.startsWith("name"):
+#         result.name = line[(1 + line.find '"') ..^ 2]
+#       if line.startsWith("nimDir"):
+#         result.nimDir = some line[(1 + line.find '"') ..^ 2]
+#       if line.startsWith("nimblePath"):
+#         result.nimblePath = some line[(1 + line.find '"') ..^ 2]
+#       if line.startsWith("entryPoints"):
+#         result.entryPoints =
+#           line[(1 + line.find '"') ..^ 2].split(',').mapIt(it.strip(chars = {' ', '"'}))
+#     var nimbleFileStr = string(nimbleFile)
+#     if nimbleFileStr == "":
+#       nimDumpCache[""] = result
+#       if result.nimblePath.isSome:
+#         nimbleFileStr = result.nimblePath.get
+#     if nimbleFileStr != "":
+#       nimDumpCache[nimbleFileStr] = result
+#   except CatchableError:
+#     debug "Failed to get nimble dump info", nimbleFile = $nimbleFile
+#   finally:
+#     if process != nil:
+#       await shutdownChildProcess(process)

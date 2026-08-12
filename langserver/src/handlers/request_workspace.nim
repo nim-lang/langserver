@@ -3,10 +3,10 @@ import chronos
 import chronicles
 import ../protocol/types
 import ../configurations/constants
-import ../langserver/[langserver_types,query_types, langserver]
-import ../nimsuggest/[nimsuggest_types, suggestapi_types, nimsuggest_slots]
+import ../langserver/langserver
+import ../nimsuggest/nimsuggest
 import ../utils/process_utils
-import ../utils/utils as globalUtils
+import ../utils/utils
 import ./[queries_nimsuggest, request_text_document]
 
 # === workspace/executeCommand ===
@@ -22,7 +22,7 @@ proc executeCommand*(
       slot.crashedUris.clear()
       # TODO: Make this a command so it goes through the queue?
       discard await execStop(slot, ls.pool)
-      traceAsyncErrors execSpawn(slot, ls.pool, projectFile)
+      traceAsyncErrors execSpawn(slot, ls.pool, projectFile, ls.configurations.currentConfig)
 
   of "nimtortoise.recompile":
     debug "Checking project", projectFile = projectFile
@@ -47,7 +47,7 @@ proc executeCommand*(
         ls.workDoneProgressCreate(token)
         ls.progress(token, "begin", fmt "Compiling project {projectFile}")
         discard await execStop(slot, ls.pool)
-        traceAsyncErrors execSpawn(slot, ls.pool, projectFile)
+        traceAsyncErrors execSpawn(slot, ls.pool, projectFile, ls.configurations.currentConfig)
         ls.progress(token, "end")
         let chkQuery = LangserverQuery(
           kind: LangserverQueryKind.NIMSUGGEST,
@@ -82,4 +82,9 @@ proc workspaceSymbol*(
   result = processDocumentSymbolResponses(
     symbols, ls
   )
-  # symbols.map(x => x.toUtf16Pos(ls).toSymbolInformation)
+  
+proc applyEdit*(
+  ls: LanguageServer, params: ApplyWorkspaceEditParams
+): Future[ApplyWorkspaceEditResponse] {.async.} =
+  let res = await ls.call("workspace/applyEdit", %params)
+  res.to(ApplyWorkspaceEditResponse)

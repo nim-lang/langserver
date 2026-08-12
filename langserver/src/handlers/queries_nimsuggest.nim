@@ -1,6 +1,6 @@
 import chronos
 import ../nimsuggest/[nimsuggest_types, suggestapi_types]
-import ../langserver/[utils, query_types, langserver_types, langserver]
+import ../langserver/langserver
 
 # === NIMSUGGEST QUERIES ===
 proc initNimsuggestPositionQuery*(

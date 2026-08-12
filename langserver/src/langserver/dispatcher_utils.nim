@@ -1,10 +1,10 @@
-import std/[options, sets, tables, algorithm, sequtils, strutils, times]
+import std/[options, os, sets, tables, algorithm, sequtils, strutils, times]
 import chronos
 import chronicles
+import regex
 import ../nimsuggest/[suggestapi_types, nimsuggest_types, nimsuggest_slots]
 import ../protocol/types
-import ./[utils as lsUtils]
-import ./langserver_types
+import ./[langserver_types, langserver_utils]
 import ../utils/utils
 
 
@@ -181,3 +181,38 @@ proc queryFile*(ls: LanguageServer, uri: FileUri, kind: NimsuggestQueryKind): Fu
     dirtyFile: dirtyFile,
     responseFuture: result,
   ))
+
+var compiledRegexCache {.threadvar.}: Table[string, Regex2]
+
+proc getCompiledRegex(pattern: string): Regex2 =
+  ## Returns a cached compiled Regex2 for pattern, compiling it on first use.
+  ## Chronos is single-threaded cooperative, so no locking is needed.
+  if pattern notin compiledRegexCache:
+    compiledRegexCache[pattern] = re2(pattern)
+  compiledRegexCache[pattern]
+
+proc clearCompiledRegexCache*() =
+  ## Invalidate the regex cache. Call after workspace configuration changes so
+  ## that stale projectMapping patterns are not reused across config updates.
+  compiledRegexCache.clear()
+
+proc getIntendedProject*(ls: LanguageServer, uri: FileUri): FilePath =
+  ## ProjectMapping regex lookup only. No slot creation, no LRU fallback.
+  ## Returns FilePath("") if no mapping matches.
+  let path = uri.uriToPath
+  let rootPath =
+    case ls.capabilities.serverMode
+    of lsp: ls.capabilities.lspInitializeParams.getRootPath
+    of mcp: ls.capabilities.mcpInitializeParams.getRootPath
+  let pathRelativeToRoot = string(path).tryRelativeTo(rootPath)
+  let config = ls.configurations.currentConfig
+  for mapping in config.projectMapping:
+    var m: RegexMatch2
+    if find(string(path), getCompiledRegex(mapping.fileRegex), m):
+      if mapping.projectFile == "":
+        return path  # regex matched but no projectFile — file is its own project
+      return FilePath(
+        if isAbsolute(mapping.projectFile): mapping.projectFile
+        else: rootPath / mapping.projectFile
+      )
+  return FilePath("")

@@ -4,11 +4,12 @@ import chronos/asyncproc
 import chronicles
 import stew/byteutils
 import ../protocol/[types]
-import ../langserver/[langserver_types, utils, configurations, langserver, nimsuggest_processes]
+import ../langserver/langserver
+import ../nimsuggest/nimsuggest
 import ../nim_compiler/testrunner
 import ../nim_compiler/nim_compiler
 import ../utils/process_utils
-import ../utils/utils as globalUtils
+import ../utils/utils
 
 # === extension/macroExpand ===
 proc expand*(ls: LanguageServer, params: JsonNode): Future[JsonNode] {.async.} =
@@ -30,11 +31,11 @@ proc extensionSuggest*(ls: LanguageServer, params: SuggestParams): Future[Sugges
   of saRestart:
     let projectFilePath = FilePath(params.projectFile)
     if ls.pool.slots.hasKey(projectFilePath):
-      asyncSpawn restartSlot(ls.pool.slots[projectFilePath], ls.pool)
+      asyncSpawn restartSlot(ls.pool.slots[projectFilePath], ls.pool, ls.configurations.currentConfig)
     else:
       debug "extensionSuggest: no slot found for project", projectFile = params.projectFile
   of saRestartAll:
-    ls.restartAllNimsuggestInstances()
+    ls.pool.restartAllNimsuggestInstances(ls.configurations.currentConfig)
   of saNone:
     discard
   return SuggestResult(actionPerformed: params.action)
@@ -126,9 +127,9 @@ proc runTask*(
 
 # === extension/listTests === 
 proc listTests*(
-    ls: LanguageServer, params: ListTestsParams
+  ls: LanguageServer, params: ListTestsParams
 ): Future[ListTestsResult] {.async.} =
-  let config = ls.getWorkspaceConfiguration()
+  let config = ls.configurations.currentConfig
   let nimPath = config.getNimPath()
   if nimPath.isNone:
     error "Nim path not found when listing tests"
@@ -145,8 +146,8 @@ proc listTests*(
 proc runTests*(
     ls: LanguageServer, params: RunTestParams
 ): Future[RunTestProjectResult] {.async.} =
-  let config = ls.getWorkspaceConfiguration()
-  let nimPath = config.getNimPath()
+  let config = ls.configurations.currentConfig
+  let nimPath = getNimPath(config)
   if nimPath.isNone:
     error "Nim path not found when running tests"
     return RunTestProjectResult()
