@@ -282,7 +282,7 @@ proc getNimbleDumpInfo*(
       workingDir = nimbleFile.parentDir(),
       arguments = @["dump"],
       options = {UsePath},
-      stderrHandle = AsyncProcess.Pipe,
+      stderrHandle = ProcessStreamHandle(),
       stdoutHandle = AsyncProcess.Pipe,
     )
     let info = string.fromBytes(process.stdoutStream.read().await)
