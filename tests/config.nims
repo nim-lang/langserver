@@ -2,7 +2,7 @@
 --debuginfo
 --threads:on
 --define:"debugLogging=on"
---define:"chronicles_disable_thread_id"
+--define:"chronicles_thread_ids=no"
 --define:"async_backend=asyncdispatch"
 --define:"chronicles_timestamps=None"
 --define:"debugLogging"
