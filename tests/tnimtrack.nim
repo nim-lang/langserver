@@ -10,8 +10,7 @@ suite "Nim track with nim >= 2.3.1":
   let trackProjectDir = absolutePath("tests" / "projects" / "trackproject")
   let savedDir = getCurrentDir()
   setCurrentDir(trackProjectDir)
-  discard execCmdEx("nimble install -l -y")
-  discard execCmdEx("nimble setup")
+  discard execCmdEx("nimble setup -ly")
   setCurrentDir(savedDir)
 
   let cmdParams =
