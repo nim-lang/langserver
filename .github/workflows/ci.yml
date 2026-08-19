@@ -35,10 +35,6 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-${{ env.cache_nonce }}-
 
-      - name: Install Nimble fork with the nim#head fix
-        shell: bash
-        run: nimble install https://github.com/moigagoo/nimble@#bugfix/nimble_dump_with_nim_head
-
       - name: Install dependencies
         shell: bash
         run: nimble -y install -l
