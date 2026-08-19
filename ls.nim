@@ -293,8 +293,8 @@ proc getNimbleDumpInfo*(
   try:
     process = await startProcess(
       "nimble",
-      workingDir = nimbleFile.parentDir(),
-      arguments = @["dump"],
+      workingDir = dumpDir,
+      arguments = @["dump", nimbleFile],
       options = {UsePath},
       stderrHandle = AsyncProcess.Pipe,
       stdoutHandle = AsyncProcess.Pipe,
