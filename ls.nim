@@ -276,25 +276,12 @@ proc getNimbleDumpInfo*(
 ): Future[NimbleDumpInfo] {.async.} =
   if nimbleFile in ls.nimDumpCache:
     return ls.nimDumpCache.getOrDefault(nimbleFile)
-  # `nimble dump` resolves the project's Nim (`nimDir`) relative to the process
-  # working directory. When a project pins a local Nim (e.g. `nim#head` in
-  # `nimbledeps`), running `nimble dump` from the wrong directory reports the
-  # global Nim instead. Run it in the project directory so the project-local Nim
-  # is picked up. Fall back to the nimble file's directory when no working dir
-  # is supplied.
-  let dumpDir =
-    if workingDir != "":
-      workingDir
-    elif nimbleFile != "":
-      nimbleFile.parentDir
-    else:
-      getCurrentDir()
   var process: AsyncProcessRef
   try:
     process = await startProcess(
       "nimble",
-      workingDir = dumpDir,
-      arguments = @["dump", nimbleFile],
+      workingDir = nimbleFile.parentDir(),
+      arguments = @["dump"],
       options = {UsePath},
       stderrHandle = AsyncProcess.Pipe,
       stdoutHandle = AsyncProcess.Pipe,
