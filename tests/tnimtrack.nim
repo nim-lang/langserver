@@ -6,7 +6,7 @@ import chronicles
 import lspsocketclient
 import unittest2
 
-suite "Nim track with nim >= 2.3.1":
+suite "Nim track with nim >= 2.4":
   let trackProjectDir = absolutePath("tests" / "projects" / "trackproject")
   let savedDir = getCurrentDir()
   setCurrentDir(trackProjectDir)
@@ -74,7 +74,7 @@ suite "Nim track with nim >= 2.3.1":
     )
     check locations.len >= 1
 
-suite "Nim track unavailable with nim < 2.3.1":
+suite "Nim track unavailable with nim < 2.4":
   let cmdParams =
     CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
   let ls = main(cmdParams)

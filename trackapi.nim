@@ -55,7 +55,7 @@ proc track*(
     except CatchableError:
       discard
     if "invalid command: track" in stderrStr:
-      warn "nim track not supported (requires nim >= 2.3.1)", nimPath = nimPath
+      warn "nim track not supported (requires nim >= 2.4)", nimPath = nimPath
       return @[]
     if exitCode != 0:
       debug "nim track exit", exitCode = exitCode
