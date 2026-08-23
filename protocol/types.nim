@@ -1,4 +1,9 @@
-import std/[json, options, tables]
+import
+  std/[json, options, tables],
+  json_serialization,
+  json_serialization/std/[options as jsoptions, tables as jstables]
+
+export json_serialization, jsoptions, jstables
 
 type
   OptionalSeq*[T] = Option[seq[T]]
@@ -1161,3 +1166,13 @@ type
 
   CancelTestResult* = object
     cancelled*: bool
+
+createJsonFlavor LspConv,
+  automaticObjectSerialization = true,
+  requireAllFields = false,
+  omitOptionalFields = true,
+  allowUnknownFields = true,
+  skipNullFields = true
+
+template shouldWriteObjectField*[T](field: ref T): bool =
+  field != nil

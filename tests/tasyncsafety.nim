@@ -79,17 +79,14 @@ suite "Async safety":
     check not ls.projectFiles[helloWorldPath].process.isNil
 
   test "The server survives a client that leaves with a request pending":
-    let leaving = newLspSocketClient()
-    waitFor leaving.connect("localhost", cmdParams.port)
-    let pending = ls.call("workspace/configuration", newJNull())
+    let pending = ls.call("workspace/configuration", JsonString"{}")
     check not pending.isNil
-    waitFor leaving.transport.closeWait()
-    waitFor sleepAsync(500.milliseconds)
-
-    let revived = newLspSocketClient()
-    waitFor revived.connect("localhost", cmdParams.port)
-    let res = waitFor revived.call("shutdown", newJNull()).wait(30.seconds)
-    check res.kind == JNull
+    let leaving = ls.connection
+    waitFor client.transport.shutdownWait()
+    waitFor client.transport.closeWait()
+    # wait reconnection
+    check waitUntil(ls.connection != nil and ls.connection != leaving, 30.seconds)
+    check waitFor client.call("shutdown", newJNull()).withTimeout(30.seconds)
 
 suite "Replacing a running nimsuggest":
   let cmdParams =

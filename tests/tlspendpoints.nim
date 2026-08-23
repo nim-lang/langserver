@@ -1,10 +1,9 @@
 import
   std/[options, json, os, sequtils, strutils, strformat],
   json_rpc/[rpcclient],
-  chronicles,
   unittest2,
-  ../[nimlangserver, ls, lstransports, utils],
-  ../protocol/[types],
+  ../[nimlangserver, ls, utils],
+  ../protocol/[types, enums],
   ./[lspsocketclient, testhelpers]
 
 const CallTimeout = 30.seconds
@@ -299,12 +298,16 @@ suite "LSP endpoints":
     var target = 0'u
     check waitUntil(ls.cancellableCompletion(target))
 
-    defer:
-      pending.cancelSoon()
-
     client.notify("$/cancelRequest", %*{"id": target.int})
     check waitUntil(ls.pendingRequests[target].state == prsCancelled)
-    check pending.finished == false
+
+    var failure: ref CatchableError
+    try:
+      discard waitFor pending.wait(30.seconds)
+    except CatchableError as exc:
+      failure = exc
+    check failure != nil
+    check $(ord(RequestCancelled)) in failure.msg
 
   test "textDocument/formatting returns an edit for the whole file":
     if findExe("nph") == "":
@@ -490,7 +493,7 @@ suite "LSP messages before initialize":
     check status.version == LSPVersion
     check helloWorldUri notin ls.openFiles
 
-suite "LSP socket transport with more than one client":
+suite "LSP socket transport":
   let cmdParams =
     CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
   let ls = main(cmdParams)
@@ -515,16 +518,4 @@ suite "LSP socket transport with more than one client":
   test "the only client is answered":
     let status =
       to(clientA.callTimeout("extension/status", newJObject()), NimLangServerStatus)
-    check status.version == LSPVersion
-
-  test "a second client can connect and is served":
-    let clientB = newLspSocketClient()
-    clientB.registerNotification(
-      "window/showMessage", "window/workDoneProgress/create", "workspace/configuration",
-      "extension/statusUpdate", "textDocument/publishDiagnostics", "$/progress",
-    )
-    waitFor clientB.connect("localhost", cmdParams.port)
-
-    let status =
-      to(clientB.callTimeout("extension/status", newJObject()), NimLangServerStatus)
     check status.version == LSPVersion
