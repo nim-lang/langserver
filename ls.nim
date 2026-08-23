@@ -3,7 +3,7 @@
 import
   std/[
     macros, strformat, os, sugar, hashes, osproc, tables, strutils, sets, uri, json,
-    streams, sequtils, setutils, times,
+    sequtils, setutils, times,
   ],
   with,
   chronos,
@@ -32,8 +32,6 @@ const
   CHECK_PROJECT_COMMAND* = "nimlangserver.checkProject"
   FILE_CHECK_DELAY* = 1000
   LSPVersion* = getVersionFromNimble()
-  CRLF* = "\r\n"
-  CONTENT_LENGTH* = "Content-Length: "
   USE_NIM_CHECK_BY_DEFAULT* = false
   NIM_EXPAND_ARC_BY_DEFAULT* = false
   NIM_EXPAND_MACRO_BY_DEFAULT* = false
@@ -114,12 +112,6 @@ type
     stdio = "stdio"
     socket = "socket"
 
-  ReadStdinContext* = object
-    onStdReadSignal*: ThreadSignalPtr #used by the thread to notify it read from the std
-    onMainReadSignal*: ThreadSignalPtr
-      #used by the main thread to notify it read the value from the signal
-    value*: cstring
-
   PendingRequestState* = enum
     prsOnGoing = "OnGoing"
     prsCancelled = "Cancelled"
@@ -128,7 +120,7 @@ type
   PendingRequest* = object
     id*: uint
     name*: string
-    request*: Future[JsonString]
+    request*: FutureBase
     projectFile*: Option[string]
     startTime*: DateTime
     endTime*: DateTime
@@ -158,9 +150,9 @@ type
       #Set through setWorkspaceConfiguration, read through getWorkspaceConfiguration.
     workspaceConfigurationReady*: Future[void].Raising([CancelledError])
       #Completed the first time a configuration is known, and never replaced.
-    inlayHintsRefreshRequest*: Future[JsonNode].Raising([CancelledError])
+    inlayHintsRefreshRequest*: Future[JsonNode].Raising([CancelledError, JsonRpcError])
     didChangeConfigurationRegistrationRequest*:
-      Future[JsonNode].Raising([CancelledError])
+      Future[JsonNode].Raising([CancelledError, JsonRpcError])
     filesWithDiags*: HashSet[string]
     nimsuggestInit*: Future[void].Raising([CancelledError, OSError])
     lastNimsuggest*: Nimsuggest
@@ -172,23 +164,16 @@ type
     cmdLineClientProcessId*: Option[int]
     nimDumpCache*: Table[string, NimbleDumpInfo] #path to NimbleDumpInfo
     entryPoints*: seq[string]
-    responseMap*: TableRef[string, Future[JsonNode].Raising([CancelledError])]
     testRunProcess*: Option[AsyncProcessRef]
       #There is only one test run process at a time
-
-      #id to future. Represents the pending requests as result of calling ls.call
-    srv*: RpcSocketServer
-      #Both modes uses it to store the routes. Only actually started in socket mode
+    srv*: RpcServer #Both modes use it to store the routes
     pendingRequests*: Table[uint, PendingRequest]
       #id to future. Each request is added here so we can cancel them later in the cancelRequest. Only requests, not notifications
-    case transportMode*: TransportMode
-    of socket:
-      socketTransport*: StreamTransport
-    of stdio:
-      outStream*: FileStream
-      stdinContext*: ptr ReadStdinContext
+    transportMode*: TransportMode
+    connection*: RpcConnection #The connected client, if any
+    served*: Future[void]
     projectErrors*: seq[ProjectError]
-    lastStatusSent: JsonNode
+    lastStatusSent: JsonString
     failTable*: Table[string, int]
       #Project file to fail count
       #List of errors (crashes) nimsuggest has had since the lsp session started
@@ -210,11 +195,11 @@ type
   OnExitCallback* =
     proc(): Future[void].Raising([IOError, OSError]) {.gcsafe, raises: [].}
     #To be called when the server is shutting down
-  NotifyAction* = proc(name: string, params: JsonNode) {.gcsafe, raises: [].}
+  NotifyAction* = proc(name: string, params: JsonString) {.gcsafe, raises: [].}
     #Send a notification to the client
   CallAction* = proc(
-    name: string, params: JsonNode
-  ): Future[JsonNode].Raising([CancelledError]) {.gcsafe, raises: [].}
+    name: string, params: JsonString
+  ): Future[JsonNode].Raising([CancelledError, JsonRpcError]) {.gcsafe, raises: [].}
     #Send a request to the client
 
 macro `%*`*(t: untyped, inputStream: untyped): untyped =
@@ -234,10 +219,9 @@ proc initLs*(params: CommandLineParams, storageDir: string): LanguageServer =
     workspaceConfigurationReady: Future[void].Raising([CancelledError]).init("initLs"),
     filesWithDiags: initHashSet[string](),
     serverMode: params.mode.get(),
-    transportMode: params.transport.get(),
+    transportMode: params.transport.get(stdio),
     openFiles: initTable[string, NlsFileInfo](),
     # idleOpenFiles: initTable[string, NlsFileInfo](),
-    responseMap: newTable[string, Future[JsonNode].Raising([CancelledError])](),
     storageDir: storageDir,
     cmdLineClientProcessId: params.clientProcessId,
     extensionCapabilities: LspExtensionCapability.items.toSet,
@@ -371,7 +355,10 @@ proc showMessage*(
     ls: LanguageServer, message: string, typ: MessageType
 ) {.raises: [].} =
   proc notify() =
-    ls.notify("window/showMessage", %*{"type": typ.int, "message": message})
+    ls.notify(
+      "window/showMessage",
+      JsonString LspConv.encode(ShowMessageParams(`type`: typ.int, message: message)),
+    )
 
   let verbosity = ls.getWorkspaceConfiguration.notificationVerbosity.get(
     NlsNotificationVerbosity.nvInfo
@@ -391,8 +378,10 @@ proc showMessage*(
 
 proc applyEdit*(
     ls: LanguageServer, params: ApplyWorkspaceEditParams
-): Future[ApplyWorkspaceEditResponse] {.async: (raises: [CancelledError, ValueError]).} =
-  let res = await ls.call("workspace/applyEdit", %params)
+): Future[ApplyWorkspaceEditResponse] {.
+    async: (raises: [CancelledError, ValueError, JsonRpcError])
+.} =
+  let res = await ls.call("workspace/applyEdit", JsonString LspConv.encode(params))
   res.to(ApplyWorkspaceEditResponse)
 
 proc toPendingRequestStatus(pr: PendingRequest): PendingRequestStatus =
@@ -438,7 +427,7 @@ proc getLspStatus*(ls: LanguageServer): NimLangServerStatus {.raises: [].} =
   result.projectErrors = ls.projectErrors
 
 proc sendStatusChanged*(ls: LanguageServer) {.raises: [].} =
-  let status = %*ls.getLspStatus()
+  let status = JsonString LspConv.encode(ls.getLspStatus())
   if status != ls.lastStatusSent:
     ls.notify("extension/statusUpdate", status)
     ls.lastStatusSent = status
@@ -663,11 +652,19 @@ proc progressSupported(ls: LanguageServer): bool =
 
 proc progress*(ls: LanguageServer, token, kind: string, title = "") =
   if ls.progressSupported:
-    ls.notify("$/progress", %*{"token": token, "value": {"kind": kind, "title": title}})
+    ls.notify(
+      "$/progress",
+      JsonString LspConv.encode(
+        ProgressParams(token: token, value: some %*{"kind": kind, "title": title})
+      ),
+    )
 
 proc workDoneProgressCreate*(ls: LanguageServer, token: string) =
   if ls.progressSupported:
-    discard ls.call("window/workDoneProgress/create", %ProgressParams(token: token))
+    discard ls.call(
+      "window/workDoneProgress/create",
+      JsonString LspConv.encode(ProgressParams(token: token)),
+    )
 
 proc cancelPendingFileChecks*(ls: LanguageServer, nimsuggest: Nimsuggest) =
   # stop all checks on file level if we are going to run checks on project
@@ -806,7 +803,7 @@ proc sendDiagnostics*(
       "uri": pathToUri(path),
       "diagnostics": diagnostics.map(x => x.toUtf16Pos(ls).toDiagnostic),
     }
-  ls.notify("textDocument/publishDiagnostics", %params)
+  ls.notify("textDocument/publishDiagnostics", JsonString LspConv.encode(params))
   if diagnostics.len != 0:
     ls.filesWithDiags.incl path
   else:
@@ -905,6 +902,10 @@ proc checkFile*(
   )
 .}
 
+proc didOpenFile*(
+  ls: LanguageServer, textDocument: TextDocumentItem
+): Future[void] {.async: (raises: [CancelledError, OSError, IOError, RegexError]).}
+
 proc didCloseFile*(
     ls: LanguageServer, uri: string
 ): Future[void] {.async: (raises: []).} =
@@ -940,14 +941,20 @@ proc getProjectFileAfterStartup(
     await ls.nimsuggestInit.join()
   await getProjectFile(fileUri, ls)
 
-proc didOpenFile*(
+proc registerOpenFile*(
     ls: LanguageServer, textDocument: TextDocumentItem
-): Future[void] {.async: (raises: [CancelledError, OSError, IOError, RegexError]).} =
+) {.raises: [IOError, OSError].} =
+  ## Everything about opening a file that another request can observe: the
+  ## `openFiles` entry and the stash file holding the contents. Deliberately
+  ## free of `await`, so a request arriving right behind a
+  ## `textDocument/didOpen` cannot miss the file (`tryGetNimsuggest` answers
+  ## nothing at all for an uri it does not know).
   with textDocument:
     debug "New document opened for URI:", uri = uri
-    let
-      file = open(ls.uriStorageLocation(uri), fmWrite)
-      projectFileFuture = ls.getProjectFileAfterStartup(uriToPath(uri))
+    let file = open(ls.uriStorageLocation(uri), fmWrite)
+    defer:
+      file.close()
+    let projectFileFuture = ls.getProjectFileAfterStartup(uriToPath(uri))
 
     ls.openFiles[uri] = NlsFileInfo(
       projectFile: projectFileFuture,
@@ -964,8 +971,11 @@ proc didOpenFile*(
       if openFile != nil:
         openFile.fingerTable.add line.createUTFMapping()
         file.writeLine line
-    file.close()
 
+proc setupOpenFile*(
+    ls: LanguageServer, textDocument: TextDocumentItem
+): Future[void] {.async: (raises: [CancelledError, OSError, IOError, RegexError]).} =
+  with textDocument:
     let openFile = ls.openFiles.getOrDefault(uri)
     if openFile == nil:
       return
@@ -989,6 +999,12 @@ proc didOpenFile*(
 
       debug "Opening project file", uri = projectFile, file = uri
     ls.showMessage(fmt "Opening {uri}", MessageType.Info)
+
+proc didOpenFile*(
+    ls: LanguageServer, textDocument: TextDocumentItem
+): Future[void] {.async: (raises: [CancelledError, OSError, IOError, RegexError]).} =
+  ls.registerOpenFile(textDocument)
+  await ls.setupOpenFile(textDocument)
 
 proc tryGetNimsuggest*(
     ls: LanguageServer, uri: string
@@ -1067,7 +1083,7 @@ proc checkProject*(
         debug "Sending zero diags", path = path
         let params =
           PublishDiagnosticsParams %* {"uri": pathToUri(path), "diagnostics": @[]}
-        ls.notify("textDocument/publishDiagnostics", %params)
+        ls.notify("textDocument/publishDiagnostics", JsonString LspConv.encode(params))
     ls.filesWithDiags = filesWithDiags
     return
 
@@ -1112,7 +1128,7 @@ proc checkProject*(
       debug "Sending zero diags", path = path
       let params =
         PublishDiagnosticsParams %* {"uri": pathToUri(path), "diagnostics": @[]}
-      ls.notify("textDocument/publishDiagnostics", %params)
+      ls.notify("textDocument/publishDiagnostics", JsonString LspConv.encode(params))
   ls.filesWithDiags = filesWithDiags
 
   if nimsuggest.needsCheckProject:
@@ -1257,11 +1273,17 @@ proc maybeRegisterCapabilityDidChangeConfiguration*(ls: LanguageServer) =
         ]
       )
     )
-    let registration = ls.call("client/registerCapability", %registrationParams)
+    let registration = ls.call(
+      "client/registerCapability", JsonString LspConv.encode(registrationParams)
+    )
     ls.didChangeConfigurationRegistrationRequest = registration
     registration.addCallback do(data: pointer) {.gcsafe.}:
-      debug "Got response for the didChangeConfiguration registration:",
-        res = $registration.read()
+      if registration.completed:
+        debug "Got response for the didChangeConfiguration registration:",
+          res = $registration.read()
+      else:
+        warn "The didChangeConfiguration registration failed",
+          err = registration.error.msg
 
 proc handleConfigurationChanges*(
     ls: LanguageServer, oldConfiguration, newConfiguration: NlsConfig
@@ -1275,7 +1297,8 @@ proc handleConfigurationChanges*(
     if not inlayExceptionHintsConfigurationEquals(oldConfiguration, newConfiguration):
       await ls.restartAllNimsuggestInstances()
     debug "Sending inlayHint refresh"
-    ls.inlayHintsRefreshRequest = ls.call("workspace/inlayHint/refresh", newJNull())
+    #An empty object means no params at all
+    ls.inlayHintsRefreshRequest = ls.call("workspace/inlayHint/refresh", JsonString"{}")
 
 proc maybeRequestConfigurationFromClient*(
     ls: LanguageServer
@@ -1284,7 +1307,9 @@ proc maybeRequestConfigurationFromClient*(
     debug "Requesting configuration from the client"
     try:
       let configurationParams = ConfigurationParams %* {"items": [{"section": "nim"}]}
-      let configuration = await ls.call("workspace/configuration", %configurationParams)
+      let configuration = await ls.call(
+        "workspace/configuration", JsonString LspConv.encode(configurationParams)
+      )
       debug "Received the following configuration", configuration = $configuration
       #the first configuration is not a change, so there is nothing to handle
       let
@@ -1298,6 +1323,9 @@ proc maybeRequestConfigurationFromClient*(
     except CancelledError:
       error "Failed to handle the client configuration",
         error = getCurrentExceptionMsg()
+    except JsonRpcError as exc:
+      error "Failed to request the client configuration", error = exc.msg
+      ls.setWorkspaceConfiguration(newJArray())
   else:
     debug "Client does not support workspace/configuration"
     ls.setWorkspaceConfiguration(newJArray()) #the defaults, and no one waits anymore

@@ -3,9 +3,10 @@ import
   chronos,
   json_rpc/errors,
   unittest2,
-  ../[nimlangserver, ls, lstransports, utils],
+  ../[nimlangserver, ls, utils],
   ../protocol/types,
-  ../routes/mcp
+  ../routes/mcp,
+  ./lspsocketclient
 
 type McpSocketClient = ref object
   transport: StreamTransport
@@ -15,8 +16,7 @@ proc initMcpServer(
     mainFile: string
 ): Future[(LanguageServer, McpInitializeResult)] {.async: (raises: [CatchableError]).} =
   let
-    cmdParams =
-      CommandLineParams(mode: some ServerMode.mcp, transport: some TransportMode.stdio)
+    cmdParams = CommandLineParams(mode: some ServerMode.mcp)
     initParams =
       McpInitializeParams %* {
         "protocolVersion": McpProtocolVersion,
@@ -25,11 +25,11 @@ proc initMcpServer(
       }
     ls = initLs(cmdParams, ensureStorageDir())
 
-  ls.notify = proc(name: string, params: JsonNode) {.gcsafe, raises: [].} =
+  ls.notify = proc(name: string, params: JsonString) {.gcsafe, raises: [].} =
     discard
   ls.call = proc(
-      name: string, params: JsonNode
-  ): Future[JsonNode] {.async: (raises: [CancelledError]).} =
+      name: string, params: JsonString
+  ): Future[JsonNode] {.async: (raises: [CancelledError, JsonRpcError]).} =
     newJNull()
   ls.onExit = proc(): Future[void] {.async: (raises: [IOError, OSError]).} =
     discard
@@ -52,18 +52,6 @@ proc close(client: McpSocketClient): Future[void] {.async.} =
   if not client.transport.isNil:
     await client.transport.closeWait()
 
-proc readResponseLine(client: McpSocketClient): Future[string] {.async.} =
-  while true:
-    let chunk = await client.transport.read(1)
-    if chunk.len == 0:
-      return
-
-    let ch = chunk[0].char
-    if ch == '\n':
-      return
-
-    result.add(ch)
-
 proc callRpc(
     client: McpSocketClient, name: string, params: JsonNode
 ): Future[JsonNode] {.async.} =
@@ -73,7 +61,7 @@ proc callRpc(
   discard await client.transport.write(wrapContentWithContentLength($reqJson))
 
   while true:
-    let response = await client.readResponseLine()
+    let response = await processContentLength(client.transport)
     if response == "":
       raise newException(IOError, "MCP server disconnected")
 

@@ -9,7 +9,9 @@ bin = @["nimlangserver"]
 skipDirs = @["tests"]
 
 requires "nim >= 2.2.12",
-  "chronos >= 4.2.2", "json_rpc >= 0.6.0", "with >= 0.5.0", "chronicles >= 0.12.2",
+  "chronos >= 4.2.2 & < 4.3.0",
+  "https://github.com/nitely/nim-json-rpc.git#cd6d49cf009d71201d8db919e4ab5c580601606f",
+  "with >= 0.5.0", "chronicles >= 0.12.2",
   "serialization >= 0.5.2", "json_serialization >= 0.4.4", "stew >= 0.5.0",
   "regex >= 0.26.3", "unittest2 >= 0.2.5"
 

@@ -21,21 +21,19 @@ The generated [API index](apidocs/theindex.html) is also a useful reference when
 ```text
 Client
 ├─ LSP client (editor)
-│  └─ JSON-RPC over stdio or socket, with Content-Length framing
+│  └─ JSON-RPC over stdio or a socket, with Content-Length framing
 └─ MCP client
-   └─ JSON-RPC over stdio or socket
+   └─ JSON-RPC over stdio (one JSON object per line) or a socket
 
 nimlangserver.nim
 └─ builds LanguageServer state, starts transport, registers routes
    ├─ registerLspRoutes()  -> routes/lsp.nim
    └─ registerMcpRoutes()  -> routes/mcp.nim
 
-lstransports.nim
-└─ transport-specific I/O loops
-   ├─ stdio reader threads
-   ├─ socket server
-   ├─ JSON-RPC request/response dispatch
-   └─ writeOutput() framing
+lstransports2.nim
+└─ thin layer over json-rpc's stdio and socket servers
+   ├─ wrapRpc()          -> route handler <-> RpcProc
+   └─ initActions()      -> ls.notify / ls.call / ls.onExit
 
 ls.nim
 └─ shared server state and orchestration
@@ -57,12 +55,12 @@ Backends
 
 ### LSP flow
 
-1. `nimlangserver.nim` parses CLI flags, creates `LanguageServer`, starts stdio or socket transport, and registers LSP routes.
+1. `nimlangserver.nim` parses CLI flags, creates `LanguageServer`, registers LSP routes, and starts the stdio or socket transport.
 2. `routes/lsp.nim.initialize` stores client capabilities and eagerly starts `nimsuggest` for nimble entry points.
-3. `lstransports.nim` reads JSON-RPC messages, looks up the registered route, and invokes the handler.
+3. `lstransports2.nim` (`json-rpc`) reads and decodes the JSON-RPC messages and its router looks up the registered route and invokes the handler.
 4. Route handlers use `ls.nim` helpers such as `didOpenFile`, `getProjectFile`, and `tryGetNimsuggest`.
 5. `suggestapi.nim` sends the actual command to `nimsuggest`, parses the tab-separated result, and returns structured objects.
-6. The route maps those objects into LSP types from `protocol/types.nim`, and `lstransports.nim` serializes the response back to the client.
+6. The route maps those objects into LSP types from `protocol/types.nim`, and `lstransports2.nim` serializes the response back to the client.
 
 ### MCP flow
 
@@ -76,9 +74,9 @@ The MCP flow is the same shared pipeline with a thinner route layer:
 ### Important design notes
 
 - `LanguageServer` is a shared state object for both modes. The `serverMode` field switches the shape of the initialize params/capabilities stored inside it.
-- `lstransports.nim` is shared by both modes. The main behavioral difference is framing:
-  - LSP stdio uses `Content-Length`.
-  - MCP stdio writes one JSON object per line.
+- The server serves one client at a time. `processSocketClient` hangs up on a connection that arrives while `ls.connection` is set, since `ls` holds a single session; stdio has one connection by construction.
+- `lstransports2.nim` is shared by both modes and by both transports; the transports differ only in where the connection comes from — stdio serves the pipes the spawning client left on our descriptors, the socket server serves every accepted client. The framing is `Content-Length` everywhere except MCP over stdio, which is newline delimited JSON, as MCP clients expect.
+- Messages are dispatched concurrently, with one ordering guarantee: the part of a handler that runs before its first `await` completes before the next message is read off the connection. `lstransports2.route` returns immediately instead of awaiting the handler, and chronos runs async bodies eagerly, so that prefix is the only place where ordering against later messages is guaranteed. Anything a following message could observe — the `openFiles` entry, the stash file contents — has to be applied there.
 - MCP currently treats the current working directory as the workspace root (`getRootPath(McpInitializeParams)` returns `getCurrentDir()`), so start the server from the workspace you want to inspect.
 - `tickLs` in `nimlangserver.nim` keeps running after initialization and calls `ls.tick()` to prune completed requests and stop idle `nimsuggest` processes.
 
@@ -87,14 +85,13 @@ The MCP flow is the same shared pipeline with a thinner route layer:
 - `nimlangserver` is still best thought of as a fairly thin proxy between a client and one or more long-lived `nimsuggest` processes. In normal operation there is one `nimsuggest` instance per project/configuration pair, and requests are routed to the matching instance.
 - Project discovery is implemened through `ls.nim:getProjectFileAutoGuess`, `ls.nim:getNimbleDumpInfo`, and the `nimble dump`-based entry-point discovery path.
 - If no better project root is found, the opened file may become its own project file. That fallback is still an important behavior to remember when debugging odd workspace-root or include-file issues.
-- In stdio mode the input side is handled by a dedicated reader thread in `lstransports.nim`, while request processing and output happen on the main async side.
 - File editing is not delegated directly to `nimsuggest`. `nimlangserver` mirrors open file contents into temporary shadow files and passes those paths to backend operations. When debugging stale or surprising results, inspect `ls.nim:didOpenFile`, stash-path helpers, and the code paths that decide whether a file is treated as dirty.
 
 ## Package structure
 
 - `nimlangserver.nim`: program entry point, CLI flag parsing, route registration, transport startup, process-monitor setup, and the maintenance loop.
 - `ls.nim`: core server state (`LanguageServer`), configuration parsing, project discovery, open-file shadow state, diagnostics plumbing, `nimsuggest` lifecycle, and shared helpers used by both LSP and MCP.
-- `lstransports.nim`: JSON-RPC decoding/encoding, stdio and socket loops, `wrapRpc`, request cancellation bookkeeping, and outbound request/notification helpers.
+- `lstransports2.nim`: the socket transport. Framing, routing and request/response correlation come from `json-rpc`; this module only holds `wrapRpc`, request cancellation bookkeeping, and the outbound request/notification helpers.
 - `routes/lsp.nim`: LSP method handlers and Nim-specific extension methods. This is the best reference for which `nimsuggest` command powers which feature.
 - `routes/mcp.nim`: MCP initialize/list/call handlers plus the current MCP tool implementations. Most MCP work happens here.
 - `suggestapi.nim`: `nimsuggest` process startup, capability detection, request queueing, timeout handling, stderr capture, and parsing of `nimsuggest` responses into `Suggest` values.
@@ -228,9 +225,8 @@ If you want to automate the mechanical part with Copilot, use this prompt templa
 
 In practice:
 
-- **LSP over stdio:** look at your editor's language-server log / trace output. The README already shows enabling verbose server tracing in `coc.nvim`.
-- **MCP over stdio:** redirect `stderr` when launching the server so the JSON stream on `stdout` stays clean.
-- **Socket mode:** run the server in a terminal and watch `stderr` directly.
+- **From an editor:** look at your editor's language-server log / trace output. The README already shows enabling verbose server tracing in `coc.nvim`.
+- **By hand:** run the server in a terminal and watch `stderr` directly.
 
 Example:
 
@@ -242,7 +238,7 @@ nimble build
 ### Useful places to put breakpoints or temporary logs
 
 - For route registration or selected mode, start in `nimlangserver.nim`.
-- For raw JSON-RPC parsing or framing issues, start in `lstransports.nim`.
+- For raw JSON-RPC parsing or framing issues, start in `lstransports2.nim` and in `json-rpc`'s `clients/socketclient.nim`.
 - For project-file detection or workspace-root issues, start in `ls.nim:getProjectFile` and `ls.nim:getProjectFileAutoGuess`.
 - For open-file shadowing or stash paths, start in `ls.nim:didOpenFile` and `ls.nim:uriToStash`.
 - For `nimsuggest` startup, restart loops, or timeouts, start in `ls.nim:createOrRestartNimsuggest`, `suggestapi.nim:createNimsuggest`, and `suggestapi.nim:processQueue`.

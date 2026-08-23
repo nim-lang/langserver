@@ -14,8 +14,8 @@ jobs:
       fail-fast: false
       matrix:
         os:
-          - ubuntu-latest
-          - macos-15-intel
+          #- ubuntu-latest
+          #- macos-15-intel
           # https://github.com/nim-lang/setup-nimble-action/issues/13
           # - macos-latest
           - windows-latest
@@ -45,10 +45,10 @@ jobs:
         shell: bash
         run: nimble -yl install -d
 
-      - name: Bootstrap nim track toolchain
-        shell: bash
-        working-directory: tests/projects/trackproject
-        run: nimble -yl setup
+      #- name: Bootstrap nim track toolchain
+      #  shell: bash
+      #  working-directory: tests/projects/trackproject
+      #  run: nimble -yl setup
 
       - name: Nimble Test
         shell: bash

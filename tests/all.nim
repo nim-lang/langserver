@@ -9,5 +9,5 @@ when not defined(windows):
 import
   ./[
     tprojectsetup, textensions, tmisc, ttestrunner, tmcp, tlspendpoints,
-    tlspdiagnostics, tlspconfig, tutils, tasyncsafety, tslowstartup,
+    tlspdiagnostics, tlspconfig, tutils, tasyncsafety, tslowstartup, tstdio, tlifecycle,
   ]
