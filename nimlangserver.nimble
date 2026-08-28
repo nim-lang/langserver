@@ -17,9 +17,9 @@ requires "nim >= 2.2.10",
   "."
 
 task test, "run tests":
-  --silent
   --run
-  setCommand "c", "tests/all.nim"
+  --silent
+  setCommand("c", "tests/all.nim")
 
 task book, "Generate book":
   exec "mdbook build book -d ../docs"

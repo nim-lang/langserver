@@ -1,6 +1,4 @@
-import ../[
-  nimlangserver, ls, lstransports, utils
-]
+import ../[nimlangserver, ls, lstransports, utils]
 import ../protocol/[enums, types]
 import std/[options, json, os, jsonutils, sequtils, strutils, sugar, strformat]
 import json_rpc/[rpcclient]
@@ -9,108 +7,88 @@ import lspsocketclient
 import unittest2
 
 suite "Nimlangserver":
-  let cmdParams = CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
+  let cmdParams =
+    CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
   let ls = main(cmdParams) #we could accesss to the ls here to test against its state
   let client = newLspSocketClient()
   client.registerNotification(
-  "window/showMessage", 
-  "window/workDoneProgress/create",
-  "workspace/configuration",
-  "extension/statusUpdate",
-  "textDocument/publishDiagnostics",
-  "$/progress"
+    "window/showMessage", "window/workDoneProgress/create", "workspace/configuration",
+    "extension/statusUpdate", "textDocument/publishDiagnostics", "$/progress",
   )
   waitFor client.connect("localhost", cmdParams.port)
-  
+
   test "initialize from the client should call initialized on the server":
-    let initParams = LspInitializeParams %* {
+    let initParams =
+      LspInitializeParams %* {
         "processId": %getCurrentProcessId(),
         "rootUri": fixtureUri("projects/hw/"),
-        "capabilities": {
-          "window": {
-            "workDoneProgress": true
-          },
-          "workspace": {"configuration": true}
-        }
-    }
+        "capabilities":
+          {"window": {"workDoneProgress": true}, "workspace": {"configuration": true}},
+      }
     let initializeResult = waitFor client.initialize(initParams)
-    
-    check initializeResult.capabilities.textDocumentSync.isSome
 
+    check initializeResult.capabilities.textDocumentSync.isSome
 
 let helloWorldUri = fixtureUri("projects/hw/hw.nim")
 
-  
 suite "Suggest API selection":
-  let cmdParams = CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
+  let cmdParams =
+    CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
   let ls = main(cmdParams) #we could accesss to the ls here to test against its state
   let client = newLspSocketClient()
   client.registerNotification(
-    "window/showMessage", 
-    "window/workDoneProgress/create",
-    "workspace/configuration",
-    "extension/statusUpdate",
-    "textDocument/publishDiagnostics",
-    "$/progress"
-    )
+    "window/showMessage", "window/workDoneProgress/create", "workspace/configuration",
+    "extension/statusUpdate", "textDocument/publishDiagnostics", "$/progress",
+  )
 
-  
   waitFor client.connect("localhost", cmdParams.port)
-  let initParams = LspInitializeParams %* {
-        "processId": %getCurrentProcessId(),
-        "rootUri": fixtureUri("projects/hw/"),
-        "capabilities": {
-          "window": {
-            "workDoneProgress": true
-          },
-          "workspace": {"configuration": true}
-        }
-  }
+  let initParams =
+    LspInitializeParams %* {
+      "processId": %getCurrentProcessId(),
+      "rootUri": fixtureUri("projects/hw/"),
+      "capabilities":
+        {"window": {"workDoneProgress": true}, "workspace": {"configuration": true}},
+    }
   discard waitFor client.initialize(initParams)
   client.notify("initialized", newJObject())
 
   test "Suggest api":
     #The client adds the notifications into the call table and we wait until they arrived.   
-    let helloWorldFile = "projects/hw/hw.nim"    
+    let helloWorldFile = "projects/hw/hw.nim"
     client.notify("textDocument/didOpen", %createDidOpenParams(helloWorldFile))
 
     let hwAbsFile = helloWorldFile.fixtureUri.uriToPath
     check waitFor client.waitForNotificationMessage(
-      fmt"Nimsuggest initialized for {hwAbsFile}",
+      fmt"Nimsuggest initialized for {hwAbsFile}"
     )
 
-    client.notify("textDocument/didOpen",
-                  %createDidOpenParams("projects/hw/useRoot.nim"))
+    client.notify(
+      "textDocument/didOpen", %createDidOpenParams("projects/hw/useRoot.nim")
+    )
     let
       hoverParams = positionParams("projects/hw/hw.nim".fixtureUri, 2, 0)
       hover = client.call("textDocument/hover", %hoverParams).waitFor
     check hover.kind == JNull
 
 suite "LSP features":
-  let cmdParams = CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
+  let cmdParams =
+    CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
   let ls = main(cmdParams) #we could accesss to the ls here to test against its state
   let client = newLspSocketClient()
   client.registerNotification(
-    "window/showMessage", 
-    "window/workDoneProgress/create",
-    "workspace/configuration",
-    "extension/statusUpdate",
-    "textDocument/publishDiagnostics",
-    "$/progress"
-    )
+    "window/showMessage", "window/workDoneProgress/create", "workspace/configuration",
+    "extension/statusUpdate", "textDocument/publishDiagnostics", "$/progress",
+  )
 
   waitFor client.connect("localhost", cmdParams.port)
 
-  let initParams = LspInitializeParams %* {
+  let initParams =
+    LspInitializeParams %* {
       "processId": %getCurrentProcessId(),
       "rootUri": fixtureUri("projects/hw/"),
-      "capabilities": {
-          "window": {
-            "workDoneProgress": false
-          },
-        "workspace": {"configuration": true}
-      }
-  }
+      "capabilities":
+        {"window": {"workDoneProgress": false}, "workspace": {"configuration": true}},
+    }
 
   discard waitFor client.initialize(initParams)
 
@@ -123,22 +101,16 @@ suite "LSP features":
     let
       hoverParams = positionParams(helloWorldUri, 1, 6)
       hover = client.call("textDocument/hover", %hoverParams).waitFor
-      expected = %*{
-        "contents": {
-          "kind": "markdown",
-          "value": "```nim\nhw.a안녕: proc (){.noSideEffect, gcsafe, raises: <inferred> [].}\n```"
-        },
-        "range": {
-          "start": {
-            "line": 1,
-            "character": 6
+      expected =
+        %*{
+          "contents": {
+            "kind": "markdown",
+            "value":
+              "```nim\nhw.a안녕: proc (){.noSideEffect, gcsafe, raises: <inferred> [].}\n```",
           },
-          "end": {
-            "line": 1,
-            "character": 9
-          }
+          "range":
+            {"start": {"line": 1, "character": 6}, "end": {"line": 1, "character": 9}},
         }
-      }
     check hover == expected
 
   test "Sending hover(no content)":
@@ -156,141 +128,103 @@ suite "LSP features":
   test "Definitions.":
     let
       positionParams = positionParams(helloWorldUri, 1, 6)
-      locations = to(waitFor client.call("textDocument/definition", %positionParams),
-                     seq[Location])
-      expected = seq[Location] %* [{
-        "uri": helloWorldUri,
-        "range": {
-          "start": {
-            "line": 0,
-            "character": 5
-          },
-          "end": {
-            "line": 0,
-            "character": 8
+      locations = to(
+        waitFor client.call("textDocument/definition", %positionParams), seq[Location]
+      )
+      expected =
+        seq[Location] %* [
+          {
+            "uri": helloWorldUri,
+            "range":
+              {"start": {"line": 0, "character": 5}, "end": {"line": 0, "character": 8}},
           }
-        }
-      }]
+        ]
     check %locations == %expected
 
   test "References.":
-    let referenceParams = ReferenceParams %* {
-      "context": {
-        "includeDeclaration": true
-      },
-      "position": {
-         "line": 1,
-         "character": 6
-      },
-      "textDocument": {
-         "uri": helloWorldUri
-       }
-    }
-    let locations = to(waitFor client.call("textDocument/references", %referenceParams),
-                       seq[Location])
-    let expected = seq[Location] %* [{
-      "uri": helloWorldUri,
-      "range": {
-        "start": {
-          "line": 0,
-          "character": 5
-        },
-        "end": {
-          "line": 0,
-          "character": 8
-        }
+    let referenceParams =
+      ReferenceParams %* {
+        "context": {"includeDeclaration": true},
+        "position": {"line": 1, "character": 6},
+        "textDocument": {"uri": helloWorldUri},
       }
-      }, {
-      "uri": helloWorldUri,
-      "range": {
-        "start": {
-          "line": 1,
-          "character": 6
+    let locations = to(
+      waitFor client.call("textDocument/references", %referenceParams), seq[Location]
+    )
+    let expected =
+      seq[Location] %* [
+        {
+          "uri": helloWorldUri,
+          "range":
+            {"start": {"line": 0, "character": 5}, "end": {"line": 0, "character": 8}},
         },
-        "end": {
-          "line": 1,
-          "character": 9
-        }
-      }
-    }]
+        {
+          "uri": helloWorldUri,
+          "range":
+            {"start": {"line": 1, "character": 6}, "end": {"line": 1, "character": 9}},
+        },
+      ]
     check %locations == %expected
 
   test "References(exclude def)":
-    let referenceParams =  ReferenceParams %* {
-      "context": {
-        "includeDeclaration": false
-      },
-      "position": {
-         "line": 1,
-         "character": 7
-      },
-      "textDocument": {
-         "uri": helloWorldUri
-       }
-    }
-    let locations = to(waitFor client.call("textDocument/references",
-                                            %referenceParams),
-                       seq[Location])
-    let expected = seq[Location] %* [{
-      "uri": helloWorldUri,
-      "range": {
-        "start": {
-          "line": 1,
-          "character": 6
-        },
-        "end": {
-          "line": 1,
-          "character": 9
-        }
+    let referenceParams =
+      ReferenceParams %* {
+        "context": {"includeDeclaration": false},
+        "position": {"line": 1, "character": 7},
+        "textDocument": {"uri": helloWorldUri},
       }
-    }]
+    let locations = to(
+      waitFor client.call("textDocument/references", %referenceParams), seq[Location]
+    )
+    let expected =
+      seq[Location] %* [
+        {
+          "uri": helloWorldUri,
+          "range":
+            {"start": {"line": 1, "character": 6}, "end": {"line": 1, "character": 9}},
+        }
+      ]
     check %locations == %expected
 
   test "Prepare rename":
     let renameParams = PrepareRenameParams(
       textDocument: TextDocumentIdentifier(uri: helloWorldUri),
-      position: Position(line: 2, character: 6)
+      position: Position(line: 2, character: 6),
     )
-    let resp = client.call("textDocument/prepareRename", %renameParams)
-                        .waitFor()
-    check resp == %* {
-        "start":{"line":2,"character":4},
-        "end":{"line":2,"character":7}
-    }
-
+    let resp = client.call("textDocument/prepareRename", %renameParams).waitFor()
+    check resp ==
+      %*{"start": {"line": 2, "character": 4}, "end": {"line": 2, "character": 7}}
 
   test "Prepare rename doesn't allow non-project symbols":
     let renameParams = PrepareRenameParams(
       textDocument: TextDocumentIdentifier(uri: helloWorldUri),
-      position: Position(line: 8, character: 10)
+      position: Position(line: 8, character: 10),
     )
-    let resp = client.call("textDocument/prepareRename", %renameParams)
-                        .waitFor()
+    let resp = client.call("textDocument/prepareRename", %renameParams).waitFor()
     check resp.kind == JNull
 
   test "Rename":
     let renameParams = RenameParams(
-        textDocument: TextDocumentIdentifier(uri: helloWorldUri),
-        newName: "hello",
-        position: Position(line: 2, character: 6)
+      textDocument: TextDocumentIdentifier(uri: helloWorldUri),
+      newName: "hello",
+      position: Position(line: 2, character: 6),
     )
-    let changes = client.call("textDocument/rename", %renameParams)
-                        .waitFor().to(WorkSpaceEdit).changes.get()
+    let changes = client
+      .call("textDocument/rename", %renameParams)
+      .waitFor()
+      .to(WorkSpaceEdit).changes
+      .get()
     check changes.len == 1
     check changes[helloWorldUri].len == 3
-    check changes[helloWorldUri].mapIt(it["newText"].getStr()) == @["hello", "hello", "hello"]
+    check changes[helloWorldUri].mapIt(it["newText"].getStr()) ==
+      @["hello", "hello", "hello"]
 
   test "didChange then sending hover.":
-    let didChangeParams = DidChangeTextDocumentParams %* {
-      "textDocument": {
-        "uri": helloWorldUri,
-        "version": 1
-      },
-      "contentChanges": [{
-          "text": "\nproc a() = discard\na()\n"
-        }
-      ]
-    }
+    let didChangeParams =
+      DidChangeTextDocumentParams %* {
+        "textDocument": {"uri": helloWorldUri, "version": 1},
+        "contentChanges": [{"text": "\nproc a() = discard\na()\n"}],
+      }
 
     client.notify("textDocument/didChange", %didChangeParams)
     let
@@ -299,20 +233,17 @@ suite "LSP features":
     doAssert contains($hover, "hw.a: proc ()")
 
   test "Completion":
-    let completionParams = CompletionParams %* {
-      "position": {
-         "line": 3,
-         "character": 2
-      },
-      "textDocument": {
-         "uri": fixtureUri("projects/hw/hw.nim")
-       }
-    }
+    let completionParams =
+      CompletionParams %* {
+        "position": {"line": 3, "character": 2},
+        "textDocument": {"uri": fixtureUri("projects/hw/hw.nim")},
+      }
 
-    let actualEchoCompletionItem =
-      to(waitFor client.call("textDocument/completion", %completionParams),
-         seq[CompletionItem])
-      .filter(item => item.label == "echo")[0]
+    let actualEchoCompletionItem = to(
+      waitFor client.call("textDocument/completion", %completionParams),
+      seq[CompletionItem],
+    )
+    .filter(item => item.label == "echo")[0]
 
     doAssert actualEchoCompletionItem.label == "echo"
     doAssert actualEchoCompletionItem.kind.get == 3
@@ -325,36 +256,30 @@ suite "LSP features":
       nullResponse = waitFor client.call("shutdown", nullValue)
 
     doAssert nullResponse == nullValue
-    doAssert ls.isShutdown    
+    doAssert ls.isShutdown
 
 suite "Null configuration:":
-  let cmdParams = CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
+  let cmdParams =
+    CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
   let ls = main(cmdParams)
   let client = newLspSocketClient()
   client.registerNotification(
-    "window/showMessage", 
-    "window/workDoneProgress/create",
-    "workspace/configuration",
-    "extension/statusUpdate",
-    "extension/statusUpdate",
-    "textDocument/publishDiagnostics",
-    "$/progress"
-    )
-  
+    "window/showMessage", "window/workDoneProgress/create", "workspace/configuration",
+    "extension/statusUpdate", "extension/statusUpdate",
+    "textDocument/publishDiagnostics", "$/progress",
+  )
+
   waitFor client.connect("localhost", cmdParams.port)
 
-  let initParams = LspInitializeParams %* {
+  let initParams =
+    LspInitializeParams %* {
       "processId": %getCurrentProcessId(),
       "rootUri": fixtureUri("projects/hw/"),
       "capabilities": {
         "workspace": {"configuration": true},
-        "textDocument": {
-          "rename": {
-            "prepareSupport": true
-          }
-        }
-      }
-  }
+        "textDocument": {"rename": {"prepareSupport": true}},
+      },
+    }
 
   discard waitFor client.initialize(initParams)
   client.notify("initialized", newJObject())
