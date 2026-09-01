@@ -283,7 +283,8 @@ proc getNimbleDumpInfo*(
       workingDir = nimbleFile.parentDir(),
       arguments = @["dump"],
       options = {UsePath},
-      stderrHandle = AsyncProcess.Pipe,
+      stderrHandle = ProcessStreamHandle(), # None => chronos doesn't
+      # manage stderr, child inherits ours
       stdoutHandle = AsyncProcess.Pipe,
     )
     let info = string.fromBytes(process.stdoutStream.read().await)
@@ -334,8 +335,8 @@ proc getWorkspaceConfiguration*(
 ): Future[NlsConfig] {.async: (raises: []).} =
   try:
     #this is the root of a lot a problems as there are multiple race conditions here.
-    #since most request doenst really rely on the configuration, we can just go ahead and 
-    #return a default one until we have the right one. 
+    #since most request doesn't really rely on the configuration, we can just go ahead and
+    #return a default one until we have the right one.
     #TODO review and handle project specific confs when received instead of reliying in this func
     if ls.workspaceConfiguration.finished:
       return parseWorkspaceConfiguration(ls.workspaceConfiguration.read)
