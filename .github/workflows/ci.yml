@@ -16,6 +16,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      cache_nonce: v1 # bump to force reset cache
     steps:
       - uses: actions/checkout@v6
       - name: Setup Nimble
@@ -30,10 +31,9 @@ jobs:
         with:
           path: |
             ~/.nimble
-            ~/.cache/nim
-          key: ${{ matrix.target.os }}-${{ env.cache_nonce }}-${{ hashFiles('**/nimble.lock') }}
+          key: ${{ runner.os }}-nimble-${{ env.cache_nonce }}-${{ hashFiles('**/nimble.lock') }}
           restore-keys: |
-            ${{ runner.os }}-${{ env.cache_nonce }}-
+            ${{ runner.os }}-nimble-${{ env.cache_nonce }}-
 
       - name: Install dependencies
         shell: bash
