@@ -1095,7 +1095,7 @@ proc createOrRestartNimsuggest*(
 
     debug "Creating new nimsuggest project", projectFile = projectFile
 
-    let projectNext = waitFor createNimsuggest(
+    let projectFut = createNimsuggest(
       projectFile,
       nimsuggestPath,
       version,
@@ -1106,7 +1106,13 @@ proc createOrRestartNimsuggest*(
       configuration.logNimsuggest.get(false),
       configuration.exceptionHintsEnabled,
     )
+    if not waitFor chronos.withTimeout(
+      projectFut, chronos.milliseconds(NIMSUGGEST_STARTUP_TIMEOUT)
+    ):
+      error "Nimsuggest startup timed out", projectFile = projectFile
+      return
 
+    let projectNext = waitFor projectFut
     if projectFile in ls.projectFiles:
       var project = ls.projectFiles[projectFile]
       project.stop()
