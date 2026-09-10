@@ -179,6 +179,14 @@ proc wrapContentWithContentLength*(content: string): string =
   let contentLength = content.len + 1
   &"{CONTENT_LENGTH}{contentLength}{CRLF}{CRLF}{content}\n"
 
+proc writeToSocket(
+    ls: LanguageServer, res: string
+): Future[void] {.async: (raises: []).} =
+  try:
+    discard await ls.socketTransport.write(res)
+  except CatchableError as ex:
+    error "Error writing to the socket", msg = ex.msg
+
 proc writeOutput*(ls: LanguageServer, content: JsonNode) =
   let res =
     case ls.serverMode
@@ -196,7 +204,7 @@ proc writeOutput*(ls: LanguageServer, content: JsonNode) =
       ls.outStream.write(res)
       ls.outStream.flush()
     of socket:
-      discard waitFor ls.socketTransport.write(res)
+      asyncSpawn ls.writeToSocket(res)
   except CatchableError as ex:
     error "Error writing output", msg = ex.msg
 
