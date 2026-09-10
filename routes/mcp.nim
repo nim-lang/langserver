@@ -224,7 +224,7 @@ proc callNimFindReferences(
       TextDocumentItem(uri: uri, languageId: "nim", version: 0, text: readFile(path))
     )
 
-  let config = await ls.getWorkspaceConfiguration()
+  let config = ls.getWorkspaceConfiguration()
 
   if config.useNimTrack.get(false):
     let projectFile = await ls.openFiles[uri].projectFile

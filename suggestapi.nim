@@ -46,8 +46,9 @@ type
     ideType
     ideExpand
 
-  NimsuggestCallback* = proc(self: Nimsuggest): void {.gcsafe, raises: [].}
-  ProjectCallback* = proc(self: Project): void {.gcsafe, raises: [].}
+  NimsuggestCallback* =
+    proc(self: Nimsuggest): Future[void] {.async: (raises: []), gcsafe.}
+  ProjectCallback* = proc(self: Project): Future[void] {.async: (raises: []), gcsafe.}
 
   Suggest* = ref object
     section*: IdeCmd
@@ -261,13 +262,15 @@ proc parseSuggestInlayHint*(line: string): SuggestInlayHint =
 proc name*(sug: Suggest): string =
   return sug.qualifiedPath[^1]
 
-proc markFailed(self: Project, errMessage: string) {.raises: [].} =
+proc markFailed(
+    self: Project, errMessage: string
+): Future[void] {.async: (raises: []).} =
   if self.failed:
     return
   self.failed = true
   self.errorMessage = errMessage
   if self.errorCallback.isSome:
-    self.errorCallback.get()(self)
+    await self.errorCallback.get()(self)
 
 proc stop*(self: Project) =
   debug "Stopping nimsuggest for ", root = self.file
@@ -334,7 +337,7 @@ proc getNimsuggestCapabilities*(
 proc logNsError(project: Project) {.async.} =
   let err = string.fromBytes(project.process.stderrStream.read().await)
   error "NimSuggest Error (stderr)", err = err
-  project.markFailed(err)
+  await project.markFailed(err)
 
 proc createNimsuggest*(
     root: string,
@@ -405,12 +408,12 @@ proc createNimsuggest*(
       error "Failed to parse nimsuggest port", portLine = portLine
       let nextLine = await result.process.stdoutStream.readLine(sep = "\n")
       error "Nimsuggest nextLine", nextLine = nextLine
-      result.markFailed "Failed to parse nimsuggest port"
+      await result.markFailed "Failed to parse nimsuggest port"
     result.ns.complete(ns)
   else:
     error "Unable to start nimsuggest. Unable to find binary on the $PATH",
       nimsuggestPath = nimsuggestPath
-    result.markFailed fmt "Unable to start nimsuggest. `{nimsuggestPath}` is not present on the PATH"
+    await result.markFailed fmt "Unable to start nimsuggest. `{nimsuggestPath}` is not present on the PATH"
 
 proc createNimsuggest*(root: string): Future[Project] {.gcsafe.} =
   result = createNimsuggest(
@@ -418,11 +421,23 @@ proc createNimsuggest*(root: string): Future[Project] {.gcsafe.} =
     "nimsuggest",
     "",
     REQUEST_TIMEOUT,
-    proc(ns: Nimsuggest) =
+    proc(ns: Nimsuggest) {.async: (raises: []), gcsafe.} =
       discard,
-    proc(pr: Project) =
+    proc(pr: Project) {.async: (raises: []), gcsafe.} =
       discard,
   )
+
+proc watchRequestTimeout(
+    self: Nimsuggest, req: SuggestCall
+): Future[void] {.async: (raises: []).} =
+  let inTime =
+    try:
+      await doWithTimeout(req.future, self.timeout, fmt "running {req.commandString}")
+    except CatchableError:
+      return
+  if not inTime:
+    debug "Calling restart"
+    await self.timeoutCallback(self)
 
 proc toString*(bytes: openarray[byte]): string =
   result = newString(bytes.len)
@@ -448,12 +463,7 @@ proc processQueue(self: Nimsuggest): Future[void] {.async.} =
 
         if not self.timeoutCallback.isNil:
           debug "timeoutCallback is set", timeout = self.timeout
-          doWithTimeout(req.future, self.timeout, fmt "running {req.commandString}").addCallback do(
-            f: Future[bool]
-          ):
-            if not f.failed and not f.read():
-              debug "Calling restart"
-              self.timeoutCallback(self)
+          asyncSpawn self.watchRequestTimeout(req)
         let ta = initTAddress(&"127.0.0.1:{self.port}")
         let transport = await ta.connect()
         discard await transport.write(req.commandString & "\c\L")
@@ -480,7 +490,7 @@ proc processQueue(self: Nimsuggest): Future[void] {.async.} =
                 res.add sug.get
 
         if (content == ""):
-          self.project.markFailed "Server crashed/socket closed."
+          await self.project.markFailed "Server crashed/socket closed."
           debug "Server socket closed"
           if not req.future.finished:
             debug "Call cancelled before sending error", command = req.command

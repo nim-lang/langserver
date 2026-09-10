@@ -190,19 +190,18 @@ proc registerProcMonitor(ls: LanguageServer) =
     debug "Registering monitor for process id, specified on command line",
       clientProcessId = ls.cmdLineClientProcessId.get
 
-    proc onCmdLineClientProcessExitAsync(): Future[void] {.async.} =
+    proc onCmdLineClientProcessExitAsync(): Future[void] {.async: (raises: []).} =
       debug "onCmdLineClientProcessExitAsync"
-
-      await ls.stopNimsuggestProcesses
-      waitFor ls.onExit()
-
-    proc onCmdLineClientProcessExit() {.closure.} =
-      debug "onCmdLineClientProcessExit"
       try:
-        waitFor onCmdLineClientProcessExitAsync()
+        await ls.stopNimsuggestProcesses
+        await ls.onExit()
       except CatchableError as ex:
         error "Error in onCmdLineClientProcessExit"
         writeStackTrace(ex)
+
+    proc onCmdLineClientProcessExit() {.closure.} =
+      debug "onCmdLineClientProcessExit"
+      asyncSpawn onCmdLineClientProcessExitAsync()
 
     hookAsyncProcMonitor(ls.cmdLineClientProcessId.get, onCmdLineClientProcessExit)
 
