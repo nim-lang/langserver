@@ -1,4 +1,18 @@
 import std/[os, osproc, sequtils, strutils, sugar, unittest]
+import chronos
+
+template waitUntil*(condition: untyped, timeout = 10.seconds): bool =
+  block:
+    var satisfied = false
+    let deadline = Moment.now() + timeout
+    while true:
+      satisfied = condition
+      if satisfied:
+        break
+      if Moment.now() > deadline:
+        break
+      waitFor sleepAsync(10)
+    satisfied
 
 template cd*(dir: string, body: untyped) =
   ## Sets the current dir to ``dir``, executes ``body`` and restores the

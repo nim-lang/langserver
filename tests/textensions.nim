@@ -73,6 +73,15 @@ suite "Nimlangserver extensions":
     check tasks[0].name == "helloWorld"
     check tasks[0].description == "hello world"
 
+  test "calling extension/runTask should run the task and return its output":
+    let runTaskParams = RunTaskParams(command: @["helloWorld"])
+    let runTaskRes = client.call(
+      "extension/runTask", jsonutils.toJson(runTaskParams)
+    ).waitFor().jsonTo(RunTaskResult)
+
+    check runTaskRes.command == @["helloWorld"]
+    check runTaskRes.output.anyIt(it.contains("hello world"))
+
   test "calling extension/listTests should return all existing tests":
     #We first need to initialize the nimble project
     let projectDir = getCurrentDir() / "tests" / "projects" / "testrunner"

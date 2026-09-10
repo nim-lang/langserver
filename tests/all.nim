@@ -12,4 +12,8 @@ import
   textensions,
   tmisc,
   ttestrunner,
-  tmcp
+  tmcp,
+  tlspendpoints,
+  tlspdiagnostics,
+  tlspconfig,
+  tutils

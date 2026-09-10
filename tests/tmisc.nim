@@ -5,6 +5,7 @@ import
 import json_rpc/[rpcclient]
 import chronicles
 import lspsocketclient
+import testhelpers
 import chronos/asyncproc
 import unittest2
 
@@ -100,9 +101,8 @@ suite "Nimlangserver pending requests":
 
     let fut = ls.addProjectFileToPendingRequest(1'u, uri)
     projectFileFut.cancelSoon()
-    waitFor sleepAsync(10)
 
-    check fut.finished
+    check waitUntil(fut.finished)
     check fut.completed
 
 suite "Nimlangserver idle nimsuggest cleanup":
@@ -140,14 +140,11 @@ suite "Nimlangserver idle nimsuggest cleanup":
     )
     ls.openFiles.del(helloWorldFile.fixtureUri())
 
-    var removed = false
-    for attempt in 0 ..< 5:
-      waitFor sleepAsync(1100)
+    proc sweptAway(ls: LanguageServer, projectFile: string): bool =
       waitFor ls.removeIdleNimsuggests()
-      if hwAbsFile notin ls.projectFiles:
-        removed = true
-        break
-    check removed
+      projectFile notin ls.projectFiles
+
+    check waitUntil(ls.sweptAway(hwAbsFile), timeout = 30.seconds)
 
 suite "Nimlangserver transport teardown":
   test "writeOutput drops writes after the stdio stream is torn down":

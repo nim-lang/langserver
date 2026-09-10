@@ -135,6 +135,27 @@ suite "MCP routes":
     check findTypeDefinition.inputSchema.required == @["path", "line", "column"]
     check findTypeDefinition.outputSchema.required == @["defs"]
 
+    discard waitFor rpcClient.callRpc(
+      "initialize",
+      %*{
+        "protocolVersion": McpProtocolVersion,
+        "capabilities": {},
+        "clientInfo": {"name": "nimlangserver tests", "version": "1"},
+      },
+    )
+
+    let listed = (
+      waitFor rpcClient.callRpc(
+        "tools/call",
+        %*{
+          "name": "nimListSymbols",
+          "arguments": {"path": absolutePath("tests" / "projects" / "hw" / "hw.nim")},
+        },
+      )
+    )
+    check listed{"content"}.kind == JArray
+    check listed{"isError"}.getBool(false) == false
+
 suite "MCP tools":
   let
     testProjectDir = absolutePath("tests" / "projects" / "mcpproject")
