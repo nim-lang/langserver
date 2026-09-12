@@ -7,15 +7,19 @@ on:
 jobs:
   test:
     strategy:
+      fail-fast: false
       matrix:
         os:
-          # - windows-latest
-          # - macos-latest
           - ubuntu-latest
-    name: ${{ matrix.os }} - ${{ matrix.nimversion }}
+          - macos-15-intel
+          # https://github.com/nim-lang/setup-nimble-action/issues/13
+          # - macos-latest
+          - windows-latest
+    name: CI / ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      CACHE_NONCE: "20260914"
     steps:
       - uses: actions/checkout@v6
       - name: Setup Nimble
@@ -28,17 +32,13 @@ jobs:
         id: nimble_deps
         uses: actions/cache@v5
         with:
-          path: |
-            ~/.nimble
-            ~/.cache/nim
-          key: ${{ matrix.target.os }}-${{ env.cache_nonce }}-${{ hashFiles('**/nimble.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ env.cache_nonce }}-
+          path: nimbledeps
+          key: nimble-deps-${{ env.CACHE_NONCE }}-${{ runner.os }}-${{ runner.arch }}-${{ matrix.os }}-${{ hashFiles('**/nimble.lock') }}
 
       - name: Install dependencies
         shell: bash
-        run: nimble -y install -l
-      
+        run: nimble -yld install
+
       - name: Nimble Test
         shell: bash
         run: nimble test

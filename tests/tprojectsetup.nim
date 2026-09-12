@@ -99,19 +99,19 @@ suite "Project Mapping":
       }
     discard waitFor client.initialize(initParams)
     let configurationParams =
-      @[NlsConfig(projectMapping: some @[NlsNimsuggestConfig(fileRegex: ".nonimble*")])]
+      @[NlsConfig(projectMapping: some @[NlsNimsuggestConfig(fileRegex: "nonimble*")])]
     let nonimbleProject = projectsDir / "nonimbleproject.nim"
     ls.workspaceConfiguration.complete(%configurationParams)
 
-    let projectFile = waitFor getProjectFile(pathToUri(nonimbleProject), ls)
-    let matchingMsg =
-      fmt"RegEx matched `.nonimble*` for file `{nonimbleProject.pathToUri}`"
+    let projectFile = waitFor getProjectFile(nonimbleProject, ls)
+    let matchingMsg = fmt"RegEx matched `nonimble*` for file `{nonimbleProject}`"
 
     check waitFor client.waitForNotification(
       "window/showMessage",
       proc(json: JsonNode): bool =
         json["message"].getStr == matchingMsg,
     )
-    let expectedProjectFile = nonimbleProject.pathToUri
+    let expectedProjectFile = nonimbleProject
 
     check projectFile == expectedProjectFile
+

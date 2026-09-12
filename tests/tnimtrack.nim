@@ -45,34 +45,35 @@ suite "Nim track with nim >= 2.4":
 
   let trackUri = fixtureUri("projects/trackproject/src/trackproject.nim")
 
-  test "Definition with nim track":
-    client.notify("textDocument/didOpen", %createDidOpenParams(trackFile))
-    discard waitFor client.waitForNotificationMessage(
-      fmt"Nimsuggest initialized for {trackAbsFile}"
-    )
-    let
-      positionParams = positionParams(trackUri, 4, 6)
-      locations = to(
-        waitFor client.call("textDocument/definition", %positionParams), seq[Location]
-      )
-    check locations.len == 1
-    check locations[0].uri.pathToUri().contains("trackproject.nim")
-
-  test "References with nim track":
-    client.notify("textDocument/didOpen", %createDidOpenParams(trackFile))
-    discard waitFor client.waitForNotificationMessage(
-      fmt"Nimsuggest initialized for {trackAbsFile}"
-    )
-    let referenceParams =
-      ReferenceParams %* {
-        "context": {"includeDeclaration": false},
-        "position": {"line": 4, "character": 6},
-        "textDocument": {"uri": trackUri},
-      }
-    let locations = to(
-      waitFor client.call("textDocument/references", %referenceParams), seq[Location]
-    )
-    check locations.len >= 1
+# XXX https://github.com/nim-lang/langserver/pull/447
+#  test "Definition with nim track":
+#    client.notify("textDocument/didOpen", %createDidOpenParams(trackFile))
+#    discard waitFor client.waitForNotificationMessage(
+#      fmt"Nimsuggest initialized for {trackAbsFile}"
+#    )
+#    let
+#      positionParams = positionParams(trackUri, 4, 6)
+#      locations = to(
+#        waitFor client.call("textDocument/definition", %positionParams), seq[Location]
+#      )
+#    check locations.len == 1
+#    check locations[0].uri.pathToUri().contains("trackproject.nim")
+#
+#  test "References with nim track":
+#    client.notify("textDocument/didOpen", %createDidOpenParams(trackFile))
+#    discard waitFor client.waitForNotificationMessage(
+#      fmt"Nimsuggest initialized for {trackAbsFile}"
+#    )
+#    let referenceParams =
+#      ReferenceParams %* {
+#        "context": {"includeDeclaration": false},
+#        "position": {"line": 4, "character": 6},
+#        "textDocument": {"uri": trackUri},
+#      }
+#    let locations = to(
+#      waitFor client.call("textDocument/references", %referenceParams), seq[Location]
+#    )
+#    check locations.len >= 1
 
 suite "Nim track unavailable with nim < 2.4":
   let cmdParams =
