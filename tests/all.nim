@@ -1,7 +1,13 @@
 import
   tsuggestapi,
-  tnimlangserver,
-  tnimtrack,
+  tnimlangserver
+
+# XXX getNimPath's nimsuggestPath missing ExeExt
+when not defined(windows):
+  import
+    tnimtrack
+
+import
   tprojectsetup,
   textensions,
   tmisc,
