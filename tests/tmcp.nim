@@ -81,6 +81,8 @@ suite "MCP routes":
     mainFile = absolutePath("nimlangserver.nim")
     (ls, initRes) = waitFor initMcpServer(mainFile)
 
+  waitFor ls.nimsuggestInit
+
   suiteTeardown:
     waitFor ls.stopNimsuggestProcesses()
 
@@ -190,7 +192,7 @@ suite "MCP tools":
     let syms = res.structuredContent["syms"].getElems()
 
     check syms.len == 1
-    check syms[0] ==
+    check syms.len >= 1 and syms[0] ==
       %*{"name": "add", "path": entryPoint, "line": 3, "column": 5, "kind": "Proc"}
 
   test "callTool nimCheckProject returns workspace diagnostics":

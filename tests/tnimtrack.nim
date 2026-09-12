@@ -60,7 +60,7 @@ suite "Nim track with nim >= 2.4":
         waitFor client.call("textDocument/definition", %positionParams), seq[Location]
       )
     check locations.len == 1
-    check locations.len == 1 and locations[0].uri.pathToUri().contains("trackproject.nim")
+    check locations.len >= 1 and locations[0].uri.pathToUri().contains("trackproject.nim")
 
   test "References with nim track":
     client.notify("textDocument/didOpen", %createDidOpenParams(trackFile))
