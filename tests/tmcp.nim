@@ -43,9 +43,15 @@ proc newMcpSocketClient(port: Port): Future[McpSocketClient] {.async.} =
   let addresses = resolveTAddress("localhost", port)
   McpSocketClient(transport: await connect(addresses[0]))
 
-proc close(client: McpSocketClient): Future[void] {.async.} =
+proc close(client: McpSocketClient) =
+  # XXX temporary: `closeWait` (close + join) never returns on Windows CI.
+  # Split so the log says which half blocks.
   if not client.transport.isNil:
-    await client.transport.closeWait()
+    echo "[tmcp] closed=", client.transport.closed()
+    client.transport.close()
+    echo "[tmcp] close() returned, closed=", client.transport.closed()
+    waitFor noCancel(client.transport.join())
+    echo "[tmcp] join() returned"
 
 proc readResponseLine(client: McpSocketClient): Future[string] {.async.} =
   while true:
@@ -103,7 +109,7 @@ suite "MCP routes":
 
     defer:
       echo "[tmcp] closing rpc client"
-      waitFor rpcClient.close()
+      rpcClient.close()
       echo "[tmcp] rpc client closed; calling onExit"
       waitFor rpcLs.onExit()
       echo "[tmcp] onExit returned"
