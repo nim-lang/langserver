@@ -110,12 +110,19 @@ suite "MCP routes":
         port: getNextFreePort(),
       )
       rpcLs = main(rpcCmdParams)
-      rpcClient = waitFor newMcpSocketClient(rpcCmdParams.port)
+
+    rpcLs.notify = proc(name: string, params: JsonNode) {.gcsafe, raises: [].} =
+      discard
+
+    let rpcClient = waitFor newMcpSocketClient(rpcCmdParams.port)
 
     defer:
+      echo "[tmcp] closing rpc client"
       waitFor rpcClient.close()
+      echo "[tmcp] rpc client closed; calling onExit"
       waitFor rpcLs.onExit()
       setCurrentDir(savedDir)
+      echo "[tmcp] onExit returned"
 
     let listToolsResult =
       (waitFor rpcClient.callRpc("tools/list", %*{})).jsonTo(McpListToolsResult)
@@ -160,6 +167,7 @@ suite "MCP routes":
       "tools/call",
       %*{"name": "nimListSymbols", "arguments": {"path": entryPoint}},
     )
+    echo "[tmcp] tools/call returned"
     check listed{"content"}.kind == JArray
     check listed{"isError"}.getBool(false) == false
 
