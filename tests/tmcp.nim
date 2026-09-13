@@ -43,9 +43,21 @@ proc newMcpSocketClient(port: Port): Future[McpSocketClient] {.async.} =
   let addresses = resolveTAddress("localhost", port)
   McpSocketClient(transport: await connect(addresses[0]))
 
-proc close(client: McpSocketClient): Future[void] {.async.} =
+proc close(client: McpSocketClient) =
+  # XXX `closeWait` (close + join) never returns on Windows CI. Wait for the
+  # join with timer-driven polling instead of blocking on it: timers do not
+  # involve IOCP, so if these ticks happen the event loop is alive and only
+  # this transport's completion is missing; if the line below never prints,
+  # `poll()` itself is wedged. Either way CI reports instead of hanging.
   if not client.transport.isNil:
-    await client.transport.closeWait()
+    client.transport.close()
+    echo "[tmcp] close() returned, closed=", client.transport.closed()
+    let joined = noCancel(client.transport.join())
+    var waited = 0
+    while not joined.finished() and waited < 100:
+      waitFor sleepAsync(100.milliseconds)
+      inc waited
+    echo "[tmcp] join finished=", joined.finished(), " after ", waited * 100, "ms"
 
 proc readResponseLine(client: McpSocketClient): Future[string] {.async.} =
   while true:
@@ -110,15 +122,11 @@ suite "MCP routes":
         port: getNextFreePort(),
       )
       rpcLs = main(rpcCmdParams)
-
-    rpcLs.notify = proc(name: string, params: JsonNode) {.gcsafe, raises: [].} =
-      discard
-
-    let rpcClient = waitFor newMcpSocketClient(rpcCmdParams.port)
+      rpcClient = waitFor newMcpSocketClient(rpcCmdParams.port)
 
     defer:
       echo "[tmcp] closing rpc client"
-      waitFor rpcClient.close()
+      rpcClient.close()
       echo "[tmcp] rpc client closed; calling onExit"
       waitFor rpcLs.onExit()
       setCurrentDir(savedDir)
