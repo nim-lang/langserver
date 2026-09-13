@@ -10,9 +10,6 @@ proc fixtureUri*(path: string): string =
   result = pathToUri(getCurrentDir() / "tests" / path)
 
 type
-  LspResponseError* = object of CatchableError
-    error*: JsonNode
-
   NotificationRpc* = proc(params: JsonNode): Future[void] {.async.}
   Rpc* = proc(params: JsonNode): Future[JsonNode] {.async.}
   LspSocketClient* = ref object of RpcSocketClient
@@ -81,9 +78,7 @@ proc processMessage(client: LspSocketClient, msg: string) {.raises: [].} =
     elif "id" in serverReq: #Response here
       let id = serverReq["id"].jsonTo(int)
       if "error" in serverReq:
-        let ex = newException(LspResponseError, $serverReq["error"])
-        ex.error = serverReq["error"]
-        client.responses[id].fail(ex)
+        client.responses[id].fail(newException(JsonRpcError, $serverReq["error"]))
       else:
         client.responses[id].complete(serverReq["result"])
     else:
