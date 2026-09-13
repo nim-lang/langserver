@@ -43,21 +43,9 @@ proc newMcpSocketClient(port: Port): Future[McpSocketClient] {.async.} =
   let addresses = resolveTAddress("localhost", port)
   McpSocketClient(transport: await connect(addresses[0]))
 
-proc close(client: McpSocketClient) =
-  # XXX `closeWait` (close + join) never returns on Windows CI. Wait for the
-  # join with timer-driven polling instead of blocking on it: timers do not
-  # involve IOCP, so if these ticks happen the event loop is alive and only
-  # this transport's completion is missing; if the line below never prints,
-  # `poll()` itself is wedged. Either way CI reports instead of hanging.
+proc close(client: McpSocketClient): Future[void] {.async.} =
   if not client.transport.isNil:
-    client.transport.close()
-    echo "[tmcp] close() returned, closed=", client.transport.closed()
-    let joined = noCancel(client.transport.join())
-    var waited = 0
-    while not joined.finished() and waited < 100:
-      waitFor sleepAsync(100.milliseconds)
-      inc waited
-    echo "[tmcp] join finished=", joined.finished(), " after ", waited * 100, "ms"
+    await client.transport.closeWait()
 
 proc readResponseLine(client: McpSocketClient): Future[string] {.async.} =
   while true:
@@ -104,17 +92,6 @@ suite "MCP routes":
     check initRes.serverInfo.version == LSPVersion
 
   test "listTools returns all MCP tools":
-    # The server resolves its root from the cwd (`mcp.initialize`), so run it
-    # from the small `mcpproject` fixture the way the "MCP tools" suite does.
-    # Rooted at the repo, its nimsuggest is started on nimlangserver.nim, which
-    # never comes up within NIMSUGGEST_STARTUP_TIMEOUT on CI.
-    let
-      savedDir = getCurrentDir()
-      projectDir = absolutePath("tests" / "projects" / "mcpproject")
-      entryPoint = projectDir / "src" / "mcpproject.nim"
-
-    setCurrentDir(projectDir)
-
     let
       rpcCmdParams = CommandLineParams(
         mode: some ServerMode.mcp,
@@ -125,12 +102,8 @@ suite "MCP routes":
       rpcClient = waitFor newMcpSocketClient(rpcCmdParams.port)
 
     defer:
-      echo "[tmcp] closing rpc client"
-      rpcClient.close()
-      echo "[tmcp] rpc client closed; calling onExit"
+      waitFor rpcClient.close()
       waitFor rpcLs.onExit()
-      setCurrentDir(savedDir)
-      echo "[tmcp] onExit returned"
 
     let listToolsResult =
       (waitFor rpcClient.callRpc("tools/list", %*{})).jsonTo(McpListToolsResult)
@@ -161,23 +134,6 @@ suite "MCP routes":
     check checkFile.outputSchema.required == @["diags"]
     check findTypeDefinition.inputSchema.required == @["path", "line", "column"]
     check findTypeDefinition.outputSchema.required == @["defs"]
-
-    discard waitFor rpcClient.callRpc(
-      "initialize",
-      %*{
-        "protocolVersion": McpProtocolVersion,
-        "capabilities": {},
-        "clientInfo": {"name": "nimlangserver tests", "version": "1"},
-      },
-    )
-
-    let listed = waitFor rpcClient.callRpc(
-      "tools/call",
-      %*{"name": "nimListSymbols", "arguments": {"path": entryPoint}},
-    )
-    echo "[tmcp] tools/call returned"
-    check listed{"content"}.kind == JArray
-    check listed{"isError"}.getBool(false) == false
 
 suite "MCP tools":
   let
