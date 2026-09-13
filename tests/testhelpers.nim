@@ -1,5 +1,5 @@
-import std/[os, osproc, sequtils, strutils, sugar, unittest]
-import chronos
+import std/[os, osproc, sequtils, strutils, sugar]
+import unittest2, chronos
 
 template waitUntil*(condition: untyped, timeout = 10.seconds): bool =
   block:
