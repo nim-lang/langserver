@@ -102,8 +102,11 @@ suite "MCP routes":
       rpcClient = waitFor newMcpSocketClient(rpcCmdParams.port)
 
     defer:
+      echo "[tmcp] closing rpc client"
       waitFor rpcClient.close()
+      echo "[tmcp] rpc client closed; calling onExit"
       waitFor rpcLs.onExit()
+      echo "[tmcp] onExit returned"
 
     let listToolsResult =
       (waitFor rpcClient.callRpc("tools/list", %*{})).jsonTo(McpListToolsResult)
@@ -153,6 +156,7 @@ suite "MCP routes":
         },
       )
     )
+    echo "[tmcp] tools/call returned"
     check listed{"content"}.kind == JArray
     check listed{"isError"}.getBool(false) == false
 

@@ -196,7 +196,13 @@ proc writeOutput*(ls: LanguageServer, content: JsonNode) =
       ls.outStream.write(res)
       ls.outStream.flush()
     of socket:
+      # XXX temporary: locating the Windows CI hang in tmcp's listTools test.
+      # `waitFor` here re-enters `poll()` from inside a chronos callback, which
+      # is a no-op on POSIX (`fastWrite` completes the future inline) but a real
+      # nested poll on Windows, where `fastWrite` is compiled out.
+      debug "[Socket Transport] Writing response", len = res.len
       discard waitFor ls.socketTransport.write(res)
+      debug "[Socket Transport] Response written", len = res.len
   except CatchableError as ex:
     error "Error writing output", msg = ex.msg
 
