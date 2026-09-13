@@ -92,6 +92,17 @@ suite "MCP routes":
     check initRes.serverInfo.version == LSPVersion
 
   test "listTools returns all MCP tools":
+    # The server resolves its root from the cwd (`mcp.initialize`), so run it
+    # from the small `mcpproject` fixture the way the "MCP tools" suite does.
+    # Rooted at the repo, its nimsuggest is started on nimlangserver.nim, which
+    # never comes up within NIMSUGGEST_STARTUP_TIMEOUT on CI.
+    let
+      savedDir = getCurrentDir()
+      projectDir = absolutePath("tests" / "projects" / "mcpproject")
+      entryPoint = projectDir / "src" / "mcpproject.nim"
+
+    setCurrentDir(projectDir)
+
     let
       rpcCmdParams = CommandLineParams(
         mode: some ServerMode.mcp,
@@ -104,6 +115,7 @@ suite "MCP routes":
     defer:
       waitFor rpcClient.close()
       waitFor rpcLs.onExit()
+      setCurrentDir(savedDir)
 
     let listToolsResult =
       (waitFor rpcClient.callRpc("tools/list", %*{})).jsonTo(McpListToolsResult)
@@ -144,8 +156,12 @@ suite "MCP routes":
       },
     )
 
-    echo "[tmcp] initialize returned"
-
+    let listed = waitFor rpcClient.callRpc(
+      "tools/call",
+      %*{"name": "nimListSymbols", "arguments": {"path": entryPoint}},
+    )
+    check listed{"content"}.kind == JArray
+    check listed{"isError"}.getBool(false) == false
 
 suite "MCP tools":
   let

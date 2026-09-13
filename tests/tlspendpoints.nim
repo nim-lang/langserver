@@ -382,7 +382,20 @@ suite "LSP endpoints":
 
     let stash = ls.uriStorageLocation(helloWorldUri)
     if fileExists(stash):
-      check readFile(stash).strip == readFile("tests" / helloWorldFile).strip
+      # Report the first differing line rather than dumping both files: the two
+      # dumps are written to stdout while chronicles writes to stderr, and CI
+      # interleaves them, which makes the failure unreadable.
+      let
+        stashed = readFile(stash).strip.splitLines()
+        onDisk = readFile("tests" / helloWorldFile).strip.splitLines()
+      check stashed.len == onDisk.len
+      for i in 0 ..< min(stashed.len, onDisk.len):
+        if stashed[i] != onDisk[i]:
+          checkpoint(
+            &"line {i + 1} differs: stash {stashed[i].escape} != file {onDisk[i].escape}"
+          )
+          fail()
+          break
 
 suite "LSP socket transport with more than one client":
   let cmdParams =
