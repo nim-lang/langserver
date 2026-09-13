@@ -70,6 +70,6 @@ proc createNimbleProject*(projectDir: string) =
     let (output, exitCode) = execNimbleYes("init")
     check exitCode == 0
 
-proc normalizeText(s: string): string =
+proc normalizeText*(s: string): string =
   # windows/linux compat
   s.replace("\r\n", "\n").strip(leading = false)
