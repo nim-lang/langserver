@@ -77,6 +77,17 @@ suite "nimble setup":
 
     check ls.projectFiles.len == 1
 
+  test "getNimbleDumpInfo reports the project's name and srcDir and caches it":
+    let nimbleFile = testProjectDir / "testproject.nimble"
+    let info = waitFor ls.getNimbleDumpInfo(nimbleFile)
+    check info.name == "testproject"
+    check info.srcDir == "src"
+    check nimbleFile in ls.nimDumpCache
+
+    let cached = waitFor ls.getNimbleDumpInfo(nimbleFile)
+    check cached.name == info.name
+    check cached.srcDir == info.srcDir
+
 suite "Project Mapping":
   let cmdParams = CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
   let ls = main(cmdParams) #we could accesss to the ls here to test against its state

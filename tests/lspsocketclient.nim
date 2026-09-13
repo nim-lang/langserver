@@ -10,6 +10,9 @@ proc fixtureUri*(path: string): string =
   result = pathToUri(getCurrentDir() / "tests" / path)
 
 type
+  LspResponseError* = object of CatchableError
+    error*: JsonNode
+
   NotificationRpc* = proc(params: JsonNode): Future[void] {.async.}
   Rpc* = proc(params: JsonNode): Future[JsonNode] {.async.}
   LspSocketClient* = ref object of RpcSocketClient
@@ -78,7 +81,9 @@ proc processMessage(client: LspSocketClient, msg: string) {.raises: [].} =
     elif "id" in serverReq: #Response here
       let id = serverReq["id"].jsonTo(int)
       if "error" in serverReq:
-        client.responses[id].fail(newException(JsonRpcError, $serverReq["error"]))
+        let ex = newException(LspResponseError, $serverReq["error"])
+        ex.error = serverReq["error"]
+        client.responses[id].fail(ex)
       else:
         client.responses[id].complete(serverReq["result"])
     else:
@@ -187,6 +192,13 @@ proc notificationHandle*(
     discard
 
   result = newFuture[void]("notificationHandle")
+
+proc registerRequest*(client: LspSocketClient, name: string, handler: Rpc) =
+  client.calls[name] = newSeq[JsonNode]()
+  client.routes[name] = proc(params: JsonNode): Future[JsonNode] {.async.} =
+    {.cast(gcsafe).}:
+      client.calls[name].add params
+      return await handler(params)
 
 proc registerNotification*(client: LspSocketClient, names: varargs[string]) =
   for name in names:

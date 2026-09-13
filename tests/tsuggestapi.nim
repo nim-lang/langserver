@@ -1,5 +1,6 @@
 import
   ../suggestapi, os, std/asyncnet, strutils, chronos, chronos/asyncproc, options
+import ./testhelpers
 import unittest2
 
 const inputLine = "def	skProc	hw.a	proc (){.noSideEffect, gcsafe.}	hw/hw.nim	1	5	\"\"	100"
@@ -79,17 +80,17 @@ suite "Nimsuggest error handling":
     let ns = project.ns.waitFor
     var errorCount = 0
     project.errorCallback = some(
-      proc(pr: Project) {.async: (raises: []), gcsafe.} =
+      proc(pr: Project) {.gcsafe, raises: [].} =
         inc errorCount
     )
 
     discard project.process.suspend()
     let fut = ns.def(helloWorldFile, helloWorldFile, 2, 10)
-    waitFor sleepAsync(200)
+    waitFor sleepAsync(1000)
     discard project.process.kill()
 
     expect CatchableError:
       discard waitFor fut
-    waitFor sleepAsync(300)
 
-    check errorCount == 1
+    check waitUntil(errorCount >= 1)
+    check not waitUntil(errorCount > 1, timeout = 300.milliseconds)

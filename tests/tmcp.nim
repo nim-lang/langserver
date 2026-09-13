@@ -102,8 +102,11 @@ suite "MCP routes":
       rpcClient = waitFor newMcpSocketClient(rpcCmdParams.port)
 
     defer:
+      echo "[tmcp] closing rpc client"
       waitFor rpcClient.close()
+      echo "[tmcp] rpc client closed; calling onExit"
       waitFor rpcLs.onExit()
+      echo "[tmcp] onExit returned"
 
     let listToolsResult =
       (waitFor rpcClient.callRpc("tools/list", %*{})).jsonTo(McpListToolsResult)
@@ -134,6 +137,28 @@ suite "MCP routes":
     check checkFile.outputSchema.required == @["diags"]
     check findTypeDefinition.inputSchema.required == @["path", "line", "column"]
     check findTypeDefinition.outputSchema.required == @["defs"]
+
+    discard waitFor rpcClient.callRpc(
+      "initialize",
+      %*{
+        "protocolVersion": McpProtocolVersion,
+        "capabilities": {},
+        "clientInfo": {"name": "nimlangserver tests", "version": "1"},
+      },
+    )
+
+    let listed = (
+      waitFor rpcClient.callRpc(
+        "tools/call",
+        %*{
+          "name": "nimListSymbols",
+          "arguments": {"path": absolutePath("tests" / "projects" / "hw" / "hw.nim")},
+        },
+      )
+    )
+    echo "[tmcp] tools/call returned"
+    check listed{"content"}.kind == JArray
+    check listed{"isError"}.getBool(false) == false
 
 suite "MCP tools":
   let
