@@ -86,7 +86,7 @@ suite "Nimsuggest error handling":
 
     discard project.process.suspend()
     let fut = ns.def(helloWorldFile, helloWorldFile, 2, 10)
-    waitFor sleepAsync(1000)
+    waitFor sleepAsync(200)
     discard project.process.kill()
 
     expect CatchableError:
