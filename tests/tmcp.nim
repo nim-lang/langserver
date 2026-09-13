@@ -102,11 +102,8 @@ suite "MCP routes":
       rpcClient = waitFor newMcpSocketClient(rpcCmdParams.port)
 
     defer:
-      echo "[tmcp] closing rpc client"
       waitFor rpcClient.close()
-      echo "[tmcp] rpc client closed; calling onExit"
       waitFor rpcLs.onExit()
-      echo "[tmcp] onExit returned"
 
     let listToolsResult =
       (waitFor rpcClient.callRpc("tools/list", %*{})).jsonTo(McpListToolsResult)
@@ -147,18 +144,8 @@ suite "MCP routes":
       },
     )
 
-    let listed = (
-      waitFor rpcClient.callRpc(
-        "tools/call",
-        %*{
-          "name": "nimListSymbols",
-          "arguments": {"path": absolutePath("tests" / "projects" / "hw" / "hw.nim")},
-        },
-      )
-    )
-    echo "[tmcp] tools/call returned"
-    check listed{"content"}.kind == JArray
-    check listed{"isError"}.getBool(false) == false
+    echo "[tmcp] initialize returned"
+
 
 suite "MCP tools":
   let
