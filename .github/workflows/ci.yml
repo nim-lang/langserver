@@ -20,7 +20,7 @@ jobs:
           # - macos-latest
           - windows-latest
         #uncomment to run 20 dup jobs in parallel. Useful for debugging race conds; better run one os only
-        #attempt: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+        attempt: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
     name: CI / ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     env:
