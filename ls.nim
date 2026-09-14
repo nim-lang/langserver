@@ -1273,6 +1273,11 @@ proc getProjectFile*(fileUri: string, ls: LanguageServer): Future[string] {.asyn
       if fileExists(result):
         trace "getProjectFile?",
           project = result, uri = fileUri, matchedRegex = mapping.fileRegex
+        # An explicitly mapped root is treated like a nimble entry point, so
+        # the idle timeout does not stop it and force a full recompile on the
+        # next request.
+        if result notin ls.entryPoints:
+          ls.entryPoints.add result
         return result
     else:
       trace "getProjectFile does not match",
