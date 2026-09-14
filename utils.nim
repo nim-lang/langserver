@@ -1,9 +1,15 @@
-import std/[unicode, uri, strformat, os, strutils, options, json, jsonutils, sugar, net]
-import chronos, chronicles, chronos/asyncproc
-import "$nim/compiler/pathutils"
-import json_rpc/private/jrpc_sys
-import macros
-import stew/byteutils
+{.push raises: [], gcsafe.}
+
+import
+  std/[
+    macros, unicode, uri, strformat, os, strutils, options, json, jsonutils, sugar, net
+  ],
+  chronos,
+  chronicles,
+  chronos/asyncproc,
+  "$nim/compiler/pathutils",
+  json_rpc/private/jrpc_sys,
+  stew/byteutils
 
 type
   FingerTable = seq[tuple[u16pos, offset: int]]
@@ -78,42 +84,6 @@ proc utf8to16*(fingerTable: FingerTable, utf8pos: int): int =
     else:
       break
 
-when isMainModule:
-  import termstyle
-  var x = "heållo☀☀wor𐐀𐐀☀ld heållo☀wor𐐀ld heållo☀wor𐐀ld"
-  var fingerTable = createUTFMapping(x)
-
-  var corrected = utf16to8(fingerTable, 5)
-  for y in x:
-    if corrected == 0:
-      echo "-"
-    if ord(y) > 125:
-      echo ord(y).red
-    else:
-      echo ord(y)
-    corrected -= 1
-
-  echo "utf16\tchar\tutf8\tchar\tchk"
-  var pos = 0
-  for c in x.runes:
-    stdout.write pos
-    stdout.write "\t"
-    stdout.write c
-    stdout.write "\t"
-    var corrected = utf16to8(fingerTable, pos)
-    stdout.write corrected
-    stdout.write "\t"
-    stdout.write x.runeAt(corrected)
-    if c.int32 == x.runeAt(corrected).int32:
-      stdout.write "\tOK".green
-    else:
-      stdout.write "\tERR".red
-    stdout.write "\n"
-    if c.int >= 0x10000:
-      pos += 2
-    else:
-      pos += 1
-
 proc uriToPath*(uri: string): string =
   ## Convert an RFC 8089 file URI to a native, platform-specific, absolute path.
   #let startIdx = when defined(windows): 8 else: 7
@@ -170,7 +140,7 @@ proc catchOrQuit*(error: Exception) =
     fatal "Fatal exception reached", err = error.msg, stackTrace = getStackTrace()
     quit 1
 
-proc traceAsyncErrors*(fut: Future) =
+proc traceAsyncErrors*(fut: FutureBase) =
   fut.addCallback do(data: pointer):
     if not fut.error.isNil:
       catchOrQuit fut.error[]
@@ -253,14 +223,18 @@ proc tryRelativeTo*(path, base: string): Option[string] =
   except Exception:
     none(string)
 
-proc get*[T](params: RequestParamsRx, key: string): T =
+proc get*[T](
+    params: RequestParamsRx, key: string
+): T {.raises: [ValueError, IOError, OSError].} =
   if params.kind == rpNamed:
     for np in params.named:
       if np.name == key:
         return np.value.string.parseJson.to(T)
   raise newException(KeyError, "Key not found")
 
-proc to*(params: RequestParamsRx, T: typedesc): T =
+proc to*(
+    params: RequestParamsRx, T: typedesc
+): T {.raises: [ValueError, IOError, OSError].} =
   let value =
     case params.kind
     of rpNamed:
@@ -303,37 +277,14 @@ proc partial*[A, B, C, D](
   return proc(b: B, c: C): D {.gcsafe, raises: [].} =
     return fn(a, b, c)
 
-proc ensureStorageDir*(): string =
+proc ensureStorageDir*(): string {.raises: [OSError, IOError].} =
   result = getTempDir() / "nimlangserver"
   discard existsOrCreateDir(result)
 
-proc either*[T](fut1, fut2: Future[T]): Future[T] {.async.} =
-  let res = await race(fut1, fut2)
-  if fut1.finished:
-    result = fut1.read
-    cancelSoon fut2
-  else:
-    result = fut2.read
-    cancelSoon fut1
+proc withTimeout*[T](fut: Future[T]): Future[bool].Raising([CancelledError]) =
+  withTimeout(fut, chronos.milliseconds(500))
 
-proc map*[T, U](
-    f: Future[T], fn: proc(t: T): U {.raises: [], gcsafe.}
-): Future[U] {.async.} =
-  fn(await f)
-
-proc map*[U](
-    f: Future[void], fn: proc(): U {.raises: [], gcsafe.}
-): Future[U] {.async.} =
-  await f
-  fn()
-
-proc withTimeout*[T](fut: Future[T], timeout: int = 500): Future[Option[T]] {.async.} =
-  #Returns None when the timeout is reached and cancels the fut. Otherwise returns the Fut
-  let timeoutFut = sleepAsync(timeout).map(() => none(T))
-  let optFut = fut.map((r: T) => some r)
-  await either(optFut, timeoutFut)
-
-proc getNextFreePort*(): Port =
+proc getNextFreePort*(): Port {.raises: [OSError, ValueError].} =
   let s = newSocket()
   s.bindAddr(Port(0), "localhost")
   let (_, port) = s.getLocalAddr
@@ -347,7 +298,7 @@ func isWord*(str: string): bool =
       return false
   return true
 
-proc getNimScriptAPITemplatePath*(): string =
+proc getNimScriptAPITemplatePath*(): string {.raises: [OSError, IOError].} =
   result = getCacheDir("nimlangserver")
   createDir(result)
   result = result / "nimscriptapi.nim"
@@ -357,23 +308,25 @@ proc getNimScriptAPITemplatePath*(): string =
       writeFile(result, NIM_SCRIPT_API_TEMPLATE)
   debug "NimScriptApiPath", path = result
 
-proc shutdownChildProcess*(p: AsyncProcessRef): Future[void] {.async.} =
+proc shutdownChildProcess*(p: AsyncProcessRef): Future[void] {.async: (raises: []).} =
   try:
     debug "Shutting down process with pid: ", pid = p.processID()
-    let exitCode = await p.terminateAndWaitForExit(2.seconds)
+    let exitCode = await noCancel p.terminateAndWaitForExit(2.seconds)
       # debug "Process terminated with exit code: ", exitCode
-  except CatchableError:
+  except AsyncProcessError:
     try:
-      let forcedExitCode = await p.killAndWaitForExit(3.seconds)
+      let forcedExitCode = await noCancel p.killAndWaitForExit(3.seconds)
       debug "Process forcibly killed with exit code: ", exitCode = forcedExitCode
-    except CatchableError:
+    except AsyncProcessError:
       debug "Could not kill process in time either!"
       writeStackTrace()
 
 macro getField*(obj: object, fld: string): untyped =
   result = newDotExpr(obj, newIdentNode(fld.strVal))
 
-proc readAllOutput*(stream: AsyncStreamReader): Future[string] {.async.} =
+proc readAllOutput*(
+    stream: AsyncStreamReader
+): Future[string] {.async: (raises: [CancelledError, AsyncStreamError]).} =
   result = ""
   while not stream.atEof:
     let data = await stream.read()
@@ -381,7 +334,9 @@ proc readAllOutput*(stream: AsyncStreamReader): Future[string] {.async.} =
 
 proc readErrorOutputUntilExit*(
     process: AsyncProcessRef, duration: Duration
-): Future[tuple[output: string, code: int]] {.async.} =
+): Future[tuple[output: string, code: int]] {.
+    async: (raises: [CancelledError, AsyncProcessError, AsyncStreamError])
+.} =
   var output = ""
   var res = 0
   while true:
@@ -404,7 +359,9 @@ proc readErrorOutputUntilExit*(
 
 proc readOutputUntilExit*(
     process: AsyncProcessRef, duration: Duration
-): Future[tuple[output: string, error: string, code: int]] {.async.} =
+): Future[tuple[output: string, error: string, code: int]] {.
+    async: (raises: [CancelledError, AsyncProcessError])
+.} =
   var output = ""
   var error = ""
   var res = 0
@@ -428,7 +385,7 @@ proc readOutputUntilExit*(
         if data.len > 0:
           # debug "Got stdout data", len = data.len
           output.add(string.fromBytes(data))
-    except CatchableError as e:
+    except AsyncStreamError as e:
       debug "Stdout read error", msg = e.msg
 
     try:
@@ -438,7 +395,7 @@ proc readOutputUntilExit*(
         if data.len > 0:
           # debug "Got stderr data", len = data.len
           error.add(string.fromBytes(data))
-    except CatchableError as e:
+    except AsyncStreamError as e:
       debug "Stderr read error", msg = e.msg
 
     if hasExited:
