@@ -193,6 +193,12 @@ type
       #Project file to fail count
       #List of errors (crashes) nimsuggest has had since the lsp session started
     checkInProgress*: bool
+    startingProjects*: HashSet[string]
+      #Project files whose nimsuggest is being started right now. A project is
+      #only registered in `projectFiles` once nimsuggest reports its port, i.e.
+      #after the initial compilation; without this guard every request or
+      #didOpen arriving meanwhile would spawn yet another instance for the
+      #same root.
 
   Certainty* = enum
     None
@@ -841,19 +847,26 @@ proc getNimsuggestInner(ls: LanguageServer, uri: string): Future[Nimsuggest] {.a
     else:
       return nil
 
-  # Check multiple times with small delays
+  # Poll until the project is registered. That only happens once nimsuggest
+  # has finished its initial compilation, which can take a good while for big
+  # roots, so wait as long as the startup itself is allowed to take.
   var attempts = 0
-  const maxAttempts = 10
+  const pollInterval = 100
+  const maxAttempts = NIMSUGGEST_STARTUP_TIMEOUT div pollInterval
   while attempts < maxAttempts:
     if projectFile in ls.projectFiles:
       ls.lastNimsuggest = ls.projectFiles[projectFile].ns
       return await ls.projectFiles[projectFile].ns
+    if projectFile notin ls.startingProjects:
+      # nobody is starting it (anymore): startup failed or timed out
+      break
 
     inc attempts
     if attempts < maxAttempts:
-      await sleepAsync(100)
-      debug "Waiting for nimsuggest to initialize",
-        uri = uri, projectFile = projectFile, attempt = attempts
+      await sleepAsync(pollInterval)
+      if attempts mod 10 == 0:
+        debug "Waiting for nimsuggest to initialize",
+          uri = uri, projectFile = projectFile, attempt = attempts
 
   debug "Failed to get nimsuggest after waiting", uri = uri, projectFile = projectFile
   return nil
@@ -1080,6 +1093,13 @@ proc onErrorCallback(args: (LanguageServer, string), project: Project) =
 proc createOrRestartNimsuggest*(
     ls: LanguageServer, projectFile: string, uri = ""
 ) {.gcsafe, raises: [].} =
+  if projectFile in ls.startingProjects:
+    debug "Nimsuggest is already starting, not spawning another one",
+      projectFile = projectFile, uri = uri
+    return
+  ls.startingProjects.incl projectFile
+  defer:
+    ls.startingProjects.excl projectFile
   try:
     debug "Starting createOrRestartNimsuggest", projectFile = projectFile, uri = uri
     let
@@ -1259,6 +1279,11 @@ proc getProjectFile*(fileUri: string, ls: LanguageServer): Future[string] {.asyn
       if fileExists(result):
         trace "getProjectFile?",
           project = result, uri = fileUri, matchedRegex = mapping.fileRegex
+        # An explicitly mapped root is treated like a nimble entry point, so
+        # the idle timeout does not stop it and force a full recompile on the
+        # next request.
+        if result notin ls.entryPoints:
+          ls.entryPoints.add result
         return result
     else:
       trace "getProjectFile does not match",
