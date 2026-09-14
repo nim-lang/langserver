@@ -1,11 +1,14 @@
-import ../[nimlangserver, ls, utils]
-import ../suggestapi
-import ../protocol/types
-import std/[options, os, tables, json]
-import chronos
-import lspsocketclient
-import testhelpers
-import unittest2
+import
+  std/[options, os, tables, json],
+  chronos,
+  unittest2,
+  ../[nimlangserver, ls, utils],
+  ../suggestapi,
+  ../protocol/types,
+  ./[lspsocketclient, testhelpers]
+
+# `lsp` alone would shadow the ServerMode.lsp enum value.
+import ../routes/lsp as lspRoutes
 
 suite "Async safety":
   let cmdParams =
@@ -123,3 +126,109 @@ suite "Replacing a running nimsuggest":
     check ls.nimsuggestCreations.len == 0
     check ls.projectFiles[helloWorldPath] == replacement
     check not replacement.failed
+
+suite "Documents closed while a handler is suspended":
+  let cmdParams =
+    CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
+  let ls = main(cmdParams)
+  let client = newLspSocketClient()
+  waitFor client.connect("localhost", cmdParams.port)
+  client.registerNotification(
+    "window/showMessage", "window/workDoneProgress/create", "workspace/configuration",
+    "extension/statusUpdate", "textDocument/publishDiagnostics", "$/progress",
+  )
+  discard waitFor client.initialize(
+    LspInitializeParams %* {
+      "processId": %getCurrentProcessId(),
+      "rootUri": fixtureUri("projects/hw/"),
+      "capabilities":
+        {"window": {"workDoneProgress": false}, "workspace": {"configuration": true}},
+    }
+  )
+  ls.workspaceConfiguration.complete(% @[NlsConfig()])
+
+  let
+    helloWorldFile = "projects/hw/hw.nim"
+    helloWorldUri = fixtureUri(helloWorldFile)
+    helloWorldPath = uriToPath(helloWorldUri)
+    saveParams = DidSaveTextDocumentParams(
+      textDocument: TextDocumentIdentifier(uri: helloWorldUri)
+    )
+    Diagnostics = "textDocument/publishDiagnostics"
+
+  suiteTeardown:
+    waitFor ls.stopNimsuggestProcesses()
+
+  proc settle(): int =
+    ## A check that runs while another is in progress re-arms itself
+    ## (needsCheckProject), so wait until diagnostics stop arriving before
+    ## attributing the next one to the save under test. Returns the count.
+    var
+      count = client.calls[Diagnostics].len
+      quietSince = Moment.now()
+
+    proc isQuiet(): bool =
+      if count != client.calls[Diagnostics].len:
+        count = client.calls[Diagnostics].len
+        quietSince = Moment.now()
+      Moment.now() - quietSince > 2.seconds
+
+    check waitUntil(isQuiet(), timeout = 30.seconds)
+    count
+
+  test "didSave checks the project even if the file closes while it waits":
+    let textDocument = TextDocumentItem(
+      uri: helloWorldUri,
+      languageId: "nim",
+      version: 0,
+      text: readFile("tests" / helloWorldFile),
+    )
+    waitFor ls.didOpenFile(textDocument).wait(30.seconds)
+    let ns = waitFor ls.projectFiles[helloWorldPath].ns.wait(30.seconds)
+
+    # hw.nim has an error in it, so any project check publishes for it. That
+    # notification is the only externally visible trace a save leaves.
+    proc isForHelloWorld(json: JsonNode): bool {.gcsafe, raises: [CatchableError].} =
+      {.cast(gcsafe).}:
+        json{"uri"}.getStr == helloWorldUri
+
+    check waitFor client.waitForNotification(Diagnostics, isForHelloWorld)
+
+    # Control: with the file open, saving runs a check. Without this the race
+    # case below could pass because nothing ever publishes.
+    var published = settle()
+    waitFor lspRoutes.didSave(ls, saveParams).wait(30.seconds)
+    check waitUntil(client.calls[Diagnostics].len > published, timeout = 30.seconds)
+
+    # Park the handler where it waits in real life. getNimsuggestInner awaits
+    # the file's projectFile, and awaiting an already-resolved future does not
+    # yield, so without this the whole of didSave would run synchronously and
+    # there would be no window at all.
+    discard settle()
+    let gate =
+      Future[string].Raising([CancelledError, OSError, RegexError]).init("closed race")
+    ls.openFiles[helloWorldUri].projectFile = gate
+
+    let saving = lspRoutes.didSave(ls, saveParams)
+    check not saving.finished
+
+    # A didClose, or the idle sweep calling makeIdleFile, drops the entry while
+    # the handler is parked. Its openFiles lookups are still ahead of it.
+    ls.openFiles.del(helloWorldUri)
+    check helloWorldUri notin ls.openFiles
+
+    # With the entry gone, checkProject bails out in its own tryGetNimsuggest,
+    # so telling nimsuggest to re-read the file is the only thing left that the
+    # save can still do — and the file really was written to disk.
+    ns.successfullCall = false
+    gate.complete(helloWorldPath)
+    waitFor saving.wait(30.seconds)
+    check waitUntil(ns.successfullCall, timeout = 30.seconds)
+
+  test "didClose for a file that was never open is a no-op":
+    let unknownUri = fixtureUri("projects/hw/never-opened.nim")
+    check unknownUri notin ls.openFiles
+    # Reaching the next line is the assertion: reading `changed` off the missing
+    # entry used to dereference nil.
+    waitFor ls.didCloseFile(unknownUri).wait(30.seconds)
+    check unknownUri notin ls.openFiles

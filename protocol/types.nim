@@ -1,6 +1,4 @@
-import json
-import options
-import tables
+import std/[json, options, tables]
 
 type
   OptionalSeq*[T] = Option[seq[T]]

@@ -1,9 +1,9 @@
-import ../[ls, lstransports, utils]
-
-import ../protocol/types
-import std/[options, unittest, json, os, jsonutils, tables, strutils, sequtils, sugar]
-import json_rpc/[rpcclient]
-import chronicles
+import
+  std/[options, unittest, json, os, jsonutils, tables, strutils, sequtils, sugar],
+  json_rpc/[rpcclient],
+  chronicles,
+  ../protocol/types,
+  ../[ls, lstransports, utils]
 
 #Utils
 proc fixtureUri*(path: string): string =
