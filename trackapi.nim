@@ -58,7 +58,8 @@ proc track*(
       warn "nim track not supported (requires nim >= 2.4)", nimPath = nimPath
       return @[]
     if exitCode != 0:
-      debug "nim track exit", exitCode = exitCode
+      error "nim track failed",
+        exitCode = exitCode, projectFile = projectFile, arg = arg, error = stderrStr
     result = parseTrackOutput(stdoutBytes.toString)
   except CancelledError as e:
     await shutdownChildProcess(process)

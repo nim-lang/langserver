@@ -4,18 +4,28 @@ on:
   schedule:
   - cron: "0 19 * * *"
 
+concurrency: # Cancel stale PR builds (but not push builds)
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
 jobs:
   test:
     strategy:
+      fail-fast: false
       matrix:
         os:
-          # - windows-latest
-          # - macos-latest
           - ubuntu-latest
-    name: ${{ matrix.os }} - ${{ matrix.nimversion }}
+          - macos-15-intel
+          # https://github.com/nim-lang/setup-nimble-action/issues/13
+          # - macos-latest
+          - windows-latest
+        #uncomment to run 20 dup jobs in parallel. Useful for debugging race conds; better run one os only
+        #attempt: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+    name: CI / ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      CACHE_NONCE: "20260914"
     steps:
       - uses: actions/checkout@v6
       - name: Setup Nimble
@@ -28,20 +38,26 @@ jobs:
         id: nimble_deps
         uses: actions/cache@v5
         with:
-          path: |
-            ~/.nimble
-            ~/.cache/nim
-          key: ${{ matrix.target.os }}-${{ env.cache_nonce }}-${{ hashFiles('**/nimble.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ env.cache_nonce }}-
+          path: nimbledeps
+          key: nimble-deps-${{ env.CACHE_NONCE }}-${{ runner.os }}-${{ runner.arch }}-${{ matrix.os }}-${{ hashFiles('**/nimble.lock') }}
 
       - name: Install dependencies
         shell: bash
-        run: nimble -y install -l
-      
+        run: nimble -yl install -d
+
+      - name: Bootstrap nim track toolchain
+        shell: bash
+        working-directory: tests/projects/trackproject
+        run: nimble -yl setup
+
       - name: Nimble Test
         shell: bash
         run: nimble test
+
+      - name: Package dir state on failure
+        if: failure()
+        shell: bash
+        run: ls -la ~/.nimble/pkgs2 ~/.nimble/nimbinaries nimbledeps/pkgs2 || true
 
   lint:
     name: Lint
