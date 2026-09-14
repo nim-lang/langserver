@@ -584,12 +584,13 @@ proc isKnown*(
     debug "Timeout reached running [isKnown], assuming the file is not known",
       file = filePath
     return
-  let sug = try:
-    await fut
-  except CatchableError:
-    debug "Failed running [isKnown], assuming the file is not known",
-      file = filePath, err = getCurrentExceptionMsg()
-    return false
+  let sug =
+    try:
+      await fut
+    except CatchableError:
+      debug "Failed running [isKnown], assuming the file is not known",
+        file = filePath, err = getCurrentExceptionMsg()
+      return false
   if sug.len == 0:
     return false
   debug "isKnown", filePath = filePath, sug = sug[0].forth

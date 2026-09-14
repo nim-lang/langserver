@@ -2,12 +2,11 @@
 
 import
   std/[
-    macros, unicode, uri, strformat, os, strutils, options, json, jsonutils, sugar, net
+    macros, unicode, uri, strformat, os, strutils, options, json, jsonutils, net, paths
   ],
   chronos,
   chronicles,
   chronos/asyncproc,
-  "$nim/compiler/pathutils",
   json_rpc/private/jrpc_sys,
   stew/byteutils
 
@@ -214,13 +213,16 @@ proc isRelTo*(path, base: string): bool {.raises: [].} =
   ### isRelativeTo version that do not throws
   try:
     isRelativeTo(path, base)
-  except Exception:
+  except ValueError, OSError:
+    debug "isRelTo error", path = path, base = base, err = getCurrentExceptionMsg()
     false
 
 proc tryRelativeTo*(path, base: string): Option[string] =
   try:
-    some relativeTo(AbsoluteFile(path), base.AbsoluteDir).string
-  except Exception:
+    some $relativePath(path, base)
+  except ValueError, OSError:
+    debug "tryRelativeTo error",
+      path = path, base = base, err = getCurrentExceptionMsg()
     none(string)
 
 proc get*[T](
@@ -287,7 +289,17 @@ proc withTimeout*[T](fut: Future[T]): Future[bool].Raising([CancelledError]) =
 proc getNextFreePort*(): Port {.raises: [OSError, ValueError].} =
   let s = newSocket()
   s.bindAddr(Port(0), "localhost")
-  let (_, port) = s.getLocalAddr
+  let (_, port) =
+    try:
+      s.getLocalAddr()
+    except OSError as exc:
+      raise exc
+    except CatchableError as exc:
+      raise newException(OSError, exc.msg)
+    except Defect as exc:
+      raise exc
+    except Exception as exc:
+      raiseAssert "Unhandled exception " & exc.msg
   s.close()
   port
 
