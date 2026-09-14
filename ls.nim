@@ -841,19 +841,26 @@ proc getNimsuggestInner(ls: LanguageServer, uri: string): Future[Nimsuggest] {.a
     else:
       return nil
 
-  # Check multiple times with small delays
+  # Poll until the project is registered. That only happens once nimsuggest
+  # has finished its initial compilation, which can take a good while for big
+  # roots, so wait as long as the startup itself is allowed to take.
   var attempts = 0
-  const maxAttempts = 10
+  const pollInterval = 100
+  const maxAttempts = NIMSUGGEST_STARTUP_TIMEOUT div pollInterval
   while attempts < maxAttempts:
     if projectFile in ls.projectFiles:
       ls.lastNimsuggest = ls.projectFiles[projectFile].ns
       return await ls.projectFiles[projectFile].ns
+    if projectFile notin ls.startingProjects:
+      # nobody is starting it (anymore): startup failed or timed out
+      break
 
     inc attempts
     if attempts < maxAttempts:
-      await sleepAsync(100)
-      debug "Waiting for nimsuggest to initialize",
-        uri = uri, projectFile = projectFile, attempt = attempts
+      await sleepAsync(pollInterval)
+      if attempts mod 10 == 0:
+        debug "Waiting for nimsuggest to initialize",
+          uri = uri, projectFile = projectFile, attempt = attempts
 
   debug "Failed to get nimsuggest after waiting", uri = uri, projectFile = projectFile
   return nil
