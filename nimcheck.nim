@@ -5,6 +5,8 @@ import stew/[byteutils]
 import chronicles
 import utils
 
+{.push raises: [], gcsafe.}
+
 type
   CheckStacktrace* = object
     file*: string
@@ -65,14 +67,19 @@ proc parseCheckResults(lines: seq[string]): seq[CheckResult] =
             stacktrace: @[],
           )
         )
-      except Exception as e:
+      except CatchableError as e:
         error "Error processing line", line = line, msg = e.msg
         continue
 
   if messageText.len > 0 and result.len > 0:
     result[^1].msg &= "\n" & messageText
 
-proc nimCheck*(filePath: string, nimPath: string): Future[seq[CheckResult]] {.async.} =
+proc nimCheck*(
+    filePath: string, nimPath: string
+): Future[seq[CheckResult]] {.
+    async:
+      (raises: [CancelledError, AsyncProcessError, AsyncStreamError, OSError, IOError])
+.} =
   debug "nimCheck", filePath = filePath, nimPath = nimPath
   let isNimble = filePath.endsWith(".nimble")
   let isNimScript = filePath.endsWith(".nims") or isNimble

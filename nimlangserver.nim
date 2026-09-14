@@ -4,6 +4,8 @@ import std/[syncio, os, json, strutils, strformat]
 import ls, utils, lstransports, asyncprocmonitor
 import routes/[lsp, mcp]
 import protocol/types
+
+{.push raises: [], gcsafe.}
 when defined(posix):
   import posix
 
@@ -143,7 +145,7 @@ proc showHelp() =
   echo formatForConsole(section)
   quit(0)
 
-proc handleParams(): CommandLineParams =
+proc handleParams(): CommandLineParams {.raises: [IOError, OSError, ValueError].} =
   if paramCount() > 0 and paramStr(1) in ["-v", "--version"]:
     echo LSPVersion
     quit()
@@ -190,12 +192,15 @@ proc registerProcMonitor(ls: LanguageServer) =
     debug "Registering monitor for process id, specified on command line",
       clientProcessId = ls.cmdLineClientProcessId.get
 
-    proc onCmdLineClientProcessExitAsync(): Future[void] {.async: (raises: []).} =
+    proc onCmdLineClientProcessExitAsync(): Future[void] {.
+        async: (raises: [IOError, OSError])
+    .} =
       debug "onCmdLineClientProcessExitAsync"
       try:
         await ls.stopNimsuggestProcesses
         await ls.onExit()
-      except CatchableError as ex:
+      except IOError, OSError:
+        let ex = getCurrentException()
         error "Error in onCmdLineClientProcessExit"
         writeStackTrace(ex)
 
@@ -205,12 +210,19 @@ proc registerProcMonitor(ls: LanguageServer) =
 
     hookAsyncProcMonitor(ls.cmdLineClientProcessId.get, onCmdLineClientProcessExit)
 
-proc tickLs*(ls: LanguageServer, time = 1.seconds) {.async.} =
+proc tickLs*(ls: LanguageServer, time = 1.seconds) {.async: (raises: []).} =
   await ls.tick()
-  await sleepAsync(time)
+  try:
+    await sleepAsync(time)
+  except CancelledError:
+    return
   await ls.tickLs()
 
-proc main*(cmdLineParams: CommandLineParams): LanguageServer =
+proc main*(
+    cmdLineParams: CommandLineParams
+): LanguageServer {.
+    raises: [OSError, IOError, ResourceExhaustedError, JsonRpcError, CancelledError]
+.} =
   debug "Starting nimlangserver", version = LSPVersion, params = cmdLineParams
   #[
   `nimlangserver` supports both transports: stdio and socket. By default it uses stdio transport. 
@@ -238,9 +250,10 @@ when isMainModule:
 
     when defined(posix):
       onSignal(SIGINT, SIGTERM, SIGHUP, SIGQUIT, SIGPIPE):
-        debug "Terminated via signal", sig
-        ls.stopNimsuggestProcessesP()
-        exitnow(1)
+        {.cast(gcsafe).}:
+          debug "Terminated via signal", sig
+          ls.stopNimsuggestProcessesP()
+          exitnow(1)
     runForever()
   except Exception as e:
     error "Error in main"

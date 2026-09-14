@@ -26,9 +26,11 @@ proc initMcpServer(
 
   ls.notify = proc(name: string, params: JsonNode) {.gcsafe, raises: [].} =
     discard
-  ls.call = proc(name: string, params: JsonNode): Future[JsonNode] {.async.} =
+  ls.call = proc(
+      name: string, params: JsonNode
+  ): Future[JsonNode] {.async: (raises: [CancelledError]).} =
     newJNull()
-  ls.onExit = proc(): Future[void] {.async.} =
+  ls.onExit = proc(): Future[void] {.async: (raises: [IOError, OSError]).} =
     discard
 
   let initRes = await mcp.initialize((ls: ls, onExit: ls.onExit), initParams)

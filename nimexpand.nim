@@ -6,6 +6,8 @@ import utils
 import suggestapi
 import std/[strformat]
 
+{.push raises: [], gcsafe.}
+
 proc extractMacroExpansion*(output: string, targetLine: int): string =
   var start = false
   for line in output.split({'\n', '\r'}):
@@ -27,7 +29,9 @@ proc extractMacroExpansion*(output: string, targetLine: int): string =
 
 proc nimExpandMacro*(
     nimPath: string, suggest: Suggest, filePath: string
-): Future[string] {.async.} =
+): Future[string] {.
+    async: (raises: [CancelledError, AsyncProcessError, AsyncStreamError])
+.} =
   let
     macroName = suggest.qualifiedPath[suggest.qualifiedPath.len - 1]
     line = suggest.line
@@ -63,7 +67,9 @@ proc extractArcExpansion*(output: string, procName: string): string =
 
 proc nimExpandArc*(
     nimPath: string, suggest: Suggest, filePath: string
-): Future[string] {.async.} =
+): Future[string] {.
+    async: (raises: [CancelledError, AsyncProcessError, AsyncStreamError])
+.} =
   let procName = suggest.qualifiedPath[suggest.qualifiedPath.len - 1]
   debug "nimExpandArc", procName = procName, filePath = filePath
   let process = await startProcess(
