@@ -1,5 +1,6 @@
 import
-  ../suggestapi, os, std/asyncnet, strutils, chronos, chronos/asyncproc, options
+  ../[suggestapi, utils], os, std/asyncnet, strutils, chronos, chronos/asyncproc,
+  options
 import unittest2
 
 const inputLine = "def	skProc	hw.a	proc (){.noSideEffect, gcsafe.}	hw/hw.nim	1	5	\"\"	100"
@@ -93,3 +94,32 @@ suite "Nimsuggest error handling":
     waitFor sleepAsync(300)
 
     check errorCount == 1
+
+suite "Nimsuggest shutdown":
+  let helloWorldFile = getCurrentDir() / "tests/projects/hw/hw.nim"
+
+  test "the spawned process is published before startup finishes":
+    var published: AsyncProcessRef
+    let projectFut = createNimsuggest(
+      helloWorldFile,
+      "nimsuggest",
+      "",
+      REQUEST_TIMEOUT,
+      proc(ns: Nimsuggest) {.gcsafe, raises: [].} =
+        discard,
+      proc(pr: Project) {.gcsafe, raises: [].} =
+        discard,
+      getCurrentDir(),
+      false,
+      false,
+      proc(process: AsyncProcessRef) {.gcsafe, raises: [].} =
+        published = process,
+    )
+
+    while published.isNil and not projectFut.finished:
+      waitFor sleepAsync(10.milliseconds)
+    check not published.isNil
+
+    let project = waitFor projectFut.wait(60.seconds)
+    check published == project.process
+    waitFor shutdownChildProcess(project.process)

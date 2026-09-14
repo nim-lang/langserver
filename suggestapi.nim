@@ -346,6 +346,7 @@ proc createNimsuggest*(
     workingDir = getCurrentDir(),
     enableLog: bool = false,
     enableExceptionInlayHints: bool = false,
+    onProcessStart: proc(process: AsyncProcessRef) {.gcsafe, raises: [].} = nil,
 ): Future[Project] {.async.} =
   result = Project(file: root)
   result.ns = newFuture[NimSuggest]()
@@ -396,6 +397,8 @@ proc createNimsuggest*(
       stderrHandle = AsyncProcess.Pipe,
     )
     debug "Nimsuggest started with args", args = args
+    if not onProcessStart.isNil:
+      onProcessStart(result.process)
     asyncSpawn logNsError(result)
     let portLine = await result.process.stdoutStream.readLine(sep = "\n")
     debug "Nimsuggest port", portLine = portLine

@@ -167,6 +167,7 @@ type
     nimsuggestInit*: Future[void]
     lastNimsuggest*: Future[Nimsuggest]
     childNimsuggestProcessesStopped*: bool
+    startingNimsuggests*: seq[AsyncProcessRef]
     isShutdown*: bool
     storageDir*: string
     cmdLineClientProcessId*: Option[int]
@@ -1080,6 +1081,10 @@ proc onErrorCallback(args: (LanguageServer, string), project: Project) =
 proc createOrRestartNimsuggest*(
     ls: LanguageServer, projectFile: string, uri = ""
 ) {.gcsafe, raises: [].} =
+  if ls.childNimsuggestProcessesStopped:
+    debug "Not starting nimsuggest, the server is shutting down",
+      projectFile = projectFile
+    return
   try:
     debug "Starting createOrRestartNimsuggest", projectFile = projectFile, uri = uri
     let
@@ -1101,6 +1106,9 @@ proc createOrRestartNimsuggest*(
 
     debug "Creating new nimsuggest project", projectFile = projectFile
 
+    let onNimsuggestSpawn = proc(process: AsyncProcessRef) {.gcsafe, raises: [].} =
+      ls.startingNimsuggests.add process
+
     let projectFut = createNimsuggest(
       projectFile,
       nimsuggestPath,
@@ -1111,6 +1119,7 @@ proc createOrRestartNimsuggest*(
       workingDir,
       configuration.logNimsuggest.get(false),
       configuration.exceptionHintsEnabled,
+      onNimsuggestSpawn,
     )
     if not waitFor chronos.withTimeout(
       projectFut, chronos.milliseconds(NIMSUGGEST_STARTUP_TIMEOUT)
@@ -1119,6 +1128,15 @@ proc createOrRestartNimsuggest*(
       return
 
     let projectNext = waitFor projectFut
+    ls.startingNimsuggests.keepItIf(it != projectNext.process)
+
+    if ls.childNimsuggestProcessesStopped:
+      debug "Discarding the nimsuggest started while shutting down",
+        projectFile = projectFile
+      if not projectNext.process.isNil:
+        waitFor shutdownChildProcess(projectNext.process)
+      return
+
     if projectFile in ls.projectFiles:
       var project = ls.projectFiles[projectFile]
       project.stop()
@@ -1218,13 +1236,18 @@ proc getCharacter*(
     return none(int)
 
 proc stopNimsuggestProcesses*(ls: LanguageServer) {.async.} =
-  if not ls.childNimsuggestProcessesStopped:
-    debug "stopping child nimsuggest processes"
-    ls.childNimsuggestProcessesStopped = true
-    for project in ls.projectFiles.values:
-      project.stop()
-  else:
-    debug "child nimsuggest processes already stopped: CHECK!"
+  debug "stopping child nimsuggest processes"
+  ls.childNimsuggestProcessesStopped = true
+
+  var shutdowns: seq[Future[void]]
+  for project in ls.projectFiles.values:
+    if not project.process.isNil:
+      shutdowns.add shutdownChildProcess(project.process)
+  for process in ls.startingNimsuggests:
+    shutdowns.add shutdownChildProcess(process)
+  ls.projectFiles.clear()
+  ls.startingNimsuggests.setLen(0)
+  await allFutures(shutdowns)
 
 proc stopNimsuggestProcessesP*(ls: LanguageServer) =
   waitFor stopNimsuggestProcesses(ls)
