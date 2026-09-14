@@ -47,8 +47,8 @@ type
     ideExpand
 
   NimsuggestCallback* =
-    proc(self: Nimsuggest): Future[void] {.async: (raises: []), gcsafe.}
-  ProjectCallback* = proc(self: Project): Future[void] {.async: (raises: []), gcsafe.}
+    proc(self: Nimsuggest): Future[void] {.async: (raises: []).}
+  ProjectCallback* = proc(self: Project): Future[void] {.async: (raises: []).}
 
   Suggest* = ref object
     section*: IdeCmd
@@ -421,9 +421,9 @@ proc createNimsuggest*(root: string): Future[Project] {.gcsafe.} =
     "nimsuggest",
     "",
     REQUEST_TIMEOUT,
-    proc(ns: Nimsuggest) {.async: (raises: []), gcsafe.} =
+    proc(ns: Nimsuggest) {.async: (raises: []).} =
       discard,
-    proc(pr: Project) {.async: (raises: []), gcsafe.} =
+    proc(pr: Project) {.async: (raises: []).} =
       discard,
   )
 

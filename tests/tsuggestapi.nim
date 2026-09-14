@@ -80,7 +80,7 @@ suite "Nimsuggest error handling":
     let ns = project.ns.waitFor
     var errorCount = 0
     project.errorCallback = some(
-      proc(pr: Project) {.async: (raises: []), gcsafe.} =
+      proc(pr: Project) {.async: (raises: []).} =
         inc errorCount
     )
 

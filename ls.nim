@@ -804,7 +804,7 @@ proc warnIfUnknown*(
 
 proc createOrRestartNimsuggest*(
   ls: LanguageServer, projectFile: string, uri = ""
-): Future[void] {.async: (raises: []), gcsafe.}
+): Future[void] {.async: (raises: []).}
 
 proc initNimsuggestInstances*(ls: LanguageServer, rootPath: string) {.async.} =
   if rootPath == "":
@@ -1049,7 +1049,7 @@ proc checkProject*(ls: LanguageServer, uri: string): Future[void] {.async.} =
 
 proc onErrorCallback(
     args: (LanguageServer, string), project: Project
-): Future[void] {.async: (raises: []), gcsafe.} =
+): Future[void] {.async: (raises: []).} =
   let
     ls = args[0]
     uri = args[1]
@@ -1080,7 +1080,7 @@ proc onErrorCallback(
 
 proc createOrRestartNimsuggestImpl(
     ls: LanguageServer, projectFile: string, uri = ""
-): Future[void] {.async: (raises: []), gcsafe.} =
+): Future[void] {.async: (raises: []).} =
   try:
     debug "Starting createOrRestartNimsuggest", projectFile = projectFile, uri = uri
     let
@@ -1091,7 +1091,7 @@ proc createOrRestartNimsuggestImpl(
       timeout = configuration.timeout.get(REQUEST_TIMEOUT)
       restartCallback = proc(
           ns: Nimsuggest
-      ): Future[void] {.async: (raises: []), gcsafe.} =
+      ): Future[void] {.async: (raises: []).} =
         warn "Restarting the server due to requests being to slow",
           projectFile = projectFile
         ls.showMessage(
@@ -1150,7 +1150,7 @@ proc createOrRestartNimsuggestImpl(
 
 proc createOrRestartNimsuggest*(
     ls: LanguageServer, projectFile: string, uri = ""
-): Future[void] {.async: (raises: []), gcsafe.} =
+): Future[void] {.async: (raises: []).} =
   let inFlight = ls.nimsuggestCreations.getOrDefault(projectFile)
   if not inFlight.isNil and not inFlight.finished:
     await inFlight

@@ -345,7 +345,7 @@ proc startStdioServer*(ls: LanguageServer) =
 
 proc processClientLoop*(
     ls: LanguageServer, server: StreamServer, transport: StreamTransport
-) {.async: (raises: []), gcsafe.} =
+) {.async: (raises: []).} =
   ls.socketTransport = transport
   while true:
     let msg = await processContentLength(transport)
