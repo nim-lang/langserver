@@ -193,6 +193,12 @@ type
       #Project file to fail count
       #List of errors (crashes) nimsuggest has had since the lsp session started
     checkInProgress*: bool
+    startingProjects*: HashSet[string]
+      #Project files whose nimsuggest is being started right now. A project is
+      #only registered in `projectFiles` once nimsuggest reports its port, i.e.
+      #after the initial compilation; without this guard every request or
+      #didOpen arriving meanwhile would spawn yet another instance for the
+      #same root.
 
   Certainty* = enum
     None
@@ -1074,6 +1080,13 @@ proc onErrorCallback(args: (LanguageServer, string), project: Project) =
 proc createOrRestartNimsuggest*(
     ls: LanguageServer, projectFile: string, uri = ""
 ) {.gcsafe, raises: [].} =
+  if projectFile in ls.startingProjects:
+    debug "Nimsuggest is already starting, not spawning another one",
+      projectFile = projectFile, uri = uri
+    return
+  ls.startingProjects.incl projectFile
+  defer:
+    ls.startingProjects.excl projectFile
   try:
     debug "Starting createOrRestartNimsuggest", projectFile = projectFile, uri = uri
     let
