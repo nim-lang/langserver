@@ -576,13 +576,21 @@ proc `mod`*(
 ): Future[seq[Suggest]] =
   return nimsuggest.call("ideMod", file, dirtyfile, 0, 0)
 
-proc isKnown*(nimsuggest: Nimsuggest, filePath: string): Future[bool] {.async.} =
-  let res = await withTimeout(nimsuggest.known(filePath))
-  if res.isNone:
+proc isKnown*(
+    nimsuggest: Nimsuggest, filePath: string
+): Future[bool] {.async: (raises: [CancelledError]).} =
+  let fut = nimsuggest.known(filePath)
+  if not await withTimeout(fut):
     debug "Timeout reached running [isKnown], assuming the file is not known",
       file = filePath
     return
-  let sug = res.get()
+  let sug =
+    try:
+      await fut
+    except CatchableError:
+      debug "Failed running [isKnown], assuming the file is not known",
+        file = filePath, err = getCurrentExceptionMsg()
+      return false
   if sug.len == 0:
     return false
   debug "isKnown", filePath = filePath, sug = sug[0].forth
