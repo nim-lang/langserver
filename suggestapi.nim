@@ -273,6 +273,7 @@ proc markFailed(
 
 proc stop*(self: Project) =
   debug "Stopping nimsuggest for ", root = self.file
+  self.errorCallback = none(ProjectCallback)
   if not self.process.isNil:
     asyncSpawn shutdownChildProcess(self.process)
 
