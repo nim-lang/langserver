@@ -7,6 +7,7 @@ import chronicles
 import lspsocketclient
 import testhelpers
 import chronos/asyncproc
+from regex import RegexError
 import unittest2
 
 suite "Nimlangserver misc":
@@ -95,7 +96,8 @@ suite "Nimlangserver pending requests":
     # The spawned task must swallow cancellation instead of failing.
     let ls = LanguageServer(serverMode: lsp, transportMode: socket)
     let uri = "file:///tmp/tpending419.nim"
-    let projectFileFut = newFuture[string]("projectFile")
+    let projectFileFut =
+      Future[string].Raising([CancelledError, OSError, RegexError]).init("projectFile")
     ls.openFiles[uri] = NlsFileInfo(projectFile: projectFileFut)
     ls.pendingRequests[1'u] = PendingRequest(id: 1, name: "textDocument/definition")
 

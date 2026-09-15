@@ -3,6 +3,8 @@
 
 import chronos
 
+{.push raises: [], gcsafe.}
+
 when defined(posix):
   import posix_utils
   import posix

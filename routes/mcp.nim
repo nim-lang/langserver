@@ -3,6 +3,10 @@ import
   pkg/[chronos, json_rpc/server, chronicles, json_serialization],
   ../[suggestapi, trackapi, ls, utils],
   ../protocol/types
+from pkg/regex import RegexError
+from pkg/chronos/asyncproc import AsyncProcessError
+
+{.push raises: [], gcsafe.}
 
 const McpProtocolVersion* = "2025-11-25"
 
@@ -211,7 +215,9 @@ proc nimFindTypeDefinition(): McpTool =
 
 proc callNimFindReferences(
     ls: LanguageServer, params: McpCallToolParams
-): Future[McpCallToolResult] {.async.} =
+): Future[McpCallToolResult] {.
+    async: (raises: [CancelledError, ValueError, OSError, IOError, RegexError, AsyncProcessError, NimsuggestError])
+.} =
   let
     arguments = params.arguments.get()
     path = arguments["path"].getStr().absolutePath
@@ -289,7 +295,9 @@ proc callNimFindReferences(
 
 proc callNimFindSymbols(
     ls: LanguageServer, params: McpCallToolParams
-): Future[McpCallToolResult] {.async.} =
+): Future[McpCallToolResult] {.
+    async: (raises: [CancelledError, KeyError, OSError, IOError, RegexError, NimsuggestError])
+.} =
   if len(ls.projectFiles) == 0:
     return McpCallToolResult(
       content:
@@ -346,7 +354,9 @@ proc callNimFindSymbols(
 
 proc callNimListSymbols(
     ls: LanguageServer, params: McpCallToolParams
-): Future[McpCallToolResult] {.async.} =
+): Future[McpCallToolResult] {.
+    async: (raises: [CancelledError, ValueError, OSError, IOError, RegexError, NimsuggestError])
+.} =
   let
     arguments = params.arguments.get()
     path = arguments["path"].getStr().absolutePath
@@ -388,7 +398,9 @@ proc callNimListSymbols(
 
 proc callNimCheckProject(
     ls: LanguageServer, params: McpCallToolParams
-): Future[McpCallToolResult] {.async.} =
+): Future[McpCallToolResult] {.
+    async: (raises: [CancelledError, OSError, IOError, RegexError, NimsuggestError])
+.} =
   if len(ls.projectFiles) == 0:
     return McpCallToolResult(
       content:
@@ -445,7 +457,9 @@ proc callNimCheckProject(
 
 proc callNimCheckFile(
     ls: LanguageServer, params: McpCallToolParams
-): Future[McpCallToolResult] {.async.} =
+): Future[McpCallToolResult] {.
+    async: (raises: [CancelledError, ValueError, OSError, IOError, RegexError, NimsuggestError])
+.} =
   let
     arguments = params.arguments.get()
     path = arguments["path"].getStr().absolutePath
@@ -494,7 +508,9 @@ proc callNimCheckFile(
 
 proc callNimFindTypeDefinition(
     ls: LanguageServer, params: McpCallToolParams
-): Future[McpCallToolResult] {.async.} =
+): Future[McpCallToolResult] {.
+    async: (raises: [CancelledError, ValueError, OSError, IOError, RegexError, NimsuggestError])
+.} =
   let
     arguments = params.arguments.get()
     path = arguments["path"].getStr().absolutePath
@@ -540,7 +556,9 @@ proc callNimFindTypeDefinition(
 # Routes
 proc initialize*(
     p: tuple[ls: LanguageServer, onExit: OnExitCallback], params: McpInitializeParams
-): Future[McpInitializeResult] {.async.} =
+): Future[McpInitializeResult] {.
+    async: (raises: [OSError])
+.} =
   debug "Initialize received..."
   p.ls.mcpInitializeParams = params
   p.ls.mcpClientCapabilities = params.capabilities
@@ -561,7 +579,7 @@ proc initialize*(
 
 proc listTools*(
     ls: LanguageServer, params: McpListToolsParams
-): Future[McpListToolsResult] {.async.} =
+): Future[McpListToolsResult] {.async: (raises: []).} =
   debug "Call tool received..."
   McpListToolsResult(
     tools:
@@ -577,7 +595,9 @@ proc listTools*(
 
 proc callTool*(
     ls: LanguageServer, params: McpCallToolParams
-): Future[McpCallToolResult] {.async.} =
+): Future[McpCallToolResult] {.
+    async: (raises: [CancelledError, ValueError, OSError, IOError, RegexError, AsyncProcessError, NimsuggestError])
+.} =
   debug "Call tool received...", name = params.name
 
   await ls.nimsuggestInit
@@ -602,5 +622,5 @@ proc callTool*(
     )
 
 # Notifications
-proc initialized*(ls: LanguageServer, _: JsonNode) {.async.} =
+proc initialized*(ls: LanguageServer, _: JsonNode) {.async: (raises: []).} =
   debug "Client initialized."

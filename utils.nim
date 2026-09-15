@@ -320,6 +320,7 @@ proc getNimScriptAPITemplatePath*(): string {.raises: [OSError, IOError].} =
       writeFile(result, NIM_SCRIPT_API_TEMPLATE)
   debug "NimScriptApiPath", path = result
 
+# keep this raises free
 proc shutdownChildProcess*(p: AsyncProcessRef): Future[void] {.async: (raises: []).} =
   try:
     debug "Shutting down process with pid: ", pid = p.processID()
