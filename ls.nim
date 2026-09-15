@@ -1177,7 +1177,7 @@ proc createOrRestartNimsuggestImpl(
       project.stop()
     ls.projectFiles[projectFile] = projectNext
 
-    projectNext.ns.addCallback do(fut: Future[Nimsuggest]) {.gcsafe.}:
+    projectNext.ns.addCallback do(fut: Future[Nimsuggest]) {.raises: [], gcsafe.}:
       if fut.failed:
         let msg = fut.error.msg
         error "Nimsuggest initialization failed", projectFile = projectFile, error = msg
@@ -1290,10 +1290,12 @@ proc maybeRequestConfigurationFromClient*(
 proc getCharacter*(
     ls: LanguageServer, uri: string, line: int, character: int
 ): Option[int] =
-  let file = ls.openFiles.getOrDefault(uri)
-  if file != nil and line < file.fingerTable.len:
-    return some file.fingerTable[line].utf16to8(character)
-  else:
+  withValue(ls.openFiles, uri, value):
+    return if line in 0 ..< value.fingerTable.len:
+      some value.fingerTable[line].utf16to8(character)
+    else:
+      none(int)
+  do:
     return none(int)
 
 proc stopNimsuggestProcesses*(ls: LanguageServer) {.async: (raises: []).} =

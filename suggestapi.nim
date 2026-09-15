@@ -487,9 +487,11 @@ proc processQueue(self: Nimsuggest): Future[void] {.async: (raises: []).} =
         if not self.timeoutCallback.isNil:
           debug "timeoutCallback is set", timeout = self.timeout
           asyncSpawn self.watchRequestTimeout(req)
-        let ta = initTAddress(&"127.0.0.1:{self.port}")
-        let transport = await ta.connect()
-        discard await transport.write(req.commandString & "\c\L")
+        var transport: StreamTransport
+        try:
+          let ta = initTAddress(&"127.0.0.1:{self.port}")
+          transport = await ta.connect()
+          discard await transport.write(req.commandString & "\c\L")
 
           const bufferSize = 1024 * 1024 * 4
           var buffer: seq[byte] = newSeq[byte](bufferSize)
