@@ -46,8 +46,7 @@ type
     ideType
     ideExpand
 
-  NimsuggestCallback* =
-    proc(self: Nimsuggest): Future[void] {.async: (raises: []).}
+  NimsuggestCallback* = proc(self: Nimsuggest): Future[void] {.async: (raises: []).}
   ProjectCallback* = proc(self: Project): Future[void] {.async: (raises: []).}
 
   Suggest* = ref object

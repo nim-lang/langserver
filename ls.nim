@@ -1089,9 +1089,7 @@ proc createOrRestartNimsuggestImpl(
       (nimsuggestPath, version) =
         await ls.getNimSuggestPathAndVersion(configuration, workingDir)
       timeout = configuration.timeout.get(REQUEST_TIMEOUT)
-      restartCallback = proc(
-          ns: Nimsuggest
-      ): Future[void] {.async: (raises: []).} =
+      restartCallback = proc(ns: Nimsuggest): Future[void] {.async: (raises: []).} =
         warn "Restarting the server due to requests being to slow",
           projectFile = projectFile
         ls.showMessage(
