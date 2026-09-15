@@ -104,7 +104,7 @@ suite "LSP configuration pulled from the client":
     check askedForNimSection
     check ls.workspaceConfiguration.finished
 
-    let conf = waitFor ls.getWorkspaceConfiguration()
+    let conf = ls.getWorkspaceConfiguration()
     check conf.nimsuggestIdleTimeout == some 120000
     check conf.logNimsuggest == some false
 

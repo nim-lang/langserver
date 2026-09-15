@@ -30,17 +30,17 @@ proc getNphPath(): Option[string] =
 proc initialize*(
     p: tuple[ls: LanguageServer, onExit: OnExitCallback], params: LspInitializeParams
 ): Future[LspInitializeResult] {.async.} =
-  proc onClientProcessExitAsync(): Future[void] {.async.} =
+  proc onClientProcessExitAsync(): Future[void] {.async: (raises: []).} =
     debug "onClientProcessExitAsync"
-    await p.ls.stopNimsuggestProcesses
-    await p.onExit()
+    try:
+      await p.ls.stopNimsuggestProcesses
+      await p.onExit()
+    except CatchableError as ex:
+      error "Error in onClientProcessExit ", msg = ex.msg
 
   proc onClientProcessExit() {.closure, gcsafe.} =
-    try:
-      debug "onClientProcessExit"
-      waitFor onClientProcessExitAsync()
-    except Exception:
-      error "Error in onClientProcessExit ", msg = getCurrentExceptionMsg()
+    debug "onClientProcessExit"
+    asyncSpawn onClientProcessExitAsync()
 
   debug "Initialize received..."
   if params.processId.isSome:
@@ -157,7 +157,7 @@ proc definition*(
 ): Future[seq[Location]] {.async.} =
   with (params.position, params.textDocument):
     asyncSpawn ls.addProjectFileToPendingRequest(id.uint, uri)
-    let config = await ls.getWorkspaceConfiguration()
+    let config = ls.getWorkspaceConfiguration()
     # `nim track` only works on files as saved on disk; it has no dirty-buffer
     # support. Use it only when the file is open and has no unsaved changes,
     # otherwise fall back to nimsuggest (which supports dirty buffers).
@@ -296,7 +296,7 @@ proc extensionSuggest*(
     ls.showMessage(fmt "Restarting nimsuggest {projectFile}", MessageType.Info)
     project.errorCallback = none(ProjectCallback)
     project.stop()
-    ls.createOrRestartNimsuggest(projectFile, projectFile.pathToUri)
+    await ls.createOrRestartNimsuggest(projectFile, projectFile.pathToUri)
     ls.sendStatusChanged()
 
   case params.action
@@ -353,7 +353,7 @@ proc documentSymbols*(
     @[]
 
 proc scheduleFileCheck(ls: LanguageServer, uri: string) {.gcsafe, raises: [].} =
-  if not ls.getWorkspaceConfiguration().waitFor().autoCheckFile.get(true):
+  if not ls.getWorkspaceConfiguration().autoCheckFile.get(true):
     return
   # schedule file check after the file is modified
   let fileData = ls.openFiles.getOrDefault(uri)
@@ -404,7 +404,7 @@ proc hover*(
     ls: LanguageServer, params: HoverParams, id: int
 ): Future[Option[Hover]] {.async.} =
   with (params.position, params.textDocument):
-    let config = await ls.getWorkspaceConfiguration()
+    let config = ls.getWorkspaceConfiguration()
     asyncSpawn ls.addProjectFileToPendingRequest(id.uint, uri)
     let nimsuggest = await ls.tryGetNimsuggest(uri)
     if nimsuggest.isNone:
@@ -460,7 +460,7 @@ proc references*(
     ls: LanguageServer, params: ReferenceParams
 ): Future[seq[Location]] {.async.} =
   with (params.position, params.textDocument, params.context):
-    let config = await ls.getWorkspaceConfiguration()
+    let config = ls.getWorkspaceConfiguration()
     # `nim track` only works on files as saved on disk; it has no dirty-buffer
     # support. Use it only when the file is open and has no unsaved changes,
     # otherwise fall back to nimsuggest (which supports dirty buffers).
@@ -605,7 +605,7 @@ proc inlayHint*(
   with (params.range, params.textDocument):
     asyncSpawn ls.addProjectFileToPendingRequest(id.uint, uri)
     let
-      configuration = ls.getWorkspaceConfiguration.await()
+      configuration = ls.getWorkspaceConfiguration()
       nimsuggest = await ls.tryGetNimsuggest(uri)
 
     if nimsuggest.isNone or nimsuggest.get.protocolVersion < 4 or
@@ -679,7 +679,7 @@ proc executeCommand*(
   case params.command
   of RESTART_COMMAND:
     debug "Restarting nimsuggest", projectFile = projectFile
-    ls.createOrRestartNimsuggest(projectFile, projectFile.pathToUri)
+    await ls.createOrRestartNimsuggest(projectFile, projectFile.pathToUri)
   of CHECK_PROJECT_COMMAND:
     debug "Checking project", projectFile = projectFile
     ls.checkProject(projectFile.pathToUri).traceAsyncErrors
@@ -911,7 +911,7 @@ proc runTask*(
 proc listTests*(
     ls: LanguageServer, params: ListTestsParams
 ): Future[ListTestsResult] {.async.} =
-  let config = await ls.getWorkspaceConfiguration()
+  let config = ls.getWorkspaceConfiguration()
   let workspaceRoot = ls.lspInitializeParams.getRootPath
   let nimPath = await ls.getNimPath(config, workspaceRoot)
   if nimPath.isNone:
@@ -927,7 +927,7 @@ proc listTests*(
 proc runTests*(
     ls: LanguageServer, params: RunTestParams
 ): Future[RunTestProjectResult] {.async.} =
-  let config = await ls.getWorkspaceConfiguration()
+  let config = ls.getWorkspaceConfiguration()
   let workspaceRoot = ls.lspInitializeParams.getRootPath
   let nimPath = await ls.getNimPath(config, workspaceRoot)
   if nimPath.isNone:
@@ -958,7 +958,7 @@ proc cancelTest*(
 proc initialized*(ls: LanguageServer, _: JsonNode): Future[void] {.async.} =
   debug "Client initialized."
   maybeRegisterCapabilityDidChangeConfiguration(ls)
-  maybeRequestConfigurationFromClient(ls)
+  await maybeRequestConfigurationFromClient(ls)
 
 proc cancelRequest*(ls: LanguageServer, params: CancelParams): Future[void] {.async.} =
   if params.id.isSome:
@@ -1003,7 +1003,7 @@ proc willSaveWaitUntil*(
 
   let
     uri = params.textDocument.uri
-    config = await ls.getWorkspaceConfiguration()
+    config = ls.getWorkspaceConfiguration()
     nphPath = getNphPath()
 
   let shouldFormat =
@@ -1023,7 +1023,7 @@ proc didSave*(
 ): Future[void] {.async.} =
   let
     uri = params.textDocument.uri
-    config = await ls.getWorkspaceConfiguration()
+    config = ls.getWorkspaceConfiguration()
   let nimsuggest = await ls.tryGetNimsuggest(uri)
 
   if nimsuggest.isNone:
@@ -1070,7 +1070,7 @@ proc didChangeConfiguration*(
 ): Future[void] {.async.} =
   debug "Changed configuration: ", conf = $conf
   if ls.usePullConfigurationModel:
-    ls.maybeRequestConfigurationFromClient
+    await ls.maybeRequestConfigurationFromClient()
   else:
     if ls.workspaceConfiguration.finished:
       let
@@ -1078,4 +1078,4 @@ proc didChangeConfiguration*(
         newConfiguration = parseWorkspaceConfiguration(conf)
       ls.workspaceConfiguration = newFuture[JsonNode]()
       ls.workspaceConfiguration.complete(conf)
-      handleConfigurationChanges(ls, oldConfiguration, newConfiguration)
+      await handleConfigurationChanges(ls, oldConfiguration, newConfiguration)
