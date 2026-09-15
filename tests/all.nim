@@ -17,5 +17,4 @@ import
   tlspdiagnostics,
   tlspconfig,
   tutils,
-  tasyncsafety,
-  tslowstartup
+  tasyncsafety
