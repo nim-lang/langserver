@@ -154,61 +154,6 @@ iterator groupBy*[T, U](
   for x in t.pairs:
     yield x
 
-#Compatibility layer with asyncdispatch
-proc callSoon*(cb: proc() {.gcsafe.}) {.gcsafe.} =
-  proc cbWrapper() {.gcsafe.} =
-    try:
-      {.cast(raises: []).}:
-        cb()
-    except CatchableError:
-      discard #TODO handle
-
-  callSoon do(data: pointer) {.gcsafe.}:
-    cbWrapper()
-
-proc addCallback*(
-    future: FutureBase, cb: proc() {.closure, gcsafe, raises: [].}
-) {.deprecated: "Replace with built-in chronos mechanism".} =
-  ## Adds the callbacks proc to be called when the future completes.
-  ##
-  ## If future has already completed then `cb` will be called immediately.
-  assert cb != nil
-  if future.finished:
-    callSoon do(data: pointer) {.gcsafe.}:
-      cb()
-  else:
-    future.addCallback do(data: pointer) {.gcsafe.}:
-      cb()
-
-proc addCallbackNoEffects[T](
-    future: Future[T], cb: proc(future: Future[T]) {.closure, gcsafe, raises: [].}
-) =
-  ## Adds the callbacks proc to be called when the future completes.
-  ##
-  ## If future has already completed then `cb` will be called immediately.
-  future.addCallback(
-    proc() =
-      cb(future)
-  )
-
-proc addCallback*[T](
-    future: Future[T], cb: proc(future: Future[T]) {.closure, gcsafe.}
-) {.deprecated.} =
-  ## Adds the callbacks proc to be called when the future completes.
-  ##
-  ## If future has already completed then `cb` will be called immediately.
-  proc cbWrapper(fut: Future[T]) {.closure, gcsafe, raises: [].} =
-    try:
-      {.cast(raises: []).}:
-        cb(fut)
-    except CatchableError as exc:
-      future.fail((ref CatchableError)(msg: exc.msg))
-
-  future.addCallbackNoEffects(
-    proc(fut: Future[T]) {.closure, gcsafe, raises: [].} =
-      cbWrapper(future)
-  )
-
 proc isRelTo*(path, base: string): bool {.raises: [].} =
   ### isRelativeTo version that do not throws
   try:
@@ -320,6 +265,7 @@ proc getNimScriptAPITemplatePath*(): string {.raises: [OSError, IOError].} =
       writeFile(result, NIM_SCRIPT_API_TEMPLATE)
   debug "NimScriptApiPath", path = result
 
+# keep this raises free
 proc shutdownChildProcess*(p: AsyncProcessRef): Future[void] {.async: (raises: []).} =
   try:
     debug "Shutting down process with pid: ", pid = p.processID()

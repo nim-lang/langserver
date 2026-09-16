@@ -1,10 +1,11 @@
-import ../[nimlangserver, ls, lstransports, utils]
-import ../protocol/types
-import ../routes/mcp
-import ./testhelpers
-import std/[json, jsonutils, options, os, sequtils, strutils, tables]
-import chronos
-import unittest2
+import
+  std/[json, jsonutils, options, os, sequtils, strutils, tables],
+  chronos,
+  unittest2,
+  ../[nimlangserver, ls, lstransports, utils],
+  ../protocol/types,
+  ../routes/mcp,
+  ./testhelpers
 
 type McpSocketClient = ref object
   transport: StreamTransport
@@ -26,9 +27,11 @@ proc initMcpServer(
 
   ls.notify = proc(name: string, params: JsonNode) {.gcsafe, raises: [].} =
     discard
-  ls.call = proc(name: string, params: JsonNode): Future[JsonNode] {.async.} =
+  ls.call = proc(
+      name: string, params: JsonNode
+  ): Future[JsonNode] {.async: (raises: [CancelledError]).} =
     newJNull()
-  ls.onExit = proc(): Future[void] {.async.} =
+  ls.onExit = proc(): Future[void] {.async: (raises: [IOError, OSError]).} =
     discard
 
   let initRes = await mcp.initialize((ls: ls, onExit: ls.onExit), initParams)
@@ -192,7 +195,8 @@ suite "MCP tools":
     let syms = res.structuredContent["syms"].getElems()
 
     check syms.len == 1
-    check syms.len >= 1 and syms[0] ==
+    check syms.len >= 1 and
+      syms[0] ==
       %*{"name": "add", "path": entryPoint, "line": 3, "column": 5, "kind": "Proc"}
 
   test "callTool nimCheckProject returns workspace diagnostics":

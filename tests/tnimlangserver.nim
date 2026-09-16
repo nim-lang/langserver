@@ -1,10 +1,11 @@
-import ../[nimlangserver, ls, lstransports, utils]
-import ../protocol/[enums, types]
-import std/[options, json, os, jsonutils, sequtils, strutils, sugar, strformat]
-import json_rpc/[rpcclient]
-import chronicles
-import lspsocketclient
-import unittest2
+import
+  std/[options, json, os, jsonutils, sequtils, strutils, sugar, strformat],
+  json_rpc/[rpcclient],
+  chronicles,
+  unittest2,
+  ../[nimlangserver, ls, lstransports, utils],
+  ../protocol/[enums, types],
+  ./lspsocketclient
 
 suite "Nimlangserver":
   let cmdParams =
@@ -101,16 +102,15 @@ suite "LSP features":
     let
       hoverParams = positionParams(helloWorldUri, 1, 6)
       hover = client.call("textDocument/hover", %hoverParams).waitFor
-      expected =
-        %*{
-          "contents": {
-            "kind": "markdown",
-            "value":
-              "```nim\nhw.a안녕: proc (){.noSideEffect, gcsafe, raises: <inferred> [].}\n```",
-          },
-          "range":
-            {"start": {"line": 1, "character": 6}, "end": {"line": 1, "character": 9}},
-        }
+      expected = %*{
+        "contents": {
+          "kind": "markdown",
+          "value":
+            "```nim\nhw.a안녕: proc (){.noSideEffect, gcsafe, raises: <inferred> [].}\n```",
+        },
+        "range":
+          {"start": {"line": 1, "character": 6}, "end": {"line": 1, "character": 9}},
+      }
     check hover == expected
 
   test "Sending hover(no content)":
@@ -230,7 +230,7 @@ suite "LSP features":
     let
       hoverParams = positionParams(fixtureUri("projects/hw/hw.nim"), 2, 0)
       hover = client.call("textDocument/hover", %hoverParams).waitFor
-    doAssert contains($hover, "hw.a: proc ()")
+    check contains($hover, "hw.a: proc ()")
 
   test "Completion":
     let completionParams =
@@ -243,20 +243,20 @@ suite "LSP features":
       waitFor client.call("textDocument/completion", %completionParams),
       seq[CompletionItem],
     )
-    .filter(item => item.label == "echo")[0]
+      .filter(item => item.label == "echo")[0]
 
-    doAssert actualEchoCompletionItem.label == "echo"
-    doAssert actualEchoCompletionItem.kind.get == 3
-    doAssert actualEchoCompletionItem.detail.get().contains("proc")
-    doAssert actualEchoCompletionItem.documentation.isSome
+    check actualEchoCompletionItem.label == "echo"
+    check actualEchoCompletionItem.kind.get == 3
+    check actualEchoCompletionItem.detail.get().contains("proc")
+    check actualEchoCompletionItem.documentation.isSome
 
   test "Shutdown":
     let
       nullValue = newJNull()
       nullResponse = waitFor client.call("shutdown", nullValue)
 
-    doAssert nullResponse == nullValue
-    doAssert ls.isShutdown
+    check nullResponse == nullValue
+    check ls.isShutdown
 
 suite "Null configuration:":
   let cmdParams =
@@ -288,4 +288,4 @@ suite "Null configuration:":
     client.notify("textDocument/didOpen", %createDidOpenParams("projects/hw/hw.nim"))
     let hoverParams = positionParams("projects/hw/hw.nim".fixtureUri, 2, 0)
     let hover = client.call("textDocument/hover", %hoverParams).waitFor
-    doAssert hover.kind == JNull
+    check hover.kind == JNull

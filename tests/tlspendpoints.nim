@@ -1,17 +1,15 @@
-import ../[nimlangserver, ls, lstransports, utils]
-import ../protocol/[enums, types]
-import std/[options, json, os, jsonutils, sequtils, strutils, sugar, strformat]
-import json_rpc/[rpcclient]
-import chronicles
-import lspsocketclient
-import testhelpers
-import unittest2
+import
+  std/[options, json, os, jsonutils, sequtils, strutils, sugar, strformat],
+  json_rpc/[rpcclient],
+  chronicles,
+  unittest2,
+  ../[nimlangserver, ls, lstransports, utils],
+  ../protocol/[enums, types],
+  ./[lspsocketclient, testhelpers]
 
 const CallTimeout = 30.seconds
 
-proc callTimeout(
-    client: LspSocketClient, name: string, params: JsonNode
-): JsonNode =
+proc callTimeout(client: LspSocketClient, name: string, params: JsonNode): JsonNode =
   waitFor client.call(name, params).wait(CallTimeout)
 
 suite "LSP endpoints":
@@ -155,7 +153,9 @@ suite "LSP endpoints":
 
   test "textDocument/willSaveWaitUntil answers with edits":
     let params =
-      WillSaveTextDocumentParams %* {"textDocument": {"uri": helloWorldUri}, "reason": 1}
+      WillSaveTextDocumentParams %* {
+        "textDocument": {"uri": helloWorldUri}, "reason": 1
+      }
     let edits =
       to(client.callTimeout("textDocument/willSaveWaitUntil", %params), seq[TextEdit])
     for edit in edits:
@@ -163,10 +163,8 @@ suite "LSP endpoints":
 
   test "workspace/executeCommand runs a project check":
     let params =
-      ExecuteCommandParams %* {
-        "command": CHECK_PROJECT_COMMAND,
-        "arguments": [%uriToPath(helloWorldUri)],
-      }
+      ExecuteCommandParams %*
+      {"command": CHECK_PROJECT_COMMAND, "arguments": [%uriToPath(helloWorldUri)]}
     discard client.callTimeout("workspace/executeCommand", %params)
     let status =
       to(client.callTimeout("extension/status", newJObject()), NimLangServerStatus)
@@ -214,10 +212,8 @@ suite "LSP endpoints":
 
   test "extension/macroExpand expands a macro application":
     let params =
-      ExpandTextDocumentPositionParams %* {
-        "textDocument": {"uri": helloWorldUri},
-        "position": {"line": 21, "character": 0},
-      }
+      ExpandTextDocumentPositionParams %*
+      {"textDocument": {"uri": helloWorldUri}, "position": {"line": 21, "character": 0}}
     let expanded =
       to(client.callTimeout("extension/macroExpand", %params), ExpandResult)
     check expanded.content.contains("helloProc")
@@ -229,7 +225,8 @@ suite "LSP endpoints":
       ls.workspaceConfiguration = previousConfiguration
 
     client.notify(
-      "workspace/didChangeConfiguration", %*{"settings": {"nim": {"nimsuggestIdleTimeout": 120000}}}
+      "workspace/didChangeConfiguration",
+      %*{"settings": {"nim": {"nimsuggestIdleTimeout": 120000}}},
     )
     let status =
       to(client.callTimeout("extension/status", newJObject()), NimLangServerStatus)
@@ -299,9 +296,7 @@ suite "LSP endpoints":
           "contentChanges": [{"text": readFile("tests" / plainFile)}],
         },
       )
-      check waitUntil(
-        plainUri in ls.openFiles and ls.openFiles[plainUri].changed
-      )
+      check waitUntil(plainUri in ls.openFiles and ls.openFiles[plainUri].changed)
 
       let params =
         DocumentFormattingParams %* {
@@ -315,7 +310,9 @@ suite "LSP endpoints":
 
   test "a definition request on a non ascii identifier resolves to its declaration":
     let locations = to(
-      client.callTimeout("textDocument/definition", %positionParams(helloWorldUri, 1, 6)),
+      client.callTimeout(
+        "textDocument/definition", %positionParams(helloWorldUri, 1, 6)
+      ),
       seq[Location],
     )
     check locations.len == 1
@@ -362,7 +359,8 @@ suite "LSP endpoints":
       "textDocument/didChange",
       %*{
         "textDocument": {"uri": helloWorldUri, "version": 3},
-        "contentChanges": [{"text": original & "\nproc addedByDidChange*() = discard\n"}],
+        "contentChanges":
+          [{"text": original & "\nproc addedByDidChange*() = discard\n"}],
       },
     )
     check waitUntil(
@@ -383,7 +381,8 @@ suite "LSP endpoints":
 
     let stash = ls.uriStorageLocation(helloWorldUri)
     if fileExists(stash):
-      check readFile(stash).normalizeText == readFile("tests" / helloWorldFile).normalizeText
+      check readFile(stash).normalizeText ==
+        readFile("tests" / helloWorldFile).normalizeText
 
 suite "LSP socket transport with more than one client":
   let cmdParams =

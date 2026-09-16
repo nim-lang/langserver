@@ -1,10 +1,11 @@
-import ../[nimlangserver, ls, lstransports, utils]
-import ../protocol/[enums, types]
-import std/[options, json, os, osproc, jsonutils, sequtils, strutils, strformat]
-import json_rpc/[rpcclient]
-import chronicles
-import lspsocketclient
-import unittest2
+import
+  std/[options, json, os, osproc, jsonutils, sequtils, strutils, strformat],
+  json_rpc/[rpcclient],
+  chronicles,
+  unittest2,
+  ../[nimlangserver, ls, lstransports, utils],
+  ../protocol/[enums, types],
+  ./lspsocketclient
 
 suite "Nim track with nim >= 2.4":
   let trackProjectDir = absolutePath("tests" / "projects" / "trackproject")
@@ -28,7 +29,8 @@ suite "Nim track with nim >= 2.4":
   waitFor client.connect("localhost", cmdParams.port)
 
   let conf = NlsConfig(useNimTrack: some true)
-  ls.workspaceConfiguration = newFuture[JsonNode]()
+  ls.workspaceConfiguration =
+    Future[JsonNode].Raising([CancelledError]).init("tnimtrack")
   ls.workspaceConfiguration.complete(% @[conf])
 
   let initParams =
@@ -60,7 +62,8 @@ suite "Nim track with nim >= 2.4":
         waitFor client.call("textDocument/definition", %positionParams), seq[Location]
       )
     check locations.len == 1
-    check locations.len >= 1 and locations[0].uri.pathToUri().contains("trackproject.nim")
+    check locations.len >= 1 and
+      locations[0].uri.pathToUri().contains("trackproject.nim")
 
   test "References with nim track":
     client.notify("textDocument/didOpen", %createDidOpenParams(trackFile))
@@ -90,7 +93,8 @@ suite "Nim track unavailable with nim < 2.4":
   waitFor client.connect("localhost", cmdParams.port)
 
   let conf = NlsConfig(useNimTrack: some true)
-  ls.workspaceConfiguration = newFuture[JsonNode]()
+  ls.workspaceConfiguration =
+    Future[JsonNode].Raising([CancelledError]).init("tnimtrack")
   ls.workspaceConfiguration.complete(% @[conf])
 
   let initParams =
