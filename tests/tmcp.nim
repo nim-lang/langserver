@@ -40,7 +40,9 @@ proc initMcpServer(
 
 proc checkToolResult(res: McpCallToolResult) =
   check not res.isError
-  check parseJson(res.content[0].text) == res.structuredContent
+  check res.structuredContent.isSome
+  if res.structuredContent.isSome:
+    check parseJson(res.content[0].text) == res.structuredContent.get
 
 proc newMcpSocketClient(port: Port): Future[McpSocketClient] {.async.} =
   let addresses = resolveTAddress("localhost", port)
@@ -93,6 +95,56 @@ suite "MCP routes":
     check initRes.protocolVersion == McpProtocolVersion
     check initRes.serverInfo.name == "nimlangserver"
     check initRes.serverInfo.version == LSPVersion
+
+  test "tools/call error results do not crash the server":
+    # Started from a directory with no nimble project, as an agent might. The
+    # listed nimCheckProject then takes its "only in Nimble projects" error path,
+    # whose result used to carry a nil structuredContent that segfaulted the
+    # server while serialising the response.
+    let
+      emptyDir = getTempDir() / "nimlangserver-mcp-no-project"
+      savedDir = getCurrentDir()
+    createDir(emptyDir)
+    setCurrentDir(emptyDir)
+    defer:
+      setCurrentDir(savedDir)
+
+    let
+      rpcCmdParams = CommandLineParams(
+        mode: some ServerMode.mcp,
+        transport: some TransportMode.socket,
+        port: getNextFreePort(),
+      )
+      rpcLs = main(rpcCmdParams)
+      rpcClient = waitFor newMcpSocketClient(rpcCmdParams.port)
+
+    defer:
+      waitFor rpcClient.close()
+      waitFor rpcLs.onExit()
+
+    discard waitFor rpcClient.callRpc(
+      "initialize",
+      %*{
+        "protocolVersion": McpProtocolVersion,
+        "capabilities": {},
+        "clientInfo": {"name": "nimlangserver tests", "version": "1"},
+      },
+    )
+
+    let checkProject = waitFor rpcClient.callRpc(
+      "tools/call", %*{"name": "nimCheckProject", "arguments": {}}
+    )
+    check checkProject{"isError"}.getBool(false)
+    check checkProject{"content"}[0]{"text"}.getStr ==
+      "Tool works only in Nimble projects"
+    check "structuredContent" notin checkProject
+
+    let unknown = waitFor rpcClient.callRpc(
+      "tools/call", %*{"name": "thisToolDoesNotExist", "arguments": {}}
+    )
+    check unknown{"isError"}.getBool(false)
+    check unknown{"content"}[0]{"text"}.getStr == "Unknown tool"
+    check "structuredContent" notin unknown
 
   test "listTools returns all MCP tools":
     let
@@ -166,7 +218,7 @@ suite "MCP tools":
 
     checkToolResult(res)
 
-    let refs = res.structuredContent["refs"].getElems()
+    let refs = res.structuredContent.get["refs"].getElems()
 
     check len(refs) == 1
 
@@ -177,7 +229,7 @@ suite "MCP tools":
 
     checkToolResult(res)
 
-    let syms = res.structuredContent["syms"].getElems()
+    let syms = res.structuredContent.get["syms"].getElems()
 
     check syms.anyIt(
       it["path"].getStr() == entryPoint and it["line"].getInt() == 3 and
@@ -192,7 +244,7 @@ suite "MCP tools":
 
     checkToolResult(res)
 
-    let syms = res.structuredContent["syms"].getElems()
+    let syms = res.structuredContent.get["syms"].getElems()
 
     check syms.len == 1
     check syms.len >= 1 and
@@ -204,7 +256,7 @@ suite "MCP tools":
 
     checkToolResult(res)
 
-    let diags = res.structuredContent["diags"].getElems()
+    let diags = res.structuredContent.get["diags"].getElems()
     check diags.len > 0
     check diags.anyIt(
       it["path"].getStr() == errFile and it["line"].getInt() == 5 and
@@ -219,7 +271,7 @@ suite "MCP tools":
 
     checkToolResult(res)
 
-    let diags = res.structuredContent["diags"].getElems()
+    let diags = res.structuredContent.get["diags"].getElems()
     check diags.len > 0
     check diags.anyIt(
       it["line"].getInt() == 5 and it["severity"].getStr() == "Error" and
@@ -233,7 +285,7 @@ suite "MCP tools":
 
     checkToolResult(res)
 
-    let diags = res.structuredContent["diags"].getElems()
+    let diags = res.structuredContent.get["diags"].getElems()
     check diags.len > 0
     check diags.anyIt(
       it["line"].getInt() == 5 and it["severity"].getStr() == "Error" and
@@ -251,7 +303,7 @@ suite "MCP tools":
 
     checkToolResult(res)
 
-    let defs = res.structuredContent["defs"].getElems()
+    let defs = res.structuredContent.get["defs"].getElems()
     check defs.len > 0
     check defs.anyIt(
       it["name"].getStr() == "int" or it["type"].getStr().contains("int")

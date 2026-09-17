@@ -262,7 +262,7 @@ proc callNimFindReferences(
 
     return McpCallToolResult(
       content: @[McpContentBlock(`type`: TextContent, text: $structuredContent)],
-      structuredContent: structuredContent,
+      structuredContent: some structuredContent,
       isError: false,
     )
 
@@ -282,7 +282,7 @@ proc callNimFindReferences(
 
     McpCallToolResult(
       content: @[McpContentBlock(`type`: TextContent, text: $structuredContent)],
-      structuredContent: structuredContent,
+      structuredContent: some structuredContent,
       isError: false,
     )
   else:
@@ -340,7 +340,7 @@ proc callNimFindSymbols(
 
     McpCallToolResult(
       content: @[McpContentBlock(`type`: TextContent, text: $structuredContent)],
-      structuredContent: structuredContent,
+      structuredContent: some structuredContent,
       isError: false,
     )
   else:
@@ -387,7 +387,7 @@ proc callNimListSymbols(
 
     McpCallToolResult(
       content: @[McpContentBlock(`type`: TextContent, text: $structuredContent)],
-      structuredContent: structuredContent,
+      structuredContent: some structuredContent,
       isError: false,
     )
   else:
@@ -443,7 +443,7 @@ proc callNimCheckProject(
 
     McpCallToolResult(
       content: @[McpContentBlock(`type`: TextContent, text: $structuredContent)],
-      structuredContent: structuredContent,
+      structuredContent: some structuredContent,
       isError: false,
     )
   else:
@@ -497,7 +497,7 @@ proc callNimCheckFile(
 
     McpCallToolResult(
       content: @[McpContentBlock(`type`: TextContent, text: $structuredContent)],
-      structuredContent: structuredContent,
+      structuredContent: some structuredContent,
       isError: false,
     )
   else:
@@ -547,7 +547,7 @@ proc callNimFindTypeDefinition(
 
     McpCallToolResult(
       content: @[McpContentBlock(`type`: TextContent, text: $structuredContent)],
-      structuredContent: structuredContent,
+      structuredContent: some structuredContent,
       isError: false,
     )
   else:
@@ -577,7 +577,7 @@ proc initialize*(
     rootPath = getCurrentDir().pathToUri.uriToPath
 
   ls.mcpServerCapabilities = result.capabilities
-  ls.nimSuggestInit = ls.initNimsuggestInstances(rootPath)
+  ls.nimsuggestInit = ls.initNimsuggestInstances(rootPath)
 
 proc listTools*(
     ls: LanguageServer, params: McpListToolsParams

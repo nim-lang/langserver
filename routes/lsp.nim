@@ -112,7 +112,7 @@ proc initialize*(
     rootPath = ls.lspInitializeParams.getRootPath
 
   ls.lspServerCapabilities = result.capabilities
-  ls.nimSuggestInit = ls.initNimsuggestInstances(rootPath)
+  ls.nimsuggestInit = ls.initNimsuggestInstances(rootPath)
 
 proc toCompletionItem(suggest: Suggest): CompletionItem =
   with suggest:

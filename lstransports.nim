@@ -50,7 +50,7 @@ proc toJson*(
 func withoutNulls(n: JsonNode): JsonNode =
   ## Return a JObject or JArray without any null nodes.
   ## If a JNull node is passed in, it is returned as is.
-
+  doAssert not n.isNil  # not possible to know programmer intent: JNull? something else?
   doAssert n.kind in [JObject, JArray, JNull]
 
   case n.kind
