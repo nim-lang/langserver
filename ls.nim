@@ -10,7 +10,7 @@ import
   chronos/[threadsync, asyncproc],
   chronicles,
   json_serialization,
-  json_rpc/[servers/socketserver],
+  json_rpc/[errors, servers/socketserver],
   regex,
   stew/byteutils,
   ./protocol/[enums, types],
@@ -162,6 +162,8 @@ type
     nimsuggestInit*: Future[void].Raising([CancelledError, OSError])
     lastNimsuggest*: Future[Nimsuggest].Raising([CancelledError])
     childNimsuggestProcessesStopped*: bool
+    initialized*: bool
+      #Set once initialize has run. Until then routes can't rely on its state.
     isShutdown*: bool
     storageDir*: string
     cmdLineClientProcessId*: Option[int]
@@ -402,6 +404,13 @@ proc toPendingRequestStatus(pr: PendingRequest): PendingRequestStatus =
   result.name = pr.name
   result.projectFile = pr.projectFile.get("")
   result.state = $pr.state
+
+# https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#responseMessage
+proc checkInitialized*(ls: LanguageServer) {.raises: [ApplicationError].} =
+  if not ls.initialized:
+    raise (ref ApplicationError)(
+      code: ErrorCode.ServerNotInitialized.int, msg: "Server not initialized"
+    )
 
 proc getLspStatus*(ls: LanguageServer): NimLangServerStatus {.raises: [].} =
   result.lspPath = getAppFilename()
