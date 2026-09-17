@@ -8,7 +8,7 @@ import
   chronos,
   chronos/asyncproc,
   chronicles,
-  json_rpc/server,
+  json_rpc/[errors, server],
   json_serialization,
   regex,
   stew/byteutils,
@@ -26,7 +26,9 @@ proc getNphPath(): Option[string] {.raises: [OSError].} =
   else:
     some path
 
-#routes
+# Routes
+
+# https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#initialize
 proc initialize*(
     p: tuple[ls: LanguageServer, onExit: OnExitCallback], params: LspInitializeParams
 ): Future[LspInitializeResult] {.async: (raises: [OSError]).} =
@@ -113,6 +115,7 @@ proc initialize*(
 
   ls.lspServerCapabilities = result.capabilities
   ls.nimsuggestInit = ls.initNimsuggestInstances(rootPath)
+  ls.initialized = true
 
 proc toCompletionItem(suggest: Suggest): CompletionItem =
   with suggest:
@@ -127,8 +130,13 @@ proc toCompletionItem(suggest: Suggest): CompletionItem =
 proc completion*(
     ls: LanguageServer, params: CompletionParams, id: int
 ): Future[seq[CompletionItem]] {.
-    async: (raises: [CancelledError, OSError, IOError, RegexError, NimsuggestError])
+    async: (
+      raises: [
+        ApplicationError, CancelledError, OSError, IOError, RegexError, NimsuggestError
+      ]
+    )
 .} =
+  ls.checkInitialized()
   with (params.position, params.textDocument):
     asyncSpawn ls.addProjectFileToPendingRequest(id.uint, uri)
     let nimsuggest = await ls.tryGetNimsuggest(uri)
@@ -159,10 +167,12 @@ proc definition*(
 ): Future[seq[Location]] {.
     async: (
       raises: [
-        CancelledError, OSError, IOError, RegexError, AsyncProcessError, NimsuggestError
+        ApplicationError, CancelledError, OSError, IOError, RegexError,
+        AsyncProcessError, NimsuggestError,
       ]
     )
 .} =
+  ls.checkInitialized()
   with (params.position, params.textDocument):
     asyncSpawn ls.addProjectFileToPendingRequest(id.uint, uri)
     let config = ls.getWorkspaceConfiguration()
@@ -207,8 +217,13 @@ proc definition*(
 proc declaration*(
     ls: LanguageServer, params: TextDocumentPositionParams, id: int
 ): Future[seq[Location]] {.
-    async: (raises: [CancelledError, OSError, IOError, RegexError, NimsuggestError])
+    async: (
+      raises: [
+        ApplicationError, CancelledError, OSError, IOError, RegexError, NimsuggestError
+      ]
+    )
 .} =
+  ls.checkInitialized()
   with (params.position, params.textDocument):
     asyncSpawn ls.addProjectFileToPendingRequest(id.uint, uri)
     let ns = await ls.tryGetNimsuggest(uri)
@@ -254,8 +269,13 @@ proc fixIdentation(s: string, indent: int): string =
 proc expand*(
     ls: LanguageServer, params: ExpandTextDocumentPositionParams
 ): Future[ExpandResult] {.
-    async: (raises: [CancelledError, OSError, IOError, RegexError, NimsuggestError])
+    async: (
+      raises: [
+        ApplicationError, CancelledError, OSError, IOError, RegexError, NimsuggestError
+      ]
+    )
 .} =
+  ls.checkInitialized()
   with (params, params.position, params.textDocument):
     let
       lvl = level.get(-1)
@@ -281,20 +301,23 @@ proc expand*(
 
 proc status*(
     ls: LanguageServer, params: NimLangServerStatusParams
-): Future[NimLangServerStatus] {.async: (raises: []).} =
+): Future[NimLangServerStatus] {.async: (raises: [ApplicationError]).} =
+  ls.checkInitialized()
   debug "Received status request"
   ls.getLspStatus()
 
 proc extensionCapabilities*(
     ls: LanguageServer, _: JsonNode
-): Future[seq[string]] {.async: (raises: []).} =
+): Future[seq[string]] {.async: (raises: [ApplicationError]).} =
+  ls.checkInitialized()
   ls.extensionCapabilities.toSeq.mapIt($it)
 
 proc extensionSuggest*(
     ls: LanguageServer, params: SuggestParams
 ): Future[SuggestResult] {.
-    async: (raises: [CancelledError, KeyError, OSError, RegexError])
+    async: (raises: [ApplicationError, CancelledError, KeyError, OSError, RegexError])
 .} =
+  ls.checkInitialized()
   debug "[Extension Suggest]", params = params
   var projectFile = params.projectFile
   if projectFile != "" and projectFile notin ls.projectFiles:
@@ -334,8 +357,13 @@ proc extensionSuggest*(
 proc typeDefinition*(
     ls: LanguageServer, params: TextDocumentPositionParams, id: int
 ): Future[seq[Location]] {.
-    async: (raises: [CancelledError, OSError, IOError, RegexError, NimsuggestError])
+    async: (
+      raises: [
+        ApplicationError, CancelledError, OSError, IOError, RegexError, NimsuggestError
+      ]
+    )
 .} =
+  ls.checkInitialized()
   with (params.position, params.textDocument):
     asyncSpawn ls.addProjectFileToPendingRequest(id.uint, uri)
     let ns = await ls.tryGetNimSuggest(uri)
@@ -361,8 +389,13 @@ proc toSymbolInformation*(suggest: Suggest): SymbolInformation =
 proc documentSymbols*(
     ls: LanguageServer, params: DocumentSymbolParams, id: int
 ): Future[seq[SymbolInformation]] {.
-    async: (raises: [CancelledError, OSError, IOError, RegexError, NimsuggestError])
+    async: (
+      raises: [
+        ApplicationError, CancelledError, OSError, IOError, RegexError, NimsuggestError
+      ]
+    )
 .} =
+  ls.checkInitialized()
   let uri = params.textDocument.uri
   asyncSpawn ls.addProjectFileToPendingRequest(id.uint, uri)
   let ns = await ls.tryGetNimsuggest(uri)
@@ -423,11 +456,12 @@ proc hover*(
 ): Future[Option[Hover]] {.
     async: (
       raises: [
-        CancelledError, OSError, IOError, RegexError, AsyncProcessError,
-        AsyncStreamError, NimsuggestError,
+        ApplicationError, CancelledError, OSError, IOError, RegexError,
+        AsyncProcessError, AsyncStreamError, NimsuggestError,
       ]
     )
 .} =
+  ls.checkInitialized()
   with (params.position, params.textDocument):
     let config = ls.getWorkspaceConfiguration()
     asyncSpawn ls.addProjectFileToPendingRequest(id.uint, uri)
@@ -486,10 +520,12 @@ proc references*(
 ): Future[seq[Location]] {.
     async: (
       raises: [
-        CancelledError, OSError, IOError, RegexError, AsyncProcessError, NimsuggestError
+        ApplicationError, CancelledError, OSError, IOError, RegexError,
+        AsyncProcessError, NimsuggestError,
       ]
     )
 .} =
+  ls.checkInitialized()
   with (params.position, params.textDocument, params.context):
     let config = ls.getWorkspaceConfiguration()
     # `nim track` only works on files as saved on disk; it has no dirty-buffer
@@ -536,8 +572,13 @@ proc references*(
 proc prepareRename*(
     ls: LanguageServer, params: PrepareRenameParams, id: int
 ): Future[JsonNode] {.
-    async: (raises: [CancelledError, OSError, IOError, RegexError, NimsuggestError])
+    async: (
+      raises: [
+        ApplicationError, CancelledError, OSError, IOError, RegexError, NimsuggestError
+      ]
+    )
 .} =
+  ls.checkInitialized()
   with (params.position, params.textDocument):
     asyncSpawn ls.addProjectFileToPendingRequest(id.uint, uri)
     let nimsuggest = await ls.tryGetNimsuggest(uri)
@@ -562,11 +603,12 @@ proc rename*(
 ): Future[WorkspaceEdit] {.
     async: (
       raises: [
-        CancelledError, KeyError, OSError, IOError, RegexError, AsyncProcessError,
-        NimsuggestError,
+        ApplicationError, CancelledError, KeyError, OSError, IOError, RegexError,
+        AsyncProcessError, NimsuggestError,
       ]
     )
 .} =
+  ls.checkInitialized()
   # We reuse the references command as to not duplicate it  
   let references = await ls.references(
     ReferenceParams(
@@ -641,8 +683,13 @@ proc toInlayHint(suggest: SuggestInlayHint, configuration: NlsConfig): InlayHint
 proc inlayHint*(
     ls: LanguageServer, params: InlayHintParams, id: int
 ): Future[seq[InlayHint]] {.
-    async: (raises: [CancelledError, OSError, IOError, RegexError, NimsuggestError])
+    async: (
+      raises: [
+        ApplicationError, CancelledError, OSError, IOError, RegexError, NimsuggestError
+      ]
+    )
 .} =
+  ls.checkInitialized()
   debug "inlayHint received..."
   with (params.range, params.textDocument):
     asyncSpawn ls.addProjectFileToPendingRequest(id.uint, uri)
@@ -681,7 +728,10 @@ proc inlayHint*(
 
 proc codeAction*(
     ls: LanguageServer, params: CodeActionParams
-): Future[seq[CodeAction]] {.async: (raises: [CancelledError, OSError, RegexError]).} =
+): Future[seq[CodeAction]] {.
+    async: (raises: [ApplicationError, CancelledError, OSError, RegexError])
+.} =
+  ls.checkInitialized()
   let projectUri = await getProjectFile(params.textDocument.uri.uriToPath, ls)
   return
     seq[CodeAction] %* [
@@ -716,7 +766,8 @@ proc codeAction*(
 
 proc executeCommand*(
     ls: LanguageServer, params: ExecuteCommandParams
-): Future[JsonNode] {.async: (raises: [CancelledError]).} =
+): Future[JsonNode] {.async: (raises: [ApplicationError, CancelledError]).} =
+  ls.checkInitialized()
   let projectFile = params.arguments[0].getStr
   case params.command
   of RESTART_COMMAND:
@@ -764,8 +815,13 @@ proc toSignatureInformation(suggest: Suggest): SignatureInformation =
 proc signatureHelp*(
     ls: LanguageServer, params: SignatureHelpParams, id: int
 ): Future[Option[SignatureHelp]] {.
-    async: (raises: [CancelledError, OSError, IOError, RegexError, NimsuggestError])
+    async: (
+      raises: [
+        ApplicationError, CancelledError, OSError, IOError, RegexError, NimsuggestError
+      ]
+    )
 .} =
+  ls.checkInitialized()
   #TODO handle prev signature
   # if params.context.activeSignatureHelp.isSome:
   #   let prevSignature = params.context.activeSignatureHelp.get.signatures.get[params.context.activeSignatureHelp.get.activeSignature.get]
@@ -850,9 +906,14 @@ proc format*(
 proc formatting*(
     ls: LanguageServer, params: DocumentFormattingParams, id: int
 ): Future[seq[TextEdit]] {.
-    async:
-      (raises: [CancelledError, OSError, IOError, AsyncProcessError, AsyncStreamError])
+    async: (
+      raises: [
+        ApplicationError, CancelledError, OSError, IOError, AsyncProcessError,
+        AsyncStreamError,
+      ]
+    )
 .} =
+  ls.checkInitialized()
   debug "Received Formatting request"
   let nphPath = getNphPath()
   if nphPath.isNone:
@@ -871,7 +932,10 @@ proc formatting*(
 
 proc workspaceSymbol*(
     ls: LanguageServer, params: WorkspaceSymbolParams, id: int
-): Future[seq[SymbolInformation]] {.async: (raises: [CancelledError, NimsuggestError]).} =
+): Future[seq[SymbolInformation]] {.
+    async: (raises: [ApplicationError, CancelledError, NimsuggestError])
+.} =
+  ls.checkInitialized()
   if ls.lastNimsuggest != nil:
     let
       nimsuggest = await ls.lastNimsuggest
@@ -884,8 +948,13 @@ proc toDocumentHighlight(suggest: Suggest): DocumentHighlight =
 proc documentHighlight*(
     ls: LanguageServer, params: TextDocumentPositionParams, id: int
 ): Future[seq[DocumentHighlight]] {.
-    async: (raises: [CancelledError, OSError, IOError, RegexError, NimsuggestError])
+    async: (
+      raises: [
+        ApplicationError, CancelledError, OSError, IOError, RegexError, NimsuggestError
+      ]
+    )
 .} =
+  ls.checkInitialized()
   with (params.position, params.textDocument):
     asyncSpawn ls.addProjectFileToPendingRequest(id.uint, uri)
     let nimsuggest = await ls.tryGetNimsuggest(uri)
@@ -907,7 +976,8 @@ proc extractId(id: JsonNode): int {.raises: [ValueError].} =
 
 proc shutdown*(
     ls: LanguageServer, input: JsonNode
-): Future[JsonNode] {.async: (raises: []).} =
+): Future[JsonNode] {.async: (raises: [ApplicationError]).} =
+  ls.checkInitialized()
   debug "Shutting down"
   await ls.stopNimsuggestProcesses()
   ls.isShutdown = true
@@ -942,8 +1012,12 @@ proc startNimbleProcess(
 proc tasks*(
     ls: LanguageServer, conf: JsonNode
 ): Future[seq[NimbleTask]] {.
-    async: (raises: [CancelledError, OSError, AsyncProcessError, AsyncStreamError])
+    async: (
+      raises:
+        [ApplicationError, CancelledError, OSError, AsyncProcessError, AsyncStreamError]
+    )
 .} =
+  ls.checkInitialized()
   let rootPath: string = ls.lspInitializeParams.getRootPath
   debug "Received tasks ", rootPath = rootPath
   delEnv "NIMBLE_DIR"
@@ -963,9 +1037,13 @@ proc runTask*(
     ls: LanguageServer, params: RunTaskParams
 ): Future[RunTaskResult] {.
     async: (
-      raises: [CancelledError, ValueError, OSError, AsyncProcessError, AsyncStreamError]
+      raises: [
+        ApplicationError, CancelledError, ValueError, OSError, AsyncProcessError,
+        AsyncStreamError,
+      ]
     )
 .} =
+  ls.checkInitialized()
   let process = await ls.startNimbleProcess(params.command)
   let res = await process.waitForExit(InfiniteDuration)
   result.command = params.command
@@ -986,11 +1064,12 @@ proc listTests*(
 ): Future[ListTestsResult] {.
     async: (
       raises: [
-        CancelledError, ValueError, OSError, IOError, AsyncProcessError,
-        AsyncStreamError,
+        ApplicationError, CancelledError, ValueError, OSError, IOError,
+        AsyncProcessError, AsyncStreamError,
       ]
     )
 .} =
+  ls.checkInitialized()
   let config = ls.getWorkspaceConfiguration()
   let workspaceRoot = ls.lspInitializeParams.getRootPath
   let nimPath = await ls.getNimPath(config, workspaceRoot)
@@ -1009,11 +1088,12 @@ proc runTests*(
 ): Future[RunTestProjectResult] {.
     async: (
       raises: [
-        CancelledError, ValueError, OSError, IOError, AsyncProcessError,
-        AsyncStreamError,
+        ApplicationError, CancelledError, ValueError, OSError, IOError,
+        AsyncProcessError, AsyncStreamError,
       ]
     )
 .} =
+  ls.checkInitialized()
   let config = ls.getWorkspaceConfiguration()
   let workspaceRoot = ls.lspInitializeParams.getRootPath
   let nimPath = await ls.getNimPath(config, workspaceRoot)
@@ -1031,7 +1111,8 @@ proc runTests*(
 
 proc cancelTest*(
     ls: LanguageServer, params: JsonNode
-): Future[CancelTestResult] {.async: (raises: []).} =
+): Future[CancelTestResult] {.async: (raises: [ApplicationError]).} =
+  ls.checkInitialized()
   debug "Cancelling test"
   if ls.testRunProcess.isSome:
     #No need to cancel the runTests request. The client should handle it.
@@ -1044,14 +1125,16 @@ proc cancelTest*(
 #Notifications
 proc initialized*(
     ls: LanguageServer, _: JsonNode
-): Future[void] {.async: (raises: []).} =
+): Future[void] {.async: (raises: [ApplicationError]).} =
+  ls.checkInitialized()
   debug "Client initialized."
   maybeRegisterCapabilityDidChangeConfiguration(ls)
   await maybeRequestConfigurationFromClient(ls)
 
 proc cancelRequest*(
     ls: LanguageServer, params: CancelParams
-): Future[void] {.async: (raises: []).} =
+): Future[void] {.async: (raises: [ApplicationError]).} =
+  ls.checkInitialized()
   if params.id.isSome:
     let id = params.id.get.getInt.uint
     let pr = ls.pendingRequests.getOrDefault(id)
@@ -1062,12 +1145,16 @@ proc cancelRequest*(
         valuePtr.state = prsCancelled
         valuePtr.endTime = now()
 
-proc setTrace*(ls: LanguageServer, params: SetTraceParams) {.async: (raises: []).} =
+proc setTrace*(
+    ls: LanguageServer, params: SetTraceParams
+) {.async: (raises: [ApplicationError]).} =
+  ls.checkInitialized()
   debug "setTrace", value = params.value
 
 proc didChange*(
     ls: LanguageServer, params: DidChangeTextDocumentParams
-): Future[void] {.async: (raises: [IOError]).} =
+): Future[void] {.async: (raises: [ApplicationError, IOError]).} =
+  ls.checkInitialized()
   with params:
     let uri = textDocument.uri
     let info = ls.openFiles.getOrDefault(uri)
@@ -1088,9 +1175,14 @@ proc didChange*(
 proc willSaveWaitUntil*(
     ls: LanguageServer, params: WillSaveTextDocumentParams
 ): Future[seq[TextEdit]] {.
-    async:
-      (raises: [CancelledError, OSError, IOError, AsyncProcessError, AsyncStreamError])
+    async: (
+      raises: [
+        ApplicationError, CancelledError, OSError, IOError, AsyncProcessError,
+        AsyncStreamError,
+      ]
+    )
 .} =
+  ls.checkInitialized()
   debug "Received willSaveWaitUntil request"
 
   let
@@ -1112,7 +1204,10 @@ proc willSaveWaitUntil*(
 
 proc didSave*(
     ls: LanguageServer, params: DidSaveTextDocumentParams
-): Future[void] {.async: (raises: [CancelledError, OSError, IOError, RegexError]).} =
+): Future[void] {.
+    async: (raises: [ApplicationError, CancelledError, OSError, IOError, RegexError])
+.} =
+  ls.checkInitialized()
   let
     uri = params.textDocument.uri
     config = ls.getWorkspaceConfiguration()
@@ -1150,18 +1245,23 @@ proc didSave*(
 
 proc didClose*(
     ls: LanguageServer, params: DidCloseTextDocumentParams
-): Future[void] {.async: (raises: []).} =
+): Future[void] {.async: (raises: [ApplicationError]).} =
+  ls.checkInitialized()
   await ls.didCloseFile(params.textDocument.uri)
 
 proc didOpen*(
     ls: LanguageServer, params: DidOpenTextDocumentParams
-): Future[void] {.async: (raises: [CancelledError, OSError, IOError, RegexError]).} =
+): Future[void] {.
+    async: (raises: [ApplicationError, CancelledError, OSError, IOError, RegexError])
+.} =
+  ls.checkInitialized()
   await ls.nimsuggestInit
   await ls.didOpenFile(params.textDocument)
 
 proc didChangeConfiguration*(
     ls: LanguageServer, conf: JsonNode
-): Future[void] {.async: (raises: [CancelledError]).} =
+): Future[void] {.async: (raises: [ApplicationError, CancelledError]).} =
+  ls.checkInitialized()
   debug "Changed configuration: ", conf = $conf
   if ls.usePullConfigurationModel:
     await ls.maybeRequestConfigurationFromClient()

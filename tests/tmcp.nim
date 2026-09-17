@@ -1,6 +1,7 @@
 import
   std/[json, jsonutils, options, os, sequtils, strutils, tables],
   chronos,
+  json_rpc/errors,
   unittest2,
   ../[nimlangserver, ls, lstransports, utils],
   ../protocol/types,
@@ -79,6 +80,8 @@ proc callRpc(
 
     let responseJson = parseJson(response)
     if "id" in responseJson and responseJson["id"].getInt() == id:
+      if "error" in responseJson:
+        raise newException(JsonRpcError, $responseJson["error"])
       return responseJson["result"]
 
 suite "MCP routes":
@@ -146,7 +149,16 @@ suite "MCP routes":
     check unknown{"content"}[0]{"text"}.getStr == "Unknown tool"
     check "structuredContent" notin unknown
 
-  test "listTools returns all MCP tools":
+  test "tools/call is refused until initialize":
+    # callTool awaits nimsuggestInit, which only initialize assigns.
+    let
+      emptyDir = getTempDir() / "nimlangserver-mcp-no-project"
+      savedDir = getCurrentDir()
+    createDir(emptyDir)
+    setCurrentDir(emptyDir)
+    defer:
+      setCurrentDir(savedDir)
+
     let
       rpcCmdParams = CommandLineParams(
         mode: some ServerMode.mcp,
@@ -159,6 +171,62 @@ suite "MCP routes":
     defer:
       waitFor rpcClient.close()
       waitFor rpcLs.onExit()
+
+    try:
+      discard waitFor rpcClient.callRpc(
+        "tools/call", %*{"name": "nimCheckProject", "arguments": {}}
+      )
+      checkpoint "tools/call was answered before initialize"
+      fail()
+    except JsonRpcError as err:
+      check "-32002" in err.msg
+
+    discard waitFor rpcClient.callRpc(
+      "initialize",
+      %*{
+        "protocolVersion": McpProtocolVersion,
+        "capabilities": {},
+        "clientInfo": {"name": "nimlangserver tests", "version": "1"},
+      },
+    )
+    let checkProject = waitFor rpcClient.callRpc(
+      "tools/call", %*{"name": "nimCheckProject", "arguments": {}}
+    )
+    check checkProject{"content"}[0]{"text"}.getStr ==
+      "Tool works only in Nimble projects"
+
+  test "listTools returns all MCP tools":
+    # initialize is required first; from a directory with no nimble project it
+    # does not start a nimsuggest.
+    let
+      emptyDir = getTempDir() / "nimlangserver-mcp-no-project"
+      savedDir = getCurrentDir()
+    createDir(emptyDir)
+    setCurrentDir(emptyDir)
+    defer:
+      setCurrentDir(savedDir)
+
+    let
+      rpcCmdParams = CommandLineParams(
+        mode: some ServerMode.mcp,
+        transport: some TransportMode.socket,
+        port: getNextFreePort(),
+      )
+      rpcLs = main(rpcCmdParams)
+      rpcClient = waitFor newMcpSocketClient(rpcCmdParams.port)
+
+    defer:
+      waitFor rpcClient.close()
+      waitFor rpcLs.onExit()
+
+    discard waitFor rpcClient.callRpc(
+      "initialize",
+      %*{
+        "protocolVersion": McpProtocolVersion,
+        "capabilities": {},
+        "clientInfo": {"name": "nimlangserver tests", "version": "1"},
+      },
+    )
 
     let listToolsResult =
       (waitFor rpcClient.callRpc("tools/list", %*{})).jsonTo(McpListToolsResult)
