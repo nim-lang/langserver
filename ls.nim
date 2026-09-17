@@ -438,6 +438,16 @@ proc sendStatusChanged*(ls: LanguageServer) {.raises: [].} =
     ls.notify("extension/statusUpdate", status)
     ls.lastStatusSent = status
 
+proc waitProjectFile*(file: NlsFileInfo): Future[string] {.
+    async: (raises: [CancelledError, OSError, RegexError])
+.} =
+  ## Wait without allowing a cancelled request to cancel the shared future.
+  await file.projectFile.join()
+  try:
+    file.projectFile.read()
+  except FuturePendingError:
+    raiseAssert "project file future remained pending after join"
+
 proc addProjectFileToPendingRequest*(
     ls: LanguageServer, id: uint, uri: string
 ) {.async: (raises: []).} =
@@ -446,7 +456,7 @@ proc addProjectFileToPendingRequest*(
       var projectFile = uri.uriToPath()
       if projectFile notin ls.projectFiles:
         if uri in ls.openFiles:
-          projectFile = await ls.openFiles[uri].projectFile
+          projectFile = await ls.openFiles[uri].waitProjectFile()
 
       ls.pendingRequests[id].projectFile = some projectFile
       ls.sendStatusChanged
@@ -837,7 +847,7 @@ proc getNimsuggestInner(
     debug "File is no longer open", uri = uri
     return nil
 
-  let projectFile = await file.projectFile
+  let projectFile = await file.waitProjectFile()
   if not ls.projectFiles.hasKey(projectFile):
     debug "Creating new nimsuggest instance", uri = uri, projectFile = projectFile
     await ls.createOrRestartNimsuggest(projectFile, uri)
@@ -915,6 +925,18 @@ proc getProjectFile*(
   fileUri: string, ls: LanguageServer
 ): Future[string] {.async: (raises: [CancelledError, OSError, RegexError]).}
 
+proc getProjectFileAfterStartup(
+    ls: LanguageServer, fileUri: string
+): Future[string] {.
+    async: (raises: [CancelledError, OSError, RegexError])
+.} =
+  ## Resolve files after Nimble entry-point startup has completed. Otherwise
+  ## the single-process limit can make auto-guessing fall back to the opened
+  ## file while the intended entry-point nimsuggest is still compiling.
+  if not ls.nimsuggestInit.isNil:
+    await ls.nimsuggestInit.join()
+  await getProjectFile(fileUri, ls)
+
 proc didOpenFile*(
     ls: LanguageServer, textDocument: TextDocumentItem
 ): Future[void] {.async: (raises: [CancelledError, OSError, IOError, RegexError]).} =
@@ -922,7 +944,7 @@ proc didOpenFile*(
     debug "New document opened for URI:", uri = uri
     let
       file = open(ls.uriStorageLocation(uri), fmWrite)
-      projectFileFuture = getProjectFile(uriToPath(uri), ls)
+      projectFileFuture = ls.getProjectFileAfterStartup(uriToPath(uri))
 
     ls.openFiles[uri] = NlsFileInfo(
       projectFile: projectFileFuture,
@@ -941,7 +963,10 @@ proc didOpenFile*(
         file.writeLine line
     file.close()
 
-    let projectFile = await projectFileFuture
+    let openFile = ls.openFiles.getOrDefault(uri)
+    if openFile == nil:
+      return
+    let projectFile = await openFile.waitProjectFile()
     debug "Document associated with the following projectFile",
       uri = uri, projectFile = projectFile
     if not ls.projectFiles.hasKey(projectFile):
@@ -1333,11 +1358,6 @@ proc getProjectFile*(
       if fileExists(result):
         trace "getProjectFile?",
           project = result, uri = fileUri, matchedRegex = mapping.fileRegex
-        # An explicitly mapped root is treated like a nimble entry point, so
-        # the idle timeout does not stop it and force a full recompile on the
-        # next request.
-        if result notin ls.entryPoints:
-          ls.entryPoints.add result
         return result
     else:
       trace "getProjectFile does not match",
