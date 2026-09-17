@@ -1,21 +1,14 @@
+{.push raises: [], gcsafe.}
+
 import
-  osproc,
-  strutils,
-  strformat,
-  times,
-  deques,
-  sets,
-  os,
-  sequtils,
-  streams,
-  protocol/enums,
-  ./utils,
-  chronicles,
-  protocol/types,
-  std/options,
+  std/[osproc, strutils, strformat, times, deques, sets, os, sequtils, streams, options],
   chronos,
   chronos/asyncproc,
-  stew/[byteutils]
+  chronicles,
+  stew/byteutils,
+  ./protocol/enums,
+  ./utils,
+  ./protocol/types
 
 const REQUEST_TIMEOUT* = 120000
 const NIMSUGGEST_STARTUP_TIMEOUT* = 30000
@@ -46,8 +39,12 @@ type
     ideType
     ideExpand
 
-  NimsuggestCallback* = proc(self: Nimsuggest): void {.gcsafe, raises: [].}
-  ProjectCallback* = proc(self: Project): void {.gcsafe, raises: [].}
+  NimsuggestError* = object of CatchableError
+    ## A nimsuggest request failed: the connection dropped, nimsuggest crashed,
+    ## or its output could not be parsed.
+
+  NimsuggestCallback* = proc(self: Nimsuggest): Future[void] {.async: (raises: []).}
+  ProjectCallback* = proc(self: Project): Future[void] {.async: (raises: []).}
 
   Suggest* = ref object
     section*: IdeCmd
@@ -71,7 +68,7 @@ type
 
   SuggestCall* = ref object
     commandString: string
-    future: Future[seq[Suggest]]
+    future: Future[seq[Suggest]].Raising([CancelledError, NimsuggestError])
     command: string
 
   SuggestInlayHintKind* = enum
@@ -109,7 +106,7 @@ type
   NimSuggest* = ref NimsuggestImpl
 
   Project* = ref object
-    ns*: Future[NimSuggest]
+    ns*: Future[NimSuggest].Raising([CancelledError])
     file*: string
     process*: AsyncProcessRef
     errorCallback*: Option[ProjectCallback]
@@ -222,7 +219,7 @@ proc parseQualifiedPath*(input: string): seq[string] =
   if item != "":
     result.add item
 
-proc parseSuggestDef*(line: string): Option[Suggest] =
+proc parseSuggestDef*(line: string): Option[Suggest] {.raises: [ValueError].} =
   let tokens = line.split('\t')
   if tokens.len < 8:
     error "Failed to parse: ", line = line
@@ -242,7 +239,7 @@ proc parseSuggestDef*(line: string): Option[Suggest] =
     sug.endCol = parseInt(tokens[10])
   some sug
 
-proc parseSuggestInlayHint*(line: string): SuggestInlayHint =
+proc parseSuggestInlayHint*(line: string): SuggestInlayHint {.raises: [ValueError].} =
   let tokens = line.split('\t')
   if tokens.len < 8:
     error "Failed to parse: ", line = line
@@ -261,27 +258,34 @@ proc parseSuggestInlayHint*(line: string): SuggestInlayHint =
 proc name*(sug: Suggest): string =
   return sug.qualifiedPath[^1]
 
-proc markFailed(self: Project, errMessage: string) {.raises: [].} =
+proc markFailed(
+    self: Project, errMessage: string
+): Future[void] {.async: (raises: []).} =
   if self.failed:
     return
   self.failed = true
   self.errorMessage = errMessage
   if self.errorCallback.isSome:
-    self.errorCallback.get()(self)
+    await self.errorCallback.get()(self)
 
 proc stop*(self: Project) =
   debug "Stopping nimsuggest for ", root = self.file
+  self.errorCallback = none(ProjectCallback)
   if not self.process.isNil:
     asyncSpawn shutdownChildProcess(self.process)
 
-proc doWithTimeout*[T](fut: Future[T], timeout: int, s: string): owned(Future[bool]) =
-  var retFuture = newFuture[bool]("asyncdispatch.`doWithTimeout`")
+# XXX remove
+proc doWithTimeout*[T](
+    fut: Future[T], timeout: int, s: string
+): Future[bool].Raising([CancelledError]) =
+  var retFuture =
+    Future[bool].Raising([CancelledError]).init("asyncdispatch.`doWithTimeout`")
   var timeoutFuture = sleepAsync(timeout)
-  fut.addCallback do():
+  fut.addCallback do(data: pointer):
     if not retFuture.finished:
       retFuture.complete(true)
 
-  timeoutFuture.addCallback do():
+  timeoutFuture.addCallback do(data: pointer):
     if not retFuture.finished:
       retFuture.complete(false)
 
@@ -289,7 +293,7 @@ proc doWithTimeout*[T](fut: Future[T], timeout: int, s: string): owned(Future[bo
 
 proc detectNimsuggestVersion(
     root: string, nimsuggestPath: string, workingDir: string
-): int {.gcsafe.} =
+): int {.gcsafe, raises: [OSError, IOError, ValueError].} =
   var process = startProcess(
     command = nimsuggestPath,
     workingDir = workingDir,
@@ -309,7 +313,7 @@ proc detectNimsuggestVersion(
 
 proc getNimsuggestCapabilities*(
     nimsuggestPath: string
-): set[NimSuggestCapability] {.gcsafe.} =
+): set[NimSuggestCapability] {.gcsafe, raises: [OSError, IOError, ValueError].} =
   proc parseCapability(c: string): Option[NimSuggestCapability] =
     debug "Parsing nimsuggest capability", capability = c
     try:
@@ -331,10 +335,16 @@ proc getNimsuggestCapabilities*(
       if cap.isSome:
         result.incl(cap.get)
 
-proc logNsError(project: Project) {.async.} =
-  let err = string.fromBytes(project.process.stderrStream.read().await)
+proc logNsError(project: Project) {.async: (raises: []).} =
+  var err: string
+  try:
+    err = string.fromBytes(await project.process.stderrStream.read())
+  except CancelledError:
+    return
+  except AsyncStreamError as exc:
+    err = exc.msg
   error "NimSuggest Error (stderr)", err = err
-  project.markFailed(err)
+  await project.markFailed(err)
 
 proc createNimsuggest*(
     root: string,
@@ -346,9 +356,16 @@ proc createNimsuggest*(
     workingDir = getCurrentDir(),
     enableLog: bool = false,
     enableExceptionInlayHints: bool = false,
-): Future[Project] {.async.} =
+): Future[Project] {.
+    async: (
+      raises: [
+        CancelledError, AsyncProcessError, AsyncStreamError, OSError, IOError,
+        ValueError,
+      ]
+    )
+.} =
   result = Project(file: root)
-  result.ns = newFuture[NimSuggest]()
+  result.ns = Future[NimSuggest].Raising([CancelledError]).init("createNimsuggest")
   result.errorCallback = some errorCallback
   let isNimble = root.endsWith(".nimble")
   let isNimScript = root.endsWith(".nims") or isNimble
@@ -405,31 +422,43 @@ proc createNimsuggest*(
       error "Failed to parse nimsuggest port", portLine = portLine
       let nextLine = await result.process.stdoutStream.readLine(sep = "\n")
       error "Nimsuggest nextLine", nextLine = nextLine
-      result.markFailed "Failed to parse nimsuggest port"
+      await result.markFailed "Failed to parse nimsuggest port"
     result.ns.complete(ns)
   else:
     error "Unable to start nimsuggest. Unable to find binary on the $PATH",
       nimsuggestPath = nimsuggestPath
-    result.markFailed fmt "Unable to start nimsuggest. `{nimsuggestPath}` is not present on the PATH"
+    await result.markFailed fmt "Unable to start nimsuggest. `{nimsuggestPath}` is not present on the PATH"
 
-proc createNimsuggest*(root: string): Future[Project] {.gcsafe.} =
+proc createNimsuggest*(root: string): Future[Project] {.gcsafe, raises: [OSError].} =
   result = createNimsuggest(
     root,
     "nimsuggest",
     "",
     REQUEST_TIMEOUT,
-    proc(ns: Nimsuggest) =
+    proc(ns: Nimsuggest) {.async: (raises: []).} =
       discard,
-    proc(pr: Project) =
+    proc(pr: Project) {.async: (raises: []).} =
       discard,
   )
+
+proc watchRequestTimeout(
+    self: Nimsuggest, req: SuggestCall
+): Future[void] {.async: (raises: []).} =
+  let inTime =
+    try:
+      await doWithTimeout(req.future, self.timeout, fmt "running {req.commandString}")
+    except CatchableError:
+      return
+  if not inTime:
+    debug "Calling restart"
+    await self.timeoutCallback(self)
 
 proc toString*(bytes: openarray[byte]): string =
   result = newString(bytes.len)
   if bytes.len > 0:
     copyMem(result[0].addr, bytes[0].unsafeAddr, bytes.len)
 
-proc processQueue(self: Nimsuggest): Future[void] {.async.} =
+proc processQueue(self: Nimsuggest): Future[void] {.async: (raises: []).} =
   debug "processQueue", size = self.requestQueue.len
   while self.requestQueue.len != 0:
     let req = self.requestQueue.popFirst
@@ -448,53 +477,59 @@ proc processQueue(self: Nimsuggest): Future[void] {.async.} =
 
         if not self.timeoutCallback.isNil:
           debug "timeoutCallback is set", timeout = self.timeout
-          doWithTimeout(req.future, self.timeout, fmt "running {req.commandString}").addCallback do(
-            f: Future[bool]
-          ):
-            if not f.failed and not f.read():
-              debug "Calling restart"
-              self.timeoutCallback(self)
-        let ta = initTAddress(&"127.0.0.1:{self.port}")
-        let transport = await ta.connect()
-        discard await transport.write(req.commandString & "\c\L")
+          asyncSpawn self.watchRequestTimeout(req)
+        var transport: StreamTransport
+        try:
+          let ta = initTAddress(&"127.0.0.1:{self.port}")
+          transport = await ta.connect()
+          discard await transport.write(req.commandString & "\c\L")
 
-        const bufferSize = 1024 * 1024 * 4
-        var buffer: seq[byte] = newSeq[byte](bufferSize)
+          const bufferSize = 1024 * 1024 * 4
+          var buffer: seq[byte] = newSeq[byte](bufferSize)
 
-        var data = await transport.read()
-        let content = data.toString()
+          var data = await transport.read()
+          let content = data.toString()
 
-        for lineStr in content.splitLines:
-          if lineStr != "":
-            case req.command
-            of "known":
-              let sug = Suggest()
-              sug.section = ideKnown
-              sug.forth = lineStr
-              res.add sug
-            of "inlayHints":
-              res.add Suggest(inlayHintInfo: parseSuggestInlayHint(lineStr))
-            else:
-              let sug = parseSuggestDef(lineStr)
-              if sug.isSome:
-                res.add sug.get
+          for lineStr in content.splitLines:
+            if lineStr != "":
+              case req.command
+              of "known":
+                let sug = Suggest()
+                sug.section = ideKnown
+                sug.forth = lineStr
+                res.add sug
+              of "inlayHints":
+                res.add Suggest(inlayHintInfo: parseSuggestInlayHint(lineStr))
+              else:
+                let sug = parseSuggestDef(lineStr)
+                if sug.isSome:
+                  res.add sug.get
 
-        if (content == ""):
-          self.project.markFailed "Server crashed/socket closed."
-          debug "Server socket closed"
+          if (content == ""):
+            await self.project.markFailed "Server crashed/socket closed."
+            debug "Server socket closed"
+            if not req.future.finished:
+              debug "Call cancelled before sending error", command = req.command
+              req.future.fail newException(
+                NimsuggestError, "Server crashed/socket closed."
+              )
           if not req.future.finished:
-            debug "Call cancelled before sending error", command = req.command
-            req.future.fail newException(
-              CatchableError, "Server crashed/socket closed."
-            )
-        if not req.future.finished:
-          debug "Sending result(s)", length = res.len
-          req.future.complete res
-          self.successfullCall = true
-          transport.close()
-        else:
-          debug "Call was cancelled before sending the result", command = req.command
-          transport.close()
+            debug "Sending result(s)", length = res.len
+            req.future.complete res
+            self.successfullCall = true
+            transport.close()
+          else:
+            debug "Call was cancelled before sending the result", command = req.command
+            transport.close()
+        except CancelledError, TransportError, ValueError:
+          let exc = getCurrentException()
+          # Fail this request and keep draining the queue: letting the error
+          # escape would leave `req.future` pending and `processing` stuck.
+          error "Nimsuggest call failed", command = req.command, err = exc.msg
+          if not transport.isNil:
+            transport.close()
+          if not req.future.finished:
+            req.future.fail (ref NimsuggestError)(msg: exc.msg, parent: exc)
   self.processing = false
   self.project.lastCmdDate = some(now())
 
@@ -506,8 +541,10 @@ proc call*(
     line: int,
     column: int,
     tag = "",
-): Future[seq[Suggest]] =
-  result = Future[seq[Suggest]]()
+): Future[seq[Suggest]].Raising([CancelledError, NimsuggestError]) =
+  result = Future[seq[Suggest]].Raising([CancelledError, NimsuggestError]).init(
+      "nimsuggest.call"
+    )
   let commandString =
     if dirtyFile != "":
       fmt "{command} \"{file}\";\"{dirtyFile}\":{line}:{column}{tag}"
@@ -520,20 +557,24 @@ proc call*(
 
   if not self.processing:
     self.processing = true
-    traceAsyncErrors processQueue(self)
+    asyncSpawn processQueue(self)
 
 template createFullCommand(command: untyped) {.dirty.} =
   proc command*(
       self: Nimsuggest, file: string, dirtyfile = "", line: int, col: int, tag = ""
-  ): Future[seq[Suggest]] =
+  ): Future[seq[Suggest]].Raising([CancelledError, NimsuggestError]) =
     return self.call(astToStr(command), file, dirtyfile, line, col, tag)
 
 template createFileOnlyCommand(command: untyped) {.dirty.} =
-  proc command*(self: Nimsuggest, file: string, dirtyfile = ""): Future[seq[Suggest]] =
+  proc command*(
+      self: Nimsuggest, file: string, dirtyfile = ""
+  ): Future[seq[Suggest]].Raising([CancelledError, NimsuggestError]) =
     return self.call(astToStr(command), file, dirtyfile, 0, 0)
 
 template createGlobalCommand(command: untyped) {.dirty.} =
-  proc command*(self: Nimsuggest): Future[seq[Suggest]] =
+  proc command*(
+      self: Nimsuggest
+  ): Future[seq[Suggest]].Raising([CancelledError, NimsuggestError]) =
     return self.call(astToStr(command), "-", "", 0, 0)
 
 template createRangeCommand(command: untyped) {.dirty.} =
@@ -543,7 +584,7 @@ template createRangeCommand(command: untyped) {.dirty.} =
       dirtyfile = "",
       startLine, startCol, endLine, endCol: int,
       extra: string,
-  ): Future[seq[Suggest]] =
+  ): Future[seq[Suggest]].Raising([CancelledError, NimsuggestError]) =
     return self.call(
       astToStr(command),
       file,
@@ -573,16 +614,24 @@ createRangeCommand(inlayHints)
 
 proc `mod`*(
     nimsuggest: Nimsuggest, file: string, dirtyfile = ""
-): Future[seq[Suggest]] =
+): Future[seq[Suggest]].Raising([CancelledError, NimsuggestError]) =
   return nimsuggest.call("ideMod", file, dirtyfile, 0, 0)
 
-proc isKnown*(nimsuggest: Nimsuggest, filePath: string): Future[bool] {.async.} =
-  let res = await withTimeout(nimsuggest.known(filePath))
-  if res.isNone:
+proc isKnown*(
+    nimsuggest: Nimsuggest, filePath: string
+): Future[bool] {.async: (raises: [CancelledError]).} =
+  let fut = nimsuggest.known(filePath)
+  if not await withTimeout(fut):
     debug "Timeout reached running [isKnown], assuming the file is not known",
       file = filePath
     return
-  let sug = res.get()
+  let sug =
+    try:
+      await fut
+    except NimsuggestError as err:
+      debug "Failed running [isKnown], assuming the file is not known",
+        file = filePath, err = err.msg
+      return false
   if sug.len == 0:
     return false
   debug "isKnown", filePath = filePath, sug = sug[0].forth

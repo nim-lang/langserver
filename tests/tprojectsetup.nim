@@ -1,18 +1,15 @@
-import ../[nimlangserver, ls, lstransports, utils]
-import ../protocol/[enums, types]
 import
-  std/
-    [
-      options, json, os, jsonutils, sequtils, strutils, sugar, strformat
-    ]
-import json_rpc/[rpcclient]
-import chronicles
-import lspsocketclient
-import testhelpers
-import unittest2
+  std/[options, json, os, jsonutils, sequtils, strutils, sugar, strformat],
+  json_rpc/[rpcclient],
+  chronicles,
+  unittest2,
+  ../[nimlangserver, ls, lstransports, utils],
+  ../protocol/[enums, types],
+  ./[lspsocketclient, testhelpers]
 
 suite "nimble setup":
-  let cmdParams = CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
+  let cmdParams =
+    CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
   let ls = main(cmdParams) #we could accesss to the ls here to test against its state
   let client = newLspSocketClient()
   waitFor client.connect("localhost", cmdParams.port)
@@ -34,9 +31,9 @@ suite "nimble setup":
           {"window": {"workDoneProgress": true}, "workspace": {"configuration": true}},
       }
     discard waitFor client.initialize(initParams)
-   
+
     check waitFor client.waitForNotificationMessage(
-      fmt"Nimsuggest initialized for {entryPoint}",
+      fmt"Nimsuggest initialized for {entryPoint}"
     )
 
     let completionParams =
@@ -89,7 +86,8 @@ suite "nimble setup":
     check cached.srcDir == info.srcDir
 
 suite "Project Mapping":
-  let cmdParams = CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
+  let cmdParams =
+    CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
   let ls = main(cmdParams) #we could accesss to the ls here to test against its state
   let client = newLspSocketClient()
   waitFor client.connect("localhost", cmdParams.port)
@@ -125,4 +123,3 @@ suite "Project Mapping":
     let expectedProjectFile = nonimbleProject
 
     check projectFile == expectedProjectFile
-

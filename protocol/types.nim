@@ -1,6 +1,4 @@
-import json
-import options
-import tables
+import std/[json, options, tables]
 
 type
   OptionalSeq*[T] = Option[seq[T]]
@@ -694,9 +692,10 @@ type
     of TextContent:
       text*: string
 
+  # https://modelcontextprotocol.io/specification/2026-07-28/schema#calltoolresult
   McpCallToolResult* = ref object of RootObj
     content*: seq[McpContentBlock]
-    structuredContent*: JsonNode
+    structuredContent*: OptionalNode
     isError*: bool
 
   McpToolsOptions* = object

@@ -1,8 +1,13 @@
-import json_rpc/[servers/socketserver, private/jrpc_sys, jsonmarshal, rpcclient, router]
-import chronicles, chronos
-import std/[syncio, os, json, strutils, strformat, streams, oids, sequtils, times]
-import ls, utils
-import protocol/types, chronos/threadsync
+{.push raises: [], gcsafe.}
+
+import
+  std/[syncio, os, json, strutils, strformat, streams, oids, sequtils, times],
+  json_rpc/[servers/socketserver, private/jrpc_sys, jsonmarshal, rpcclient, router],
+  chronos,
+  chronos/threadsync,
+  chronicles,
+  ./[ls, utils],
+  ./protocol/types
 
 type
   LspClientResponse* = object
@@ -19,7 +24,7 @@ proc readValue*(r: var JsonReader, val: var OptionalNode) =
   try:
     discard r.tokKind()
     val = some r.parseJsonNode()
-  except CatchableError:
+  except IOError, SerializationError:
     discard #None
 
 proc writeValue*(w: var JsonWriter, value: OptionalNode) {.gcsafe, raises: [IOError].} =
@@ -30,7 +35,9 @@ proc writeValue*(w: var JsonWriter, value: OptionalNode) {.gcsafe, raises: [IOEr
     else:
       write w.stream, $(value.get)
 
-proc toJson*(params: RequestParamsRx): JsonNode =
+proc toJson*(
+    params: RequestParamsRx
+): JsonNode {.raises: [IOError, OSError, ValueError].} =
   if params.kind == rpNamed:
     result = newJObject()
     for np in params.named:
@@ -43,7 +50,7 @@ proc toJson*(params: RequestParamsRx): JsonNode =
 func withoutNulls(n: JsonNode): JsonNode =
   ## Return a JObject or JArray without any null nodes.
   ## If a JNull node is passed in, it is returned as is.
-
+  doAssert not n.isNil # not possible to know programmer intent: JNull? something else?
   doAssert n.kind in [JObject, JArray, JNull]
 
   case n.kind
@@ -75,7 +82,7 @@ func withoutNulls(n: JsonNode): JsonNode =
     # This never happens because of the assertion above
     discard
 
-proc wrapRpc*[T](fn: proc(params: T): Future[auto] {.gcsafe, raises: [].}): Rpc =
+proc wrapRpc*[T, F](fn: proc(params: T): F {.gcsafe, raises: [].}): Rpc =
   return proc(params: RequestParamsRx): Future[JsonString] {.gcsafe, async.} =
     var val = params.to(T)
     when typeof(fn(val)) is Future[void]: #Notification
@@ -86,9 +93,7 @@ proc wrapRpc*[T](fn: proc(params: T): Future[auto] {.gcsafe, raises: [].}): Rpc 
       let res = await fn(val)
       return JsonString($((%*res).withoutNulls))
 
-proc wrapRpc*[T](
-    fn: proc(params: T, id: int): Future[auto] {.gcsafe, raises: [].}
-): Rpc =
+proc wrapRpc*[T, F](fn: proc(params: T, id: int): F {.gcsafe, raises: [].}): Rpc =
   return proc(params: RequestParamsRx): Future[JsonString] {.gcsafe, async.} =
     var val = params.to(T)
     var idRequest = 0
@@ -121,11 +126,13 @@ proc addRpcToCancellable*(ls: LanguageServer, rpc: Rpc): Rpc =
     except KeyError as ex:
       error "IdRequest not found in the request params"
       writeStackTrace(ex)
-    except Exception as ex:
+    except CatchableError as ex:
       error "Error adding request to cancellable requests"
       writeStackTrace(ex)
 
-proc processContentLength*(inputStream: FileStream): string =
+proc processContentLength*(
+    inputStream: FileStream
+): string {.raises: [IOError, OSError, ValueError].} =
   result = inputStream.readLine()
   if result.startsWith(CONTENT_LENGTH):
     let parts = result.split(" ")
@@ -153,11 +160,14 @@ proc processContentLength*(
   except TransportError as ex:
     if error:
       error "Error reading content length", msg = ex.msg
-  except CatchableError as ex:
+  except CancelledError, ValueError:
+    let ex = getCurrentException()
     if error:
       error "Error reading content length", msg = ex.msg
 
-proc readLspStdin*(ctx: ptr ReadStdinContext) {.thread.} =
+proc readLspStdin*(
+    ctx: ptr ReadStdinContext
+) {.thread, raises: [IOError, OSError, ValueError].} =
   let inputStream = newFileStream(stdin)
   while true:
     let str = processContentLength(inputStream) & CRLF
@@ -166,7 +176,7 @@ proc readLspStdin*(ctx: ptr ReadStdinContext) {.thread.} =
     discard ctx.onStdReadSignal.fireSync()
     discard ctx.onMainReadSignal.waitSync()
 
-proc readMcpStdin*(ctx: ptr ReadStdinContext) {.thread.} =
+proc readMcpStdin*(ctx: ptr ReadStdinContext) {.thread, raises: [IOError, OSError].} =
   let inputStream = newFileStream(stdin)
   while true:
     let str = inputStream.readLine()
@@ -178,6 +188,14 @@ proc readMcpStdin*(ctx: ptr ReadStdinContext) {.thread.} =
 proc wrapContentWithContentLength*(content: string): string =
   let contentLength = content.len + 1
   &"{CONTENT_LENGTH}{contentLength}{CRLF}{CRLF}{content}\n"
+
+proc writeToSocket(
+    ls: LanguageServer, res: string
+): Future[void] {.async: (raises: []).} =
+  try:
+    discard await ls.socketTransport.write(res)
+  except CatchableError as ex:
+    error "Error writing to the socket", msg = ex.msg
 
 proc writeOutput*(ls: LanguageServer, content: JsonNode) =
   let res =
@@ -196,11 +214,14 @@ proc writeOutput*(ls: LanguageServer, content: JsonNode) =
       ls.outStream.write(res)
       ls.outStream.flush()
     of socket:
-      discard waitFor ls.socketTransport.write(res)
-  except CatchableError as ex:
+      asyncSpawn ls.writeToSocket(res)
+  except IOError, OSError, TransportError, CancelledError:
+    let ex = getCurrentException()
     error "Error writing output", msg = ex.msg
 
-proc runRpc(ls: LanguageServer, req: RequestRx, rpc: RpcProc): Future[void] {.async.} =
+proc runRpc(
+    ls: LanguageServer, req: RequestRx, rpc: RpcProc
+): Future[void] {.async: (raises: []).} =
   try:
     let res = await rpc(req.params)
     if res.string in ["", "{}"]:
@@ -268,12 +289,13 @@ proc processMessage(ls: LanguageServer, message: string) {.raises: [].} =
   except JsonParsingError as ex:
     error "[Processing Message] Error parsing message", message = message
     writeStackTrace(ex)
-  except CatchableError as ex:
+  except IOError, OSError, ValueError, SerializationError:
+    let ex = getCurrentException()
     error "[Processing Message] "
     writeStackTrace(ex)
 
 proc initActions*(ls: LanguageServer) =
-  let onExit: OnExitCallback = proc() {.async.} =
+  let onExit: OnExitCallback = proc() {.async: (raises: [IOError, OSError]).} =
     case ls.transportMode
     of stdio:
       if not ls.outStream.isNil:
@@ -293,12 +315,14 @@ proc initActions*(ls: LanguageServer) =
     genJsonAction()
     ls.writeOutput(json.withoutNulls)
 
-  let callAction: CallAction = proc(name: string, params: JsonNode): Future[JsonNode] =
+  let callAction: CallAction = proc(
+      name: string, params: JsonNode
+  ): Future[JsonNode].Raising([CancelledError]) =
     let id = $genOid()
     genJsonAction()
     json["id"] = %*id
     ls.writeOutput(json)
-    result = newFuture[JsonNode]()
+    result = Future[JsonNode].Raising([CancelledError]).init("ls.call")
     #We store the future in the responseMap so we can complete it in processMessage
     ls.responseMap[id] = result
 
@@ -307,18 +331,23 @@ proc initActions*(ls: LanguageServer) =
   ls.onExit = onExit
 
 #start and loop functions belows are the only difference between transports
-proc startStdioLoop*(ls: LanguageServer): Future[void] {.async.} =
-  while true:
-    await ls.stdinContext.onStdReadSignal.wait()
-    let msg = $ls.stdinContext.value
-    freeShared(ls.stdinContext.value[0].addr)
-    await ls.stdinContext.onMainReadSignal.fire()
-    if msg == "":
-      error "Client disconnected"
-      break
-    ls.processMessage(msg)
+proc startStdioLoop*(ls: LanguageServer): Future[void] {.async: (raises: []).} =
+  try:
+    while true:
+      await ls.stdinContext.onStdReadSignal.wait()
+      let msg = $ls.stdinContext.value
+      freeShared(ls.stdinContext.value[0].addr)
+      await ls.stdinContext.onMainReadSignal.fire()
+      if msg == "":
+        error "Client disconnected"
+        break
+      ls.processMessage(msg)
+  except AsyncError, CancelledError:
+    # This loop is asyncSpawn-ed; a failure used to surface as a FutureDefect.
+    # Keep it fatal rather than leaving a server that no longer reads stdin.
+    raiseAssert "stdin loop failed: " & getCurrentExceptionMsg()
 
-proc startStdioServer*(ls: LanguageServer) =
+proc startStdioServer*(ls: LanguageServer) {.raises: [ResourceExhaustedError].} =
   #Holds the responses from the client done via the callAction. Likely this is only needed for stdio
   debug "Starting stdio server"
   ls.srv = newRpcSocketServer()
@@ -337,7 +366,7 @@ proc startStdioServer*(ls: LanguageServer) =
 
 proc processClientLoop*(
     ls: LanguageServer, server: StreamServer, transport: StreamTransport
-) {.async: (raises: []), gcsafe.} =
+) {.async: (raises: []).} =
   ls.socketTransport = transport
   while true:
     let msg = await processContentLength(transport)
@@ -348,12 +377,16 @@ proc processClientLoop*(
     debug "[Socket Transport] Processing message ", address = transport.remoteAddress()
     ls.processMessage(msg)
 
-proc startSocketServer*(ls: LanguageServer, port: Port) =
+proc startSocketServer*(
+    ls: LanguageServer, port: Port
+) {.raises: [JsonRpcError, CancelledError].} =
   ls.srv = newRpcSocketServer(partial(processClientLoop, ls))
   ls.initActions()
   ls.srv.addStreamServer("localhost", port)
   ls.srv.start
-  proc waitUntilSocketTransportIsReady(ls: LanguageServer) {.async.} =
+  proc waitUntilSocketTransportIsReady(
+      ls: LanguageServer
+  ) {.async: (raises: [CancelledError]).} =
     when defined(test):
       return
     while ls.socketTransport.isNil:

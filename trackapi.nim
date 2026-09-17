@@ -1,11 +1,18 @@
-import chronos, chronos/asyncproc, strutils, strformat, chronicles, suggestapi, utils
+{.push raises: [], gcsafe.}
+
+import
+  std/[strutils, strformat],
+  chronos,
+  chronos/asyncproc,
+  chronicles,
+  ./[suggestapi, utils]
 
 type TrackMode* = enum
   tmDef = "def"
   tmUsages = "usages"
   tmDefUsages = "defusages"
 
-proc parseTrackOutput(raw: string): seq[Suggest] =
+proc parseTrackOutput(raw: string): seq[Suggest] {.raises: [ValueError].} =
   for line in raw.splitLines:
     if line.len == 0 or line.startsWith("Hint:") or
         not (line.startsWith("def\t") or line.startsWith("use\t")):
@@ -30,7 +37,7 @@ proc track*(
     nimPath: string,
     workingDir: string,
     timeout = REQUEST_TIMEOUT,
-): Future[seq[Suggest]] {.async.} =
+): Future[seq[Suggest]] {.async: (raises: [CancelledError, AsyncProcessError]).} =
   let arg = fmt "--{$mode}:{file},{line},{col}"
 
   debug "nim track", projectFile = projectFile, arg = arg
@@ -52,7 +59,7 @@ proc track*(
     var stderrStr = ""
     try:
       stderrStr = (await stderrFuture).toString
-    except CatchableError:
+    except AsyncStreamError:
       discard
     if "invalid command: track" in stderrStr:
       warn "nim track not supported (requires nim >= 2.4)", nimPath = nimPath
@@ -64,6 +71,7 @@ proc track*(
   except CancelledError as e:
     await shutdownChildProcess(process)
     raise e
-  except CatchableError as e:
+  except AsyncProcessError, AsyncStreamError, ValueError:
+    let e = getCurrentException()
     debug "nim track exception", error = e.msg, name = e.name
     result = @[]

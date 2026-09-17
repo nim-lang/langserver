@@ -1,8 +1,9 @@
-import ../[utils, ls, lstransports]
-import ../protocol/types
-import std/[options, os, strutils, unicode, streams]
-import chronos
-import unittest2
+import
+  std/[options, os, strutils, unicode, streams],
+  chronos,
+  unittest2,
+  ../[utils, ls, lstransports],
+  ../protocol/types
 
 suite "UTF-16 position mapping":
   test "an ASCII only line needs no correction":
@@ -82,30 +83,21 @@ suite "path and seq helpers":
     check newSeq[int]().head == none(int)
 
 suite "async helpers":
-  test "either completes with whichever future finishes first":
+  test "withTimeout yields false when the future is too slow":
     proc slow(): Future[int] {.async.} =
       await sleepAsync(2000)
       1
 
-    proc fast(): Future[int] {.async.} =
-      await sleepAsync(10)
-      2
+    check not (waitFor utils.withTimeout(slow()))
 
-    check (waitFor either(slow(), fast())) == 2
-
-  test "withTimeout yields none when the future is too slow":
-    proc slow(): Future[int] {.async.} =
-      await sleepAsync(2000)
-      1
-
-    check (waitFor utils.withTimeout(slow(), 50)).isNone
-
-  test "withTimeout yields the value when the future is fast enough":
+  test "withTimeout yields true and leaves the value in the future when fast enough":
     proc fast(): Future[int] {.async.} =
       await sleepAsync(10)
       7
 
-    check (waitFor utils.withTimeout(fast(), 500)) == some(7)
+    let fut = fast()
+    check waitFor utils.withTimeout(fut)
+    check fut.read() == 7
 
   test "getNextFreePort returns a usable port each time":
     let first = getNextFreePort()

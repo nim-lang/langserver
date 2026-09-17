@@ -1,11 +1,12 @@
-import ../[nimlangserver, ls, utils]
-import ../protocol/[enums, types]
-import std/[options, json, os, sequtils, strformat, tables]
-import chronos
-import chronos/asyncproc
-import lspsocketclient
-import testhelpers
-import unittest2
+import
+  std/[options, json, os, sequtils, strformat, tables],
+  chronos,
+  chronos/asyncproc,
+  unittest2,
+  ../[nimlangserver, ls, utils],
+  ../protocol/[enums, types],
+  ./lspsocketclient,
+  ./testhelpers
 
 const CallTimeout = 30.seconds
 
@@ -104,7 +105,7 @@ suite "LSP configuration pulled from the client":
     check askedForNimSection
     check ls.workspaceConfiguration.finished
 
-    let conf = waitFor ls.getWorkspaceConfiguration()
+    let conf = ls.getWorkspaceConfiguration()
     check conf.nimsuggestIdleTimeout == some 120000
     check conf.logNimsuggest == some false
 
@@ -123,9 +124,7 @@ suite "LSP configuration pulled from the client":
       let ns = ls.projectFiles[projectFile].ns
       ns.finished and not ns.read().checkProjectInProgress
 
-    check waitUntil(
-      ls.checkIdle(uriToPath(helloWorldUri)), timeout = 60.seconds
-    )
+    check waitUntil(ls.checkIdle(uriToPath(helloWorldUri)), timeout = 60.seconds)
 
     let createdBefore = client.calls["window/workDoneProgress/create"].len
 

@@ -1,14 +1,16 @@
+{.push raises: [], gcsafe.}
+
 import
   std/
-    [os, strscans, tables, enumerate, strutils, xmlparser, xmltree, options, strformat]
-import chronos, chronos/asyncproc
-import protocol/types
-import ls
-import chronicles
-import stew/byteutils
-import utils
+    [os, strscans, tables, enumerate, strutils, xmlparser, xmltree, options, strformat],
+  chronos,
+  chronos/asyncproc,
+  chronicles,
+  stew/byteutils,
+  ./protocol/types,
+  ./[ls, utils]
 
-proc extractTestInfo*(rawOutput: string): TestProjectInfo =
+proc extractTestInfo*(rawOutput: string): TestProjectInfo {.raises: [ValueError].} =
   result.suites = initTable[string, TestSuiteInfo]()
   let lines = rawOutput.split("\n")
   var currentSuite = ""
@@ -38,7 +40,7 @@ proc getFullPath*(entryPoint: string, workspaceRoot: string): string =
       return absolutePath
   return entryPoint
 
-proc parseObject(obj: var object, node: XmlNode) =
+proc parseObject(obj: var object, node: XmlNode) {.raises: [ValueError].} =
   for field, value in obj.fieldPairs:
     when value is string:
       getField(obj, field) = node.attr(field)
@@ -47,20 +49,36 @@ proc parseObject(obj: var object, node: XmlNode) =
     elif value is float:
       getField(obj, field) = parseFloat(node.attr(field))
 
-proc parseTestResult*(node: XmlNode): RunTestResult =
+proc parseTestResult*(node: XmlNode): RunTestResult {.raises: [ValueError].} =
   parseObject(result, node)
   # Add handling for failure node
   let failureNode = node.child("failure")
   if not failureNode.isNil:
     result.failure = some failureNode.attr("message")
 
-proc parseTestSuite*(node: XmlNode): RunTestSuiteResult =
+proc parseTestSuite*(node: XmlNode): RunTestSuiteResult {.raises: [ValueError].} =
   parseObject(result, node)
   for testCase in node.findAll("testcase"):
     result.testResults.add(parseTestResult(testCase))
 
-proc parseTestResults*(xmlContent: string): RunTestProjectResult =
-  let xml = parseXml(xmlContent)
+proc parseTestResults*(
+    xmlContent: string
+): RunTestProjectResult {.raises: [IOError, OSError, ValueError].} =
+  var xml: XmlNode
+  try:
+    xml = parseXml(xmlContent)
+  except IOError as e:
+    raise e
+  except OSError as e:
+    raise e
+  except ValueError as e:
+    raise e
+  except CatchableError as e:
+    raise newException(XmlError, e.msg, e)
+  except Defect as e:
+    raise e
+  except Exception as e:
+    raiseAssert "unhandled exception " & e.msg
   for suiteNode in xml.findAll("testsuite"):
     let suite = parseTestSuite(suiteNode)
     # echo suite.name, " ", suite.testResults.len
@@ -69,7 +87,11 @@ proc parseTestResults*(xmlContent: string): RunTestProjectResult =
 
 proc listTests*(
     entryPoint: string, nimPath: string, workspaceRoot: string
-): Future[TestProjectInfo] {.async.} =
+): Future[TestProjectInfo] {.
+    async: (
+      raises: [CancelledError, AsyncProcessError, AsyncStreamError, OSError, ValueError]
+    )
+.} =
   var entryPoint = getFullPath(entryPoint, workspaceRoot)
   let executableDir = (getTempDir() / entryPoint.splitFile.name).absolutePath
   debug "Listing tests", entryPoint = entryPoint, exists = fileExists(entryPoint)
@@ -108,7 +130,11 @@ proc runTests*(
     testNames: seq[string],
     workspaceRoot: string,
     ls: LanguageServer,
-): Future[RunTestProjectResult] {.async.} =
+): Future[RunTestProjectResult] {.
+    async: (
+      raises: [CancelledError, AsyncProcessError, AsyncStreamError, OSError, ValueError]
+    )
+.} =
   var entryPoint = getFullPath(entryPoint, workspaceRoot)
   if not fileExists(entryPoint):
     error "Entry point does not exist", entryPoint = entryPoint

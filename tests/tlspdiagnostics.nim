@@ -1,10 +1,11 @@
-import ../[nimlangserver, ls, lstransports, utils]
-import ../protocol/[enums, types]
-import std/[options, json, os, jsonutils, sequtils, strutils, sugar, strformat]
-import json_rpc/[rpcclient]
-import chronicles
-import lspsocketclient
-import unittest2
+import
+  std/[options, json, os, jsonutils, sequtils, strutils, sugar, strformat],
+  json_rpc/[rpcclient],
+  chronicles,
+  unittest2,
+  ../[nimlangserver, ls, lstransports, utils],
+  ../protocol/[enums, types],
+  ./lspsocketclient
 
 const CallTimeout = 30.seconds
 
@@ -38,8 +39,7 @@ suite "LSP diagnostics":
   client.notify(
     "textDocument/didSave",
     %*{
-      "textDocument": {"uri": helloWorldUri},
-      "text": readFile("tests" / helloWorldFile),
+      "textDocument": {"uri": helloWorldUri}, "text": readFile("tests" / helloWorldFile)
     },
   )
 
@@ -47,9 +47,7 @@ suite "LSP diagnostics":
     waitFor ls.stopNimsuggestProcesses()
 
   test "Opening a file with a type error publishes diagnostics for it":
-    proc hasAnyDiagnostic(
-        json: JsonNode
-    ): bool {.gcsafe, raises: [CatchableError].} =
+    proc hasAnyDiagnostic(json: JsonNode): bool {.gcsafe, raises: [CatchableError].} =
       {.cast(gcsafe).}:
         json{"uri"}.getStr == helloWorldUri and json{"diagnostics"}.len > 0
 

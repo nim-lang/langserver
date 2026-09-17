@@ -1,16 +1,16 @@
-import ../[nimlangserver, ls, lstransports, utils]
-import ../protocol/[enums, types]
 import
-  std/[options, json, os, jsonutils, sequtils, strutils, sugar, strformat]
-import json_rpc/[rpcclient]
-import chronicles
-import lspsocketclient
-import testhelpers
-import chronos/asyncproc
-import unittest2
+  std/[options, json, os, jsonutils, sequtils, strutils, sugar, strformat],
+  json_rpc/[rpcclient],
+  chronicles,
+  chronos/asyncproc,
+  unittest2,
+  ../[nimlangserver, ls, lstransports, utils],
+  ../protocol/[enums, types],
+  ./[lspsocketclient, testhelpers]
 
 suite "Nimlangserver misc":
-  let cmdParams = CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
+  let cmdParams =
+    CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
   let ls = main(cmdParams) #we could accesss to the ls here to test against its state
   let client = newLspSocketClient()
   waitFor client.connect("localhost", cmdParams.port)
@@ -31,10 +31,11 @@ suite "Nimlangserver misc":
     let nsTimeout = 1000
     let conf = NlsConfig(nimsuggestIdleTimeout: some nsTimeout)
     ls.workspaceConfiguration.complete(% @[conf])
-    
+
     let gConf = waitFor ls.workspaceConfiguration
 
-    asyncSpawn ls.tickLs() #We need to tick the ls so it get rid of the inactive nimsuggests
+    asyncSpawn ls.tickLs()
+      #We need to tick the ls so it get rid of the inactive nimsuggests
 
     let helloWorldUri = fixtureUri("projects/hw/hw.nim")
     let helloWorldFile = "projects/hw/hw.nim"
@@ -42,15 +43,16 @@ suite "Nimlangserver misc":
     client.notify("textDocument/didOpen", %createDidOpenParams(helloWorldFile))
 
     check waitFor client.waitForNotificationMessage(
-      fmt"Nimsuggest initialized for {hwAbsFile}",
+      fmt"Nimsuggest initialized for {hwAbsFile}"
     )
-    
+
     check waitFor client.waitForNotificationMessage(
-      fmt"Nimsuggest for {hwAbsFile} was stopped because it was idle for too long",
+      fmt"Nimsuggest for {hwAbsFile} was stopped because it was idle for too long"
     )
 
 suite "Nimlangserver fail count":
-  let cmdParams = CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
+  let cmdParams =
+    CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
   let ls = main(cmdParams)
   let client = newLspSocketClient()
   waitFor client.connect("localhost", cmdParams.port)
@@ -95,7 +97,8 @@ suite "Nimlangserver pending requests":
     # The spawned task must swallow cancellation instead of failing.
     let ls = LanguageServer(serverMode: lsp, transportMode: socket)
     let uri = "file:///tmp/tpending419.nim"
-    let projectFileFut = newFuture[string]("projectFile")
+    let projectFileFut =
+      Future[string].Raising([CancelledError, OSError, RegexError]).init("projectFile")
     ls.openFiles[uri] = NlsFileInfo(projectFile: projectFileFut)
     ls.pendingRequests[1'u] = PendingRequest(id: 1, name: "textDocument/definition")
 
@@ -106,7 +109,8 @@ suite "Nimlangserver pending requests":
     check fut.completed
 
 suite "Nimlangserver idle nimsuggest cleanup":
-  let cmdParams = CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
+  let cmdParams =
+    CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
   let ls = main(cmdParams)
   let client = newLspSocketClient()
   waitFor client.connect("localhost", cmdParams.port)
@@ -156,6 +160,6 @@ suite "Nimlangserver transport teardown":
     # after onExit, outStream is nil and a late writeOutput must be a no-op
     # (pre-fix this dereferences a nil stream and dies).
     let ls = LanguageServer(serverMode: lsp, transportMode: stdio)
-    doAssert ls.outStream.isNil
+    check ls.outStream.isNil
     ls.writeOutput(%*{"jsonrpc": "2.0", "id": 1, "result": newJNull()})
     check ls.outStream.isNil
