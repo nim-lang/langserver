@@ -308,6 +308,32 @@ suite "LSP endpoints":
       check edits.len == 1
       check edits[0].newText.contains("root.nim")
 
+  test "textDocument/formatting answers when nph is not on the PATH":
+    # initialize only advertises formatting when nph is found, but a client can
+    # still send the request, and nph can go missing after startup. Unwrapping
+    # the missing path used to raise a Defect that exited the server.
+    let savedPath = getEnv("PATH")
+    defer:
+      putEnv("PATH", savedPath)
+    var kept: seq[string]
+    for entry in savedPath.split(PathSep):
+      if not fileExists(entry / "nph".addFileExt(ExeExt)):
+        kept.add entry
+    putEnv("PATH", kept.join($PathSep))
+    check findExe("nph") == ""
+
+    let params =
+      DocumentFormattingParams %* {
+        "textDocument": {"uri": helloWorldUri},
+        "options": {"tabSize": 2, "insertSpaces": true},
+      }
+    let edits = client.callTimeout("textDocument/formatting", %params)
+    check edits.kind == JArray and edits.len == 0
+
+    let status =
+      to(client.callTimeout("extension/status", newJObject()), NimLangServerStatus)
+    check status.version == LSPVersion
+
   test "a definition request on a non ascii identifier resolves to its declaration":
     let locations = to(
       client.callTimeout(

@@ -853,10 +853,19 @@ proc formatting*(
     async:
       (raises: [CancelledError, OSError, IOError, AsyncProcessError, AsyncStreamError])
 .} =
+  debug "Received Formatting request"
+  let nphPath = getNphPath()
+  if nphPath.isNone:
+    warn "Formatting requested but nph is not on the PATH",
+      uri = params.textDocument.uri
+    ls.showMessage(
+      "Formatting requires nph, which was not found on the PATH", MessageType.Warning
+    )
+    return @[]
+
   with (params.textDocument):
     asyncSpawn ls.addProjectFileToPendingRequest(id.uint, uri)
-    debug "Received Formatting request "
-    let formatTextEdit = await ls.format(getNphPath().get(), uri)
+    let formatTextEdit = await ls.format(nphPath.get(), uri)
     if formatTextEdit.isSome:
       return @[formatTextEdit.get]
 
