@@ -768,6 +768,11 @@ proc executeCommand*(
     ls: LanguageServer, params: ExecuteCommandParams
 ): Future[JsonNode] {.async: (raises: [ApplicationError, CancelledError]).} =
   ls.checkInitialized()
+  if params.arguments.len == 0:
+    raise (ref ApplicationError)(
+      code: ErrorCode.InvalidParams.int,
+      msg: params.command & " expects the project file as its first argument",
+    )
   let projectFile = params.arguments[0].getStr
   case params.command
   of RESTART_COMMAND:
