@@ -117,6 +117,6 @@ suite "Nimsuggest error handling":
         failed = true,
     )
 
-    check not waitFor chronos.withTimeout(projectFut, chronos.milliseconds(1))
+    waitFor projectFut.cancelAndWait()
     check projectFut.cancelled
-    check waitUntil(failed)
+    check failed
