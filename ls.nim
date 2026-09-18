@@ -1307,9 +1307,6 @@ proc stopNimsuggestProcesses*(ls: LanguageServer) {.async: (raises: []).} =
   else:
     debug "child nimsuggest processes already stopped: CHECK!"
 
-proc stopNimsuggestProcessesP*(ls: LanguageServer) =
-  waitFor stopNimsuggestProcesses(ls)
-
 proc shouldSpawnNimsuggest*(ls: LanguageServer): Future[bool] {.async: (raises: []).} =
   let nsCount = ls.getLspStatus().nimsuggestInstances.len
   let conf = ls.getWorkspaceConfiguration()
