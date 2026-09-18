@@ -438,9 +438,9 @@ proc sendStatusChanged*(ls: LanguageServer) {.raises: [].} =
     ls.notify("extension/statusUpdate", status)
     ls.lastStatusSent = status
 
-proc waitProjectFile*(file: NlsFileInfo): Future[string] {.
-    async: (raises: [CancelledError, OSError, RegexError])
-.} =
+proc waitProjectFile*(
+    file: NlsFileInfo
+): Future[string] {.async: (raises: [CancelledError, OSError, RegexError]).} =
   ## Wait without allowing a cancelled request to cancel the shared future.
   await file.projectFile.join()
   try:
@@ -927,9 +927,7 @@ proc getProjectFile*(
 
 proc getProjectFileAfterStartup(
     ls: LanguageServer, fileUri: string
-): Future[string] {.
-    async: (raises: [CancelledError, OSError, RegexError])
-.} =
+): Future[string] {.async: (raises: [CancelledError, OSError, RegexError]).} =
   ## Resolve files after Nimble entry-point startup has completed. Otherwise
   ## the single-process limit can make auto-guessing fall back to the opened
   ## file while the intended entry-point nimsuggest is still compiling.
@@ -1431,9 +1429,9 @@ proc removeCompletedPendingRequests(
   for id in toRemove:
     ls.pendingRequests.del id
 
-proc removeIdleNimsuggests*(ls: LanguageServer) {.
-    async: (raises: [CancelledError, OSError])
-.} =
+proc removeIdleNimsuggests*(
+    ls: LanguageServer
+) {.async: (raises: [CancelledError, OSError]).} =
   if ls.projectFiles.len == 0:
     return
   const DefaultNimsuggestIdleTimeout = 120000
