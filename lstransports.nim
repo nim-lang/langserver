@@ -2,12 +2,13 @@
 
 import
   std/[syncio, os, json, strutils, strformat, streams, oids, sequtils, times],
-  json_rpc/[servers/socketserver, private/jrpc_sys, jsonmarshal, rpcclient, router],
+  json_rpc/
+    [errors, servers/socketserver, private/jrpc_sys, jsonmarshal, rpcclient, router],
   chronos,
   chronos/threadsync,
   chronicles,
   ./[ls, utils],
-  ./protocol/types
+  ./protocol/[enums, types]
 
 type
   LspClientResponse* = object
@@ -219,6 +220,16 @@ proc writeOutput*(ls: LanguageServer, content: JsonNode) =
     let ex = getCurrentException()
     error "Error writing output", msg = ex.msg
 
+proc writeError(ls: LanguageServer, req: RequestRx, code: int, message: string) =
+  if req.id.kind == riNull:
+    return # A notification: JSON-RPC forbids replying to it.
+  var errJson = newJObject()
+  errJson["jsonrpc"] = %*"2.0"
+  if req.id.kind == riNumber:
+    errJson["id"] = %*req.id.num
+  errJson["error"] = %*{"code": code, "message": message}
+  ls.writeOutput(errJson)
+
 proc runRpc(
     ls: LanguageServer, req: RequestRx, rpc: RpcProc
 ): Future[void] {.async: (raises: []).} =
@@ -234,15 +245,13 @@ proc runRpc(
     ls.writeOutput(json)
   except CancelledError as ex:
     debug "[RunRPC]Request cancelled", meth = req.method.get("")
+  except ApplicationError as ex:
+    debug "[RunRPC] Refused", msg = ex.msg, code = ex.code, req = req.`method`
+    ls.writeError(req, ex.code, ex.msg)
   except CatchableError as ex:
     error "[RunRPC] ", msg = ex.msg, req = req.`method`
     writeStackTrace(ex = ex)
-    var errJson = newJObject()
-    errJson["jsonrpc"] = %*"2.0"
-    if req.id.kind == riNumber:
-      errJson["id"] = %*req.id.num
-    errJson["error"] = %*{"code": -32603, "message": ex.msg}
-    ls.writeOutput(errJson)
+    ls.writeError(req, ErrorCode.InternalError.int, ex.msg)
 
 proc processMessage(ls: LanguageServer, message: string) {.raises: [].} =
   try:

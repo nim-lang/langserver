@@ -410,6 +410,56 @@ suite "LSP endpoints":
       check readFile(stash).normalizeText ==
         readFile("tests" / helloWorldFile).normalizeText
 
+suite "LSP messages before initialize":
+  let cmdParams =
+    CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
+  let ls = main(cmdParams)
+  let client = newLspSocketClient()
+  client.registerNotification(
+    "window/showMessage", "window/workDoneProgress/create", "workspace/configuration",
+    "extension/statusUpdate", "textDocument/publishDiagnostics", "$/progress",
+  )
+  waitFor client.connect("localhost", cmdParams.port)
+
+  let
+    helloWorldFile = "projects/hw/hw.nim"
+    helloWorldUri = fixtureUri(helloWorldFile)
+
+  suiteTeardown:
+    waitFor ls.stopNimsuggestProcesses()
+
+  test "requests are refused and notifications dropped until initialize":
+    # Every route reads state that initialize sets: didOpen used to await a nil
+    # nimsuggestInit, and extension/tasks used to segfault on a nil
+    # lspInitializeParams.
+    # client.notify sends an id, so write a real notification by hand.
+    let didOpen = %*{
+      "jsonrpc": "2.0",
+      "method": "textDocument/didOpen",
+      "params": %createDidOpenParams(helloWorldFile),
+    }
+    discard waitFor client.transport.write(wrapContentWithContentLength($didOpen))
+
+    try:
+      discard client.callTimeout("extension/tasks", newJObject())
+      checkpoint "extension/tasks was answered before initialize"
+      fail()
+    except JsonRpcError as err:
+      check "-32002" in err.msg
+
+    discard waitFor client.initialize(
+      LspInitializeParams %* {
+        "processId": %getCurrentProcessId(),
+        "rootUri": fixtureUri("projects/hw/"),
+        "capabilities": {"window": {"workDoneProgress": false}},
+      }
+    )
+
+    let status =
+      to(client.callTimeout("extension/status", newJObject()), NimLangServerStatus)
+    check status.version == LSPVersion
+    check helloWorldUri notin ls.openFiles
+
 suite "LSP socket transport with more than one client":
   let cmdParams =
     CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())

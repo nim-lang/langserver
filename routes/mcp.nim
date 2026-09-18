@@ -4,7 +4,7 @@ import
   std/[os, sequtils, tables, json],
   chronos,
   chronos/asyncproc,
-  json_rpc/server,
+  json_rpc/[errors, server],
   chronicles,
   json_serialization,
   ../[suggestapi, trackapi, ls, utils],
@@ -578,10 +578,12 @@ proc initialize*(
 
   ls.mcpServerCapabilities = result.capabilities
   ls.nimsuggestInit = ls.initNimsuggestInstances(rootPath)
+  ls.initialized = true
 
 proc listTools*(
     ls: LanguageServer, params: McpListToolsParams
-): Future[McpListToolsResult] {.async: (raises: []).} =
+): Future[McpListToolsResult] {.async: (raises: [ApplicationError]).} =
+  ls.checkInitialized()
   debug "Call tool received..."
   McpListToolsResult(
     tools: @[
@@ -599,11 +601,12 @@ proc callTool*(
 ): Future[McpCallToolResult] {.
     async: (
       raises: [
-        CancelledError, ValueError, OSError, IOError, RegexError, AsyncProcessError,
-        NimsuggestError,
+        ApplicationError, CancelledError, ValueError, OSError, IOError, RegexError,
+        AsyncProcessError, NimsuggestError,
       ]
     )
 .} =
+  ls.checkInitialized()
   debug "Call tool received...", name = params.name
 
   await ls.nimsuggestInit
@@ -628,5 +631,8 @@ proc callTool*(
     )
 
 # Notifications
-proc initialized*(ls: LanguageServer, _: JsonNode) {.async: (raises: []).} =
+proc initialized*(
+    ls: LanguageServer, _: JsonNode
+) {.async: (raises: [ApplicationError]).} =
+  ls.checkInitialized()
   debug "Client initialized."
