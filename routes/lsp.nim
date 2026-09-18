@@ -1156,7 +1156,6 @@ proc didClose*(
 proc didOpen*(
     ls: LanguageServer, params: DidOpenTextDocumentParams
 ): Future[void] {.async: (raises: [CancelledError, OSError, IOError, RegexError]).} =
-  await ls.nimsuggestInit
   await ls.didOpenFile(params.textDocument)
 
 proc didChangeConfiguration*(
