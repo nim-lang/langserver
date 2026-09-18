@@ -35,6 +35,7 @@ proc mappedConfiguration(params: JsonNode): Future[JsonNode] {.async.} =
       "maxNimsuggestProcesses": 0,
       "autoCheckFile": false,
       "autoCheckProject": false,
+      "nimsuggestIdleTimeout": 1,
     }
   ]
 
@@ -94,6 +95,10 @@ suite "Nimsuggest startup for a slow mapped root":
     check eventually(initializedMessages() >= 1, CallTimeout)
     check not eventually(initializedMessages() > 1, 3.seconds)
     check ls.failTable.getOrDefault(rootPath, 0) == 0
+    check rootPath in ls.projectFiles
+
+    waitFor sleepAsync(100.milliseconds)
+    waitFor ls.removeIdleNimsuggests()
     check rootPath in ls.projectFiles
 
     let symbols = waitFor client.documentSymbols(otherFile).wait(CallTimeout)
