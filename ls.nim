@@ -328,7 +328,10 @@ proc getNimbleDumpInfo*(
 proc parseWorkspaceConfiguration*(conf: JsonNode): NlsConfig =
   try:
     if conf.kind == JObject and conf["settings"].kind == JObject:
-      return conf["settings"]["nim"].to(NlsConfig)
+      let nimSettings = conf["settings"]["nim"]
+      if nimSettings.kind == JNull:
+        return NlsConfig() #the client has no settings for us
+      return nimSettings.to(NlsConfig)
   except ValueError:
     discard
   try:
@@ -343,6 +346,7 @@ proc parseWorkspaceConfiguration*(conf: JsonNode): NlsConfig =
     result = NlsConfig()
 
 proc getWorkspaceConfiguration*(ls: LanguageServer): NlsConfig {.raises: [].} =
+  ## Never returns nil, see parseWorkspaceConfiguration.
   try:
     #this is the root of a lot a problems as there are multiple race conditions here.
     #since most request doesn't really rely on the configuration, we can just go ahead and
@@ -350,21 +354,23 @@ proc getWorkspaceConfiguration*(ls: LanguageServer): NlsConfig {.raises: [].} =
     #TODO review and handle project specific confs when received instead of reliying in this func
     if ls.workspaceConfiguration.finished:
       return parseWorkspaceConfiguration(ls.workspaceConfiguration.read)
-    return NlsConfig()
   except CancelledError, FuturePendingError:
     let ex = getCurrentException()
     error "Failed to get workspace configuration", error = ex.msg
     writeStackTrace(ex)
+  NlsConfig()
 
 proc getAndWaitForWorkspaceConfiguration*(
     ls: LanguageServer
 ): Future[NlsConfig] {.async: (raises: []).} =
+  ## Never returns nil, see parseWorkspaceConfiguration.
   try:
     let conf = await ls.workspaceConfiguration
     return parseWorkspaceConfiguration(conf)
   except CancelledError as ex:
     error "Failed to get workspace configuration", error = ex.msg
     writeStackTrace(ex)
+    return NlsConfig()
 
 proc showMessage*(
     ls: LanguageServer, message: string, typ: MessageType

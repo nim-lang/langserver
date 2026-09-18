@@ -33,6 +33,62 @@ var editorConfiguration = %*[
   }
 ]
 
+suite "Workspace configuration parsing":
+  test "a configuration we cannot use never parses to nil":
+    # NlsConfig is a ref and every caller reads a field out of it, so none of
+    # these may come back as nil.
+    for conf in [
+      %*{"settings": {"nim": newJNull()}},
+      %*{"settings": {}},
+      %*{"settings": newJNull()},
+      newJArray(),
+      newJNull(),
+    ]:
+      checkpoint $conf
+      check not parseWorkspaceConfiguration(conf).isNil
+
+suite "LSP configuration pushed by the client":
+  # A client that doesn't support workspace/configuration pushes its settings
+  # with didChangeConfiguration instead.
+  let cmdParams =
+    CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
+  let ls = main(cmdParams)
+  let client = newLspSocketClient()
+  client.registerNotification(
+    "window/showMessage", "extension/statusUpdate", "textDocument/publishDiagnostics",
+    "$/progress",
+  )
+  waitFor client.connect("localhost", cmdParams.port)
+
+  discard waitFor client.initialize(
+    LspInitializeParams %* {
+      "processId": %getCurrentProcessId(),
+      "rootUri": fixtureUri("projects/hw/"),
+      "capabilities": {"window": {"workDoneProgress": false}},
+    }
+  )
+  client.notify("initialized", newJObject())
+  check waitUntil(ls.workspaceConfiguration.finished)
+
+  suiteTeardown:
+    waitFor ls.stopNimsuggestProcesses()
+
+  test "a null nim section keeps the server serving":
+    # The client has no settings for us. The configuration used to parse to nil
+    # and stay in ls.workspaceConfiguration, so the next read of it took the
+    # server down: the idle nimsuggest sweep every tick, or any request.
+    client.notify(
+      "workspace/didChangeConfiguration", %*{"settings": {"nim": newJNull()}}
+    )
+    # the notification is handled before the request that follows it
+    let status = to(
+      waitFor client.call("extension/status", newJObject()).wait(CallTimeout),
+      NimLangServerStatus,
+    )
+    check status.version == LSPVersion
+
+    check not ls.getWorkspaceConfiguration().isNil
+
 suite "LSP configuration pulled from the client":
   let cmdParams =
     CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
