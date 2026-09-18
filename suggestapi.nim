@@ -37,6 +37,7 @@ type
     ideMsg
     ideProject
     ideType
+    ideDeclaration
     ideExpand
 
   NimsuggestError* = object of CatchableError
