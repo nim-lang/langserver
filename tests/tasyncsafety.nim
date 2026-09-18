@@ -205,9 +205,9 @@ suite "Documents closed while a handler is suspended":
     # yield, so without this the whole of didSave would run synchronously and
     # there would be no window at all.
     discard settle()
-    let gate =
+    let fut =
       Future[string].Raising([CancelledError, OSError, RegexError]).init("closed race")
-    ls.openFiles[helloWorldUri].projectFile = gate
+    ls.openFiles[helloWorldUri].projectFile = fut
 
     let saving = lspRoutes.didSave(ls, saveParams)
     check not saving.finished

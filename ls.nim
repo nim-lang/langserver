@@ -350,9 +350,6 @@ proc parseWorkspaceConfiguration*(conf: JsonNode): NlsConfig =
     result = NlsConfig()
 
 proc setWorkspaceConfiguration*(ls: LanguageServer, conf: JsonNode) {.raises: [].} =
-  ## Install what the client sent us and let the waiters through. The gate is
-  ## one shot: the configuration can change any number of times afterwards, but
-  ## "we know what the client wants" only becomes true once.
   ls.workspaceConfiguration = parseWorkspaceConfiguration(conf)
   if not ls.workspaceConfigurationReady.finished:
     ls.workspaceConfigurationReady.complete()

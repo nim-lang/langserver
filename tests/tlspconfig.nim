@@ -59,7 +59,7 @@ suite "Waiting for the workspace configuration":
   let pushed = % @[NlsConfig(nimsuggestIdleTimeout: some 1234)]
 
   test "a waiter that starts before the first configuration is let through":
-    # The readiness gate is completed once and never replaced, so a wait that
+    # The readiness future is completed once and never replaced, so a wait that
     # started before the client answered cannot be left behind by it.
     let ls = newLs()
     let waiting = ls.getAndWaitForWorkspaceConfiguration()
@@ -69,7 +69,7 @@ suite "Waiting for the workspace configuration":
     check (waitFor waiting).nimsuggestIdleTimeout == some 1234
 
   test "cancelling one waiter leaves the configuration for everyone else":
-    # chronos cancels the future being awaited, and the gate is shared, so the
+    # chronos cancels the future being awaited, and the future is shared, so the
     # wait is shielded with join(): cancelling detaches that waiter alone.
     let ls = newLs()
     let
