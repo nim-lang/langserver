@@ -367,9 +367,6 @@ proc getWorkspaceConfiguration*(ls: LanguageServer): NlsConfig {.raises: [].} =
 proc getAndWaitForWorkspaceConfiguration*(
     ls: LanguageServer
 ): Future[NlsConfig] {.async: (raises: [CancelledError]).} =
-  ## Waits for the first configuration from the client. join() so that being
-  ## cancelled detaches this waiter alone: chronos cancels the future being
-  ## awaited, and the gate is shared by everyone.
   await ls.workspaceConfigurationReady.join()
   ls.getWorkspaceConfiguration()
 
