@@ -153,8 +153,11 @@ type
     openFiles*: Table[string, NlsFileInfo]
     idleOpenFiles*: Table[string, NlsFileInfo]
       #We close the file when its inactive and store it here.
-    workspaceConfiguration*: Future[JsonNode].Raising([CancelledError])
-    prevWorkspaceConfiguration*: Future[JsonNode].Raising([CancelledError])
+    workspaceConfiguration*: NlsConfig
+      #What the client configured us with, or the defaults until it does.
+      #Set through setWorkspaceConfiguration, read through getWorkspaceConfiguration.
+    workspaceConfigurationReady*: Future[void].Raising([CancelledError])
+      #Completed the first time a configuration is known, and never replaced.
     inlayHintsRefreshRequest*: Future[JsonNode].Raising([CancelledError])
     didChangeConfigurationRegistrationRequest*:
       Future[JsonNode].Raising([CancelledError])
@@ -227,7 +230,8 @@ macro `%*`*(t: untyped, inputStream: untyped): untyped =
 
 proc initLs*(params: CommandLineParams, storageDir: string): LanguageServer =
   LanguageServer(
-    workspaceConfiguration: Future[JsonNode].Raising([CancelledError]).init("initLs"),
+    workspaceConfiguration: NlsConfig(),
+    workspaceConfigurationReady: Future[void].Raising([CancelledError]).init("initLs"),
     filesWithDiags: initHashSet[string](),
     serverMode: params.mode.get(),
     transportMode: params.transport.get(),
@@ -328,7 +332,10 @@ proc getNimbleDumpInfo*(
 proc parseWorkspaceConfiguration*(conf: JsonNode): NlsConfig =
   try:
     if conf.kind == JObject and conf["settings"].kind == JObject:
-      return conf["settings"]["nim"].to(NlsConfig)
+      let nimSettings = conf["settings"]["nim"]
+      if nimSettings.kind == JNull:
+        return NlsConfig() #the client has no settings for us
+      return nimSettings.to(NlsConfig)
   except ValueError:
     discard
   try:
@@ -342,29 +349,23 @@ proc parseWorkspaceConfiguration*(conf: JsonNode): NlsConfig =
     debug "Failed to parse the configuration.", error = getCurrentExceptionMsg()
     result = NlsConfig()
 
+proc setWorkspaceConfiguration*(ls: LanguageServer, conf: JsonNode) {.raises: [].} =
+  ls.workspaceConfiguration = parseWorkspaceConfiguration(conf)
+  if not ls.workspaceConfigurationReady.finished:
+    ls.workspaceConfigurationReady.complete()
+
 proc getWorkspaceConfiguration*(ls: LanguageServer): NlsConfig {.raises: [].} =
-  try:
-    #this is the root of a lot a problems as there are multiple race conditions here.
-    #since most request doesn't really rely on the configuration, we can just go ahead and
-    #return a default one until we have the right one.
-    #TODO review and handle project specific confs when received instead of reliying in this func
-    if ls.workspaceConfiguration.finished:
-      return parseWorkspaceConfiguration(ls.workspaceConfiguration.read)
-    return NlsConfig()
-  except CancelledError, FuturePendingError:
-    let ex = getCurrentException()
-    error "Failed to get workspace configuration", error = ex.msg
-    writeStackTrace(ex)
+  #TODO review and handle project specific confs when received instead of reliying in this func
+  if ls.workspaceConfiguration.isNil:
+    NlsConfig()
+  else:
+    ls.workspaceConfiguration
 
 proc getAndWaitForWorkspaceConfiguration*(
     ls: LanguageServer
-): Future[NlsConfig] {.async: (raises: []).} =
-  try:
-    let conf = await ls.workspaceConfiguration
-    return parseWorkspaceConfiguration(conf)
-  except CancelledError as ex:
-    error "Failed to get workspace configuration", error = ex.msg
-    writeStackTrace(ex)
+): Future[NlsConfig] {.async: (raises: [CancelledError]).} =
+  await ls.workspaceConfigurationReady.join()
+  ls.getWorkspaceConfiguration()
 
 proc showMessage*(
     ls: LanguageServer, message: string, typ: MessageType
@@ -1267,27 +1268,23 @@ proc maybeRequestConfigurationFromClient*(
     debug "Requesting configuration from the client"
     try:
       let configurationParams = ConfigurationParams %* {"items": [{"section": "nim"}]}
-
-      ls.prevWorkspaceConfiguration = ls.workspaceConfiguration
-
-      let requested = ls.call("workspace/configuration", %configurationParams)
-      ls.workspaceConfiguration = requested
-
-      let configuration = await requested
+      let configuration = await ls.call("workspace/configuration", %configurationParams)
       debug "Received the following configuration", configuration = $configuration
-      if not isNil(ls.prevWorkspaceConfiguration) and
-          ls.prevWorkspaceConfiguration.finished:
-        let
-          oldConfiguration =
-            parseWorkspaceConfiguration(ls.prevWorkspaceConfiguration.read)
-          newConfiguration = parseWorkspaceConfiguration(configuration)
-        await ls.handleConfigurationChanges(oldConfiguration, newConfiguration)
-    except CancelledError, FuturePendingError:
+      #the first configuration is not a change, so there is nothing to handle
+      let
+        hadConfiguration = ls.workspaceConfigurationReady.finished
+        oldConfiguration = ls.getWorkspaceConfiguration()
+      ls.setWorkspaceConfiguration(configuration)
+      if hadConfiguration:
+        await ls.handleConfigurationChanges(
+          oldConfiguration, ls.getWorkspaceConfiguration()
+        )
+    except CancelledError:
       error "Failed to handle the client configuration",
         error = getCurrentExceptionMsg()
   else:
     debug "Client does not support workspace/configuration"
-    ls.workspaceConfiguration.complete(newJArray())
+    ls.setWorkspaceConfiguration(newJArray()) #the defaults, and no one waits anymore
 
 proc getCharacter*(
     ls: LanguageServer, uri: string, line: int, character: int

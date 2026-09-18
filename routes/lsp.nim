@@ -1271,11 +1271,12 @@ proc didChangeConfiguration*(
   if ls.usePullConfigurationModel:
     await ls.maybeRequestConfigurationFromClient()
   else:
-    if ls.workspaceConfiguration.finished:
-      let
-        oldConfiguration = parseWorkspaceConfiguration(await ls.workspaceConfiguration)
-        newConfiguration = parseWorkspaceConfiguration(conf)
-      ls.workspaceConfiguration =
-        Future[JsonNode].Raising([CancelledError]).init("didChangeConfiguration")
-      ls.workspaceConfiguration.complete(conf)
-      await handleConfigurationChanges(ls, oldConfiguration, newConfiguration)
+    #the client pushes its settings, so this is the only place they come from
+    let
+      hadConfiguration = ls.workspaceConfigurationReady.finished
+      oldConfiguration = ls.getWorkspaceConfiguration()
+    ls.setWorkspaceConfiguration(conf)
+    if hadConfiguration: #the first configuration is not a change
+      await handleConfigurationChanges(
+        ls, oldConfiguration, ls.getWorkspaceConfiguration()
+      )

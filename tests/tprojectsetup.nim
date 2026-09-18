@@ -110,7 +110,7 @@ suite "Project Mapping":
     let configurationParams =
       @[NlsConfig(projectMapping: some @[NlsNimsuggestConfig(fileRegex: "nonimble*")])]
     let nonimbleProject = projectsDir / "nonimbleproject.nim"
-    ls.workspaceConfiguration.complete(%configurationParams)
+    ls.setWorkspaceConfiguration(%configurationParams)
 
     let projectFile = waitFor getProjectFile(nonimbleProject, ls)
     let matchingMsg = fmt"RegEx matched `nonimble*` for file `{nonimbleProject}`"
