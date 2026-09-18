@@ -1255,7 +1255,6 @@ proc didOpen*(
     async: (raises: [ApplicationError, CancelledError, OSError, IOError, RegexError])
 .} =
   ls.checkInitialized()
-  await ls.nimsuggestInit
   await ls.didOpenFile(params.textDocument)
 
 proc didChangeConfiguration*(
