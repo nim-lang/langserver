@@ -10,6 +10,8 @@ import
 
 const CallTimeout = 30.seconds
 
+var holdConfiguration: Future[void] #when set, the client delays its answer
+
 var editorConfiguration = %*[
   {
     "projectMapping": [],
@@ -47,6 +49,39 @@ suite "Workspace configuration parsing":
       checkpoint $conf
       check not parseWorkspaceConfiguration(conf).isNil
 
+suite "Waiting for the workspace configuration":
+  proc newLs(): LanguageServer =
+    initLs(
+      CommandLineParams(mode: some ServerMode.lsp, transport: some TransportMode.socket),
+      ensureStorageDir(),
+    )
+
+  let pushed = % @[NlsConfig(nimsuggestIdleTimeout: some 1234)]
+
+  test "a waiter that starts before the first configuration is let through":
+    # The readiness gate is completed once and never replaced, so a wait that
+    # started before the client answered cannot be left behind by it.
+    let ls = newLs()
+    let waiting = ls.getAndWaitForWorkspaceConfiguration()
+    check not waiting.finished
+
+    ls.setWorkspaceConfiguration(pushed)
+    check (waitFor waiting).nimsuggestIdleTimeout == some 1234
+
+  test "cancelling one waiter leaves the configuration for everyone else":
+    # chronos cancels the future being awaited, and the gate is shared, so the
+    # wait is shielded with join(): cancelling detaches that waiter alone.
+    let ls = newLs()
+    let
+      abandoned = ls.getAndWaitForWorkspaceConfiguration()
+      other = ls.getAndWaitForWorkspaceConfiguration()
+    waitFor abandoned.cancelAndWait()
+    check abandoned.cancelled
+
+    ls.setWorkspaceConfiguration(pushed)
+    check (waitFor other).nimsuggestIdleTimeout == some 1234
+    check ls.getWorkspaceConfiguration().nimsuggestIdleTimeout == some 1234
+
 suite "LSP configuration pushed by the client":
   # A client that doesn't support workspace/configuration pushes its settings
   # with didChangeConfiguration instead.
@@ -68,7 +103,7 @@ suite "LSP configuration pushed by the client":
     }
   )
   client.notify("initialized", newJObject())
-  check waitUntil(ls.workspaceConfiguration.finished)
+  check waitUntil(ls.workspaceConfigurationReady.finished)
 
   suiteTeardown:
     waitFor ls.stopNimsuggestProcesses()
@@ -101,6 +136,8 @@ suite "LSP configuration pulled from the client":
 
   proc answerConfiguration(params: JsonNode): Future[JsonNode] {.async.} =
     {.cast(gcsafe).}:
+      if holdConfiguration != nil: #let a test hold the answer back
+        await holdConfiguration
       return editorConfiguration
 
   proc answerNull(params: JsonNode): Future[JsonNode] {.async.} =
@@ -128,7 +165,7 @@ suite "LSP configuration pulled from the client":
     }
   discard waitFor client.initialize(initParams)
   client.notify("initialized", newJObject())
-  check waitUntil(ls.workspaceConfiguration.finished)
+  check waitUntil(ls.workspaceConfigurationReady.finished)
 
   let
     helloWorldFile = "projects/hw/hw.nim"
@@ -159,7 +196,7 @@ suite "LSP configuration pulled from the client":
       if item{"section"}.getStr == "nim":
         askedForNimSection = true
     check askedForNimSection
-    check ls.workspaceConfiguration.finished
+    check ls.workspaceConfigurationReady.finished
 
     let conf = ls.getWorkspaceConfiguration()
     check conf.nimsuggestIdleTimeout == some 120000
@@ -206,6 +243,24 @@ suite "LSP configuration pulled from the client":
       false
 
     check waitUntil(client.reportedAgainst(token), timeout = 30.seconds)
+
+  test "the configuration we have stays in place while a new one is pulled":
+    # A pull used to put a pending future back in place, so for the length of
+    # the round trip every reader got the defaults instead of the settings the
+    # client had already given us.
+    let pulledBefore = client.calls["workspace/configuration"].len
+    holdConfiguration = Future[void].init("holdConfiguration")
+    editorConfiguration[0]["nimsuggestIdleTimeout"] = %60000
+    defer:
+      holdConfiguration = nil
+      editorConfiguration[0]["nimsuggestIdleTimeout"] = %120000
+
+    client.notify("workspace/didChangeConfiguration", %*{"settings": newJNull()})
+    check waitUntil(client.calls["workspace/configuration"].len > pulledBefore)
+    check ls.getWorkspaceConfiguration().nimsuggestIdleTimeout == some 120000
+
+    holdConfiguration.complete()
+    check waitUntil(ls.getWorkspaceConfiguration().nimsuggestIdleTimeout == some 60000)
 
   test "toggling the exception inlay hints restarts nimsuggest and asks for a refresh":
     let projectFile = uriToPath(helloWorldUri)

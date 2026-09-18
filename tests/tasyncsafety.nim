@@ -145,7 +145,7 @@ suite "Documents closed while a handler is suspended":
         {"window": {"workDoneProgress": false}, "workspace": {"configuration": true}},
     }
   )
-  ls.workspaceConfiguration.complete(% @[NlsConfig()])
+  ls.setWorkspaceConfiguration(% @[NlsConfig()])
 
   let
     helloWorldFile = "projects/hw/hw.nim"
