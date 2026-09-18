@@ -353,8 +353,8 @@ suite "LSP endpoints":
       seq[Location],
     )
     check locations.len == 1
-    check locations[0].uri.contains("hw.nim")
-    check locations[0].range.start.line == 0
+    check locations.len >= 1 and locations[0].uri.contains("hw.nim")
+    check locations.len >= 1 and locations[0].range.start.line == 0
 
   test "documentSymbol reports a non ascii symbol at a UTF-16 offset":
     let params = DocumentSymbolParams %* {"textDocument": {"uri": helloWorldUri}}
