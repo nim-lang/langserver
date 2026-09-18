@@ -415,15 +415,26 @@ proc createNimsuggest*(
     )
     debug "Nimsuggest started with args", args = args
     asyncSpawn logNsError(result)
-    let portLine = await result.process.stdoutStream.readLine(sep = "\n")
-    debug "Nimsuggest port", portLine = portLine
     try:
-      ns.port = portLine.parseInt
-    except ValueError:
-      error "Failed to parse nimsuggest port", portLine = portLine
-      let nextLine = await result.process.stdoutStream.readLine(sep = "\n")
-      error "Nimsuggest nextLine", nextLine = nextLine
-      await result.markFailed "Failed to parse nimsuggest port"
+      let portLine = await result.process.stdoutStream.readLine(sep = "\n")
+      debug "Nimsuggest port", portLine = portLine
+      try:
+        ns.port = portLine.parseInt
+      except ValueError:
+        error "Failed to parse nimsuggest port", portLine = portLine
+        let nextLine = await result.process.stdoutStream.readLine(sep = "\n")
+        error "Nimsuggest nextLine", nextLine = nextLine
+        await result.markFailed "Failed to parse nimsuggest port"
+    # The caller never gets the project (and its process) back, so nothing
+    # else can stop it. Cancelling is what the startup timeout in ls.nim does.
+    except CancelledError as exc:
+      await result.markFailed "Nimsuggest startup was cancelled"
+      result.stop()
+      raise exc
+    except AsyncStreamError as exc:
+      await result.markFailed exc.msg
+      result.stop()
+      raise exc
     result.ns.complete(ns)
   else:
     error "Unable to start nimsuggest. Unable to find binary on the $PATH",
