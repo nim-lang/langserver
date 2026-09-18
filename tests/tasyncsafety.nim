@@ -221,7 +221,7 @@ suite "Documents closed while a handler is suspended":
     # so telling nimsuggest to re-read the file is the only thing left that the
     # save can still do — and the file really was written to disk.
     ns.successfullCall = false
-    gate.complete(helloWorldPath)
+    fut.complete(helloWorldPath)
     waitFor saving.wait(30.seconds)
     check waitUntil(ns.successfullCall, timeout = 30.seconds)
 
