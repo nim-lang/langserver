@@ -232,7 +232,7 @@ proc callNimFindReferences(
   let config = ls.getWorkspaceConfiguration()
 
   if config.useNimTrack.get(false):
-    let projectFile = await ls.openFiles[uri].projectFile
+    let projectFile = await ls.openFiles[uri].waitProjectFile()
     let timeout = config.timeout.get(REQUEST_TIMEOUT)
     let workingDir = await ls.getWorkingDir(projectFile)
     let nimPath = await ls.getNimPath(config, workingDir)
