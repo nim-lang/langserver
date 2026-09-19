@@ -96,7 +96,7 @@ jobs:
           echo "C:\\mingw32\\bin" >> $GITHUB_PATH
 
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup Nimble
         uses: nim-lang/setup-nimble-action@v1
@@ -201,7 +201,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Download linux-amd64 binary
         uses: actions/download-artifact@v8
@@ -275,7 +275,7 @@ jobs:
       contents: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Get version from tag
         id: get_version
