@@ -3,22 +3,10 @@ import ../protocol/types
 import std/[options, json, os, sequtils, strutils, tables]
 import chronos
 import lspsocketclient
+import testhelpers
 import unittest2
 
 const CallTimeout = 60.seconds
-
-template eventually(cond: untyped, timeout = 10.seconds): bool =
-  block:
-    let deadline = Moment.now() + timeout
-    var satisfied = false
-    while true:
-      if cond:
-        satisfied = true
-        break
-      if Moment.now() > deadline:
-        break
-      waitFor sleepAsync(50.milliseconds)
-    satisfied
 
 let
   entryPath = uriToPath(fixtureUri("projects/slowroot/slowroot.nim"))
@@ -68,7 +56,7 @@ proc startSlowRootServer(configuration: Rpc): (LanguageServer, LspSocketClient) 
     }
   )
   client.notify("initialized", newJObject())
-  doAssert eventually(ls.workspaceConfiguration.finished)
+  doAssert waitUntil(ls.workspaceConfiguration.finished)
   (ls, client)
 
 proc documentSymbols(client: LspSocketClient, file: string): Future[JsonNode] =
@@ -92,8 +80,8 @@ suite "Nimsuggest startup for a slow mapped root":
     client.notify("textDocument/didOpen", %createDidOpenParams(otherFile))
     client.notify("textDocument/didOpen", %createDidOpenParams(rootFile))
 
-    check eventually(initializedMessages() >= 1, CallTimeout)
-    check not eventually(initializedMessages() > 1, 3.seconds)
+    check waitUntil(initializedMessages() >= 1, CallTimeout)
+    check not waitUntil(initializedMessages() > 1, 3.seconds)
     check ls.failTable.getOrDefault(rootPath, 0) == 0
     check rootPath in ls.projectFiles
 
@@ -113,7 +101,7 @@ suite "Requests during startup":
   test "a request behind didOpen waits for the file instead of answering empty":
     check not ls.nimsuggestInit.finished
     client.notify("textDocument/didOpen", %createDidOpenParams(otherFile))
-    check eventually(otherUri in ls.openFiles, 1.seconds)
+    check waitUntil(otherUri in ls.openFiles, 1.seconds)
     let symbols = waitFor client.documentSymbols(otherFile).wait(CallTimeout)
     check symbols.getElems.anyIt(it["name"].getStr == "other")
 
@@ -127,12 +115,12 @@ suite "Project resolution during startup":
     check not ls.nimsuggestInit.finished
     client.notify("textDocument/didOpen", %createDidOpenParams(otherFile))
 
-    check eventually(
+    check waitUntil(
       otherUri in ls.openFiles and ls.openFiles[otherUri].projectFile.finished and
         ls.nimsuggestInit.finished,
       CallTimeout,
     )
-    check not eventually(ls.projectFiles.len > 1, 8.seconds)
+    check not waitUntil(ls.projectFiles.len > 1, 8.seconds)
     check (waitFor ls.openFiles[otherUri].waitProjectFile()) == entryPath
     check toSeq(ls.projectFiles.keys) == @[entryPath]
 
