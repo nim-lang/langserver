@@ -56,7 +56,7 @@ proc startSlowRootServer(configuration: Rpc): (LanguageServer, LspSocketClient) 
     }
   )
   client.notify("initialized", newJObject())
-  doAssert waitUntil(ls.workspaceConfiguration.finished)
+  doAssert waitUntil(ls.workspaceConfigurationReady.finished)
   (ls, client)
 
 proc documentSymbols(client: LspSocketClient, file: string): Future[JsonNode] =
