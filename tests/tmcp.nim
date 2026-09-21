@@ -1,12 +1,11 @@
 import
-  std/[json, jsonutils, options, os, sequtils, strutils, tables],
+  std/[json, jsonutils, options, os, sequtils, strutils],
   chronos,
   json_rpc/errors,
   unittest2,
   ../[nimlangserver, ls, lstransports, utils],
   ../protocol/types,
-  ../routes/mcp,
-  ./testhelpers
+  ../routes/mcp
 
 type McpSocketClient = ref object
   transport: StreamTransport

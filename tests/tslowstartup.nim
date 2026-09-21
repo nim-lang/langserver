@@ -1,6 +1,6 @@
 import ../[nimlangserver, ls, utils]
 import ../protocol/types
-import std/[options, json, os, sequtils, strutils, tables]
+import std/[options, json, os, sequtils, tables]
 import chronos
 import lspsocketclient
 import testhelpers

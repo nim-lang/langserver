@@ -1,3 +1,5 @@
+{. warning[UnusedImport]:off .}
+
 import ./[tsuggestapi, tnimlangserver]
 
 # XXX getNimPath's nimsuggestPath missing ExeExt

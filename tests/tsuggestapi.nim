@@ -1,5 +1,5 @@
 import
-  std/[os, asyncnet, strutils, options],
+  std/[os, strutils, options],
   chronos,
   chronos/asyncproc,
   unittest2,

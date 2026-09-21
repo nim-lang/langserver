@@ -1,5 +1,5 @@
 import
-  std/[os, osproc, strscans, tables, sequtils, enumerate, strutils, options],
+  std/[os, osproc, tables, options],
   chronos,
   unittest2,
   ../[ls, testrunner],

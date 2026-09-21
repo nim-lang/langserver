@@ -1,10 +1,9 @@
 import
-  std/[options, json, os, jsonutils, sequtils, strutils, sugar, strformat],
+  std/[options, json, os, sequtils, strutils, sugar, strformat],
   json_rpc/[rpcclient],
-  chronicles,
   unittest2,
-  ../[nimlangserver, ls, lstransports, utils],
-  ../protocol/[enums, types],
+  ../[nimlangserver, ls, utils],
+  ../protocol/[types],
   ./lspsocketclient
 
 suite "Nimlangserver":

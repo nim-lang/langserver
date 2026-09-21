@@ -1,5 +1,5 @@
 import
-  std/[options, unittest, json, os, jsonutils, tables, strutils, sequtils, sugar],
+  std/[options, json, os, jsonutils, tables, strutils, sugar],
   json_rpc/[rpcclient],
   chronicles,
   ../protocol/types,
