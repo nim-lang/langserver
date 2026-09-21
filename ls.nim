@@ -448,6 +448,16 @@ proc sendStatusChanged*(ls: LanguageServer) {.raises: [].} =
     ls.notify("extension/statusUpdate", status)
     ls.lastStatusSent = status
 
+proc waitProjectFile*(
+    file: NlsFileInfo
+): Future[string] {.async: (raises: [CancelledError, OSError, RegexError]).} =
+  ## Wait without allowing a cancelled request to cancel the shared future.
+  await file.projectFile.join()
+  try:
+    file.projectFile.read()
+  except FuturePendingError:
+    raiseAssert "project file future remained pending after join"
+
 proc addProjectFileToPendingRequest*(
     ls: LanguageServer, id: uint, uri: string
 ) {.async: (raises: []).} =
@@ -456,7 +466,7 @@ proc addProjectFileToPendingRequest*(
       var projectFile = uri.uriToPath()
       if projectFile notin ls.projectFiles:
         if uri in ls.openFiles:
-          projectFile = await ls.openFiles[uri].projectFile
+          projectFile = await ls.openFiles[uri].waitProjectFile()
 
       ls.pendingRequests[id].projectFile = some projectFile
       ls.sendStatusChanged
@@ -847,7 +857,7 @@ proc getNimsuggestInner(
     debug "File is no longer open", uri = uri
     return nil
 
-  let projectFile = await file.projectFile
+  let projectFile = await file.waitProjectFile()
   if not ls.projectFiles.hasKey(projectFile):
     debug "Creating new nimsuggest instance", uri = uri, projectFile = projectFile
     await ls.createOrRestartNimsuggest(projectFile, uri)
@@ -925,6 +935,16 @@ proc getProjectFile*(
   fileUri: string, ls: LanguageServer
 ): Future[string] {.async: (raises: [CancelledError, OSError, RegexError]).}
 
+proc getProjectFileAfterStartup(
+    ls: LanguageServer, fileUri: string
+): Future[string] {.async: (raises: [CancelledError, OSError, RegexError]).} =
+  ## Resolve files after Nimble entry-point startup has completed. Otherwise
+  ## the single-process limit can make auto-guessing fall back to the opened
+  ## file while the intended entry-point nimsuggest is still compiling.
+  if not ls.nimsuggestInit.isNil:
+    await ls.nimsuggestInit.join()
+  await getProjectFile(fileUri, ls)
+
 proc didOpenFile*(
     ls: LanguageServer, textDocument: TextDocumentItem
 ): Future[void] {.async: (raises: [CancelledError, OSError, IOError, RegexError]).} =
@@ -932,7 +952,7 @@ proc didOpenFile*(
     debug "New document opened for URI:", uri = uri
     let
       file = open(ls.uriStorageLocation(uri), fmWrite)
-      projectFileFuture = getProjectFile(uriToPath(uri), ls)
+      projectFileFuture = ls.getProjectFileAfterStartup(uriToPath(uri))
 
     ls.openFiles[uri] = NlsFileInfo(
       projectFile: projectFileFuture,
@@ -951,7 +971,10 @@ proc didOpenFile*(
         file.writeLine line
     file.close()
 
-    let projectFile = await projectFileFuture
+    let openFile = ls.openFiles.getOrDefault(uri)
+    if openFile == nil:
+      return
+    let projectFile = await openFile.waitProjectFile()
     debug "Document associated with the following projectFile",
       uri = uri, projectFile = projectFile
     if not ls.projectFiles.hasKey(projectFile):
@@ -1409,14 +1432,28 @@ proc removeCompletedPendingRequests(
   for id in toRemove:
     ls.pendingRequests.del id
 
-proc removeIdleNimsuggests*(ls: LanguageServer) {.async: (raises: [CancelledError]).} =
+proc removeIdleNimsuggests*(
+    ls: LanguageServer
+) {.async: (raises: [CancelledError, OSError]).} =
+  if ls.projectFiles.len == 0:
+    return
   const DefaultNimsuggestIdleTimeout = 120000
   let timeout = ls.getWorkspaceConfiguration().nimsuggestIdleTimeout.get(
       DefaultNimsuggestIdleTimeout
     )
+  let rootPath =
+    case ls.serverMode
+    of mcp:
+      ls.mcpInitializeParams.getRootPath()
+    of lsp:
+      ls.lspInitializeParams.getRootPath()
+  let mappedProjects = ls.getWorkspaceConfiguration().projectMapping.get(@[]).mapIt(
+      rootPath / it.projectFile
+    )
   var toStop = newSeq[Project]()
   for project in ls.projectFiles.values:
-    if project.file in ls.entryPoints: #we only remove non entry point nimsuggests
+    if project.file in ls.entryPoints or project.file in mappedProjects:
+      #we only remove non entry point nimsuggests
       continue
     if project.lastCmdDate.isSome:
       let passedTime = now() - project.lastCmdDate.get()
@@ -1447,6 +1484,7 @@ proc tick*(ls: LanguageServer): Future[void] {.async: (raises: []).} =
     ls.removeCompletedPendingRequests()
     await ls.removeIdleNimsuggests()
     ls.sendStatusChanged
-  except CancelledError as ex:
+  except CancelledError, OSError:
+    let ex = getCurrentException()
     error "Error in tick", msg = ex.msg
     writeStacktrace(ex)
