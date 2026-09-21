@@ -19,6 +19,9 @@ suite "nimble setup":
   )
   let testProjectDir = absolutePath "tests" / "projects" / "testproject"
 
+  suiteTeardown:
+    waitFor ls.stopNimsuggestProcesses()
+
   test "should pick `testproject.nim` as the main file and provide suggestions":
     let entryPoint = testProjectDir / "src" / "testproject.nim"
     createNimbleProject(testProjectDir)
@@ -96,6 +99,9 @@ suite "Project Mapping":
     "textDocument/publishDiagnostics", "$/progress",
   )
   let projectsDir = absolutePath "tests" / "projects"
+
+  suiteTeardown:
+    waitFor ls.stopNimsuggestProcesses()
 
   test "should use projectMapping fileRegex to find project file":
     let initParams =

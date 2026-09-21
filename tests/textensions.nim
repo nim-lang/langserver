@@ -18,6 +18,9 @@ suite "Nimlangserver extensions":
     "extension/statusUpdate", "textDocument/publishDiagnostics", "$/progress",
   )
 
+  suiteTeardown:
+    waitFor ls.stopNimsuggestProcesses()
+
   test "calling extension/suggest with restart in the project uri should restart nimsuggest":
     let initParams =
       LspInitializeParams %* {

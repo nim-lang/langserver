@@ -17,6 +17,9 @@ suite "Nimlangserver misc":
     "extension/statusUpdate", "textDocument/publishDiagnostics", "$/progress",
   )
 
+  suiteTeardown:
+    waitFor ls.stopNimsuggestProcesses()
+
   test "after a period of inactivity, nimsuggest should be stopped":
     let initParams =
       LspInitializeParams %* {
@@ -56,6 +59,9 @@ suite "Nimlangserver fail count":
     "window/showMessage", "window/workDoneProgress/create", "workspace/configuration",
     "extension/statusUpdate", "textDocument/publishDiagnostics", "$/progress",
   )
+
+  suiteTeardown:
+    waitFor ls.stopNimsuggestProcesses()
 
   test "fail count is reset when a nimsuggest starts successfully":
     # ls.failTable only ever increments, so a project that crashes and
@@ -113,6 +119,9 @@ suite "Nimlangserver idle nimsuggest cleanup":
     "window/showMessage", "window/workDoneProgress/create", "workspace/configuration",
     "extension/statusUpdate", "textDocument/publishDiagnostics", "$/progress",
   )
+
+  suiteTeardown:
+    waitFor ls.stopNimsuggestProcesses()
 
   test "idle nimsuggest is removed even when an open file was already evicted":
     # Regression test for #420: a URI evicted from ls.openFiles while the
