@@ -109,7 +109,7 @@ suite "Replacing a running nimsuggest":
     )
     waitFor ls.didOpenFile(textDocument).wait(30.seconds)
     let old = ls.projectFiles[helloWorldPath]
-    let oldNs = waitFor old.ns.wait(30.seconds)
+    let oldNs = old.ns
     # Having served a request is what made the error path auto-restart it.
     check waitUntil(oldNs.successfullCall, timeout = 30.seconds)
 
@@ -184,7 +184,7 @@ suite "Documents closed while a handler is suspended":
       text: readFile("tests" / helloWorldFile),
     )
     waitFor ls.didOpenFile(textDocument).wait(30.seconds)
-    let ns = waitFor ls.projectFiles[helloWorldPath].ns.wait(30.seconds)
+    let ns = ls.projectFiles[helloWorldPath].ns
 
     # hw.nim has an error in it, so any project check publishes for it. That
     # notification is the only externally visible trace a save leaves.

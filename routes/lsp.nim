@@ -790,7 +790,7 @@ proc executeCommand*(
       ls.workDoneProgressCreate(token)
       ls.progress(token, "begin", fmt "Compiling project {projectFile}")
 
-      project.ns.await().recompile().addCallback do(data: pointer):
+      project.ns.recompile().addCallback do(data: pointer):
         ls.progress(token, "end")
         ls.checkProject(projectFile.pathToUri).traceAsyncErrors
 
@@ -943,7 +943,7 @@ proc workspaceSymbol*(
   ls.checkInitialized()
   if ls.lastNimsuggest != nil:
     let
-      nimsuggest = await ls.lastNimsuggest
+      nimsuggest = ls.lastNimsuggest
       symbols = await nimsuggest.globalSymbols(params.query, "-")
     return symbols.map(x => x.toUtf16Pos(ls).toSymbolInformation)
 
