@@ -14,7 +14,11 @@ const inputLineWithEndLine =
 suite "Nimsuggest tests":
   let
     helloWorldFile = getCurrentDir() / "tests/projects/hw/hw.nim"
-    nimSuggest = createNimsuggest(helloWorldFile).waitFor.ns
+    project = createNimsuggest(helloWorldFile).waitFor
+    nimSuggest = project.ns
+
+  suiteTeardown:
+    project.stop()
 
   test "Parsing qualified path":
     check parseQualifiedPath("a.b.c") == @["a", "b", "c"]

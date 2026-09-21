@@ -509,6 +509,9 @@ suite "LSP socket transport with more than one client":
     }
   )
 
+  suiteTeardown:
+    waitFor ls.stopNimsuggestProcesses()
+
   test "the only client is answered":
     let status =
       to(clientA.callTimeout("extension/status", newJObject()), NimLangServerStatus)

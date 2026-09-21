@@ -48,6 +48,9 @@ suite "Nim track with nim >= 2.4":
 
   let trackUri = fixtureUri("projects/trackproject/src/trackproject.nim")
 
+  suiteTeardown:
+    waitFor ls.stopNimsuggestProcesses()
+
   test "Definition with nim track":
     client.notify("textDocument/didOpen", %createDidOpenParams(trackFile))
     discard waitFor client.waitForNotificationMessage(
@@ -109,6 +112,9 @@ suite "Nim track unavailable with nim < 2.4":
   )
 
   let hwUri = fixtureUri("projects/hw/hw.nim")
+
+  suiteTeardown:
+    waitFor ls.stopNimsuggestProcesses()
 
   test "Definition returns empty":
     let

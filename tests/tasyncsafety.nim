@@ -35,6 +35,9 @@ suite "Async safety":
     helloWorldUri = fixtureUri(helloWorldFile)
     helloWorldPath = uriToPath(helloWorldUri)
 
+  suiteTeardown:
+    waitFor ls.stopNimsuggestProcesses()
+
   test "didOpenFile writes the stash file before it suspends":
     removeFile(ls.uriStorageLocation(helloWorldUri))
     let textDocument = TextDocumentItem(
