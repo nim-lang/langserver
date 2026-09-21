@@ -54,6 +54,17 @@ suite "LSP endpoints":
     for location in locations:
       check location.uri.len > 0
 
+  test "textDocument/declaration answers with the declaring location":
+    let locations = to(
+      client.callTimeout(
+        "textDocument/declaration", %positionParams(helloWorldUri, 1, 6)
+      ),
+      seq[Location],
+    )
+    check locations.len == 1
+    check locations.len >= 1 and locations[0].uri == helloWorldUri
+    check locations.len >= 1 and locations[0].range.start.line == 0
+
   test "textDocument/documentSymbol lists the symbols of the file":
     let params = DocumentSymbolParams %* {"textDocument": {"uri": helloWorldUri}}
     let symbols = to(
@@ -169,6 +180,25 @@ suite "LSP endpoints":
     let status =
       to(client.callTimeout("extension/status", newJObject()), NimLangServerStatus)
     check status.version == LSPVersion
+
+  test "workspace/executeCommand recompiles a project it doesn't know":
+    let params =
+      ExecuteCommandParams %*
+      {"command": RECOMPILE_COMMAND, "arguments": [%"/tmp/not-a-project.nim"]}
+    discard client.callTimeout("workspace/executeCommand", %params)
+    let status =
+      to(client.callTimeout("extension/status", newJObject()), NimLangServerStatus)
+    check status.version == LSPVersion
+
+  test "workspace/executeCommand without arguments is answered with an error":
+    let params = ExecuteCommandParams %* {"command": RECOMPILE_COMMAND, "arguments": []}
+    var raised = false
+    try:
+      discard client.callTimeout("workspace/executeCommand", %params)
+    except JsonRpcError as ex:
+      raised = true
+      check "-32602" in ex.msg
+    check raised
 
   test "textDocument/didClose removes the file from the open set":
     let other = "projects/hw/useRoot.nim"
@@ -342,8 +372,8 @@ suite "LSP endpoints":
       seq[Location],
     )
     check locations.len == 1
-    check locations[0].uri.contains("hw.nim")
-    check locations[0].range.start.line == 0
+    check locations.len >= 1 and locations[0].uri.contains("hw.nim")
+    check locations.len >= 1 and locations[0].range.start.line == 0
 
   test "documentSymbol reports a non ascii symbol at a UTF-16 offset":
     let params = DocumentSymbolParams %* {"textDocument": {"uri": helloWorldUri}}

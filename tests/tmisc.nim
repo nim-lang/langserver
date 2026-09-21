@@ -30,9 +30,7 @@ suite "Nimlangserver misc":
     let initializeResult = waitFor client.initialize(initParams)
     let nsTimeout = 1000
     let conf = NlsConfig(nimsuggestIdleTimeout: some nsTimeout)
-    ls.workspaceConfiguration.complete(% @[conf])
-
-    let gConf = waitFor ls.workspaceConfiguration
+    ls.setWorkspaceConfiguration(% @[conf])
 
     asyncSpawn ls.tickLs()
       #We need to tick the ls so it get rid of the inactive nimsuggests
@@ -74,8 +72,7 @@ suite "Nimlangserver fail count":
           {"window": {"workDoneProgress": true}, "workspace": {"configuration": true}},
       }
     discard waitFor client.initialize(initParams)
-    ls.workspaceConfiguration.complete(% @[NlsConfig()])
-    discard waitFor ls.workspaceConfiguration
+    ls.setWorkspaceConfiguration(% @[NlsConfig()])
 
     let helloWorldFile = "projects/hw/hw.nim"
     let hwAbsFile = uriToPath(helloWorldFile.fixtureUri())
@@ -133,8 +130,7 @@ suite "Nimlangserver idle nimsuggest cleanup":
       }
     discard waitFor client.initialize(initParams)
     let conf = NlsConfig(nimsuggestIdleTimeout: some 1000)
-    ls.workspaceConfiguration.complete(% @[conf])
-    discard waitFor ls.workspaceConfiguration
+    ls.setWorkspaceConfiguration(% @[conf])
 
     let helloWorldFile = "projects/hw/hw.nim"
     let hwAbsFile = uriToPath(helloWorldFile.fixtureUri())

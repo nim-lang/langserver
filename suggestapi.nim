@@ -37,6 +37,7 @@ type
     ideMsg
     ideProject
     ideType
+    ideDeclaration
     ideExpand
 
   NimsuggestError* = object of CatchableError
@@ -367,29 +368,34 @@ proc createNimsuggest*(
   result = Project(file: root)
   result.ns = Future[NimSuggest].Raising([CancelledError]).init("createNimsuggest")
   result.errorCallback = some errorCallback
-  let isNimble = root.endsWith(".nimble")
-  let isNimScript = root.endsWith(".nims") or isNimble
-  var extraArgs = newSeq[string]()
-  if isNimScript:
-    extraArgs.add("--import: system/nimscript")
-  #Nimsuggest crashes when including the file. 
-  if isNimble:
-    let nimScriptApiPath = getNimScriptAPITemplatePath()
-    extraArgs.add("--include: " & nimScriptApiPath)
+  if nimsuggestPath == "":
+    error "Unable to start nimsuggest. Unable to find binary on the $PATH",
+      root = root, workingDir = workingDir
+    await result.markFailed "Unable to start nimsuggest. Unable to find binary on the $PATH"
+    raise newException(ValueError, "Empty nimsuggestPath")
+  try:
+    let isNimble = root.endsWith(".nimble")
+    let isNimScript = root.endsWith(".nims") or isNimble
+    var extraArgs = newSeq[string]()
+    if isNimScript:
+      extraArgs.add("--import: system/nimscript")
+    #Nimsuggest crashes when including the file. 
+    if isNimble:
+      let nimScriptApiPath = getNimScriptAPITemplatePath()
+      extraArgs.add("--include: " & nimScriptApiPath)
 
-  let ns = Nimsuggest()
-  ns.requestQueue = Deque[SuggestCall]()
-  ns.root = root
-  ns.timeout = timeout
-  ns.timeoutCallback = timeoutCallback
-  ns.nimSuggestPath = nimsuggestPath
-  ns.version = version
-  ns.project = result
+    let ns = Nimsuggest()
+    ns.requestQueue = Deque[SuggestCall]()
+    ns.root = root
+    ns.timeout = timeout
+    ns.timeoutCallback = timeoutCallback
+    ns.nimSuggestPath = nimsuggestPath
+    ns.version = version
+    ns.project = result
 
-  info "Starting nimsuggest",
-    root = root, timeout = timeout, path = nimsuggestPath, workingDir = workingDir
+    info "Starting nimsuggest",
+      root = root, timeout = timeout, path = nimsuggestPath, workingDir = workingDir
 
-  if nimsuggestPath != "":
     ns.protocolVersion = detectNimsuggestVersion(root, nimsuggestPath, workingDir)
     if ns.protocolVersion > HighestSupportedNimSuggestProtocolVersion:
       ns.protocolVersion = HighestSupportedNimSuggestProtocolVersion
@@ -416,18 +422,19 @@ proc createNimsuggest*(
     asyncSpawn logNsError(result)
     let portLine = await result.process.stdoutStream.readLine(sep = "\n")
     debug "Nimsuggest port", portLine = portLine
-    try:
-      ns.port = portLine.parseInt
-    except ValueError:
-      error "Failed to parse nimsuggest port", portLine = portLine
-      let nextLine = await result.process.stdoutStream.readLine(sep = "\n")
-      error "Nimsuggest nextLine", nextLine = nextLine
-      await result.markFailed "Failed to parse nimsuggest port"
+    ns.port =
+      try:
+        parseInt(portLine)
+      except ValueError as exc:
+        error "Failed to parse nimsuggest port", portLine = portLine
+        let nextLine = await result.process.stdoutStream.readLine(sep = "\n")
+        error "Nimsuggest nextLine", nextLine = nextLine
+        raise exc
     result.ns.complete(ns)
-  else:
-    error "Unable to start nimsuggest. Unable to find binary on the $PATH",
-      nimsuggestPath = nimsuggestPath
-    await result.markFailed fmt "Unable to start nimsuggest. `{nimsuggestPath}` is not present on the PATH"
+  finally:
+    if not result.ns.finished:
+      await result.markFailed "Unable to start nimsuggest."
+      result.stop()
 
 proc createNimsuggest*(root: string): Future[Project] {.gcsafe, raises: [OSError].} =
   result = createNimsuggest(

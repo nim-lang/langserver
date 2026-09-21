@@ -768,6 +768,11 @@ proc executeCommand*(
     ls: LanguageServer, params: ExecuteCommandParams
 ): Future[JsonNode] {.async: (raises: [ApplicationError, CancelledError]).} =
   ls.checkInitialized()
+  if params.arguments.len == 0:
+    raise (ref ApplicationError)(
+      code: ErrorCode.InvalidParams.int,
+      msg: params.command & " expects the project file as its first argument",
+    )
   let projectFile = params.arguments[0].getStr
   case params.command
   of RESTART_COMMAND:
@@ -780,12 +785,12 @@ proc executeCommand*(
     debug "Clean build", projectFile = projectFile
     let
       token = fmt "Compiling {projectFile}"
-      ns = ls.projectFiles.getOrDefault(projectFile).ns
-    if ns != nil:
+      project = ls.projectFiles.getOrDefault(projectFile)
+    if project != nil and project.ns != nil:
       ls.workDoneProgressCreate(token)
       ls.progress(token, "begin", fmt "Compiling project {projectFile}")
 
-      ns.await().recompile().addCallback do(data: pointer):
+      project.ns.await().recompile().addCallback do(data: pointer):
         ls.progress(token, "end")
         ls.checkProject(projectFile.pathToUri).traceAsyncErrors
 
@@ -1265,11 +1270,12 @@ proc didChangeConfiguration*(
   if ls.usePullConfigurationModel:
     await ls.maybeRequestConfigurationFromClient()
   else:
-    if ls.workspaceConfiguration.finished:
-      let
-        oldConfiguration = parseWorkspaceConfiguration(await ls.workspaceConfiguration)
-        newConfiguration = parseWorkspaceConfiguration(conf)
-      ls.workspaceConfiguration =
-        Future[JsonNode].Raising([CancelledError]).init("didChangeConfiguration")
-      ls.workspaceConfiguration.complete(conf)
-      await handleConfigurationChanges(ls, oldConfiguration, newConfiguration)
+    #the client pushes its settings, so this is the only place they come from
+    let
+      hadConfiguration = ls.workspaceConfigurationReady.finished
+      oldConfiguration = ls.getWorkspaceConfiguration()
+    ls.setWorkspaceConfiguration(conf)
+    if hadConfiguration: #the first configuration is not a change
+      await handleConfigurationChanges(
+        ls, oldConfiguration, ls.getWorkspaceConfiguration()
+      )

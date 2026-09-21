@@ -29,9 +29,7 @@ suite "Nim track with nim >= 2.4":
   waitFor client.connect("localhost", cmdParams.port)
 
   let conf = NlsConfig(useNimTrack: some true)
-  ls.workspaceConfiguration =
-    Future[JsonNode].Raising([CancelledError]).init("tnimtrack")
-  ls.workspaceConfiguration.complete(% @[conf])
+  ls.setWorkspaceConfiguration(% @[conf])
 
   let initParams =
     LspInitializeParams %* {
@@ -93,9 +91,7 @@ suite "Nim track unavailable with nim < 2.4":
   waitFor client.connect("localhost", cmdParams.port)
 
   let conf = NlsConfig(useNimTrack: some true)
-  ls.workspaceConfiguration =
-    Future[JsonNode].Raising([CancelledError]).init("tnimtrack")
-  ls.workspaceConfiguration.complete(% @[conf])
+  ls.setWorkspaceConfiguration(% @[conf])
 
   let initParams =
     LspInitializeParams %* {
