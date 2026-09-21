@@ -22,7 +22,7 @@ proc parseTrackOutput(raw: string): seq[Suggest] {.raises: [ValueError].} =
       continue
     result.add Suggest(
       section: parseEnum[IdeCmd]("ide" & capitalizeAscii(tokens[0])),
-      symKind: tokens[1],
+      symkind: tokens[1],
       qualifiedPath: parseQualifiedPath(tokens[2]),
       forth: tokens[3],
       filePath: tokens[4],

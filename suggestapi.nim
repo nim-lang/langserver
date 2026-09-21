@@ -99,15 +99,15 @@ type
     timeout: int
     timeoutCallback: NimsuggestCallback
     protocolVersion*: int
-    capabilities*: set[NimSuggestCapability]
-    nimSuggestPath*: string
+    capabilities*: set[NimsuggestCapability]
+    nimsuggestPath*: string
     version*: string
     project*: Project
 
-  NimSuggest* = ref NimsuggestImpl
+  Nimsuggest* = ref NimsuggestImpl
 
   Project* = ref object
-    ns*: NimSuggest
+    ns*: Nimsuggest
     file*: string
     process*: AsyncProcessRef
     errorCallback*: Option[ProjectCallback]
@@ -129,7 +129,7 @@ template benchmark(benchmarkName: string, code: untyped) =
     debug "CPU Time", benchmark = benchmarkName, time = elapsedStr
 
 func nimSymToLSPKind*(suggest: Suggest): CompletionItemKind =
-  case suggest.symKind
+  case suggest.symkind
   of "skConst": CompletionItemKind.Value
   of "skEnumField": CompletionItemKind.Enum
   of "skForVar": CompletionItemKind.Variable
@@ -165,7 +165,7 @@ func nimSymToLSPSymbolKind*(suggest: string): SymbolKind =
   else: SymbolKind.Function
 
 func nimSymDetails*(suggest: Suggest): string =
-  case suggest.symKind
+  case suggest.symkind
   of "skConst":
     "const " & suggest.qualifiedPath.join(".") & ": " & suggest.forth
   of "skEnumField":
@@ -197,7 +197,7 @@ func nimSymDetails*(suggest: Suggest): string =
   else:
     suggest.forth
 
-const failedToken = "::Failed::"
+#const failedToken = "::Failed::"
 
 proc parseQualifiedPath*(input: string): seq[string] =
   result = @[]
@@ -232,7 +232,7 @@ proc parseSuggestDef*(line: string): Option[Suggest] {.raises: [ValueError].} =
     column: parseInt(tokens[6]),
     doc: tokens[7].unescape(),
     forth: tokens[3],
-    symKind: tokens[1],
+    symkind: tokens[1],
     section: parseEnum[IdeCmd]("ide" & capitalizeAscii(tokens[0])),
   )
   if tokens.len == 11:
@@ -314,14 +314,14 @@ proc detectNimsuggestVersion(
 
 proc getNimsuggestCapabilities*(
     nimsuggestPath: string
-): set[NimSuggestCapability] {.gcsafe, raises: [OSError, IOError, ValueError].} =
-  proc parseCapability(c: string): Option[NimSuggestCapability] =
+): set[NimsuggestCapability] {.gcsafe, raises: [OSError, IOError, ValueError].} =
+  proc parseCapability(c: string): Option[NimsuggestCapability] =
     debug "Parsing nimsuggest capability", capability = c
     try:
-      result = some(parseEnum[NimSuggestCapability](c))
+      result = some(parseEnum[NimsuggestCapability](c))
     except:
       debug "Capability not supported. Ignoring.", capability = c
-      result = none(NimSuggestCapability)
+      result = none(NimsuggestCapability)
 
   var process = startProcess(
     command = nimsuggestPath, args = @["--info:capabilities"], options = {poUsePath}
@@ -388,7 +388,7 @@ proc createNimsuggest*(
     ns.root = root
     ns.timeout = timeout
     ns.timeoutCallback = timeoutCallback
-    ns.nimSuggestPath = nimsuggestPath
+    ns.nimsuggestPath = nimsuggestPath
     ns.version = version
     ns.project = result
 
@@ -459,10 +459,10 @@ proc watchRequestTimeout(
     debug "Calling restart"
     await self.timeoutCallback(self)
 
-proc toString*(bytes: openarray[byte]): string =
+proc toString*(bytes: openArray[byte]): string =
   result = newString(bytes.len)
   if bytes.len > 0:
-    copyMem(result[0].addr, bytes[0].unsafeAddr, bytes.len)
+    copyMem(result[0].addr, bytes[0].addr, bytes.len)
 
 proc processQueue(self: Nimsuggest): Future[void] {.async: (raises: []).} =
   debug "processQueue", size = self.requestQueue.len
@@ -489,9 +489,6 @@ proc processQueue(self: Nimsuggest): Future[void] {.async: (raises: []).} =
           let ta = initTAddress(&"127.0.0.1:{self.port}")
           transport = await ta.connect()
           discard await transport.write(req.commandString & "\c\L")
-
-          const bufferSize = 1024 * 1024 * 4
-          var buffer: seq[byte] = newSeq[byte](bufferSize)
 
           var data = await transport.read()
           let content = data.toString()

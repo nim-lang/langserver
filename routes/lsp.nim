@@ -150,7 +150,7 @@ proc completion*(
     result = completions.map(toCompletionItem)
 
     if ls.lspClientCapabilities.supportSignatureHelp() and
-        nsCon in nimSuggest.get.capabilities:
+        nsCon in nimsuggest.get.capabilities:
       #show only unique overloads if we support signatureHelp
       var unique = initTable[string, CompletionItem]()
       for completion in result:
@@ -160,7 +160,7 @@ proc completion*(
 
 proc toLocation*(suggest: Suggest): Location =
   return
-    Location %* {"uri": pathToUri(suggest.filepath), "range": toLabelRange(suggest)}
+    Location %* {"uri": pathToUri(suggest.filePath), "range": toLabelRange(suggest)}
 
 proc definition*(
     ls: LanguageServer, params: TextDocumentPositionParams, id: int
@@ -366,7 +366,7 @@ proc typeDefinition*(
   ls.checkInitialized()
   with (params.position, params.textDocument):
     asyncSpawn ls.addProjectFileToPendingRequest(id.uint, uri)
-    let ns = await ls.tryGetNimSuggest(uri)
+    let ns = await ls.tryGetNimsuggest(uri)
     if ns.isNone:
       return @[]
     let ch = ls.getCharacter(uri, line, character)
@@ -382,7 +382,7 @@ proc toSymbolInformation*(suggest: Suggest): SymbolInformation =
     return
       SymbolInformation %* {
         "location": toLocation(suggest),
-        "kind": nimSymToLSPSymbolKind(suggest.symKind).int,
+        "kind": nimSymToLSPSymbolKind(suggest.symkind).int,
         "name": suggest.name,
       }
 
@@ -435,7 +435,7 @@ proc scheduleFileCheck(ls: LanguageServer, uri: string) {.gcsafe, raises: [].} =
 proc toMdLinks(s: string): string =
   result = s
   let matches = s.findAll(re2"`([^`<]*?)<([^`>]*?)>`_")
-  for i in countDown(matches.high, matches.low):
+  for i in countdown(matches.high, matches.low):
     let match = matches[i]
     result[match.boundaries] = fmt"[{s[match.captures[0]]}]({s[match.captures[1]]})"
 
@@ -846,8 +846,8 @@ proc signatureHelp*(
     let nimsuggest = await ls.tryGetNimsuggest(uri)
     if nimsuggest.isNone:
       return none[SignatureHelp]()
-    if nsCon notin nimSuggest.get.capabilities:
-      #support signatureHelp only if the current version of NimSuggest supports it.
+    if nsCon notin nimsuggest.get.capabilities:
+      #support signatureHelp only if the current version of Nimsuggest supports it.
       return none[SignatureHelp]()
     let ch = ls.getCharacter(uri, line, character)
     if ch.isNone:
@@ -890,8 +890,6 @@ proc format*(
   #if enough time has passed since last modification, we skip the formatting:   
   let lastModified = getLastModificationTime(filePath)
   let timeSinceLastModified = getTime() - lastModified
-  let cond = timeSinceLastModified >= initDuration(seconds = 2)
-
   if timeSinceLastModified >= initDuration(seconds = 2):
     error "Skipping formatting because the file was modifyed long ago"
     return none(TextEdit)
@@ -973,11 +971,11 @@ proc documentHighlight*(
     )
     result = suggestLocations.map(x => x.toUtf16Pos(ls).toDocumentHighlight)
 
-proc extractId(id: JsonNode): int {.raises: [ValueError].} =
-  if id.kind == JInt:
-    result = id.getInt
-  if id.kind == JString:
-    discard parseInt(id.getStr, result)
+#proc extractId(id: JsonNode): int {.raises: [ValueError].} =
+#  if id.kind == JInt:
+#    result = id.getInt
+#  if id.kind == JString:
+#    discard parseInt(id.getStr, result)
 
 proc shutdown*(
     ls: LanguageServer, input: JsonNode
@@ -1234,7 +1232,7 @@ proc didSave*(
   # #We first get the project file for the current file so we can test if this file recently imported another project
   # let thisProjectFile = await getProjectFile(uri.uriToPath, ls)
 
-  # let ns: NimSuggest = await ls.projectFiles[thisProjectFile]
+  # let ns: Nimsuggest = await ls.projectFiles[thisProjectFile]
   # if ns.canHandleUnknown:
   #   for projectFile in ls.projectFiles.keys:
   #     if projectFile in ls.entryPoints: continue

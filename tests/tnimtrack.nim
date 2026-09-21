@@ -1,10 +1,9 @@
 import
-  std/[options, json, os, osproc, jsonutils, sequtils, strutils, strformat],
+  std/[options, json, os, osproc, strutils, strformat],
   json_rpc/[rpcclient],
-  chronicles,
   unittest2,
-  ../[nimlangserver, ls, lstransports, utils],
-  ../protocol/[enums, types],
+  ../[nimlangserver, ls, utils],
+  ../protocol/[types],
   ./lspsocketclient
 
 suite "Nim track with nim >= 2.4":

@@ -200,7 +200,7 @@ type
     dynamicRegistration*: Option[bool]
     symbolKind*: Option[WorkspaceSymbolClientCapabilities_symbolKind]
     tagSupport*: Option[WorkspaceSymbolClientCapabilities_tagSupport]
-    resolveSupport*: Option[WorkspaceSymbolClientCapabilities_ResolveSupport]
+    resolveSupport*: Option[WorkspaceSymbolClientCapabilities_resolveSupport]
 
   ExecuteCommandClientCapabilities* = ref object of RootObj
     dynamicRegistration*: Option[bool]
@@ -1049,7 +1049,7 @@ type
     paddingLeft*: Option[bool]
     paddingRight*: Option[bool] #data*: OptionalNode
 
-  NimSuggestCapability* = enum
+  NimsuggestCapability* = enum
     nsCon = "con"
     nsExceptionInlayHints = "exceptionInlayHints"
     nsUnknownFile = "unknownFile"
@@ -1060,9 +1060,9 @@ type
     time*: string
     state*: string
 
-  NimSuggestStatus* = object
+  NimsuggestStatus* = object
     projectFile*: string
-    capabilities*: seq[NimSuggestCapability]
+    capabilities*: seq[NimsuggestCapability]
     version*: string
     path*: string
     port*: int
@@ -1083,7 +1083,7 @@ type
   NimLangServerStatus* = object
     lspPath*: string
     version*: string
-    nimsuggestInstances*: seq[NimSuggestStatus]
+    nimsuggestInstances*: seq[NimsuggestStatus]
     openFiles*: seq[string]
     extensionCapabilities*: seq[LspExtensionCapability]
     pendingRequests*: seq[PendingRequestStatus]

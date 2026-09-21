@@ -4,7 +4,7 @@ import
   chronos/asyncproc,
   unittest2,
   ../[nimlangserver, ls, utils],
-  ../protocol/[enums, types],
+  ../protocol/[types],
   ./lspsocketclient,
   ./testhelpers
 

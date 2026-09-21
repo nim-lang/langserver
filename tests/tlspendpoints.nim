@@ -1,10 +1,10 @@
 import
-  std/[options, json, os, jsonutils, sequtils, strutils, sugar, strformat],
+  std/[options, json, os, sequtils, strutils, strformat],
   json_rpc/[rpcclient],
   chronicles,
   unittest2,
   ../[nimlangserver, ls, lstransports, utils],
-  ../protocol/[enums, types],
+  ../protocol/[types],
   ./[lspsocketclient, testhelpers]
 
 const CallTimeout = 30.seconds

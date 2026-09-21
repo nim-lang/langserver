@@ -420,7 +420,7 @@ proc getLspStatus*(ls: LanguageServer): NimLangServerStatus {.raises: [].} =
   for project in ls.projectFiles.values:
     let ns = project.ns
     if ns != nil:
-      var nsStatus = NimSuggestStatus(
+      var nsStatus = NimsuggestStatus(
         projectFile: project.file,
         capabilities: ns.capabilities.toSeq,
         version: ns.version,
@@ -532,7 +532,7 @@ proc getNimVersion(nimDir: string): string {.raises: [OSError, IOError].} =
     if line.startsWith(NimCompilerVersion):
       return line
 
-proc getNimSuggestPathAndVersion(
+proc getNimsuggestPathAndVersion(
     ls: LanguageServer, conf: NlsConfig, workingDir: string
 ): Future[(string, string)] {.async: (raises: [CancelledError, OSError, IOError]).} =
   let nimbleFiles = walkFiles(workingDir / "*.nimble").toSeq
@@ -562,10 +562,10 @@ proc getNimSuggestPathAndVersion(
 proc getNimPath*(
     ls: LanguageServer, conf: NlsConfig, workingDir = ""
 ): Future[Option[string]] {.async: (raises: [CancelledError, OSError, IOError]).} =
-  if conf.nimSuggestPath.isSome and conf.nimsuggestPath.get().fileExists():
-    some(conf.nimSuggestPath.get.parentDir / "nim")
+  if conf.nimsuggestPath.isSome and conf.nimsuggestPath.get().fileExists():
+    some(conf.nimsuggestPath.get.parentDir / "nim")
   else:
-    let (nimsuggestPath, _) = await ls.getNimSuggestPathAndVersion(conf, workingDir)
+    let (nimsuggestPath, _) = await ls.getNimsuggestPathAndVersion(conf, workingDir)
     let path =
       if nimsuggestPath.fileExists():
         nimsuggestPath.parentDir / "nim"
@@ -752,7 +752,7 @@ proc toDiagnostic(suggest: Suggest): Diagnostic =
 
     return
       Diagnostic %* {
-        "uri": pathToUri(filepath),
+        "uri": pathToUri(filePath),
         "range": range(line - 1, column, line - 1, endColumn),
         "severity":
           case forth
@@ -975,7 +975,7 @@ proc didOpenFile*(
     if not ls.projectFiles.hasKey(projectFile):
       debug "Will create nimsuggest for this file", uri = uri
       await ls.createOrRestartNimsuggest(projectFile, uri)
-    let ns = await ls.tryGetNimSuggest(uri)
+    let ns = await ls.tryGetNimsuggest(uri)
     if ns.isSome:
       discard ls.warnIfUnknown(ns.get(), uri, projectFile)
 
@@ -1000,7 +1000,7 @@ proc tryGetNimsuggest*(
     await didOpenFile(ls, idleFile.textDocument)
 
   if uri notin ls.openFiles:
-    return none(NimSuggest)
+    return none(Nimsuggest)
 
   var retryCount = 0
   const maxRetries = 3
@@ -1016,7 +1016,7 @@ proc tryGetNimsuggest*(
       await sleepAsync(10000 * retryCount) # Exponential backoff
 
   debug "Nimsuggest not found after retries", uri = uri
-  return none(NimSuggest)
+  return none(Nimsuggest)
 
 proc checkProject*(
     ls: LanguageServer, uri: string
@@ -1072,7 +1072,7 @@ proc checkProject*(
     return
 
   debug "Running diagnostics", uri = uri
-  let ns = await ls.tryGetNimSuggest(uri)
+  let ns = await ls.tryGetNimsuggest(uri)
   if ns.isNone:
     return
   let nimsuggest = ns.get
@@ -1092,13 +1092,13 @@ proc checkProject*(
     ls.progress(token, "end")
 
   proc getFilepath(s: Suggest): string =
-    s.filepath
+    s.filePath
 
   let
     diagnostics = nimsuggest.chk(uriToPath(uri), ls.uriToStash(uri)).await().filter(
-        sug => sug.filepath != "???"
+        sug => sug.filePath != "???"
       )
-    filesWithDiags = diagnostics.map(s => s.filepath).toHashSet
+    filesWithDiags = diagnostics.map(s => s.filePath).toHashSet
 
   ls.progress(token, "end")
 
@@ -1127,7 +1127,7 @@ proc onErrorCallback(
   let
     ls = args[0]
     uri = args[1]
-  debug "NimSuggest needed to be restarted due to an error "
+  debug "Nimsuggest needed to be restarted due to an error "
   ls.failTable[project.file] = ls.failTable.getOrDefault(project.file, 0) + 1
   debug "Fail count", count = ls.failTable[project.file]
   let configuration = ls.getWorkspaceConfiguration()
@@ -1143,7 +1143,7 @@ proc onErrorCallback(
   except CancelledError:
     let ex = getCurrentException()
     error "An error has ocurred while handling nimsuggest err", msg = ex.msg
-    writeStacktrace(ex)
+    writeStackTrace(ex)
   finally:
     if project.file != "":
       ls.projectErrors.add ProjectError(
@@ -1163,7 +1163,7 @@ proc createOrRestartNimsuggestImpl(
         configuration = ls.getWorkspaceConfiguration()
         workingDir = await ls.getWorkingDir(projectFile)
         (nimsuggestPath, version) =
-          await ls.getNimSuggestPathAndVersion(configuration, workingDir)
+          await ls.getNimsuggestPathAndVersion(configuration, workingDir)
         timeout = configuration.timeout.get(REQUEST_TIMEOUT)
         restartCallback = proc(ns: Nimsuggest): Future[void] {.async: (raises: []).} =
           warn "Restarting the server due to requests being to slow",
@@ -1470,4 +1470,4 @@ proc tick*(ls: LanguageServer): Future[void] {.async: (raises: []).} =
   except CancelledError, OSError:
     let ex = getCurrentException()
     error "Error in tick", msg = ex.msg
-    writeStacktrace(ex)
+    writeStackTrace(ex)
