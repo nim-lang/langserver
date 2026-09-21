@@ -14,13 +14,13 @@ jobs:
       fail-fast: false
       matrix:
         os:
-          - ubuntu-latest
-          - macos-15-intel
+          #- ubuntu-latest
+          #- macos-15-intel
           # https://github.com/nim-lang/setup-nimble-action/issues/13
           # - macos-latest
           - windows-latest
         #uncomment to run 20 dup jobs in parallel. Useful for debugging race conds; better run one os only
-        #attempt: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+        attempt: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
     name: CI / ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     env:
@@ -45,10 +45,10 @@ jobs:
         shell: bash
         run: nimble -yl install -d
 
-      - name: Bootstrap nim track toolchain
-        shell: bash
-        working-directory: tests/projects/trackproject
-        run: nimble -yl setup
+      #- name: Bootstrap nim track toolchain
+      #  shell: bash
+      #  working-directory: tests/projects/trackproject
+      #  run: nimble -yl setup
 
       - name: Nimble Test
         shell: bash
