@@ -1156,61 +1156,63 @@ proc onErrorCallback(
 proc createOrRestartNimsuggestImpl(
     ls: LanguageServer, projectFile: string, uri = ""
 ): Future[void] {.async: (raises: []).} =
-  try:
-    debug "Starting createOrRestartNimsuggest", projectFile = projectFile, uri = uri
-    let
-      configuration = ls.getWorkspaceConfiguration()
-      workingDir = await ls.getWorkingDir(projectFile)
-      (nimsuggestPath, version) =
-        await ls.getNimSuggestPathAndVersion(configuration, workingDir)
-      timeout = configuration.timeout.get(REQUEST_TIMEOUT)
-      restartCallback = proc(ns: Nimsuggest): Future[void] {.async: (raises: []).} =
-        warn "Restarting the server due to requests being to slow",
-          projectFile = projectFile
-        ls.showMessage(
-          fmt "Restarting nimsuggest for file {projectFile} due to timeout.",
-          MessageType.Warning,
-        )
-        await ls.createOrRestartNimsuggest(projectFile, uri)
-        ls.sendStatusChanged()
-      errorCallback = partial(onErrorCallback, (ls, uri))
+  let projectNext =
+    try:
+      debug "Starting createOrRestartNimsuggest", projectFile = projectFile, uri = uri
+      let
+        configuration = ls.getWorkspaceConfiguration()
+        workingDir = await ls.getWorkingDir(projectFile)
+        (nimsuggestPath, version) =
+          await ls.getNimSuggestPathAndVersion(configuration, workingDir)
+        timeout = configuration.timeout.get(REQUEST_TIMEOUT)
+        restartCallback = proc(ns: Nimsuggest): Future[void] {.async: (raises: []).} =
+          warn "Restarting the server due to requests being to slow",
+            projectFile = projectFile
+          ls.showMessage(
+            fmt "Restarting nimsuggest for file {projectFile} due to timeout.",
+            MessageType.Warning,
+          )
+          await ls.createOrRestartNimsuggest(projectFile, uri)
+          ls.sendStatusChanged()
+        errorCallback = partial(onErrorCallback, (ls, uri))
 
-    debug "Creating new nimsuggest project", projectFile = projectFile
+      debug "Creating new nimsuggest project", projectFile = projectFile
 
-    let projectFut = createNimsuggest(
-      projectFile,
-      nimsuggestPath,
-      version,
-      timeout,
-      restartCallback,
-      errorCallback,
-      workingDir,
-      configuration.logNimsuggest.get(false),
-      configuration.exceptionHintsEnabled,
-    )
-    if not await chronos.withTimeout(
-      projectFut, chronos.milliseconds(NIMSUGGEST_STARTUP_TIMEOUT)
-    ):
-      error "Nimsuggest startup timed out", projectFile = projectFile
-      return
+      let projectFut = createNimsuggest(
+        projectFile,
+        nimsuggestPath,
+        version,
+        timeout,
+        restartCallback,
+        errorCallback,
+        workingDir,
+        configuration.logNimsuggest.get(false),
+        configuration.exceptionHintsEnabled,
+      )
+      if not await chronos.withTimeout(
+        projectFut, chronos.milliseconds(NIMSUGGEST_STARTUP_TIMEOUT)
+      ):
+        error "Nimsuggest startup timed out", projectFile = projectFile
+        nil
+      else:
+        await projectFut
+    except CancelledError, ValueError, OSError, IOError, AsyncProcessError,
+        AsyncStreamError:
+      error "Failed to create/restart nimsuggest",
+        projectFile = projectFile, error = getCurrentExceptionMsg()
+      nil
 
-    let projectNext = await projectFut
-    if projectFile in ls.projectFiles:
-      var project = ls.projectFiles[projectFile]
+  if projectNext != nil:
+    debug "Nimsuggest initialized successfully", projectFile = projectFile
+    let project = ls.projectFiles.getOrDefault(projectFile)
+    if project != nil:
       project.stop()
     ls.projectFiles[projectFile] = projectNext
-
-    debug "Nimsuggest initialized successfully", projectFile = projectFile
     ls.failTable.del(projectFile)
-
     ls.showMessage(fmt "Nimsuggest initialized for {projectFile}", MessageType.Info)
     traceAsyncErrors ls.checkProject(uri)
     projectNext.ns.openFiles.incl uri
     ls.sendStatusChanged()
-  except CancelledError, ValueError, OSError, IOError, AsyncProcessError,
-      AsyncStreamError:
-    error "Failed to create/restart nimsuggest",
-      projectFile = projectFile, error = getCurrentExceptionMsg()
 
 proc createOrRestartNimsuggest*(
     ls: LanguageServer, projectFile: string, uri = ""
