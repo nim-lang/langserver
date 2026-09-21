@@ -173,7 +173,7 @@ proc readLspStdin*(
   while true:
     let str = processContentLength(inputStream) & CRLF
     ctx.value = cast[cstring](createShared(char, str.len + 1))
-    copymem(ctx.value[0].addr, str[0].addr, str.len)
+    copyMem(ctx.value[0].addr, str[0].addr, str.len)
     discard ctx.onStdReadSignal.fireSync()
     discard ctx.onMainReadSignal.waitSync()
 
@@ -182,7 +182,7 @@ proc readMcpStdin*(ctx: ptr ReadStdinContext) {.thread, raises: [IOError, OSErro
   while true:
     let str = inputStream.readLine()
     ctx.value = cast[cstring](createShared(char, str.len + 1))
-    copymem(ctx.value[0].addr, str[0].addr, str.len)
+    copyMem(ctx.value[0].addr, str[0].addr, str.len)
     discard ctx.onStdReadSignal.fireSync()
     discard ctx.onMainReadSignal.waitSync()
 
@@ -243,7 +243,7 @@ proc runRpc(
       json["id"] = %*req.id.num
     json["result"] = parseJson(res.string)
     ls.writeOutput(json)
-  except CancelledError as ex:
+  except CancelledError:
     debug "[RunRPC]Request cancelled", meth = req.method.get("")
   except ApplicationError as ex:
     debug "[RunRPC] Refused", msg = ex.msg, code = ex.code, req = req.`method`
@@ -260,7 +260,6 @@ proc processMessage(ls: LanguageServer, message: string) {.raises: [].} =
     let isReq = "method" in contentJson
     if isReq:
       debug "[Processing Message]", request = contentJson["method"].getStr()
-      var fut = Future[JsonString]()
       # LSP allows null or absent params; json_rpc 0.6+ decoder requires array/object
       if contentJson.getOrDefault("params").kind == JNull:
         contentJson["params"] = newJObject()

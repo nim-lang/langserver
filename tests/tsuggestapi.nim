@@ -25,7 +25,7 @@ suite "Nimsuggest tests":
       Suggest(
         filePath: "hw/hw.nim",
         qualifiedPath: @["hw", "a"],
-        symKind: "skProc",
+        symkind: "skProc",
         line: 1,
         column: 5,
         doc: "",
@@ -39,7 +39,7 @@ suite "Nimsuggest tests":
       Suggest(
         filePath: "basic_types.nim",
         qualifiedPath: @["system", "bool", "true"],
-        symKind: "skEnumField",
+        symkind: "skEnumField",
         line: 46,
         column: 15,
         doc: "",

@@ -211,7 +211,7 @@ suite "LSP features":
     let changes = client
       .call("textDocument/rename", %renameParams)
       .waitFor()
-      .to(WorkSpaceEdit).changes
+      .to(WorkspaceEdit).changes
       .get()
     check changes.len == 1
     check changes[helloWorldUri].len == 3

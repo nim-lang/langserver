@@ -17,7 +17,7 @@ requires "nim >= 2.2.12",
   "."
 
 task test, "run tests":
-  exec "nim c --hints:off -r tests/all.nim"
+  exec "nim c --styleCheck:usages --styleCheck:error -r tests/all.nim"
 
 task book, "Generate book":
   exec "mdbook build book -d ../docs"
