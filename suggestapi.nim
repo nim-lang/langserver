@@ -107,7 +107,7 @@ type
   NimSuggest* = ref NimsuggestImpl
 
   Project* = ref object
-    ns*: Future[NimSuggest].Raising([CancelledError])
+    ns*: NimSuggest
     file*: string
     process*: AsyncProcessRef
     errorCallback*: Option[ProjectCallback]
@@ -366,7 +366,6 @@ proc createNimsuggest*(
     )
 .} =
   result = Project(file: root)
-  result.ns = Future[NimSuggest].Raising([CancelledError]).init("createNimsuggest")
   result.errorCallback = some errorCallback
   if nimsuggestPath == "":
     error "Unable to start nimsuggest. Unable to find binary on the $PATH",
@@ -430,9 +429,9 @@ proc createNimsuggest*(
         let nextLine = await result.process.stdoutStream.readLine(sep = "\n")
         error "Nimsuggest nextLine", nextLine = nextLine
         raise exc
-    result.ns.complete(ns)
+    result.ns = ns
   finally:
-    if not result.ns.finished:
+    if result.ns.isNil:
       await result.markFailed "Unable to start nimsuggest."
       result.stop()
 

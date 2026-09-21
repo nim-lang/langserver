@@ -14,7 +14,7 @@ const inputLineWithEndLine =
 suite "Nimsuggest tests":
   let
     helloWorldFile = getCurrentDir() / "tests/projects/hw/hw.nim"
-    nimSuggest = createNimsuggest(helloWorldFile).waitFor.ns.waitFor
+    nimSuggest = createNimsuggest(helloWorldFile).waitFor.ns
 
   test "Parsing qualified path":
     check parseQualifiedPath("a.b.c") == @["a", "b", "c"]
@@ -85,7 +85,7 @@ suite "Nimsuggest error handling":
     # paths run deterministically.
     let helloWorldFile = getCurrentDir() / "tests/projects/hw/hw.nim"
     let project = createNimsuggest(helloWorldFile).waitFor
-    let ns = project.ns.waitFor
+    let ns = project.ns
     var errorCount = 0
     project.errorCallback = some(
       proc(pr: Project) {.async: (raises: []).} =

@@ -41,7 +41,7 @@ suite "nimble setup":
         "position": {"line": 7, "character": 0},
         "textDocument": {"uri": pathToUri(entryPoint)},
       }
-    let ns = waitFor ls.projectFiles[entryPoint].ns
+    let ns = ls.projectFiles[entryPoint].ns
     client.notify(
       "textDocument/didOpen",
       %createDidOpenParams("projects/testproject/src/testproject.nim"),

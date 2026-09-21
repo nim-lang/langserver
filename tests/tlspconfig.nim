@@ -215,7 +215,7 @@ suite "LSP configuration pulled from the client":
       if ls.checkInProgress or projectFile notin ls.projectFiles:
         return false
       let ns = ls.projectFiles[projectFile].ns
-      ns.finished and not ns.read().checkProjectInProgress
+      ns != nil and not ns.checkProjectInProgress
 
     check waitUntil(ls.checkIdle(uriToPath(helloWorldUri)), timeout = 60.seconds)
 
