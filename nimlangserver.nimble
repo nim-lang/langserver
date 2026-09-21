@@ -27,4 +27,4 @@ task apidocs, "Generate API docs":
 
 task docs, "Generate docs":
   exec "nimble book"
-  exec "nimble apidocs"
+  #exec "nimble apidocs"
