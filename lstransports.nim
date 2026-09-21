@@ -396,10 +396,9 @@ proc startSocketServer*(
   proc waitUntilSocketTransportIsReady(
       ls: LanguageServer
   ) {.async: (raises: [CancelledError]).} =
-    when defined(test):
-      return
-    while ls.socketTransport.isNil:
-      await sleepAsync(0)
+    when not defined(test):
+      while ls.socketTransport.isNil:
+        await sleepAsync(0)
 
   debug "Waiting for socket server to be ready"
   waitFor waitUntilSocketTransportIsReady(ls)

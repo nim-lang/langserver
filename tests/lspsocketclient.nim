@@ -29,7 +29,7 @@ proc newLspSocketClient*(): LspSocketClient =
   result.calls = newTable[string, seq[JsonNode]]()
   result.responses = newTable[int, Future[JsonNode]]()
 
-method call*(
+proc call*(
     client: LspSocketClient, name: string, params: JsonNode
 ): Future[JsonNode] {.async.} =
   ## Remotely calls the specified RPC method.
