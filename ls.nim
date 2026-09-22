@@ -826,7 +826,7 @@ proc warnIfUnknown*(
 
 proc createOrRestartNimsuggest*(
   ls: LanguageServer, projectFile: string, uri = ""
-): Future[void] {.async: (raw:true, raises: [CancelledError]).}
+): Future[void] {.async: (raw: true, raises: [CancelledError]).}
 
 proc initNimsuggestInstances*(
     ls: LanguageServer, rootPath: string
@@ -1165,7 +1165,9 @@ proc createOrRestartNimsuggestImpl(
         (nimsuggestPath, version) =
           await ls.getNimsuggestPathAndVersion(configuration, workingDir)
         timeout = configuration.timeout.get(REQUEST_TIMEOUT)
-        restartCallback = proc(ns: Nimsuggest): Future[void] {.async: (raises: [CancelledError]).} =
+        restartCallback = proc(
+            ns: Nimsuggest
+        ): Future[void] {.async: (raises: [CancelledError]).} =
           warn "Restarting the server due to requests being to slow",
             projectFile = projectFile
           ls.showMessage(
@@ -1197,11 +1199,9 @@ proc createOrRestartNimsuggestImpl(
       else:
         await projectFut
     except CancelledError as exc:
-      debug "Create/restart nimsuggest cancelled",
-        projectFile = projectFile
+      debug "Create/restart nimsuggest cancelled", projectFile = projectFile
       raise exc
-    except ValueError, OSError, IOError, AsyncProcessError,
-        AsyncStreamError:
+    except ValueError, OSError, IOError, AsyncProcessError, AsyncStreamError:
       error "Failed to create/restart nimsuggest",
         projectFile = projectFile, error = getCurrentExceptionMsg()
       nil
