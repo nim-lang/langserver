@@ -268,13 +268,13 @@ proc getNimScriptAPITemplatePath*(): string {.raises: [OSError, IOError].} =
 # keep this raises free
 proc shutdownChildProcess*(p: AsyncProcessRef): Future[void] {.async: (raises: []).} =
   try:
-    # debug "Shutting down process with pid: ", pid = p.processId()
+    debug "Shutting down process with pid: ", pid = p.processId()
     let exitCode = await noCancel p.terminateAndWaitForExit(2.seconds)
-    # debug "Process terminated with exit code: ", exitCode
+      # debug "Process terminated with exit code: ", exitCode
   except AsyncProcessError:
     try:
       let forcedExitCode = await noCancel p.killAndWaitForExit(3.seconds)
-      # debug "Process forcibly killed with exit code: ", exitCode = forcedExitCode
+      debug "Process forcibly killed with exit code: ", exitCode = forcedExitCode
     except AsyncProcessError:
       debug "Could not kill process in time either!"
       writeStackTrace()
