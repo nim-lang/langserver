@@ -44,7 +44,8 @@ type
     ## A nimsuggest request failed: the connection dropped, nimsuggest crashed,
     ## or its output could not be parsed.
 
-  NimsuggestCallback* = proc(self: Nimsuggest): Future[void] {.async: (raises: []).}
+  NimsuggestCallback* =
+    proc(self: Nimsuggest): Future[void] {.async: (raises: [CancelledError]).}
   ProjectCallback* = proc(self: Project): Future[void] {.async: (raises: []).}
 
   Suggest* = ref object
@@ -441,7 +442,7 @@ proc createNimsuggest*(root: string): Future[Project] {.gcsafe, raises: [OSError
     "nimsuggest",
     "",
     REQUEST_TIMEOUT,
-    proc(ns: Nimsuggest) {.async: (raises: []).} =
+    proc(ns: Nimsuggest) {.async: (raises: [CancelledError]).} =
       discard,
     proc(pr: Project) {.async: (raises: []).} =
       discard,
@@ -450,14 +451,14 @@ proc createNimsuggest*(root: string): Future[Project] {.gcsafe, raises: [OSError
 proc watchRequestTimeout(
     self: Nimsuggest, req: SuggestCall
 ): Future[void] {.async: (raises: []).} =
-  let inTime =
-    try:
+  try:
+    let inTime =
       await doWithTimeout(req.future, self.timeout, fmt "running {req.commandString}")
-    except CatchableError:
-      return
-  if not inTime:
-    debug "Calling restart"
-    await self.timeoutCallback(self)
+    if not inTime:
+      debug "Calling restart"
+      await self.timeoutCallback(self)
+  except CancelledError:
+    return
 
 proc toString*(bytes: openArray[byte]): string =
   result = newString(bytes.len)
