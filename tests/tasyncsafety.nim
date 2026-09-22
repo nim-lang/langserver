@@ -63,6 +63,21 @@ suite "Async safety":
     check ls.projectFiles.len == 1
     check not ls.projectFiles[helloWorldPath].process.isNil
 
+  test "Cancelling one create leaves the creation for the others":
+    let
+      first = ls.createOrRestartNimsuggest(helloWorldPath, helloWorldUri)
+      second = ls.createOrRestartNimsuggest(helloWorldPath, helloWorldUri)
+    check ls.nimsuggestCreations.len == 1
+
+    waitFor first.cancelAndWait()
+    check first.cancelled
+
+    check waitFor second.withTimeout(30.seconds)
+    check not second.cancelled
+    check ls.nimsuggestCreations.len == 0
+    check ls.projectFiles.len == 1
+    check not ls.projectFiles[helloWorldPath].process.isNil
+
   test "The server survives a client that leaves with a request pending":
     let leaving = newLspSocketClient()
     waitFor leaving.connect("localhost", cmdParams.port)
@@ -116,7 +131,9 @@ suite "Replacing a running nimsuggest":
     # Having served a request is what made the error path auto-restart it.
     check waitUntil(oldNs.successfullCall, timeout = 30.seconds)
 
-    check waitFor ls.createOrRestartNimsuggest(helloWorldPath, helloWorldUri).withTimeout(30.seconds)
+    check waitFor ls
+      .createOrRestartNimsuggest(helloWorldPath, helloWorldUri)
+      .withTimeout(30.seconds)
     let replacement = ls.projectFiles[helloWorldPath]
     check replacement != old
 

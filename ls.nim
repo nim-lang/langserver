@@ -149,7 +149,7 @@ type
     call*: CallAction
     onExit*: OnExitCallback
     projectFiles*: Table[string, Project]
-    nimsuggestCreations*: Table[string, Future[void].Raising([])]
+    nimsuggestCreations*: Table[string, Future[void].Raising([CancelledError])]
     openFiles*: Table[string, NlsFileInfo]
     idleOpenFiles*: Table[string, NlsFileInfo]
       #We close the file when its inactive and store it here.
@@ -826,7 +826,7 @@ proc warnIfUnknown*(
 
 proc createOrRestartNimsuggest*(
   ls: LanguageServer, projectFile: string, uri = ""
-): Future[void] {.async: (raises: []).}
+): Future[void] {.async: (raw: true, raises: [CancelledError]).}
 
 proc initNimsuggestInstances*(
     ls: LanguageServer, rootPath: string
@@ -1154,8 +1154,8 @@ proc onErrorCallback(
       ls.sendStatusChanged()
 
 proc createOrRestartNimsuggestImpl(
-    ls: LanguageServer, projectFile: string, uri = ""
-): Future[void] {.async: (raises: []).} =
+    ls: LanguageServer, projectFile: string, uri: string
+): Future[void] {.async: (raises: [CancelledError]).} =
   let projectNext =
     try:
       debug "Starting createOrRestartNimsuggest", projectFile = projectFile, uri = uri
@@ -1165,7 +1165,9 @@ proc createOrRestartNimsuggestImpl(
         (nimsuggestPath, version) =
           await ls.getNimsuggestPathAndVersion(configuration, workingDir)
         timeout = configuration.timeout.get(REQUEST_TIMEOUT)
-        restartCallback = proc(ns: Nimsuggest): Future[void] {.async: (raises: []).} =
+        restartCallback = proc(
+            ns: Nimsuggest
+        ): Future[void] {.async: (raises: [CancelledError]).} =
           warn "Restarting the server due to requests being to slow",
             projectFile = projectFile
           ls.showMessage(
@@ -1196,8 +1198,10 @@ proc createOrRestartNimsuggestImpl(
         nil
       else:
         await projectFut
-    except CancelledError, ValueError, OSError, IOError, AsyncProcessError,
-        AsyncStreamError:
+    except CancelledError as exc:
+      debug "Create/restart nimsuggest cancelled", projectFile = projectFile
+      raise exc
+    except ValueError, OSError, IOError, AsyncProcessError, AsyncStreamError:
       error "Failed to create/restart nimsuggest",
         projectFile = projectFile, error = getCurrentExceptionMsg()
       nil
@@ -1214,23 +1218,29 @@ proc createOrRestartNimsuggestImpl(
     projectNext.ns.openFiles.incl uri
     ls.sendStatusChanged()
 
-proc createOrRestartNimsuggest*(
-    ls: LanguageServer, projectFile: string, uri = ""
-): Future[void] {.async: (raises: []).} =
+proc createOrRestartNimsuggestUnprotected(
+    ls: LanguageServer, projectFile: string, uri: string
+): Future[void] {.async: (raises: [CancelledError]).} =
   let inFlight = ls.nimsuggestCreations.getOrDefault(projectFile)
   if not inFlight.isNil and not inFlight.finished:
     await inFlight
-    return
+  else:
+    let creation = ls.createOrRestartNimsuggestImpl(projectFile, uri)
+    ls.nimsuggestCreations[projectFile] = creation
+    try:
+      await creation
+    finally:
+      if ls.nimsuggestCreations.getOrDefault(projectFile) == creation:
+        ls.nimsuggestCreations.del(projectFile)
 
-  let creation = ls.createOrRestartNimsuggestImpl(projectFile, uri)
-  ls.nimsuggestCreations[projectFile] = creation
-  await creation
-  if ls.nimsuggestCreations.getOrDefault(projectFile) == creation:
-    ls.nimsuggestCreations.del(projectFile)
+proc createOrRestartNimsuggest*(
+    ls: LanguageServer, projectFile: string, uri = ""
+): Future[void] {.async: (raw: true, raises: [CancelledError]).} =
+  ls.createOrRestartNimsuggestUnprotected(projectFile, uri).join()
 
 proc restartAllNimsuggestInstances(
     ls: LanguageServer
-): Future[void] {.async: (raises: []).} =
+): Future[void] {.async: (raises: [CancelledError]).} =
   debug "Restarting all nimsuggest instances"
   for projectFile in ls.projectFiles.keys.toSeq:
     await ls.createOrRestartNimsuggest(projectFile, projectFile.pathToUri)
@@ -1255,7 +1265,7 @@ proc maybeRegisterCapabilityDidChangeConfiguration*(ls: LanguageServer) =
 
 proc handleConfigurationChanges*(
     ls: LanguageServer, oldConfiguration, newConfiguration: NlsConfig
-): Future[void] {.async: (raises: []).} =
+): Future[void] {.async: (raises: [CancelledError]).} =
   if ls.lspClientCapabilities.workspace.isSome and
       ls.lspClientCapabilities.workspace.get.inlayHint.isSome and
       ls.lspClientCapabilities.workspace.get.inlayHint.get.refreshSupport.get(false) and
