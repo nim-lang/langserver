@@ -115,7 +115,7 @@ suite "Nimsuggest error handling":
       "nimsuggest",
       "",
       REQUEST_TIMEOUT,
-      proc(ns: Nimsuggest) {.async: (raises: []).} =
+      proc(ns: Nimsuggest) {.async: (raises: [CancelledError]).} =
         discard,
       proc(pr: Project) {.async: (raises: []).} =
         failed = true,
