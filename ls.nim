@@ -828,6 +828,8 @@ proc createOrRestartNimsuggest*(
   ls: LanguageServer, projectFile: string, uri = ""
 ): Future[void] {.async: (raw: true, raises: [CancelledError]).}
 
+proc shouldSpawnNimsuggest*(ls: LanguageServer): Future[bool] {.async: (raises: []).}
+
 proc initNimsuggestInstances*(
     ls: LanguageServer, rootPath: string
 ) {.async: (raises: [CancelledError, OSError]).} =
@@ -840,9 +842,10 @@ proc initNimsuggestInstances*(
     let nimbleDumpInfo = await ls.getNimbleDumpInfo(nimbleFile)
     ls.entryPoints = nimbleDumpInfo.getNimbleEntryPoints(rootPath)
     for entryPoint in ls.entryPoints:
+      if entryPoint in ls.projectFiles or not await ls.shouldSpawnNimsuggest():
+        continue
       debug "Starting nimsuggest for entry point ", entry = entryPoint
-      if entryPoint notin ls.projectFiles:
-        await ls.createOrRestartNimsuggest(entryPoint)
+      await ls.createOrRestartNimsuggest(entryPoint)
 
 proc getNimsuggestInner(
     ls: LanguageServer, uri: string
@@ -1320,8 +1323,17 @@ proc stopNimsuggestProcesses*(ls: LanguageServer) {.async: (raises: []).} =
   else:
     debug "child nimsuggest processes already stopped: CHECK!"
 
+proc liveNimsuggestProjects*(ls: LanguageServer): seq[string] =
+  ## Instances that are running plus the ones still starting. The cap has to
+  ## bound both, or every file opened before the first one registers spawns its
+  ## own nimsuggest.
+  result = ls.projectFiles.keys.toSeq
+  for projectFile in ls.nimsuggestCreations.keys:
+    if projectFile notin result:
+      result.add projectFile
+
 proc shouldSpawnNimsuggest*(ls: LanguageServer): Future[bool] {.async: (raises: []).} =
-  let nsCount = ls.getLspStatus().nimsuggestInstances.len
+  let nsCount = ls.liveNimsuggestProjects.len
   let conf = ls.getWorkspaceConfiguration()
   let maxNimsuggestProcesses = conf.maxNimsuggestProcesses.get(NIM_MAX_NS_PROCESSES)
   result = maxNimsuggestProcesses == 0 or nsCount < maxNimsuggestProcesses
@@ -1360,10 +1372,12 @@ proc getProjectFile*(
   #If we reached the maximum instances of nimsuggest, we just return the first project
   let shouldSpawn = await ls.shouldSpawnNimsuggest()
   if not shouldSpawn:
-    result = ls.projectFiles.keys.toSeq[0]
-    debug "Reached the maximum instances of nimsuggest, reusing the first nimsuggest instance",
-      project = result
-    return result
+    let live = ls.liveNimsuggestProjects
+    if live.len > 0:
+      result = live[0]
+      debug "Reached the maximum instances of nimsuggest, reusing the first nimsuggest instance",
+        project = result
+      return result
 
   result = await ls.getProjectFileAutoGuess(fileUri)
   let project = ls.projectFiles.getOrDefault(result)
