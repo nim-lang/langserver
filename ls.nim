@@ -830,6 +830,56 @@ proc createOrRestartNimsuggest*(
   ls: LanguageServer, projectFile: string, uri = ""
 ): Future[void] {.async: (raw: true, raises: [CancelledError]).}
 
+proc isLiveNimsuggestProject(ls: LanguageServer, projectFile: string): bool =
+  projectFile in ls.projectFiles or projectFile in ls.nimsuggestCreations
+
+proc liveNimsuggestProjects*(ls: LanguageServer): seq[string] =
+  ## Running + starting instances.
+  for entryPoint in ls.entryPoints:
+    if ls.isLiveNimsuggestProject(entryPoint) and entryPoint notin result:
+      result.add entryPoint
+  for projectFile in ls.projectFiles.keys:
+    if projectFile notin result:
+      result.add projectFile
+  for projectFile in ls.nimsuggestCreations.keys:
+    if projectFile notin result:
+      result.add projectFile
+
+proc canSpawnNimsuggest(ls: LanguageServer): bool =
+  let nsCount = ls.liveNimsuggestProjects.len
+  let conf = ls.getWorkspaceConfiguration()
+  let maxNimsuggestProcesses = conf.maxNimsuggestProcesses.get(NIM_MAX_NS_PROCESSES)
+  result = maxNimsuggestProcesses == 0 or nsCount < maxNimsuggestProcesses
+  debug "canSpawnNimsuggest",
+    result = result, nsCount = nsCount, maxNimsuggestProcesses = maxNimsuggestProcesses
+
+proc reuseLiveNimsuggestProject(ls: LanguageServer): string =
+  let live = ls.liveNimsuggestProjects
+  if live.len > 0:
+    result = live[0]
+    debug "Reached the maximum instances of nimsuggest, reusing the first nimsuggest instance",
+      project = result
+
+proc mappedProjectFiles(ls: LanguageServer): seq[string] {.raises: [OSError].} =
+  let rootPath =
+    case ls.serverMode
+    of mcp:
+      ls.mcpInitializeParams.getRootPath()
+    of lsp:
+      ls.lspInitializeParams.getRootPath()
+  ls.getWorkspaceConfiguration().projectMapping.get(@[]).mapIt(
+    rootPath / it.projectFile
+  )
+
+proc nimsuggestProjectFor(
+    ls: LanguageServer, projectFile: string
+): string {.raises: [OSError].} =
+  if ls.isLiveNimsuggestProject(projectFile) or projectFile in ls.mappedProjectFiles() or
+      ls.canSpawnNimsuggest():
+    projectFile
+  else:
+    ls.reuseLiveNimsuggestProject()
+
 proc initNimsuggestInstances*(
     ls: LanguageServer, rootPath: string
 ) {.async: (raises: [CancelledError, OSError]).} =
@@ -842,8 +892,8 @@ proc initNimsuggestInstances*(
     let nimbleDumpInfo = await ls.getNimbleDumpInfo(nimbleFile)
     ls.entryPoints = nimbleDumpInfo.getNimbleEntryPoints(rootPath)
     for entryPoint in ls.entryPoints:
-      debug "Starting nimsuggest for entry point ", entry = entryPoint
-      if entryPoint notin ls.projectFiles:
+      if not ls.isLiveNimsuggestProject(entryPoint) and ls.canSpawnNimsuggest():
+        debug "Starting nimsuggest for entry point ", entry = entryPoint
         await ls.createOrRestartNimsuggest(entryPoint)
 
 proc getNimsuggestInner(
@@ -854,7 +904,7 @@ proc getNimsuggestInner(
     debug "File is no longer open", uri = uri
     return nil
 
-  let projectFile = await file.waitProjectFile()
+  let projectFile = ls.nimsuggestProjectFor(await file.waitProjectFile())
   if not ls.projectFiles.hasKey(projectFile):
     debug "Creating new nimsuggest instance", uri = uri, projectFile = projectFile
     await ls.createOrRestartNimsuggest(projectFile, uri)
@@ -974,9 +1024,10 @@ proc didOpenFile*(
     let projectFile = await openFile.waitProjectFile()
     debug "Document associated with the following projectFile",
       uri = uri, projectFile = projectFile
-    if not ls.projectFiles.hasKey(projectFile):
+    let nsProjectFile = ls.nimsuggestProjectFor(projectFile)
+    if not ls.projectFiles.hasKey(nsProjectFile):
       debug "Will create nimsuggest for this file", uri = uri
-      await ls.createOrRestartNimsuggest(projectFile, uri)
+      await ls.createOrRestartNimsuggest(nsProjectFile, uri)
     let ns = await ls.tryGetNimsuggest(uri)
     if ns.isSome:
       discard ls.warnIfUnknown(ns.get(), uri, projectFile)
@@ -1325,14 +1376,6 @@ proc stopNimsuggestProcesses*(ls: LanguageServer) {.async: (raises: []).} =
   else:
     debug "child nimsuggest processes already stopped: CHECK!"
 
-proc shouldSpawnNimsuggest*(ls: LanguageServer): Future[bool] {.async: (raises: []).} =
-  let nsCount = ls.getLspStatus().nimsuggestInstances.len
-  let conf = ls.getWorkspaceConfiguration()
-  let maxNimsuggestProcesses = conf.maxNimsuggestProcesses.get(NIM_MAX_NS_PROCESSES)
-  result = maxNimsuggestProcesses == 0 or nsCount < maxNimsuggestProcesses
-  debug "shouldSpawnNimsuggest",
-    result = result, nsCount = nsCount, maxNimsuggestProcesses = maxNimsuggestProcesses
-
 proc getProjectFile*(
     fileUri: string, ls: LanguageServer
 ): Future[string] {.async: (raises: [CancelledError, OSError, RegexError]).} =
@@ -1363,12 +1406,8 @@ proc getProjectFile*(
         uri = fileUri, matchedRegex = mapping.fileRegex
 
   #If we reached the maximum instances of nimsuggest, we just return the first project
-  let shouldSpawn = await ls.shouldSpawnNimsuggest()
-  if not shouldSpawn:
-    result = ls.projectFiles.keys.toSeq[0]
-    debug "Reached the maximum instances of nimsuggest, reusing the first nimsuggest instance",
-      project = result
-    return result
+  if not ls.canSpawnNimsuggest():
+    return ls.reuseLiveNimsuggestProject()
 
   result = await ls.getProjectFileAutoGuess(fileUri)
   let project = ls.projectFiles.getOrDefault(result)
@@ -1439,15 +1478,7 @@ proc removeIdleNimsuggests*(
   let timeout = ls.getWorkspaceConfiguration().nimsuggestIdleTimeout.get(
       DefaultNimsuggestIdleTimeout
     )
-  let rootPath =
-    case ls.serverMode
-    of mcp:
-      ls.mcpInitializeParams.getRootPath()
-    of lsp:
-      ls.lspInitializeParams.getRootPath()
-  let mappedProjects = ls.getWorkspaceConfiguration().projectMapping.get(@[]).mapIt(
-      rootPath / it.projectFile
-    )
+  let mappedProjects = ls.mappedProjectFiles()
   var toStop = newSeq[Project]()
   for project in ls.projectFiles.values:
     if project.file in ls.entryPoints or project.file in mappedProjects:
