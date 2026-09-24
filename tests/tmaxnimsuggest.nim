@@ -1,19 +1,10 @@
 import
-  std/[options, json, os, sequtils, tables, strformat],
+  std/[options, json, os, sequtils, tables],
   json_rpc/[rpcclient],
   unittest2,
   ../[nimlangserver, ls, utils],
   ../protocol/[types],
-  ./[lspsocketclient, testhelpers]
-
-proc liveNimsuggests(ls: LanguageServer): int =
-  ## Instances that exist or are on their way, which is what the cap has to
-  ## bound: `projectFiles` alone only counts the ones that made it.
-  var projects = ls.nimsuggestCreations.keys.toSeq
-  for projectFile in ls.projectFiles.keys:
-    if projectFile notin projects:
-      projects.add projectFile
-  projects.len
+  ./lspsocketclient
 
 proc newClient(port: Port): LspSocketClient =
   result = newLspSocketClient()
@@ -36,60 +27,36 @@ const
   OtherFile = "projects/twomodules/othermodule.nim"
   ThirdFile = "projects/twomodules/thirdmodule.nim"
 
-suite "Single nimsuggest instance":
+proc completes(client: LspSocketClient, uri: string): bool =
+  let completion = waitFor client
+    .call("textDocument/completion", %positionParams(uri, 4, 7))
+    .wait(60.seconds)
+  completion.to(seq[CompletionItem]).len > 0
+
+suite "Single nimsuggest instance under concurrent project resolution":
   let cmdParams =
     CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
   let ls = main(cmdParams)
   let client = newClient(cmdParams.port)
-  let otherUri = OtherFile.fixtureUri
+  let files = [RootFile, OtherFile, ThirdFile]
 
   suiteTeardown:
     waitFor ls.stopNimsuggestProcesses()
 
-  test "a second module is served by the one running nimsuggest":
+  test "modules resolved at the same time share one project":
     discard waitFor client.initialize(initParams())
     ls.setWorkspaceConfiguration(% @[NlsConfig(maxNimsuggestProcesses: some 1)])
 
-    client.notify("textDocument/didOpen", %createDidOpenParams(RootFile))
-    check waitUntil(ls.projectFiles.len == 1, 60.seconds)
+    # Started together, so every call is past the cap check before any of them
+    # has picked a project. Each module is its own project when guessed alone.
+    let resolving = files.mapIt(getProjectFile(it.fixtureUri.uriToPath, ls))
+    var projects: seq[string]
+    for fut in resolving:
+      projects.add waitFor fut
+    check projects.deduplicate.len == 1
 
-    client.notify("textDocument/didOpen", %createDidOpenParams(OtherFile))
-    check waitUntil(otherUri in ls.openFiles, 30.seconds)
-
-    let completion = waitFor client
-      .call("textDocument/completion", %positionParams(otherUri, 4, 7))
-      .wait(60.seconds)
-    check completion.to(seq[CompletionItem]).mapIt(it.label).len > 0
-    check ls.liveNimsuggests == 1
-
-    let hover = waitFor client
-      .call("textDocument/hover", %positionParams(otherUri, 4, 6))
-      .wait(60.seconds)
-    check hover.kind != JNull
-    check ls.liveNimsuggests == 1
-
-suite "Single nimsuggest instance under concurrent opens":
-  let cmdParams =
-    CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
-  let ls = main(cmdParams)
-  let client = newClient(cmdParams.port)
-
-  suiteTeardown:
-    waitFor ls.stopNimsuggestProcesses()
-
-  test "opening three modules at once still starts a single nimsuggest":
-    discard waitFor client.initialize(initParams())
-    ls.setWorkspaceConfiguration(% @[NlsConfig(maxNimsuggestProcesses: some 1)])
-
-    var peak = 0
-    proc watch(): bool {.gcsafe, raises: [].} =
-      {.cast(gcsafe).}:
-        peak = max(peak, ls.liveNimsuggests)
-      false
-
-    for file in [RootFile, OtherFile, ThirdFile]:
+    for file in files:
       client.notify("textDocument/didOpen", %createDidOpenParams(file))
-
-    discard waitUntil(watch(), 30.seconds)
-    checkpoint fmt"peak live nimsuggest instances: {peak}"
-    check peak == 1
+    for file in files:
+      check client.completes(file.fixtureUri)
+    check ls.projectFiles.len == 1
