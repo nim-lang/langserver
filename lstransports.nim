@@ -171,11 +171,20 @@ proc readLspStdin*(
 ) {.thread, raises: [IOError, OSError, ValueError].} =
   let inputStream = newFileStream(stdin)
   while true:
-    let str = processContentLength(inputStream) & CRLF
+    # An EOF/read error must not escape the thread (it would kill the whole
+    # process): deliver the empty sentinel so the main loop can shut down.
+    let str =
+      try:
+        processContentLength(inputStream) & CRLF
+      except IOError, OSError:
+        ""
     ctx.value = cast[cstring](createShared(char, str.len + 1))
-    copyMem(ctx.value[0].addr, str[0].addr, str.len)
+    if str.len > 0:
+      copyMem(ctx.value[0].addr, str[0].addr, str.len)
     discard ctx.onStdReadSignal.fireSync()
     discard ctx.onMainReadSignal.waitSync()
+    if str == "":
+      return
 
 proc readMcpStdin*(ctx: ptr ReadStdinContext) {.thread, raises: [IOError, OSError].} =
   let inputStream = newFileStream(stdin)
@@ -349,7 +358,10 @@ proc startStdioLoop*(ls: LanguageServer): Future[void] {.async: (raises: []).} =
       await ls.stdinContext.onMainReadSignal.fire()
       if msg == "":
         error "Client disconnected"
-        break
+        # The client is gone without sending `exit`: clean up the children and
+        # quit here, otherwise the process would linger forever.
+        await ls.stopNimsuggestProcesses()
+        exitNow(1)
       ls.processMessage(msg)
   except AsyncError, CancelledError:
     # This loop is asyncSpawn-ed; a failure used to surface as a FutureDefect.
