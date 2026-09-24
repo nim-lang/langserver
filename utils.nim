@@ -15,10 +15,16 @@ import
 # and event-loop callbacks, unlike quit().
 when defined(posix):
   import std/posix
-  proc exitNow*(code: int) = exitnow(code.cint)
+  proc exitNow*(code: int) =
+    exitnow(code.cint)
+
 elif defined(windows):
-  proc ExitProcess(exitCode: int32) {.stdcall, dynlib: "kernel32", importc: "ExitProcess".}
-  proc exitNow*(code: int) = ExitProcess(code.int32)
+  proc ExitProcess(
+    exitCode: int32
+  ) {.stdcall, dynlib: "kernel32", importc: "ExitProcess".}
+
+  proc exitNow*(code: int) =
+    ExitProcess(code.int32)
 
 type
   FingerTable = seq[tuple[u16pos, offset: int]]
