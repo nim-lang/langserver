@@ -261,7 +261,8 @@ proc processMessage(ls: LanguageServer, message: string) {.raises: [].} =
     if isReq:
       debug "[Processing Message]", request = contentJson["method"].getStr()
       # LSP allows null or absent params; json_rpc 0.6+ decoder requires array/object
-      if contentJson.getOrDefault("params").kind == JNull:
+      let params = contentJson.getOrDefault("params")
+      if params.isNil or params.kind == JNull:
         contentJson["params"] = newJObject()
       # Notifications have no id; RequestRx.id is non-optional so inject null
       # to avoid raiseIncompleteObject during decode.
