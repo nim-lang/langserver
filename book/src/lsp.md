@@ -131,6 +131,7 @@ LSP configuration is supplied by the client/editor via `nim.*` settings.
 | `nim.nimsuggestIdleTimeout`   | Timeout in ms before an idle `nimsuggest` is stopped. Default: 120 seconds.                                                      |
 | `nim.useNimCheck`             | Use `nim check` instead of `nimsuggest` for linting. Default: `true`.                                                            |
 | `nim.maxNimsuggestProcesses`  | Maximum number of live `nimsuggest` processes. `0` means unlimited. Default: `0`.                                                |
+| `nim.nimsuggestTimeout`       | Timeout in ms for the `nimsuggest` startup + initial compilation. Default: 60 seconds.                                           |
 
 ### Project mapping example
 
@@ -275,5 +276,3 @@ Result: {
   "content": "  block:\n    template field1(): untyped =\n      a.field1\n\n    template field2(): untyped =\n      a.field2\n\n    field1 = field2"
 }
 ```
-
-

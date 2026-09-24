@@ -21,7 +21,7 @@ var editorConfiguration = %*[
     "provider": "lsp",
     "useNimsuggestCheck": false,
     "logNimsuggest": false,
-    "nimsuggestRestartTimeout": 60,
+    "nimsuggestTimeout": 90000,
     "inlayHints": {
       "typeHints": {"enable": true},
       "parameterHints": {"enable": true},
@@ -48,6 +48,11 @@ suite "Workspace configuration parsing":
     ]:
       checkpoint $conf
       check not parseWorkspaceConfiguration(conf).isNil
+
+  test "nimsuggestTimeout stays unset when the client does not send it":
+    # The default is applied at the usage site via .get, so an absent key
+    # must parse to none rather than to a value.
+    check parseWorkspaceConfiguration(%*[{}]).nimsuggestTimeout.isNone
 
 suite "Waiting for the workspace configuration":
   proc newLs(): LanguageServer =
@@ -200,6 +205,7 @@ suite "LSP configuration pulled from the client":
 
     let conf = ls.getWorkspaceConfiguration()
     check conf.nimsuggestIdleTimeout == some 120000
+    check conf.nimsuggestTimeout == some 90000
     check conf.logNimsuggest == some false
 
   test "the pulled configuration is what nimsuggest was started with":
