@@ -125,7 +125,7 @@ LSP configuration is supplied by the client/editor via `nim.*` settings.
 | `nim.workingDirectoryMapping` | Configure the working directory for specific projects.                                                                           |
 | `nim.checkOnSave`             | Check the file on save.                                                                                                          |
 | `nim.logNimsuggest`           | Enable `nimsuggest` logging.                                                                                                     |
-| `nim.inlayHints`              | Configure inlay hints.                                                                                                           |
+| `nim.inlayHints`              | Configure inlay hints. Exception hints are off by default due to their compile-time cost.                                        |
 | `nim.notificationVerbosity`   | Notification verbosity: `"none"`, `"error"`, `"warning"`, or `"info"`.                                                           |
 | `nim.formatOnSave`            | Format on save (requires `nph` on `PATH`).                                                                                       |
 | `nim.nimsuggestIdleTimeout`   | Timeout in ms before an idle `nimsuggest` is stopped. Default: 120 seconds.                                                      |
@@ -155,8 +155,12 @@ Inlay hints are visual snippets displayed inline by the editor to provide contex
 `nimlangserver` provides three kinds:
 
 - **Type hints** — show inferred variable types.
-- **Exception hints** — highlight functions that raise exceptions.
+- **Exception hints** — highlight functions that raise exceptions. Disabled by default: enabling them significantly slows down `nimsuggest` startup (see the performance note below).
 - **Parameter hints** — show parameter names at call sites. _(Not yet implemented — see [issue #183](https://github.com/nim-lang/langserver/issues/183).)_
+
+### Performance note
+
+Exception hints are disabled by default because of their compile-time cost: when enabled, `nimlangserver` starts `nimsuggest` with `--exceptionInlayHints:on`, which makes the compiler track raised and caught exceptions for every routine and record per-symbol exception information while it compiles the project. On large projects this multiplies the initial compilation time—measured at more than 4x on nimbus-eth1 (about 100 seconds without the hints, still unfinished after 7 minutes with them). The cost is in the Nim compiler itself and may be reduced in the future; until then, enable `nim.inlayHints.exceptionHints.enable` only if you are willing to accept the slower startup.
 
 ### Screenshots
 
@@ -172,7 +176,7 @@ Helix:
 
 ### Enabling hints in VSCode
 
-Inlay hints are enabled by default. To toggle individual kinds:
+Type and parameter hints are enabled by default; exception hints are disabled by default (see the performance note above). To toggle individual kinds:
 
 1. Open **Settings**.
 2. Search for **inlay**.
