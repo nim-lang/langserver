@@ -310,12 +310,13 @@ EOF
 <tr><td><code>nim.workingDirectoryMapping</code></td><td>Configure the working directory for specific projects.</td></tr>
 <tr><td><code>nim.checkOnSave</code></td><td>Check the file on save.</td></tr>
 <tr><td><code>nim.logNimsuggest</code></td><td>Enable <code>nimsuggest</code> logging.</td></tr>
-<tr><td><code>nim.inlayHints</code></td><td>Configure inlay hints.</td></tr>
+<tr><td><code>nim.inlayHints</code></td><td>Configure inlay hints. Exception hints are off by default due to their compile-time cost.</td></tr>
 <tr><td><code>nim.notificationVerbosity</code></td><td>Notification verbosity: <code>"none"</code>, <code>"error"</code>, <code>"warning"</code>, or <code>"info"</code>.</td></tr>
 <tr><td><code>nim.formatOnSave</code></td><td>Format on save (requires <code>nph</code> on <code>PATH</code>).</td></tr>
 <tr><td><code>nim.nimsuggestIdleTimeout</code></td><td>Timeout in ms before an idle <code>nimsuggest</code> is stopped. Default: 120 seconds.</td></tr>
 <tr><td><code>nim.useNimCheck</code></td><td>Use <code>nim check</code> instead of <code>nimsuggest</code> for linting. Default: <code>true</code>.</td></tr>
 <tr><td><code>nim.maxNimsuggestProcesses</code></td><td>Maximum number of live <code>nimsuggest</code> processes. <code>0</code> means unlimited. Default: <code>0</code>.</td></tr>
+<tr><td><code>nim.nimsuggestTimeout</code></td><td>Timeout in ms for the <code>nimsuggest</code> startup + initial compilation. Default: 60 seconds.</td></tr>
 </tbody></table>
 </div>
 <h3 id="project-mapping-example"><a class="header" href="#project-mapping-example">Project mapping example</a></h3>
@@ -335,9 +336,11 @@ EOF
 <p><code>nimlangserver</code> provides three kinds:</p>
 <ul>
 <li><strong>Type hints</strong> — show inferred variable types.</li>
-<li><strong>Exception hints</strong> — highlight functions that raise exceptions.</li>
+<li><strong>Exception hints</strong> — highlight functions that raise exceptions. Disabled by default: enabling them significantly slows down <code>nimsuggest</code> startup (see the performance note below).</li>
 <li><strong>Parameter hints</strong> — show parameter names at call sites. <em>(Not yet implemented — see <a href="https://github.com/nim-lang/langserver/issues/183">issue #183</a>.)</em></li>
 </ul>
+<h3 id="performance-note"><a class="header" href="#performance-note">Performance note</a></h3>
+<p>Exception hints are disabled by default because of their compile-time cost: when enabled, <code>nimlangserver</code> starts <code>nimsuggest</code> with <code>--exceptionInlayHints:on</code>, which makes the compiler track raised and caught exceptions for every routine and record per-symbol exception information while it compiles the project. On large projects this multiplies the initial compilation time—measured at more than 4x on nimbus-eth1 (about 100 seconds without the hints, still unfinished after 7 minutes with them). The cost is in the Nim compiler itself and may be reduced in the future; until then, enable <code>nim.inlayHints.exceptionHints.enable</code> only if you are willing to accept the slower startup.</p>
 <h3 id="screenshots"><a class="header" href="#screenshots">Screenshots</a></h3>
 <p>VSCode:</p>
 <ul>
@@ -350,7 +353,7 @@ EOF
 <li><img src="./img/helix_exception_hint.png" alt="" /></li>
 </ul>
 <h3 id="enabling-hints-in-vscode"><a class="header" href="#enabling-hints-in-vscode">Enabling hints in VSCode</a></h3>
-<p>Inlay hints are enabled by default. To toggle individual kinds:</p>
+<p>Type and parameter hints are enabled by default; exception hints are disabled by default (see the performance note above). To toggle individual kinds:</p>
 <ol>
 <li>Open <strong>Settings</strong>.</li>
 <li>Search for <strong>inlay</strong>.</li>
