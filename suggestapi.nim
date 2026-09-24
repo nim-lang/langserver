@@ -276,6 +276,12 @@ proc stop*(self: Project) =
   if not self.process.isNil:
     asyncSpawn shutdownChildProcess(self.process)
 
+proc stopAndWait*(self: Project) {.async: (raises: []).} =
+  debug "Stopping nimsuggest for ", root = self.file
+  self.errorCallback = none(ProjectCallback)
+  if not self.process.isNil:
+    await shutdownChildProcess(self.process)
+
 # XXX remove
 proc doWithTimeout*[T](
     fut: Future[T], timeout: int, s: string

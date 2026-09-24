@@ -1315,8 +1315,16 @@ proc stopNimsuggestProcesses*(ls: LanguageServer) {.async: (raises: []).} =
   if not ls.childNimsuggestProcessesStopped:
     debug "stopping child nimsuggest processes"
     ls.childNimsuggestProcessesStopped = true
+    # Terminate all children concurrently and wait until they are actually
+    # gone: returning before that would let the process exit mid-teardown.
+    var stops: seq[Future[void]] = @[]
     for project in ls.projectFiles.values:
-      project.stop()
+      stops.add project.stopAndWait()
+    if stops.len > 0:
+      try:
+        await allFutures(stops)
+      except CancelledError:
+        discard
   else:
     debug "child nimsuggest processes already stopped: CHECK!"
 
