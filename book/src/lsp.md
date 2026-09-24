@@ -149,6 +149,72 @@ LSP configuration is supplied by the client/editor via `nim.*` settings.
 
 When inside a Nimble project, `nimble` drives the entry points for `nimsuggest` automatically.
 
+### Multi-entry-point projects
+
+Some Nim packages have several independent entry points. For example, [Chronos](https://github.com/status-im/nim-chronos) has a main module `chronos.nim`, while also providing separate application modules that import only a subset of the package. [Constantine](https://github.com/mratsim/constantine) has a similar layout, with several public API modules rather than one module that reaches all of the package.
+
+For these projects, the file being edited is not always the right `nimsuggest` project root. Without a mapping, `nimlangserver` falls back to the opened file, i.e. every opened file is a project root. Nimsuggest will then analyse that file and its imports, but it will not see independent entry points that use the file. This is especially important for generic code: the exact overload may only be known from a concrete instantiation in another entry point.
+
+Use `nim.projectMapping` to select the entry point whose compilation context matches the files being edited:
+
+```json
+{
+  "nim.projectMapping": [
+    {
+      "projectFile": "chronos/apps/http/httpclient.nim",
+      "fileRegex": "^chronos/apps/http/.*\\.nim$"
+    },
+    {
+      "projectFile": "chronos.nim",
+      "fileRegex": "^chronos/.*\\.nim$"
+    }
+  ]
+}
+```
+
+Mappings are checked in order, so put more specific patterns first. Paths in `projectFile` and `fileRegex` are relative to the workspace root. The mapped file must exist and be a compilable Nim entry point; a mapping does not import modules or create generic instantiations by itself.
+
+#### Chronos
+
+The core entry point is `chronos.nim`, but the HTTP application modules are independent entry points. Mapping HTTP sources to `httpclient.nim` gives nimsuggest the context of the HTTP implementation, while other Chronos files use the core entry point.
+
+#### Constantine
+
+Map each source area to an existing public API module that actually exercises the code being edited. For example, elliptic-curve sources can use a suitable elliptic-curve API entry point:
+
+```json
+{
+  "nim.projectMapping": [
+    {
+      "projectFile": "constantine/ethereum_bls_signatures.nim",
+      "fileRegex": "^constantine/math/elliptic/.*\\.nim$"
+    },
+    {
+      "projectFile": "constantine/ethereum_bls_signatures.nim",
+      "fileRegex": "^constantine/.*\\.nim$"
+    }
+  ]
+}
+```
+
+The best root depends on the API area. If no existing entry point exercises the required combinations, create a project-local analysis root that imports representative public APIs and, where necessary, contains representative concrete uses. Keep that file as tooling infrastructure rather than treating it as a public package entry point.
+
+#### Project-local editor configuration
+
+The setting is supplied by the editor's LSP client. For Helix, a project-local `.helix/languages.toml` can contain:
+
+```toml
+[language-server.nimlangserver.config.nim]
+projectMapping = [
+  { projectFile = "chronos/apps/http/httpclient.nim", fileRegex = "^chronos/apps/http/.*\\.nim$" },
+  { projectFile = "chronos.nim", fileRegex = "^chronos/.*\\.nim$" },
+]
+```
+
+For VS Code, put the equivalent JSON setting in the project's `.vscode/settings.json`. Other editors expose the same `nim.projectMapping` setting through their LSP client configuration.
+
+Project mapping is not required for ordinary definitions or every generic lookup. It is needed when precise results depend on a concrete instantiation reachable only from another entry point. Nimsuggest can perform conservative speculative analysis when no instantiation is available, but it cannot infer uses that are outside the selected compilation context.
+
 ## Inlay hints
 
 Inlay hints are visual snippets displayed inline by the editor to provide context without cluttering the source.
