@@ -10,6 +10,16 @@ import
   json_rpc/private/jrpc_sys,
   stew/byteutils
 
+# Terminate the process without running any runtime teardown (atexit
+# handlers, stdio flushes, deallocAll): safe to call from signal handlers
+# and event-loop callbacks, unlike quit().
+when defined(posix):
+  import std/posix
+  proc exitNow*(code: int) = exitnow(code.cint)
+elif defined(windows):
+  proc ExitProcess(exitCode: int32) {.stdcall, dynlib: "kernel32", importc: "ExitProcess".}
+  proc exitNow*(code: int) = ExitProcess(code.int32)
+
 type
   FingerTable = seq[tuple[u16pos, offset: int]]
 

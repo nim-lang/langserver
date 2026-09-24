@@ -997,6 +997,10 @@ proc exit*(
   debug "Quitting process"
   result = newJNull()
   await p.onExit()
+  # Leave immediately from inside the event loop: returning would leave the
+  # process lingering until the client closes the pipe. Per the LSP spec the
+  # exit code is 0 when `shutdown` was received first, 1 otherwise.
+  exitNow(if p.ls.isShutdown: 0 else: 1)
 
 proc startNimbleProcess(
     ls: LanguageServer, args: seq[string]
