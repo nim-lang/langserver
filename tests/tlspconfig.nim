@@ -21,7 +21,7 @@ var editorConfiguration = %*[
     "provider": "lsp",
     "useNimsuggestCheck": false,
     "logNimsuggest": false,
-    "nimsuggestRestartTimeout": 60,
+    "nimsuggestTimeout": 90000,
     "inlayHints": {
       "typeHints": {"enable": true},
       "parameterHints": {"enable": true},
