@@ -19,12 +19,5 @@ requires "nim >= 2.2.12",
 task test, "run tests":
   exec "nim c --styleCheck:usages --styleCheck:error -r tests/all.nim"
 
-task book, "Generate book":
-  exec "mdbook build book -d ../docs"
-
-task apidocs, "Generate API docs":
-  exec "nimble doc --outdir:docs/apidocs --project --index:on --git.url:https://github.com/nim-lang/langserver--git.commit:master --git.devel:master nimlangserver.nim"
-
 task docs, "Generate docs":
-  exec "nimble book"
-  #exec "nimble apidocs"
+  exec "mdbook build book -d ../docs"
