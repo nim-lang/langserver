@@ -89,6 +89,8 @@ type
     nimExpandMacro*: Option[bool]
     maxNimsuggestProcesses*: Option[int]
       #max number of nimsuggest processes to keep alive. zero means unlimited
+    nimsuggestTimeout*: Option[int]
+      #timeout for the nimsuggest startup + initial compilation
     useNimTrack*: Option[bool]
 
   NlsFileInfo* = ref object of RootObj
@@ -1192,7 +1194,10 @@ proc createOrRestartNimsuggestImpl(
         configuration.exceptionHintsEnabled,
       )
       if not await chronos.withTimeout(
-        projectFut, chronos.milliseconds(NIMSUGGEST_STARTUP_TIMEOUT)
+        projectFut,
+        chronos.milliseconds(
+          configuration.nimsuggestTimeout.get(NIMSUGGEST_STARTUP_TIMEOUT)
+        ),
       ):
         error "Nimsuggest startup timed out", projectFile = projectFile
         nil
