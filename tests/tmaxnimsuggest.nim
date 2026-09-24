@@ -1,5 +1,5 @@
 import
-  std/[options, json, os, sequtils, sets, tables],
+  std/[options, json, os, sequtils, tables],
   json_rpc/[rpcclient],
   unittest2,
   ../[nimlangserver, ls, suggestapi, utils],
@@ -50,9 +50,8 @@ suite "Single nimsuggest instance under concurrent opens":
     discard waitFor client.initialize(initParams())
     ls.setWorkspaceConfiguration(% @[NlsConfig(maxNimsuggestProcesses: some 1)])
 
-    # Started together, so every open is past the cap check in getProjectFile
-    # before any nimsuggest exists. Each module is its own project when guessed
-    # alone.
+    # Open all three files at once, before any nimsuggest is running. Each file
+    # would get its own nimsuggest, but the limit is 1, so they must share one.
     let opening = files.mapIt(ls.didOpenFile(createDidOpenParams(it).textDocument))
     for fut in opening:
       waitFor fut
@@ -62,7 +61,7 @@ suite "Single nimsuggest instance under concurrent opens":
       check client.completes(file.fixtureUri)
     check ls.projectFiles.len == 1
 
-suite "Stopped nimsuggest instance under the cap":
+suite "Idle nimsuggest instance under the cap":
   let cmdParams =
     CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
   let ls = main(cmdParams)
@@ -71,7 +70,7 @@ suite "Stopped nimsuggest instance under the cap":
   suiteTeardown:
     waitFor ls.stopNimsuggestProcesses()
 
-  test "a file left on a stopped project does not restart it past the cap":
+  test "files of an idle nimsuggest reopen within the cap":
     discard waitFor client.initialize(initParams())
     ls.setWorkspaceConfiguration(% @[NlsConfig(maxNimsuggestProcesses: some 2)])
     for file in [RootFile, OtherFile, ThirdFile]:
@@ -79,24 +78,26 @@ suite "Stopped nimsuggest instance under the cap":
       check client.completes(file.fixtureUri)
     check ls.projectFiles.len == 2
 
-    # The third module reused one of the two, which doesn't track it in its
-    # `openFiles`, so stopping it as idle leaves the module bound to it.
+    # The limit was reached, so the third file uses one of the two running
+    # nimsuggests. Stop that nimsuggest as if it had been idle for too long.
+    # The third file must be closed along with it, like the file that started it.
     let thirdUri = ThirdFile.fixtureUri
     let reused = waitFor ls.openFiles.getOrDefault(thirdUri).waitProjectFile()
     let project = ls.projectFiles.getOrDefault(reused)
     check project != nil
-    check thirdUri notin project.ns.openFiles
     for live in ls.projectFiles.values:
       live.lastCmdDate = some now()
     project.lastCmdDate = some(now() - initDuration(hours = 1))
     waitFor ls.removeIdleNimsuggests()
     check reused notin ls.projectFiles
-    check thirdUri in ls.openFiles
+    check thirdUri notin ls.openFiles
+    check thirdUri in ls.idleOpenFiles
 
+    # A new file takes the free slot, so the limit is reached again.
     client.notify("textDocument/didOpen", %createDidOpenParams(FourthFile))
     check client.completes(FourthFile.fixtureUri)
     check ls.projectFiles.len == 2
 
+    # Using the third file again reopens it on one of the running nimsuggests.
     check client.completes(thirdUri)
     check ls.projectFiles.len == 2
-    check reused notin ls.projectFiles

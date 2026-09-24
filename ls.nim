@@ -1028,6 +1028,7 @@ proc didOpenFile*(
       await ls.createOrRestartNimsuggest(nsProjectFile, uri)
     let ns = await ls.tryGetNimsuggest(uri)
     if ns.isSome:
+      ns.get().openFiles.incl uri
       discard ls.warnIfUnknown(ns.get(), uri, projectFile)
 
     let projectFileUri = projectFile.pathToUri
