@@ -19,16 +19,16 @@ proc newClient(port: Port): LspSocketClient =
 proc initParams(): LspInitializeParams =
   LspInitializeParams %* {
     "processId": %getCurrentProcessId(),
-    "rootUri": fixtureUri("projects/twomodules"),
+    "rootUri": fixtureUri("projects/multimodules"),
     "capabilities":
       {"window": {"workDoneProgress": true}, "workspace": {"configuration": true}},
   }
 
 const
-  RootFile = "projects/twomodules/rootmodule.nim"
-  OtherFile = "projects/twomodules/othermodule.nim"
-  ThirdFile = "projects/twomodules/thirdmodule.nim"
-  FourthFile = "projects/twomodules/fourthmodule.nim"
+  RootFile = "projects/multimodules/rootmodule.nim"
+  OtherFile = "projects/multimodules/othermodule.nim"
+  ThirdFile = "projects/multimodules/thirdmodule.nim"
+  FourthFile = "projects/multimodules/fourthmodule.nim"
 
 proc completes(client: LspSocketClient, uri: string): bool =
   let completion = waitFor client

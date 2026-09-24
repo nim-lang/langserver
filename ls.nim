@@ -892,10 +892,9 @@ proc initNimsuggestInstances*(
     let nimbleDumpInfo = await ls.getNimbleDumpInfo(nimbleFile)
     ls.entryPoints = nimbleDumpInfo.getNimbleEntryPoints(rootPath)
     for entryPoint in ls.entryPoints:
-      if ls.isLiveNimsuggestProject(entryPoint) or not ls.canSpawnNimsuggest():
-        continue
-      debug "Starting nimsuggest for entry point ", entry = entryPoint
-      await ls.createOrRestartNimsuggest(entryPoint)
+      if not ls.isLiveNimsuggestProject(entryPoint) and ls.canSpawnNimsuggest():
+        debug "Starting nimsuggest for entry point ", entry = entryPoint
+        await ls.createOrRestartNimsuggest(entryPoint)
 
 proc getNimsuggestInner(
     ls: LanguageServer, uri: string
