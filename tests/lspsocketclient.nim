@@ -1,13 +1,36 @@
 import
-  std/[options, json, os, jsonutils, tables, strutils, sugar],
+  std/[options, json, os, jsonutils, tables, strutils, strformat, sugar],
   json_rpc/[rpcclient],
   chronicles,
   ../protocol/types,
-  ../[ls, lstransports, utils]
+  ../[ls, utils]
 
 #Utils
 proc fixtureUri*(path: string): string =
   result = pathToUri(getCurrentDir() / "tests" / path)
+
+const CRLF = "\r\n"
+
+proc wrapContentWithContentLength*(content: string): string =
+  ## The LSP framing, the same one `Framing.httpHeader` implements server side.
+  &"Content-Length: {content.len}{CRLF}{CRLF}{content}"
+
+proc processContentLength*(
+    transport: StreamTransport
+): Future[string] {.async: (raises: []).} =
+  try:
+    let header = await transport.readLine(sep = CRLF)
+    if not header.startsWith("Content-Length: "):
+      if header.len > 0:
+        error "No content length", header = header
+      return
+    let length = parseInt(header.split(" ")[1])
+    discard await transport.readLine(sep = CRLF) # skip the empty line
+    var res = newString(length)
+    await transport.readExactly(addr res[0], length)
+    return res
+  except CatchableError as ex:
+    error "Error reading content length", msg = ex.msg
 
 type
   NotificationRpc* = proc(params: JsonNode): Future[void] {.async.}
@@ -39,7 +62,9 @@ proc call*(
   reqJson["jsonrpc"] = %"2.0"
   reqJson["id"] = %id
   reqJson["method"] = %name
-  reqJson["params"] = params
+  #A null params is not valid json-rpc, the member is left out instead
+  if not params.isNil and params.kind != JNull:
+    reqJson["params"] = params
   let reqContent = wrapContentWithContentLength($reqJson)
   var jsonBytes = reqContent
   if client.transport.isNil:
@@ -53,12 +78,19 @@ proc call*(
   let res = await client.transport.write(jsonBytes)
   return await newFut
 
+proc paramsOf(serverReq: JsonNode): JsonNode =
+  ## A message with no params at all leaves the member out, which is what the
+  ## server sends for the likes of `workspace/inlayHint/refresh`.
+  if "params" in serverReq:
+    serverReq["params"]
+  else:
+    newJObject()
+
 proc runRpc(client: LspSocketClient, rpc: Rpc, serverReq: JsonNode) {.async.} =
-  let res = await rpc(serverReq["params"])
-  let id = serverReq["id"].jsonTo(string)
+  let res = await rpc(serverReq.paramsOf)
   let reqJson = newJObject()
   reqJson["jsonrpc"] = %"2.0"
-  reqJson["id"] = %id
+  reqJson["id"] = serverReq["id"]
   reqJson["result"] = res
   let reqContent = wrapContentWithContentLength($reqJson)
   discard await client.transport.write(reqContent.string)
@@ -70,7 +102,7 @@ proc processMessage(client: LspSocketClient, msg: string) {.raises: [].} =
       let meth = serverReq["method"].jsonTo(string)
       debug "[Process Data Loop ]", meth = meth
       if meth in client.notifications:
-        asyncSpawn client.notifications[meth](serverReq["params"])
+        asyncSpawn client.notifications[meth](serverReq.paramsOf)
       elif meth in client.routes:
         asyncSpawn runRpc(client, client.routes[meth], serverReq)
       else:
@@ -134,10 +166,20 @@ proc connect*(client: LspSocketClient, address: string, port: Port) {.async.} =
   client.loop = processData(client)
 
 proc notify*(client: LspSocketClient, name: string, params: JsonNode) =
-  proc wrap(): Future[void] {.async.} =
-    discard await client.call(name, params)
+  ## A real notification: no id, and no response is expected.
+  let reqJson = newJObject()
+  reqJson["jsonrpc"] = %"2.0"
+  reqJson["method"] = %name
+  if not params.isNil and params.kind != JNull:
+    reqJson["params"] = params
 
-  asyncSpawn wrap()
+  proc write() {.async: (raises: []).} =
+    try:
+      discard await client.transport.write(wrapContentWithContentLength($reqJson))
+    except CatchableError as ex:
+      error "Cannot send notification", name = name, msg = ex.msg
+
+  asyncSpawn write()
 
 proc register*(client: LspSocketClient, name: string, notRpc: NotificationRpc) =
   client.notifications[name] = notRpc

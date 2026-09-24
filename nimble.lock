@@ -36,6 +36,19 @@
         "sha1": "352e6d47bd46300a50b8911d8989b3b429fe3038"
       }
     },
+    "intops": {
+      "version": "1.0.8",
+      "vcsRevision": "ade5d78d60124d1fd50d2109c5eb9416ed147231",
+      "url": "https://github.com/vacp2p/nim-intops",
+      "downloadMethod": "git",
+      "dependencies": [
+        "nim",
+        "unittest2"
+      ],
+      "checksums": {
+        "sha1": "e9371f3fa2356d57fd3a5e516ad68e1e611b7b12"
+      }
+    },
     "results": {
       "version": "0.5.1",
       "vcsRevision": "df8113dda4c2d74d460a8fa98252b0b771bf1f27",
@@ -184,17 +197,18 @@
       }
     },
     "stint": {
-      "version": "0.8.2",
-      "vcsRevision": "470b7892561b5179ab20bd389a69217d6213fe58",
+      "version": "0.9.0",
+      "vcsRevision": "273fcdfa8dce4ceb975b383ffafe5e79e82766e2",
       "url": "https://github.com/status-im/nim-stint",
       "downloadMethod": "git",
       "dependencies": [
         "nim",
         "stew",
+        "intops",
         "unittest2"
       ],
       "checksums": {
-        "sha1": "d8f871fd617e7857192d4609fe003b48942a8ae5"
+        "sha1": "9b292b0d627e6f6132a01e00f14e0f0527c6704a"
       }
     },
     "unicodedb": {
@@ -267,25 +281,25 @@
       }
     },
     "json_rpc": {
-      "version": "0.6.1",
-      "vcsRevision": "6f1fff8ba685c9192fab153a9d66484ad9066e78",
-      "url": "https://github.com/status-im/nim-json-rpc",
+      "version": "#cd6d49cf009d71201d8db919e4ab5c580601606f",
+      "vcsRevision": "cd6d49cf009d71201d8db919e4ab5c580601606f",
+      "url": "https://github.com/nitely/nim-json-rpc.git",
       "downloadMethod": "git",
       "dependencies": [
         "nim",
-        "stew",
-        "nimcrypto",
-        "stint",
+        "chronicles",
         "chronos",
         "httputils",
-        "chronicles",
-        "websock",
-        "serialization",
         "json_serialization",
-        "unittest2"
+        "nimcrypto",
+        "serialization",
+        "stew",
+        "stint",
+        "unittest2",
+        "websock"
       ],
       "checksums": {
-        "sha1": "596db0aafcb3c83f5dba6d42993f2276e0d00eb5"
+        "sha1": "3ccb351fc74cd534ef020f0207a362e2f1ea1cab"
       }
     }
   },

@@ -1,10 +1,10 @@
-import ../[nimlangserver, ls, utils]
-import ../protocol/types
-import std/[options, json, os, sequtils, tables]
-import chronos
-import lspsocketclient
-import testhelpers
-import unittest2
+import
+  std/[options, json, os, sequtils, tables],
+  chronos,
+  unittest2,
+  ../[nimlangserver, ls, utils],
+  ../protocol/types,
+  ./[lspsocketclient, testhelpers]
 
 const CallTimeout = 60.seconds
 

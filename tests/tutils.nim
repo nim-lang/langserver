@@ -1,8 +1,8 @@
 import
-  std/[options, os, strutils, unicode, streams],
+  std/[options, os, strutils],
   chronos,
   unittest2,
-  ../[utils, ls, lstransports]
+  ../utils
 
 suite "UTF-16 position mapping":
   test "an ASCII only line needs no correction":
@@ -103,52 +103,3 @@ suite "async helpers":
     let second = getNextFreePort()
     check first != Port(0)
     check second != Port(0)
-
-suite "LSP message framing":
-  test "wrapContentWithContentLength writes the header the LSP spec asks for":
-    let framed = wrapContentWithContentLength("""{"id":1}""")
-    check framed == CONTENT_LENGTH & "9" & CRLF & CRLF & """{"id":1}""" & "\n"
-
-  test "the declared length counts bytes, not runes":
-    let content = """{"m":"안녕"}"""
-    let framed = wrapContentWithContentLength(content)
-    let declared = framed.split(CRLF)[0].replace(CONTENT_LENGTH, "").parseInt
-    check declared == content.len + 1
-    check content.len > content.runeLen
-
-  test "a framed message survives a write and read round trip":
-    let
-      path = getTempDir() / "nlstest_framing.txt"
-      content = """{"jsonrpc":"2.0","id":7,"method":"shutdown"}"""
-    writeFile(path, wrapContentWithContentLength(content))
-    defer:
-      removeFile(path)
-
-    let stream = newFileStream(path, fmRead)
-    defer:
-      stream.close()
-    check stream.processContentLength() == content & "\n"
-
-  test "a message with multi byte characters round trips byte for byte":
-    let
-      path = getTempDir() / "nlstest_framing_utf8.txt"
-      content = """{"jsonrpc":"2.0","params":{"text":"proc a안녕() = discard"}}"""
-    writeFile(path, wrapContentWithContentLength(content))
-    defer:
-      removeFile(path)
-
-    let stream = newFileStream(path, fmRead)
-    defer:
-      stream.close()
-    check stream.processContentLength() == content & "\n"
-
-  test "a header that is not Content-Length is handed back unparsed":
-    let path = getTempDir() / "nlstest_framing_bad.txt"
-    writeFile(path, "Content-Type: application/json" & CRLF & CRLF & "{}")
-    defer:
-      removeFile(path)
-
-    let stream = newFileStream(path, fmRead)
-    defer:
-      stream.close()
-    check stream.processContentLength() == "Content-Type: application/json"
