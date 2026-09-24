@@ -1030,6 +1030,7 @@ proc didOpenFile*(
       await ls.createOrRestartNimsuggest(nsProjectFile, uri)
     let ns = await ls.tryGetNimsuggest(uri)
     if ns.isSome:
+      ns.get().openFiles.incl uri
       discard ls.warnIfUnknown(ns.get(), uri, projectFile)
 
     let projectFileUri = projectFile.pathToUri
@@ -1051,6 +1052,9 @@ proc tryGetNimsuggest*(
   let idleFile = ls.idleOpenFiles.getOrDefault(uri)
   if idleFile != nil:
     await didOpenFile(ls, idleFile.textDocument)
+    let reopened = ls.openFiles.getOrDefault(uri)
+    if reopened != nil:
+      reopened.changed = idleFile.changed
 
   if uri notin ls.openFiles:
     return none(Nimsuggest)

@@ -61,7 +61,7 @@ suite "Single nimsuggest instance under concurrent opens":
       check client.completes(file.fixtureUri)
     check ls.projectFiles.len == 1
 
-suite "Stopped nimsuggest instance under the cap":
+suite "Idle nimsuggest instance under the cap":
   let cmdParams =
     CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
   let ls = main(cmdParams)
@@ -70,7 +70,7 @@ suite "Stopped nimsuggest instance under the cap":
   suiteTeardown:
     waitFor ls.stopNimsuggestProcesses()
 
-  test "a file left on a stopped project does not restart it past the cap":
+  test "a file of an idle nimsuggest reopens within the cap":
     discard waitFor client.initialize(initParams())
     ls.setWorkspaceConfiguration(% @[NlsConfig(maxNimsuggestProcesses: some 2)])
     for file in [RootFile, OtherFile, ThirdFile]:
@@ -80,8 +80,7 @@ suite "Stopped nimsuggest instance under the cap":
 
     # The limit was reached, so the third file uses one of the two running
     # nimsuggests. Stop that nimsuggest as if it had been idle for too long.
-    # Only the file that started it gets closed; the third file stays open and
-    # still points to the stopped one.
+    # The third file goes idle along with it.
     let thirdUri = ThirdFile.fixtureUri
     let reused = waitFor ls.openFiles.getOrDefault(thirdUri).waitProjectFile()
     let project = ls.projectFiles.getOrDefault(reused)
@@ -91,14 +90,14 @@ suite "Stopped nimsuggest instance under the cap":
     project.lastCmdDate = some(now() - initDuration(hours = 1))
     waitFor ls.removeIdleNimsuggests()
     check reused notin ls.projectFiles
-    check thirdUri in ls.openFiles
+    check thirdUri in ls.idleOpenFiles
 
     # A new file takes the free slot, so the limit is reached again.
     client.notify("textDocument/didOpen", %createDidOpenParams(FourthFile))
     check client.completes(FourthFile.fixtureUri)
     check ls.projectFiles.len == 2
 
-    # Using the third file again must not restart the stopped nimsuggest.
+    # Using the third file again reopens it on one of the running nimsuggests.
     check client.completes(thirdUri)
     check ls.projectFiles.len == 2
     check reused notin ls.projectFiles
