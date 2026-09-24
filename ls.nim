@@ -261,7 +261,7 @@ func typeHintsEnabled*(cnf: NlsConfig): bool =
     result = cnf.inlayHints.get.typeHints.get.enable.get
 
 func exceptionHintsEnabled*(cnf: NlsConfig): bool =
-  result = true
+  result = false
   if cnf.inlayHints.isSome and cnf.inlayHints.get.exceptionHints.isSome and
       cnf.inlayHints.get.exceptionHints.get.enable.isSome:
     result = cnf.inlayHints.get.exceptionHints.get.enable.get
