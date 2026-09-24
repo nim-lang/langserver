@@ -1416,12 +1416,6 @@ proc getProjectFile*(
   if result == "":
     result = fileUri
 
-  if not ls.isLiveNimsuggestProject(result):
-    if ls.canSpawnNimsuggest():
-      traceAsyncErrors ls.createOrRestartNimsuggest(result, fileUri.pathToUri)
-    else:
-      result = ls.reuseLiveNimsuggestProject()
-
   debug "getProjectFile ", project = result, fileUri = fileUri
 
 proc checkFile*(

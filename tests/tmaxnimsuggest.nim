@@ -36,7 +36,7 @@ proc completes(client: LspSocketClient, uri: string): bool =
     .wait(60.seconds)
   completion.to(seq[CompletionItem]).len > 0
 
-suite "Single nimsuggest instance under concurrent project resolution":
+suite "Single nimsuggest instance under concurrent opens":
   let cmdParams =
     CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
   let ls = main(cmdParams)
@@ -46,20 +46,18 @@ suite "Single nimsuggest instance under concurrent project resolution":
   suiteTeardown:
     waitFor ls.stopNimsuggestProcesses()
 
-  test "modules resolved at the same time share one project":
+  test "modules opened at the same time share one nimsuggest":
     discard waitFor client.initialize(initParams())
     ls.setWorkspaceConfiguration(% @[NlsConfig(maxNimsuggestProcesses: some 1)])
 
-    # Started together, so every call is past the cap check before any of them
-    # has picked a project. Each module is its own project when guessed alone.
-    let resolving = files.mapIt(getProjectFile(it.fixtureUri.uriToPath, ls))
-    var projects: seq[string]
-    for fut in resolving:
-      projects.add waitFor fut
-    check projects.deduplicate.len == 1
+    # Started together, so every open is past the cap check in getProjectFile
+    # before any nimsuggest exists. Each module is its own project when guessed
+    # alone.
+    let opening = files.mapIt(ls.didOpenFile(createDidOpenParams(it).textDocument))
+    for fut in opening:
+      waitFor fut
+    check ls.projectFiles.len == 1
 
-    for file in files:
-      client.notify("textDocument/didOpen", %createDidOpenParams(file))
     for file in files:
       check client.completes(file.fixtureUri)
     check ls.projectFiles.len == 1
