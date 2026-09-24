@@ -832,9 +832,7 @@ proc isLiveNimsuggestProject(ls: LanguageServer, projectFile: string): bool =
   projectFile in ls.projectFiles or projectFile in ls.nimsuggestCreations
 
 proc liveNimsuggestProjects*(ls: LanguageServer): seq[string] =
-  ## Instances that are running plus the ones still starting. The cap has to
-  ## bound both, or every file opened before the first one registers spawns its
-  ## own nimsuggest.
+  ## Running + starting instances.
   for entryPoint in ls.entryPoints:
     if ls.isLiveNimsuggestProject(entryPoint) and entryPoint notin result:
       result.add entryPoint
