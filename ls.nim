@@ -904,14 +904,15 @@ proc initNimsuggestInstances*(
 
 proc failoverProject(ls: LanguageServer, projectFile: string): string =
   if ls.failTable.getOrDefault(projectFile, 0) < MaxNimsuggestFails:
-    return projectFile
-  let others = ls.projectFiles.keys.toSeq.filterIt(
-    it != projectFile and ls.failTable.getOrDefault(it, 0) < MaxNimsuggestFails
-  )
-  if others.len > 0:
-    others[0]
+    projectFile
   else:
-    ""
+    let others = ls.projectFiles.keys.toSeq.filterIt(
+      it != projectFile and ls.failTable.getOrDefault(it, 0) < MaxNimsuggestFails
+    )
+    if others.len > 0:
+      others[0]
+    else:
+      ""
 
 proc hasServingNimsuggest(ls: LanguageServer, file: NlsFileInfo): bool =
   file.nimsuggestProject != "" and ls.isLiveNimsuggestProject(file.nimsuggestProject) and
@@ -1470,8 +1471,7 @@ proc checkFile*(
     ls.sendDiagnostics(checkResults, path)
     return
 
-  let closed =
-    ls.openFiles.getOrDefault(uri) != file and ls.idleOpenFiles.getOrDefault(uri) != file
+  let closed = uri notin ls.openFiles and uri notin ls.idleOpenFiles
   let ns =
     if closed:
       let project = ls.projectFiles.getOrDefault(file.nimsuggestProject)

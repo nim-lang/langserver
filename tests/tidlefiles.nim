@@ -291,6 +291,37 @@ suite "File closed with unsaved edits":
     check waitUntil(client.diagnosticsFor(uri) > published, 30.seconds)
     check client.lastDiagnosticsFor(uri).len == 0
 
+suite "Check started before an idle file was reopened":
+  let (ls, client) = startServer()
+  let uri = RootFile.fixtureUri
+
+  suiteTeardown:
+    waitFor ls.stopNimsuggestProcesses()
+
+  test "its diagnostics are for the unsaved edits":
+    client.openRootFile()
+    client.notify(
+      "textDocument/didChange",
+      %*{
+        "textDocument": {"uri": uri, "version": 2},
+        "contentChanges":
+          [{"text": readFile("tests" / RootFile) & "echo notDefinedAnywhere\n"}],
+      },
+    )
+    check waitUntil(ls.openFiles.getOrDefault(uri).changed)
+    let checked = ls.openFiles[uri]
+
+    # Going idle and being reopened replaces the file's entry, while a check
+    # started before that still holds the old one.
+    ls.stopAsIdle()
+    check client.completionLabels(4, 7).len > 0
+    check ls.openFiles[uri] != checked
+
+    let published = client.diagnosticsFor(uri)
+    waitFor ls.checkFile(checked)
+    check waitUntil(client.diagnosticsFor(uri) > published, 30.seconds)
+    check client.lastDiagnosticsFor(uri).len > 0
+
 suite "Failed nimsuggest with no other to fall back to":
   let (ls, client) = startServer()
   let rootProject = RootFile.fixtureUri.uriToPath
