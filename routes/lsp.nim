@@ -1160,10 +1160,6 @@ proc didChange*(
   ls.checkInitialized()
   with params:
     let uri = textDocument.uri
-    let idleFile = ls.idleOpenFiles.getOrDefault(uri)
-    if idleFile != nil and contentChanges.len > 0:
-      idleFile.textDocument.text = contentChanges[0].text
-      idleFile.changed = true
     let info = ls.openFiles.getOrDefault(uri)
     if info != nil:
       let file = open(ls.uriStorageLocation(uri), fmWrite)

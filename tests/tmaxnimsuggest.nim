@@ -80,7 +80,7 @@ suite "Idle nimsuggest instance under the cap":
 
     # The limit was reached, so the third file uses one of the two running
     # nimsuggests. Stop that nimsuggest as if it had been idle for too long.
-    # The third file goes idle along with it.
+    # The third file stays open.
     let thirdUri = ThirdFile.fixtureUri
     let reused = waitFor ls.openFiles.getOrDefault(thirdUri).waitProjectFile()
     let project = ls.projectFiles.getOrDefault(reused)
@@ -90,14 +90,14 @@ suite "Idle nimsuggest instance under the cap":
     project.lastCmdDate = some(now() - initDuration(hours = 1))
     waitFor ls.removeIdleNimsuggests()
     check reused notin ls.projectFiles
-    check thirdUri in ls.idleOpenFiles
+    check thirdUri in ls.openFiles
 
     # A new file takes the free slot, so the limit is reached again.
     client.notify("textDocument/didOpen", %createDidOpenParams(FourthFile))
     check client.completes(FourthFile.fixtureUri)
     check ls.projectFiles.len == 2
 
-    # Using the third file again reopens it on one of the running nimsuggests.
+    # Using the third file again serves it from one of the running nimsuggests.
     check client.completes(thirdUri)
     check ls.projectFiles.len == 2
     check reused notin ls.projectFiles

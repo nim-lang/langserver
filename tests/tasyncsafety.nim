@@ -232,8 +232,8 @@ suite "Documents closed while a handler is suspended":
     let saving = lspRoutes.didSave(ls, saveParams)
     check not saving.finished
 
-    # A didClose, or the idle sweep calling makeIdleFile, drops the entry while
-    # the handler is parked. Its openFiles lookups are still ahead of it.
+    # A didClose drops the entry while the handler is parked. Its openFiles
+    # lookups are still ahead of it.
     ls.openFiles.del(helloWorldUri)
     check helloWorldUri notin ls.openFiles
 

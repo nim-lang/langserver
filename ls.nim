@@ -155,8 +155,6 @@ type
     projectFiles*: Table[string, Project]
     nimsuggestCreations*: Table[string, Future[void].Raising([CancelledError])]
     openFiles*: Table[string, NlsFileInfo]
-    idleOpenFiles*: Table[string, NlsFileInfo]
-      #We close the file when its inactive and store it here.
     workspaceConfiguration*: NlsConfig
       #What the client configured us with, or the defaults until it does.
       #Set through setWorkspaceConfiguration, read through getWorkspaceConfiguration.
@@ -240,7 +238,6 @@ proc initLs*(params: CommandLineParams, storageDir: string): LanguageServer =
     serverMode: params.mode.get(),
     transportMode: params.transport.get(),
     openFiles: initTable[string, NlsFileInfo](),
-    # idleOpenFiles: initTable[string, NlsFileInfo](),
     responseMap: newTable[string, Future[JsonNode].Raising([CancelledError])](),
     storageDir: storageDir,
     cmdLineClientProcessId: params.clientProcessId,
@@ -984,19 +981,10 @@ proc didCloseFile*(
 
   let file = ls.openFiles.getOrDefault(uri)
   ls.openFiles.del uri
-  ls.idleOpenFiles.del uri
 
   if file != nil and file.changed:
     # check the file if it is closed but not saved.
     traceAsyncErrors ls.checkFile(file)
-
-proc makeIdleFile*(
-    ls: LanguageServer, file: NlsFileInfo
-): Future[void] {.async: (raises: []).} =
-  let uri = file.textDocument.uri
-  if uri in ls.openFiles:
-    ls.idleOpenFiles[uri] = file
-    ls.openFiles.del(uri)
 
 proc getProjectFile*(
   fileUri: string, ls: LanguageServer
@@ -1027,9 +1015,6 @@ proc didOpenFile*(
       fingerTable: @[],
       textDocument: textDocument,
     )
-
-    if uri in ls.idleOpenFiles:
-      ls.idleOpenFiles.del(uri)
 
     for line in text.splitLines:
       let openFile = ls.openFiles.getOrDefault(uri)
@@ -1064,13 +1049,6 @@ proc tryGetNimsuggest*(
 ): Future[Option[Nimsuggest]] {.
     async: (raises: [CancelledError, OSError, IOError, RegexError])
 .} =
-  let idleFile = ls.idleOpenFiles.getOrDefault(uri)
-  if idleFile != nil:
-    await didOpenFile(ls, idleFile.textDocument)
-    let reopened = ls.openFiles.getOrDefault(uri)
-    if reopened != nil:
-      reopened.changed = idleFile.changed
-
   if uri notin ls.openFiles:
     return none(Nimsuggest)
 
@@ -1471,7 +1449,7 @@ proc checkFile*(
     ls.sendDiagnostics(checkResults, path)
     return
 
-  let closed = uri notin ls.openFiles and uri notin ls.idleOpenFiles
+  let closed = uri notin ls.openFiles
   let ns =
     if closed:
       let project = ls.projectFiles.getOrDefault(file.nimsuggestProject)
@@ -1529,12 +1507,6 @@ proc removeIdleNimsuggests*(
   for project in toStop:
     debug "Removing idle nimsuggest", project = project.file
     project.errorCallback = none(ProjectCallback)
-
-    for uri in ls.filesServedBy(project.file):
-      debug "Removing idle nimsuggest open file", uri = uri
-      let info = ls.openFiles.getOrDefault(uri)
-      if info != nil:
-        await ls.makeIdleFile(info)
     project.stop()
     ls.projectFiles.del(project.file)
 
