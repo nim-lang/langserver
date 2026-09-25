@@ -1270,6 +1270,8 @@ proc createOrRestartNimsuggestImpl(
     let project = ls.projectFiles.getOrDefault(projectFile)
     if project != nil:
       project.stop()
+      for openFile in project.ns.openFiles:
+        projectNext.ns.openFiles.incl openFile
     ls.projectFiles[projectFile] = projectNext
     ls.failTable.del(projectFile)
     ls.showMessage(fmt "Nimsuggest initialized for {projectFile}", MessageType.Info)

@@ -142,3 +142,34 @@ suite "Idle nimsuggest shared by several files":
     check otherUri in ls.idleOpenFiles
     check otherUri notin ls.openFiles
     check ls.projectFiles.len == 0
+
+suite "Restarted nimsuggest shared by several files":
+  let (ls, client) = startServer()
+  let otherUri = OtherFile.fixtureUri
+
+  suiteTeardown:
+    waitFor ls.stopNimsuggestProcesses()
+
+  test "every file it served still goes idle with it":
+    ls.setWorkspaceConfiguration(
+      % @[NlsConfig(maxNimsuggestProcesses: some 1, autoCheckFile: some false)]
+    )
+    client.openRootFile()
+    client.notify("textDocument/didOpen", %createDidOpenParams(OtherFile))
+    check waitUntil(otherUri in ls.openFiles)
+    discard waitFor client
+      .call("textDocument/completion", %positionParams(otherUri, 4, 7))
+      .wait(60.seconds)
+    check ls.projectFiles.len == 1
+
+    # Restarted like after a timeout or an error: the new nimsuggest has to
+    # keep serving, and tracking, the other file too.
+    let rootProject = RootFile.fixtureUri.uriToPath
+    waitFor ls.createOrRestartNimsuggest(rootProject, RootFile.fixtureUri)
+    check ls.projectFiles.len == 1
+
+    ls.stopAsIdle()
+    check RootFile.fixtureUri in ls.idleOpenFiles
+    check otherUri in ls.idleOpenFiles
+    check otherUri notin ls.openFiles
+    check ls.projectFiles.len == 0
