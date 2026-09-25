@@ -424,7 +424,7 @@ proc scheduleFileCheck(ls: LanguageServer, uri: string) {.gcsafe, raises: [].} =
   sleepAsync(FILE_CHECK_DELAY).addCallback do(data: pointer):
     if not cancelFuture.finished:
       fileData.checkInProgress = true
-      ls.checkFile(uri).addCallback do(data: pointer) {.gcsafe, raises: [].}:
+      ls.checkFile(fileData).addCallback do(data: pointer) {.gcsafe, raises: [].}:
         let info = ls.openFiles.getOrDefault(uri)
         if info != nil:
           info.checkInProgress = false
@@ -1168,12 +1168,12 @@ proc didChange*(
 
       info.fingerTable = @[]
       info.changed = true
-      if contentChanges.len <= 0:
-        return
-      for line in contentChanges[0].text.splitLines:
-        info.fingerTable.add line.createUTFMapping()
-        file.writeLine line
-      ls.scheduleFileCheck(uri)
+      if contentChanges.len > 0:
+        info.textDocument.text = contentChanges[0].text
+        for line in contentChanges[0].text.splitLines:
+          info.fingerTable.add line.createUTFMapping()
+          file.writeLine line
+        ls.scheduleFileCheck(uri)
 
 proc willSaveWaitUntil*(
     ls: LanguageServer, params: WillSaveTextDocumentParams
