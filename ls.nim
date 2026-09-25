@@ -967,7 +967,10 @@ proc didCloseFile*(
     # check the file if it is closed but not saved.
     traceAsyncErrors ls.checkFile(uri)
 
+  for project in ls.projectFiles.values:
+    project.ns.openFiles.excl uri
   ls.openFiles.del uri
+  ls.idleOpenFiles.del uri
 
 proc makeIdleFile*(
     ls: LanguageServer, file: NlsFileInfo

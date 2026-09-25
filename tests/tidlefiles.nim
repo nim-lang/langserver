@@ -173,3 +173,49 @@ suite "Restarted nimsuggest shared by several files":
     check otherUri in ls.idleOpenFiles
     check otherUri notin ls.openFiles
     check ls.projectFiles.len == 0
+
+suite "Closed file shared with another":
+  let (ls, client) = startServer()
+  let otherUri = OtherFile.fixtureUri
+
+  suiteTeardown:
+    waitFor ls.stopNimsuggestProcesses()
+
+  test "a closed file is no longer listed by its nimsuggest":
+    ls.setWorkspaceConfiguration(
+      % @[NlsConfig(maxNimsuggestProcesses: some 1, autoCheckFile: some false)]
+    )
+    client.openRootFile()
+    client.notify("textDocument/didOpen", %createDidOpenParams(OtherFile))
+    check waitUntil(otherUri in ls.openFiles)
+    discard waitFor client
+      .call("textDocument/completion", %positionParams(otherUri, 4, 7))
+      .wait(60.seconds)
+    check ls.getLspStatus().nimsuggestInstances.len == 1
+    check otherUri in ls.getLspStatus().nimsuggestInstances[0].openFiles
+
+    client.notify("textDocument/didClose", %*{"textDocument": {"uri": otherUri}})
+    check waitUntil(otherUri notin ls.openFiles)
+    check otherUri notin ls.getLspStatus().nimsuggestInstances[0].openFiles
+    check RootFile.fixtureUri in ls.getLspStatus().nimsuggestInstances[0].openFiles
+
+suite "Idle file closed by the editor":
+  let (ls, client) = startServer()
+  let uri = RootFile.fixtureUri
+
+  suiteTeardown:
+    waitFor ls.stopNimsuggestProcesses()
+
+  test "a closed idle file is not reopened":
+    client.openRootFile()
+    ls.stopAsIdle()
+    check uri in ls.idleOpenFiles
+
+    client.notify("textDocument/didClose", %*{"textDocument": {"uri": uri}})
+    check waitUntil(uri notin ls.idleOpenFiles)
+
+    # A late request for the closed file must not bring it back or start a
+    # nimsuggest for it.
+    check client.completionLabels(4, 7).len == 0
+    check uri notin ls.openFiles
+    check ls.projectFiles.len == 0
