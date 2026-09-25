@@ -219,3 +219,72 @@ suite "Idle file closed by the editor":
     check client.completionLabels(4, 7).len == 0
     check uri notin ls.openFiles
     check ls.projectFiles.len == 0
+
+proc lastDiagnosticsFor(client: LspSocketClient, uri: string): JsonNode =
+  result = newJArray()
+  for params in client.calls.getOrDefault("textDocument/publishDiagnostics"):
+    if params["uri"].getStr == uri:
+      result = params["diagnostics"]
+
+suite "File served by another nimsuggest":
+  let (ls, client) = startServer()
+  let otherUri = OtherFile.fixtureUri
+
+  suiteTeardown:
+    waitFor ls.stopNimsuggestProcesses()
+
+  test "it goes idle with the nimsuggest that served it":
+    ls.setWorkspaceConfiguration(
+      % @[NlsConfig(maxNimsuggestProcesses: some 2, autoCheckFile: some false)]
+    )
+    client.openRootFile()
+    client.notify("textDocument/didOpen", %createDidOpenParams(OtherFile))
+    check waitUntil(otherUri in ls.openFiles)
+    discard waitFor client
+      .call("textDocument/completion", %positionParams(otherUri, 4, 7))
+      .wait(60.seconds)
+    let rootProject = RootFile.fixtureUri.uriToPath
+    let otherProject = OtherFile.fixtureUri.uriToPath
+    check ls.projectFiles.len == 2
+    check otherProject in ls.projectFiles
+
+    # Too many failures on its own nimsuggest, so the other file is served by
+    # the root file's one from now on.
+    ls.failTable[otherProject] = 10
+    discard waitFor client
+      .call("textDocument/completion", %positionParams(otherUri, 4, 7))
+      .wait(60.seconds)
+
+    for project in ls.projectFiles.values:
+      project.lastCmdDate = some now()
+    ls.projectFiles[rootProject].lastCmdDate = some(now() - initDuration(hours = 1))
+    waitFor ls.removeIdleNimsuggests()
+    check rootProject notin ls.projectFiles
+    check otherUri in ls.idleOpenFiles
+    check otherUri notin ls.openFiles
+
+suite "File closed with unsaved edits":
+  let (ls, client) = startServer()
+  let uri = RootFile.fixtureUri
+
+  suiteTeardown:
+    waitFor ls.stopNimsuggestProcesses()
+
+  test "its diagnostics are for the file on disk":
+    ls.setWorkspaceConfiguration(% @[NlsConfig()])
+    client.openRootFile()
+    client.notify(
+      "textDocument/didChange",
+      %*{
+        "textDocument": {"uri": uri, "version": 2},
+        "contentChanges":
+          [{"text": readFile("tests" / RootFile) & "echo notDefinedAnywhere\n"}],
+      },
+    )
+    check waitUntil(client.lastDiagnosticsFor(uri).len > 0, 30.seconds)
+
+    # The edit is discarded, so the error it added must go away.
+    let published = client.diagnosticsFor(uri)
+    client.notify("textDocument/didClose", %*{"textDocument": {"uri": uri}})
+    check waitUntil(client.diagnosticsFor(uri) > published, 30.seconds)
+    check client.lastDiagnosticsFor(uri).len == 0

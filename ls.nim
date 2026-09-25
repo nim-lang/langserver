@@ -896,6 +896,12 @@ proc initNimsuggestInstances*(
         debug "Starting nimsuggest for entry point ", entry = entryPoint
         await ls.createOrRestartNimsuggest(entryPoint)
 
+proc trackOpenFile(ls: LanguageServer, ns: Nimsuggest, uri: string) =
+  for project in ls.projectFiles.values:
+    if project.ns != ns:
+      project.ns.openFiles.excl uri
+  ns.openFiles.incl uri
+
 proc getNimsuggestInner(
     ls: LanguageServer, uri: string
 ): Future[Nimsuggest] {.async: (raises: [CancelledError, OSError, RegexError]).} =
@@ -919,6 +925,7 @@ proc getNimsuggestInner(
       let project = ls.projectFiles.getOrDefault(nextNs)
       if project != nil:
         debug "Reusing nimsuggest instance for", uri = uri, projectFile = nextNs
+        ls.trackOpenFile(project.ns, uri)
         return project.ns
     return nil
 
@@ -929,6 +936,7 @@ proc getNimsuggestInner(
     let project = ls.projectFiles.getOrDefault(projectFile)
     if project != nil:
       ls.lastNimsuggest = project.ns
+      ls.trackOpenFile(project.ns, uri)
       return project.ns
 
     inc attempts
@@ -957,6 +965,28 @@ proc checkFile*(
   )
 .}
 
+proc checkClosedFile(
+    ls: LanguageServer, uri: string
+): Future[void] {.
+    async: (
+      raises: [
+        CancelledError, AsyncProcessError, AsyncStreamError, OSError, IOError,
+        NimsuggestError,
+      ]
+    )
+.} =
+  let conf = ls.getWorkspaceConfiguration()
+  let path = uri.uriToPath
+  if conf.useNimCheck.get(USE_NIM_CHECK_BY_DEFAULT):
+    let nimPath = await ls.getNimPath(conf)
+    if nimPath.isSome:
+      ls.sendDiagnostics(await nimCheck(path, nimPath.get), path)
+      return
+  for project in ls.projectFiles.values:
+    if uri in project.ns.openFiles:
+      ls.sendDiagnostics(await project.ns.chkFile(path, path), path)
+      return
+
 proc didCloseFile*(
     ls: LanguageServer, uri: string
 ): Future[void] {.async: (raises: []).} =
@@ -965,7 +995,7 @@ proc didCloseFile*(
   let file = ls.openFiles.getOrDefault(uri)
   if file != nil and file.changed:
     # check the file if it is closed but not saved.
-    traceAsyncErrors ls.checkFile(uri)
+    traceAsyncErrors ls.checkClosedFile(uri)
 
   for project in ls.projectFiles.values:
     project.ns.openFiles.excl uri
@@ -1032,7 +1062,6 @@ proc didOpenFile*(
       await ls.createOrRestartNimsuggest(nsProjectFile, uri)
     let ns = await ls.tryGetNimsuggest(uri)
     if ns.isSome:
-      ns.get().openFiles.incl uri
       discard ls.warnIfUnknown(ns.get(), uri, projectFile)
 
     let projectFileUri = projectFile.pathToUri
