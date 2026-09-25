@@ -232,8 +232,8 @@ suite "Documents closed while a handler is suspended":
     let saving = lspRoutes.didSave(ls, saveParams)
     check not saving.finished
 
-    # A didClose drops the entry while the handler is parked. Its openFiles
-    # lookups are still ahead of it.
+    # The editor closes the file while the save is still waiting. The save
+    # has not looked the file up yet, so it will find it already closed.
     ls.openFiles.del(helloWorldUri)
     check helloWorldUri notin ls.openFiles
 
