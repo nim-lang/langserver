@@ -40,7 +40,8 @@ proc startServer(): (LanguageServer, LspSocketClient) =
         {"window": {"workDoneProgress": true}, "workspace": {"configuration": true}},
     }
   )
-  ls.setWorkspaceConfiguration(% @[NlsConfig()])
+  # The check scheduled after each edit would reopen an idle file on its own.
+  ls.setWorkspaceConfiguration(% @[NlsConfig(autoCheckFile: some false)])
   (ls, client)
 
 proc completionLabels(client: LspSocketClient, line, character: int): seq[string] =
@@ -65,6 +66,11 @@ proc editRootFile(client: LspSocketClient) =
     },
   )
 
+proc diagnosticsFor(client: LspSocketClient, uri: string): int =
+  client.calls.getOrDefault("textDocument/publishDiagnostics").countIt(
+    it["uri"].getStr == uri
+  )
+
 proc stopAsIdle(ls: LanguageServer) =
   for project in ls.projectFiles.values:
     project.lastCmdDate = some(now() - initDuration(hours = 1))
@@ -82,11 +88,15 @@ suite "Idle file edited before its nimsuggest was stopped":
     client.editRootFile()
     check waitUntil(ls.openFiles.getOrDefault(uri).changed)
 
+    let diagnostics = client.diagnosticsFor(uri)
     ls.stopAsIdle()
     check uri in ls.idleOpenFiles
+    # Going idle is not a close: the file must not be checked against the
+    # stopped nimsuggest, which clears its diagnostics.
+    check not waitUntil(client.diagnosticsFor(uri) > diagnostics, 3.seconds)
+    check ls.projectFiles.len == 0
 
     check "zeta" in client.completionLabels(6, 7)
-    check ls.openFiles.getOrDefault(uri).changed
 
 suite "Idle file edited after its nimsuggest was stopped":
   let (ls, client) = startServer()
@@ -102,9 +112,9 @@ suite "Idle file edited after its nimsuggest was stopped":
 
     client.editRootFile()
     check waitUntil(ls.idleOpenFiles.getOrDefault(uri).changed)
+    check ls.projectFiles.len == 0
 
     check "zeta" in client.completionLabels(6, 7)
-    check ls.openFiles.getOrDefault(uri).changed
 
 suite "Idle nimsuggest shared by several files":
   let (ls, client) = startServer()
@@ -114,7 +124,9 @@ suite "Idle nimsuggest shared by several files":
     waitFor ls.stopNimsuggestProcesses()
 
   test "every file it served goes idle with it":
-    ls.setWorkspaceConfiguration(% @[NlsConfig(maxNimsuggestProcesses: some 1)])
+    ls.setWorkspaceConfiguration(
+      % @[NlsConfig(maxNimsuggestProcesses: some 1, autoCheckFile: some false)]
+    )
     client.openRootFile()
     # The limit is 1, so the other file uses the nimsuggest started for the
     # root file.
@@ -126,7 +138,7 @@ suite "Idle nimsuggest shared by several files":
     check ls.projectFiles.len == 1
 
     ls.stopAsIdle()
-    check ls.projectFiles.len == 0
     check RootFile.fixtureUri in ls.idleOpenFiles
     check otherUri in ls.idleOpenFiles
     check otherUri notin ls.openFiles
+    check ls.projectFiles.len == 0

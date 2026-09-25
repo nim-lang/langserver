@@ -974,7 +974,6 @@ proc makeIdleFile*(
 ): Future[void] {.async: (raises: []).} =
   let uri = file.textDocument.uri
   if uri in ls.openFiles:
-    await ls.didCloseFile(uri)
     ls.idleOpenFiles[uri] = file
     ls.openFiles.del(uri)
 
