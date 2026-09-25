@@ -288,3 +288,26 @@ suite "File closed with unsaved edits":
     client.notify("textDocument/didClose", %*{"textDocument": {"uri": uri}})
     check waitUntil(client.diagnosticsFor(uri) > published, 30.seconds)
     check client.lastDiagnosticsFor(uri).len == 0
+
+suite "Failed nimsuggest with no other to fall back to":
+  let (ls, client) = startServer()
+  let rootProject = RootFile.fixtureUri.uriToPath
+
+  suiteTeardown:
+    waitFor ls.stopNimsuggestProcesses()
+
+  test "it is not started again":
+    client.openRootFile()
+    check ls.projectFiles.len == 1
+
+    # Failed too many times and is gone, like after restarts that did not
+    # succeed.
+    ls.projectFiles[rootProject].stop()
+    ls.projectFiles.del(rootProject)
+    ls.failTable[rootProject] = 10
+
+    # There is nothing to wait for, so the request must not be retried.
+    let requested = Moment.now()
+    check client.completionLabels(4, 7).len == 0
+    check Moment.now() - requested < 5.seconds
+    check ls.projectFiles.len == 0

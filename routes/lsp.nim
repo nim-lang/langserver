@@ -424,7 +424,7 @@ proc scheduleFileCheck(ls: LanguageServer, uri: string) {.gcsafe, raises: [].} =
   sleepAsync(FILE_CHECK_DELAY).addCallback do(data: pointer):
     if not cancelFuture.finished:
       fileData.checkInProgress = true
-      ls.checkFile(uri).addCallback do(data: pointer) {.gcsafe, raises: [].}:
+      ls.checkFile(fileData).addCallback do(data: pointer) {.gcsafe, raises: [].}:
         let info = ls.openFiles.getOrDefault(uri)
         if info != nil:
           info.checkInProgress = false
