@@ -905,7 +905,9 @@ proc initNimsuggestInstances*(
 proc failoverProject(ls: LanguageServer, projectFile: string): string =
   if ls.failTable.getOrDefault(projectFile, 0) < MaxNimsuggestFails:
     return projectFile
-  let others = ls.projectFiles.keys.toSeq.filterIt(it != projectFile)
+  let others = ls.projectFiles.keys.toSeq.filterIt(
+    it != projectFile and ls.failTable.getOrDefault(it, 0) < MaxNimsuggestFails
+  )
   if others.len > 0:
     others[0]
   else:

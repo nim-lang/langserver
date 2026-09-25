@@ -11,6 +11,8 @@ from std/times import now, initDuration, `-`
 const
   RootFile = "projects/multimodules/rootmodule.nim"
   OtherFile = "projects/multimodules/othermodule.nim"
+  ThirdFile = "projects/multimodules/thirdmodule.nim"
+  FourthFile = "projects/multimodules/fourthmodule.nim"
   # Adds `zeta` to the module and leaves the cursor after `ze` on line 6.
   EditedText =
     """proc alpha*(x: int): int =
@@ -311,3 +313,33 @@ suite "Failed nimsuggest with no other to fall back to":
     check client.completionLabels(4, 7).len == 0
     check Moment.now() - requested < 5.seconds
     check ls.projectFiles.len == 0
+
+suite "Failover with other failing nimsuggests":
+  let (ls, client) = startServer()
+
+  suiteTeardown:
+    waitFor ls.stopNimsuggestProcesses()
+
+  test "the file is served by the one that is not failing":
+    ls.setWorkspaceConfiguration(
+      % @[NlsConfig(maxNimsuggestProcesses: some 0, autoCheckFile: some false)]
+    )
+    let files = [RootFile, OtherFile, ThirdFile, FourthFile]
+    for file in files:
+      client.notify("textDocument/didOpen", %createDidOpenParams(file))
+      check waitUntil(file.fixtureUri in ls.openFiles)
+      discard waitFor client
+        .call("textDocument/completion", %positionParams(file.fixtureUri, 4, 7))
+        .wait(60.seconds)
+    check ls.projectFiles.len == 4
+
+    # Every project but the fourth one failed too many times.
+    for file in [RootFile, OtherFile, ThirdFile]:
+      ls.failTable[file.fixtureUri.uriToPath] = 10
+
+    let otherUri = OtherFile.fixtureUri
+    discard waitFor client
+      .call("textDocument/completion", %positionParams(otherUri, 4, 7))
+      .wait(60.seconds)
+    check ls.openFiles.getOrDefault(otherUri).nimsuggestProject ==
+      FourthFile.fixtureUri.uriToPath
