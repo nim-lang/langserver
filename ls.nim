@@ -773,11 +773,14 @@ proc toDiagnostic(suggest: Suggest): Diagnostic =
 
 proc toDiagnostic(checkResult: CheckResult): Diagnostic =
   let
-    textStart = checkResult.msg.find('\'')
-    textEnd = checkResult.msg.rfind('\'')
+    # the quoted name in the message's first line: what the lines after it quote isn't
+    # at this place
+    first = checkResult.msg.split('\n')[0]
+    textStart = first.find('\'')
+    textEnd = first.rfind('\'')
     endColumn =
       if textStart >= 0 and textEnd >= 0 and textEnd > textStart:
-        checkResult.column + utf16Len(checkResult.msg[textStart + 1 ..< textEnd])
+        checkResult.column + utf16Len(first[textStart + 1 ..< textEnd])
       else:
         checkResult.column + 1
 
