@@ -91,7 +91,6 @@ type
   NimsuggestImpl* = object
     checkProjectInProgress*: bool
     needsCheckProject*: bool
-    openFiles*: OrderedSet[string]
     successfullCall*: bool
     port*: int
     root: string

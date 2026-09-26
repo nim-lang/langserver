@@ -38,6 +38,7 @@ const
   NIM_EXPAND_ARC_BY_DEFAULT* = false
   NIM_EXPAND_MACRO_BY_DEFAULT* = false
   NIM_MAX_NS_PROCESSES* = 1
+  MaxNimsuggestFails = 10
 
 type
   NlsNimsuggestConfig* = ref object of RootObj
@@ -103,6 +104,7 @@ type
     checkInProgress*: bool
     needsChecking*: bool
     textDocument*: TextDocumentItem
+    nimsuggestProject*: string
 
   CommandLineParams* = object
     clientProcessId*: Option[int]
@@ -155,8 +157,6 @@ type
     projectFiles*: Table[string, Project]
     nimsuggestCreations*: Table[string, Future[void].Raising([CancelledError])]
     openFiles*: Table[string, NlsFileInfo]
-    idleOpenFiles*: Table[string, NlsFileInfo]
-      #We close the file when its inactive and store it here.
     workspaceConfiguration*: NlsConfig
       #What the client configured us with, or the defaults until it does.
       #Set through setWorkspaceConfiguration, read through getWorkspaceConfiguration.
@@ -240,7 +240,6 @@ proc initLs*(params: CommandLineParams, storageDir: string): LanguageServer =
     serverMode: params.mode.get(),
     transportMode: params.transport.get(),
     openFiles: initTable[string, NlsFileInfo](),
-    # idleOpenFiles: initTable[string, NlsFileInfo](),
     responseMap: newTable[string, Future[JsonNode].Raising([CancelledError])](),
     storageDir: storageDir,
     cmdLineClientProcessId: params.clientProcessId,
@@ -417,6 +416,11 @@ proc checkInitialized*(ls: LanguageServer) {.raises: [ApplicationError].} =
       code: ErrorCode.ServerNotInitialized.int, msg: "Server not initialized"
     )
 
+proc filesServedBy(ls: LanguageServer, projectFile: string): seq[string] =
+  for uri, file in ls.openFiles:
+    if file.nimsuggestProject == projectFile:
+      result.add uri
+
 proc getLspStatus*(ls: LanguageServer): NimLangServerStatus {.raises: [].} =
   result.lspPath = getAppFilename()
   result.version = LSPVersion
@@ -431,8 +435,7 @@ proc getLspStatus*(ls: LanguageServer): NimLangServerStatus {.raises: [].} =
         path: ns.nimsuggestPath,
         port: ns.port,
       )
-      for open in ns.openFiles:
-        nsStatus.openFiles.add open
+      nsStatus.openFiles = ls.filesServedBy(project.file)
       result.nimsuggestInstances.add nsStatus
   for openFile in ls.openFiles.keys:
     let openFilePath = openFile.uriToPath
@@ -676,7 +679,7 @@ proc workDoneProgressCreate*(ls: LanguageServer, token: string) =
 proc cancelPendingFileChecks*(ls: LanguageServer, nimsuggest: Nimsuggest) =
   # stop all checks on file level if we are going to run checks on project
   # level.
-  for uri in nimsuggest.openFiles:
+  for uri in ls.filesServedBy(nimsuggest.project.file):
     let fileData = ls.openFiles.getOrDefault(uri)
     if fileData != nil:
       let cancelFileCheck = fileData.cancelFileCheck
@@ -898,6 +901,22 @@ proc initNimsuggestInstances*(
         debug "Starting nimsuggest for entry point ", entry = entryPoint
         await ls.createOrRestartNimsuggest(entryPoint)
 
+proc failoverProject(ls: LanguageServer, projectFile: string): string =
+  if ls.failTable.getOrDefault(projectFile, 0) < MaxNimsuggestFails:
+    projectFile
+  else:
+    let others = ls.projectFiles.keys.toSeq.filterIt(
+      it != projectFile and ls.failTable.getOrDefault(it, 0) < MaxNimsuggestFails
+    )
+    if others.len > 0:
+      others[0]
+    else:
+      ""
+
+proc hasServingNimsuggest(ls: LanguageServer, file: NlsFileInfo): bool =
+  file.nimsuggestProject != "" and ls.isLiveNimsuggestProject(file.nimsuggestProject) and
+    ls.failTable.getOrDefault(file.nimsuggestProject, 0) < MaxNimsuggestFails
+
 proc getNimsuggestInner(
     ls: LanguageServer, uri: string
 ): Future[Nimsuggest] {.async: (raises: [CancelledError, OSError, RegexError]).} =
@@ -906,29 +925,27 @@ proc getNimsuggestInner(
     debug "File is no longer open", uri = uri
     return nil
 
-  let projectFile = ls.nimsuggestProjectFor(await file.waitProjectFile())
-  if not ls.projectFiles.hasKey(projectFile):
-    debug "Creating new nimsuggest instance", uri = uri, projectFile = projectFile
-    await ls.createOrRestartNimsuggest(projectFile, uri)
+  let projectFile = await file.waitProjectFile()
+  if not ls.hasServingNimsuggest(file):
+    let ownProject = ls.nimsuggestProjectFor(projectFile)
+    file.nimsuggestProject = ls.failoverProject(ownProject)
+    if file.nimsuggestProject notin ["", ownProject]:
+      debug "Reusing nimsuggest instance for",
+        uri = uri, projectFile = file.nimsuggestProject
+  let nsProject = file.nimsuggestProject
+  if nsProject == "":
+    return nil
+  if not ls.projectFiles.hasKey(nsProject):
+    debug "Creating new nimsuggest instance", uri = uri, projectFile = nsProject
+    await ls.createOrRestartNimsuggest(nsProject, uri)
     # Wait a bit to allow nimsuggest to start
     await sleepAsync(10)
-
-  const MaxFails = 10
-  if ls.failTable.getOrDefault(projectFile, 0) >= MaxFails:
-    let nextNs = ls.projectFiles.keys.toSeq.filterIt(it != projectFile)
-    if nextNs.len > 0:
-      let nextNs = nextNs[0]
-      let project = ls.projectFiles.getOrDefault(nextNs)
-      if project != nil:
-        debug "Reusing nimsuggest instance for", uri = uri, projectFile = nextNs
-        return project.ns
-    return nil
 
   # Check multiple times with small delays
   var attempts = 0
   const maxAttempts = 10
   while attempts < maxAttempts:
-    let project = ls.projectFiles.getOrDefault(projectFile)
+    let project = ls.projectFiles.getOrDefault(nsProject)
     if project != nil:
       ls.lastNimsuggest = project.ns
       return project.ns
@@ -937,9 +954,9 @@ proc getNimsuggestInner(
     if attempts < maxAttempts:
       await sleepAsync(100)
       debug "Waiting for nimsuggest to initialize",
-        uri = uri, projectFile = projectFile, attempt = attempts
+        uri = uri, projectFile = nsProject, attempt = attempts
 
-  debug "Failed to get nimsuggest after waiting", uri = uri, projectFile = projectFile
+  debug "Failed to get nimsuggest after waiting", uri = uri, projectFile = nsProject
   return nil
 
 proc tryGetNimsuggest*(
@@ -949,7 +966,7 @@ proc tryGetNimsuggest*(
 .}
 
 proc checkFile*(
-  ls: LanguageServer, uri: string
+  ls: LanguageServer, file: NlsFileInfo
 ): Future[void] {.
   async: (
     raises: [
@@ -965,20 +982,11 @@ proc didCloseFile*(
   debug "Closed the following document:", uri = uri
 
   let file = ls.openFiles.getOrDefault(uri)
-  if file != nil and file.changed:
-    # check the file if it is closed but not saved.
-    traceAsyncErrors ls.checkFile(uri)
-
   ls.openFiles.del uri
 
-proc makeIdleFile*(
-    ls: LanguageServer, file: NlsFileInfo
-): Future[void] {.async: (raises: []).} =
-  let uri = file.textDocument.uri
-  if uri in ls.openFiles:
-    await ls.didCloseFile(uri)
-    ls.idleOpenFiles[uri] = file
-    ls.openFiles.del(uri)
+  if file != nil and file.changed:
+    # check the file if it is closed but not saved.
+    traceAsyncErrors ls.checkFile(file)
 
 proc getProjectFile*(
   fileUri: string, ls: LanguageServer
@@ -1010,9 +1018,6 @@ proc didOpenFile*(
       textDocument: textDocument,
     )
 
-    if uri in ls.idleOpenFiles:
-      ls.idleOpenFiles.del(uri)
-
     for line in text.splitLines:
       let openFile = ls.openFiles.getOrDefault(uri)
       if openFile != nil:
@@ -1026,10 +1031,6 @@ proc didOpenFile*(
     let projectFile = await openFile.waitProjectFile()
     debug "Document associated with the following projectFile",
       uri = uri, projectFile = projectFile
-    let nsProjectFile = ls.nimsuggestProjectFor(projectFile)
-    if not ls.projectFiles.hasKey(nsProjectFile):
-      debug "Will create nimsuggest for this file", uri = uri
-      await ls.createOrRestartNimsuggest(nsProjectFile, uri)
     let ns = await ls.tryGetNimsuggest(uri)
     if ns.isSome:
       discard ls.warnIfUnknown(ns.get(), uri, projectFile)
@@ -1050,10 +1051,6 @@ proc tryGetNimsuggest*(
 ): Future[Option[Nimsuggest]] {.
     async: (raises: [CancelledError, OSError, IOError, RegexError])
 .} =
-  let idleFile = ls.idleOpenFiles.getOrDefault(uri)
-  if idleFile != nil:
-    await didOpenFile(ls, idleFile.textDocument)
-
   if uri notin ls.openFiles:
     return none(Nimsuggest)
 
@@ -1063,6 +1060,10 @@ proc tryGetNimsuggest*(
     let ns = await getNimsuggestInner(ls, uri)
     if not ns.isNil:
       return some ns
+
+    let file = ls.openFiles.getOrDefault(uri)
+    if file == nil or file.nimsuggestProject == "":
+      break
 
     # If nimsuggest is nil, wait a bit and retry
     inc retryCount
@@ -1274,7 +1275,6 @@ proc createOrRestartNimsuggestImpl(
     ls.failTable.del(projectFile)
     ls.showMessage(fmt "Nimsuggest initialized for {projectFile}", MessageType.Info)
     traceAsyncErrors ls.checkProject(uri)
-    projectNext.ns.openFiles.incl uri
     ls.sendStatusChanged()
 
 proc createOrRestartNimsuggestUnprotected(
@@ -1427,7 +1427,7 @@ proc getProjectFile*(
   debug "getProjectFile ", project = result, fileUri = fileUri
 
 proc checkFile*(
-    ls: LanguageServer, uri: string
+    ls: LanguageServer, file: NlsFileInfo
 ): Future[void] {.
     async: (
       raises: [
@@ -1436,6 +1436,7 @@ proc checkFile*(
       ]
     )
 .} =
+  let uri = file.textDocument.uri
   let conf = await ls.getAndWaitForWorkspaceConfiguration()
   let useNimCheck = conf.useNimCheck.get(USE_NIM_CHECK_BY_DEFAULT)
   let nimPath = await ls.getNimPath(conf)
@@ -1451,9 +1452,23 @@ proc checkFile*(
     ls.sendDiagnostics(checkResults, path)
     return
 
-  let ns = await ls.tryGetNimsuggest(uri)
+  let closed = uri notin ls.openFiles
+  let ns =
+    if closed:
+      let project = ls.projectFiles.getOrDefault(file.nimsuggestProject)
+      if project != nil:
+        some project.ns
+      else:
+        none(Nimsuggest)
+    else:
+      await ls.tryGetNimsuggest(uri)
+  let dirtyFile =
+    if closed:
+      path
+    else:
+      ls.uriToStash(uri)
   if ns.isSome:
-    let diagnostics = ns.get().chkFile(path, ls.uriToStash(uri)).await()
+    let diagnostics = ns.get().chkFile(path, dirtyFile).await()
     ls.progress(token, "end")
     ls.sendDiagnostics(diagnostics, path)
   else:
@@ -1495,13 +1510,6 @@ proc removeIdleNimsuggests*(
   for project in toStop:
     debug "Removing idle nimsuggest", project = project.file
     project.errorCallback = none(ProjectCallback)
-
-    let ns = project.ns
-    for uri in ns.openFiles:
-      debug "Removing idle nimsuggest open file", uri = uri
-      let info = ls.openFiles.getOrDefault(uri)
-      if info != nil:
-        await ls.makeIdleFile(info)
     project.stop()
     ls.projectFiles.del(project.file)
 
