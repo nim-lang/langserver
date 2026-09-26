@@ -1458,9 +1458,11 @@ proc checkFile*(
 
   let path = uriToPath(uri)
 
+  # A check reports on the modules the file imports too. Only the file's own go to it: the
+  # rest would be shown there, at their own line numbers, and are the project check's.
   if useNimCheck and nimPath.isSome:
     let checkResults = await nimCheck(uriToPath(uri), nimPath.get)
-    ls.sendDiagnostics(checkResults, path)
+    ls.sendDiagnostics(checkResults.filterIt(it.file == path), path)
     return
 
   let closed = uri notin ls.openFiles
@@ -1480,7 +1482,13 @@ proc checkFile*(
       ls.uriToStash(uri)
   if ns.isSome:
     let diagnostics = await ns.get().chkFile(path, dirtyFile)
-    ls.sendDiagnostics(diagnostics, path)
+    # an error nimsuggest has no place for (???) is still the file's
+    ls.sendDiagnostics(
+      diagnostics.filterIt(
+        it.filePath == path or (it.filePath == "???" and it.forth == "Error")
+      ),
+      path,
+    )
 
 proc removeCompletedPendingRequests(
     ls: LanguageServer, maxTimeAfterRequestWasCompleted = initDuration(seconds = 10)
