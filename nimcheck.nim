@@ -98,14 +98,15 @@ proc nimCheck*(
     stdoutHandle = AsyncProcess.Pipe,
   )
   try:
-    let res = await process.waitForExit(15.seconds)
-    # debug "nimCheck exit", res = res
-    var output = ""
-    if res == 0:
-      #Nim check return 0 if there are no errors but we still need to check for hints and warnings
-      output = string.fromBytes(process.stdoutStream.read().await)
-    else:
-      output = string.fromBytes(process.stderrStream.read().await)
+    # nim writes its errors, warnings and hints to stderr, whatever it exits with: read
+    # it (and stdout) while nim runs, since a pipe that fills up (64 KiB) would block nim
+    # and it would never exit
+    let
+      errOutput = process.stderrStream.read()
+      stdOutput = process.stdoutStream.read()
+    discard await process.waitForExit(15.seconds)
+    let output =
+      string.fromBytes(errOutput.await) & "\n" & string.fromBytes(stdOutput.await)
 
     let lines = output.splitLines()
     parseCheckResults(lines)
