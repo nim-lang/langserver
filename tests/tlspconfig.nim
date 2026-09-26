@@ -31,6 +31,7 @@ var editorConfiguration = %*[
     "transportMode": "stdio",
     "formatOnSave": false,
     "maxNimsuggestProcesses": 0,
+    "nimsuggestMaxMemory": 8000,
     "nimsuggestIdleTimeout": 120000,
   }
 ]
@@ -207,6 +208,7 @@ suite "LSP configuration pulled from the client":
     check conf.nimsuggestIdleTimeout == some 120000
     check conf.nimsuggestTimeout == some 90000
     check conf.logNimsuggest == some false
+    check conf.nimsuggestMaxMemory == some 8000
 
   test "the pulled configuration is what nimsuggest was started with":
     let status = to(
@@ -215,6 +217,18 @@ suite "LSP configuration pulled from the client":
     )
     check status.nimsuggestInstances.len == 1
     check status.nimsuggestInstances[0].capabilities.anyIt($it == "exceptionInlayHints")
+
+  test "nimsuggestMaxMemory is passed only when nimsuggest supports it":
+    # The flag must reach nimsuggest when it advertises the maxMemory
+    # capability and must be withheld otherwise: old nimsuggest versions
+    # refuse to start on unknown command line options.
+    let projectFile = uriToPath(helloWorldUri)
+    check projectFile in ls.projectFiles
+    let ns = ls.projectFiles[projectFile].ns
+    if nsMaxMemory in ns.capabilities:
+      check "--maxMemory:8000" in ns.args
+    else:
+      check "--maxMemory:8000" notin ns.args
 
   test "a project check reports progress to the client":
     proc checkIdle(ls: LanguageServer, projectFile: string): bool =
