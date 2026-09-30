@@ -223,7 +223,6 @@ proc initLs*(params: CommandLineParams, storageDir: string): LanguageServer =
     serverMode: params.mode.get(),
     transportMode: params.transport.get(stdio),
     openFiles: initTable[string, NlsFileInfo](),
-    responseMap: newTable[string, Future[JsonNode].Raising([CancelledError])](),
     storageDir: storageDir,
     cmdLineClientProcessId: params.clientProcessId,
     extensionCapabilities: LspExtensionCapability.items.toSet,
