@@ -1474,7 +1474,9 @@ proc checkFile*(
     ls.progress(token, "end")
     # an error nimsuggest has no place for (???) is still the file's
     ls.sendDiagnostics(
-      diagnostics.filterIt(it.filePath == path or (it.filePath == "???" and it.forth == "Error")),
+      diagnostics.filterIt(
+        it.filePath == path or (it.filePath == "???" and it.forth == "Error")
+      ),
       path,
     )
   else:
