@@ -111,7 +111,7 @@ suite "LSP configuration pushed by the client":
   check waitUntil(ls.workspaceConfigurationReady.finished)
 
   suiteTeardown:
-    waitFor ls.stopNimsuggestProcesses()
+    waitFor ls.shutdownNimsuggest()
 
   test "a null nim section keeps the server serving":
     # The client has no settings for us. The configuration used to parse to nil
@@ -181,7 +181,7 @@ suite "LSP configuration pulled from the client":
   )
 
   suiteTeardown:
-    waitFor ls.stopNimsuggestProcesses()
+    waitFor ls.shutdownNimsuggest()
 
   test "the server registers workspace/didChangeConfiguration dynamically":
     let registrations = client.calls["client/registerCapability"]

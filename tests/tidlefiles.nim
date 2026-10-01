@@ -83,7 +83,7 @@ suite "Idle file edited before its nimsuggest was stopped":
   let uri = RootFile.fixtureUri
 
   suiteTeardown:
-    waitFor ls.stopNimsuggestProcesses()
+    waitFor ls.shutdownNimsuggest()
 
   test "the next request keeps the edits":
     client.openRootFile()
@@ -105,7 +105,7 @@ suite "Idle file edited after its nimsuggest was stopped":
   let uri = RootFile.fixtureUri
 
   suiteTeardown:
-    waitFor ls.stopNimsuggestProcesses()
+    waitFor ls.shutdownNimsuggest()
 
   test "the next request applies the edits":
     client.openRootFile()
@@ -123,7 +123,7 @@ suite "Idle nimsuggest shared by several files":
   let otherUri = OtherFile.fixtureUri
 
   suiteTeardown:
-    waitFor ls.stopNimsuggestProcesses()
+    waitFor ls.shutdownNimsuggest()
 
   test "every file it served stays open and is served again":
     ls.setWorkspaceConfiguration(
@@ -155,7 +155,7 @@ suite "Closed file shared with another":
   let otherUri = OtherFile.fixtureUri
 
   suiteTeardown:
-    waitFor ls.stopNimsuggestProcesses()
+    waitFor ls.shutdownNimsuggest()
 
   test "a closed file is no longer listed by its nimsuggest":
     ls.setWorkspaceConfiguration(
@@ -180,7 +180,7 @@ suite "File closed after its nimsuggest was stopped":
   let uri = RootFile.fixtureUri
 
   suiteTeardown:
-    waitFor ls.stopNimsuggestProcesses()
+    waitFor ls.shutdownNimsuggest()
 
   test "a nimsuggest is not started for it":
     client.openRootFile()
@@ -207,7 +207,7 @@ suite "File closed with unsaved edits":
   let uri = RootFile.fixtureUri
 
   suiteTeardown:
-    waitFor ls.stopNimsuggestProcesses()
+    waitFor ls.shutdownNimsuggest()
 
   test "its diagnostics are for the file on disk":
     ls.setWorkspaceConfiguration(% @[NlsConfig()])
@@ -233,7 +233,7 @@ suite "Failed nimsuggest with no other to fall back to":
   let rootProject = RootFile.fixtureUri.uriToPath
 
   suiteTeardown:
-    waitFor ls.stopNimsuggestProcesses()
+    waitFor ls.shutdownNimsuggest()
 
   test "it is not started again":
     client.openRootFile()
@@ -255,7 +255,7 @@ suite "Failover with other failing nimsuggests":
   let (ls, client) = startServer()
 
   suiteTeardown:
-    waitFor ls.stopNimsuggestProcesses()
+    waitFor ls.shutdownNimsuggest()
 
   test "the file is served by the one that is not failing":
     ls.setWorkspaceConfiguration(

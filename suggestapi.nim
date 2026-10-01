@@ -269,11 +269,14 @@ proc markFailed(
   if self.errorCallback.isSome:
     await self.errorCallback.get()(self)
 
-proc stop*(self: Project) =
+proc stopWait*(self: Project) {.async: (raises: []).} =
   debug "Stopping nimsuggest for ", root = self.file
   self.errorCallback = none(ProjectCallback)
   if not self.process.isNil:
-    asyncSpawn shutdownChildProcess(self.process)
+    await shutdownChildProcess(self.process)
+
+proc stop*(self: Project) =
+  asyncSpawn self.stopWait()
 
 # XXX remove
 proc doWithTimeout*[T](
@@ -433,7 +436,7 @@ proc createNimsuggest*(
   finally:
     if result.ns.isNil:
       await result.markFailed "Unable to start nimsuggest."
-      result.stop()
+      await result.stopWait()
 
 proc createNimsuggest*(root: string): Future[Project] {.gcsafe, raises: [OSError].} =
   result = createNimsuggest(
