@@ -72,3 +72,20 @@ proc createNimbleProject*(projectDir: string) =
 proc normalizeText*(s: string): string =
   # windows/linux compat
   s.replace("\r\n", "\n").strip(leading = false)
+
+when defined(linux):
+  proc childProcessesWith*(arg: string): int =
+    ## Counts the running child processes of this process that were started
+    ## with ``arg`` on their command line.
+    for kind, dir in walkDir("/proc"):
+      if not dir.extractFilename.allCharsInSet(Digits):
+        continue
+      try:
+        let stat = readFile(dir / "stat")
+        # the parent pid is the second field after the command name
+        let fields = stat[stat.rfind(')') + 1 .. ^1].splitWhitespace()
+        if fields.len > 1 and fields[1] == $getCurrentProcessId() and
+            arg in readFile(dir / "cmdline").split('\0'):
+          inc result
+      except IOError, OSError:
+        discard

@@ -124,6 +124,27 @@ suite "Project resolution during startup":
     check (waitFor ls.openFiles[otherUri].waitProjectFile()) == entryPath
     check toSeq(ls.projectFiles.keys) == @[entryPath]
 
+when defined(linux):
+  suite "Shutdown during nimsuggest startup":
+    let (ls, client) = startSlowRootServer(defaultConfiguration)
+
+    test "stopping kills the nimsuggest that is still starting":
+      # the entry point compiles slowly, so its nimsuggest runs well before it
+      # reports its port and the creation finishes
+      check waitUntil(childProcessesWith(entryPath) == 1, CallTimeout)
+      check entryPath in ls.nimsuggestCreations
+      check entryPath notin ls.projectFiles
+
+      waitFor ls.stopNimsuggestProcesses()
+      check childProcessesWith(entryPath) == 0
+      check ls.nimsuggestCreations.len == 0
+      check entryPath notin ls.projectFiles
+
+    test "no nimsuggest is started once stopped":
+      waitFor ls.createOrRestartNimsuggest(entryPath).wait(30.seconds)
+      check entryPath notin ls.projectFiles
+      check childProcessesWith(entryPath) == 0
+
 suite "Shared project futures":
   test "joining project resolution does not cancel the shared future":
     let projectFile =

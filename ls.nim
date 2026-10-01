@@ -1277,6 +1277,10 @@ proc createOrRestartNimsuggestImpl(
 proc createOrRestartNimsuggestUnprotected(
     ls: LanguageServer, projectFile: string, uri: string
 ): Future[void] {.async: (raises: [CancelledError]).} =
+  if ls.childNimsuggestProcessesStopped:
+    debug "Not starting nimsuggest, the server is shutting down",
+      projectFile = projectFile
+    return
   let inFlight = ls.nimsuggestCreations.getOrDefault(projectFile)
   if not inFlight.isNil and not inFlight.finished:
     await inFlight
@@ -1368,13 +1372,14 @@ proc getCharacter*(
     none(int)
 
 proc stopNimsuggestProcesses*(ls: LanguageServer) {.async: (raises: []).} =
-  if not ls.childNimsuggestProcessesStopped:
-    debug "stopping child nimsuggest processes"
-    ls.childNimsuggestProcessesStopped = true
-    for project in ls.projectFiles.values:
-      project.stop()
-  else:
-    debug "child nimsuggest processes already stopped: CHECK!"
+  debug "stopping child nimsuggest processes"
+  ls.childNimsuggestProcessesStopped = true
+  var shutdowns: seq[Future[void].Raising([])]
+  for creation in ls.nimsuggestCreations.values:
+    shutdowns.add creation.cancelAndWait()
+  for project in ls.projectFiles.values:
+    shutdowns.add project.stopWait()
+  await noCancel allFutures(shutdowns)
 
 proc getProjectFile*(
     fileUri: string, ls: LanguageServer
