@@ -380,6 +380,36 @@ suite "Nimlangserver single client":
     let res = waitFor client.call("shutdown", newJObject()).wait(10.seconds)
     check res.kind == JNull
 
+suite "Nimlangserver socket session":
+  #A socket session is a single connection, like a stdio one: the server stops
+  #serving when its client leaves, and gives up if no client ever connects.
+  test "The session ends when the client leaves":
+    let cmdParams =
+      CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
+    let ls = main(cmdParams)
+    let client = newLspSocketClient()
+    waitFor client.connect("localhost", cmdParams.port)
+    check waitUntil(ls.connection != nil, 10.seconds)
+    waitFor client.transport.shutdownWait()
+    waitFor client.transport.closeWait()
+    check waitFor ls.serve().withTimeout(10.seconds)
+    check ls.serve().completed
+    #No one else can connect and take over the session
+    expect TransportError:
+      discard waitFor connect(resolveTAddress("localhost", cmdParams.port)[0])
+
+  test "The session fails when no client connects in time":
+    let cmdParams =
+      CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
+    let ls = initLs(cmdParams, ensureStorageDir())
+    ls.initServer()
+    ls.registerRoutes()
+    ls.startSocketServer(cmdParams.port, connectTimeout = 100.milliseconds)
+    check waitFor ls.serve().withTimeout(10.seconds)
+    check ls.serve().failed
+    expect TransportError:
+      discard waitFor connect(resolveTAddress("localhost", cmdParams.port)[0])
+
 suite "Nimlangserver nimsuggest creation":
   let cmdParams =
     CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())

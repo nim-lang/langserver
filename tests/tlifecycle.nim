@@ -150,3 +150,4 @@ suite "Nimlangserver process lifecycle":
 
     let code = p.exitCodeWithin(60.seconds)
     check code != SigSegv
+    check code == 0

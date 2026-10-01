@@ -15,8 +15,9 @@
 ##
 ## The two transports differ only in where the connection comes from: stdio
 ## serves the pipes the spawning client left on our own descriptors, the socket
-## server serves every client that connects. `processStdioClient` and
+## server serves the first client that connects. `processStdioClient` and
 ## `processSocketClient` are the whole of that difference; the rest is shared.
+## Either way the session is that one connection: when it ends, serving ends.
 
 {.push raises: [], gcsafe.}
 
@@ -33,6 +34,8 @@ import
 
 logScope:
   topics = "lstransport"
+
+const SocketConnectTimeout* = chronos.seconds(30)
 
 type Rpc* = proc(params: RequestParamsRx): Future[JsonString] {.gcsafe, raises: [].}
 
@@ -163,21 +166,18 @@ proc logDisconnect(conn: RpcConnection, address: string) =
     warn "Client connection ended with an error",
       address = address, err = conn.lastError.msg
 
-proc isConnected(conn: RpcConnection): bool =
-  if conn.isNil:
-    return false
-  if conn of RpcSocketClient:
-    let transport = RpcSocketClient(conn).transport
-    return not transport.isNil and not transport.atEof()
-  true
+proc stopSocketServer(ls: LanguageServer) {.async: (raises: []).} =
+  let srv = RpcSocketServer(ls.srv)
+  srv.stop()
+  await srv.closeWait()
 
 proc processSocketClient(
     ls: LanguageServer, server: StreamServer, transport: StreamTransport
 ) {.async: (raises: []).} =
   let remote = transport.remoteAddress2().valueOr(default(TransportAddress))
 
-  if ls.connection.isConnected:
-    warn "Refusing a second client, one is already connected", address = remote
+  if not ls.connection.isNil:
+    warn "Refusing a second client, only one is served", address = remote
     await transport.closeWait()
     return
 
@@ -197,6 +197,8 @@ proc processSocketClient(
 
   conn.logDisconnect($remote)
   ls.unregister(conn)
+  await ls.stopSocketServer()
+  ls.endServing()
 
 proc recvJsonLine(
     transport: StreamTransport, limit: int
@@ -244,8 +246,7 @@ proc initActions*(ls: LanguageServer) =
     of stdio:
       await RpcStdioServer(ls.srv).stop()
     of socket:
-      RpcSocketServer(ls.srv).stop()
-      RpcSocketServer(ls.srv).close()
+      await ls.stopSocketServer()
 
   let notifyAction: NotifyAction = proc(name: string, params: JsonString) =
     let conn = ls.connection
@@ -317,26 +318,28 @@ proc startStdioServer*(ls: LanguageServer) {.raises: [JsonRpcError].} =
   RpcStdioServer(ls.srv).start()
   debug "Stdio server started"
 
+proc endIfNoClient(
+    ls: LanguageServer, timeout: chronos.Duration
+) {.async: (raises: []).} =
+  try:
+    await sleepAsync(timeout)
+  except CancelledError:
+    return
+  if ls.connection.isNil and not ls.served.finished:
+    error "No client connected", timeout = timeout
+    await ls.stopSocketServer()
+    ls.endServing(newException(JsonRpcError, "No client connected within " & $timeout))
+
 proc startSocketServer*(
-    ls: LanguageServer, port: Port
-) {.raises: [JsonRpcError, OSError, CancelledError].} =
+    ls: LanguageServer, port: Port, connectTimeout = SocketConnectTimeout
+) {.raises: [JsonRpcError, OSError].} =
   let srv = RpcSocketServer(ls.srv)
   srv.addStreamServer("localhost", port)
   srv.start()
+  asyncSpawn ls.endIfNoClient(connectTimeout)
+  debug "Socket server started", connectTimeout = connectTimeout
 
-  proc waitUntilConnected(ls: LanguageServer) {.async: (raises: [CancelledError]).} =
-    while ls.connection.isNil:
-      await sleepAsync(0)
-
-  when not defined(test):
-    #`ls.notify` and `ls.call` need a client to talk to
-    debug "Waiting for socket server to be ready"
-    waitFor waitUntilConnected(ls)
-    debug "Socket server started"
-
-proc startServer*(
-    ls: LanguageServer, port: Port
-) {.raises: [JsonRpcError, OSError, CancelledError].} =
+proc startServer*(ls: LanguageServer, port: Port) {.raises: [JsonRpcError, OSError].} =
   case ls.transportMode
   of stdio:
     ls.startStdioServer()

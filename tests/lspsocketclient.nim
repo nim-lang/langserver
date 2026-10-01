@@ -43,7 +43,6 @@ type
     responses*: TableRef[int, Future[JsonNode]]
       #id -> response. Stores the responses to the calls
     requestId: int
-    connAddress: TransportAddress
 
 proc newLspSocketClient*(): LspSocketClient =
   result = LspSocketClient.new()
@@ -119,50 +118,30 @@ proc processMessage(client: LspSocketClient, msg: string) {.raises: [].} =
     error "ProcessData Error ", msg = exc.msg
 
 proc processData(client: LspSocketClient) {.async: (raises: []).} =
+  var ended: ref JsonRpcError
   while true:
-    var localException: ref JsonRpcError
-    while true:
-      try:
-        # var value = await client.transport.readLine(defaultMaxRequestLength)
-        var value = await processContentLength(client.transport)
-        if value == "":
-          # transmission ends
-          await client.transport.closeWait()
-          break
-        # echo "----------------------------ProcessData----------------------"
-        # echo value
-        # echo "----------------------------EndProcessData-------------------"
-        client.processMessage(value)
-      except TransportError as exc:
-        localException = newException(JsonRpcError, exc.msg)
-        await client.transport.closeWait()
-        break
-      except CancelledError as exc:
-        localException = newException(JsonRpcError, exc.msg)
-        await client.transport.closeWait()
-        break
-
-    if localException.isNil.not:
-      for _, fut in client.responses:
-        if not fut.finished:
-          fut.fail(localException)
-      client.responses.clear()
-
-    # async loop reconnection and waiting 
     try:
-      info "Reconnect to server", address = `$`(client.connAddress)
-      client.transport = await connect(client.connAddress)
+      let value = await processContentLength(client.transport)
+      if value == "":
+        ended = newException(JsonRpcError, "The server closed the connection")
+        break
+      client.processMessage(value)
     except TransportError as exc:
-      error "Error when reconnecting to server", msg = exc.msg
+      ended = newException(JsonRpcError, exc.msg)
       break
     except CancelledError as exc:
-      error "Error when reconnecting to server", msg = exc.msg
+      ended = newException(JsonRpcError, exc.msg)
       break
+
+  await client.transport.closeWait()
+  for _, fut in client.responses:
+    if not fut.finished:
+      fut.fail(ended)
+  client.responses.clear()
 
 proc connect*(client: LspSocketClient, address: string, port: Port) {.async.} =
   let addresses = resolveTAddress(address, port)
   client.transport = await connect(addresses[0])
-  client.connAddress = addresses[0]
   client.loop = processData(client)
 
 proc notify*(client: LspSocketClient, name: string, params: JsonNode) =

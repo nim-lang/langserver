@@ -2,7 +2,7 @@ import
   std/[options, os, tables, json],
   chronos,
   unittest2,
-  ../[nimlangserver, ls, utils],
+  ../[nimlangserver, ls, lstransports2, utils],
   ../suggestapi,
   ../protocol/types,
   ./[lspsocketclient, testhelpers]
@@ -78,15 +78,15 @@ suite "Async safety":
     check ls.projectFiles.len == 1
     check not ls.projectFiles[helloWorldPath].process.isNil
 
-  test "The server survives a client that leaves with a request pending":
+  test "A client that leaves with a request pending ends the session":
     let pending = ls.call("workspace/configuration", JsonString"{}")
     check not pending.isNil
-    let leaving = ls.connection
     waitFor client.transport.shutdownWait()
     waitFor client.transport.closeWait()
-    # wait reconnection
-    check waitUntil(ls.connection != nil and ls.connection != leaving, 30.seconds)
-    check waitFor client.call("shutdown", newJNull()).withTimeout(30.seconds)
+    check waitFor ls.serve().withTimeout(30.seconds)
+    # the request to the client that left fails rather than waiting forever
+    check waitFor pending.withTimeout(30.seconds)
+    check pending.failed
 
 suite "Replacing a running nimsuggest":
   let cmdParams =
