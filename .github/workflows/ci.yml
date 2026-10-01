@@ -29,7 +29,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Setup Nimble
-        uses: nim-lang/setup-nimble-action@v1
+        uses: nim-lang/setup-nimble-action@v2
         with:
           nimble-version: "latest"
           repo-token: ${{ secrets.GITHUB_TOKEN }}
