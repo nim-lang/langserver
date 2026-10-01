@@ -25,9 +25,9 @@ proc initMcpServer(
       }
     ls = initLs(cmdParams, ensureStorageDir())
 
-  ls.notify = proc(name: string, params: JsonString) {.gcsafe, raises: [].} =
+  ls.notifyAction = proc(name: string, params: JsonString) {.gcsafe, raises: [].} =
     discard
-  ls.call = proc(
+  ls.callAction = proc(
       name: string, params: JsonString
   ): Future[JsonNode] {.async: (raises: [CancelledError, JsonRpcError]).} =
     newJNull()

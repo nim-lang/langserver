@@ -141,8 +141,8 @@ type
       mcpServerCapabilities*: McpServerCapabilities
       mcpInitializeParams*: McpInitializeParams
     extensionCapabilities*: set[LspExtensionCapability]
-    notify*: NotifyAction
-    call*: CallAction
+    notifyAction*: NotifyAction
+    callAction*: CallAction
     onExit*: OnExitCallback
     projectFiles*: Table[string, Project]
     nimsuggestCreations*: Table[string, Future[void].Raising([CancelledError])]
@@ -214,6 +214,14 @@ macro `%*`*(t: untyped, inputStream: untyped): untyped =
       `conv`
     except ValueError:
       raiseAssert getCurrentExceptionMsg()
+
+proc notify*[T](ls: LanguageServer, name: string, params: T) =
+  ls.notifyAction(name, JsonString LspConv.encode(params))
+
+proc call*[T](
+    ls: LanguageServer, name: string, params: T
+): Future[JsonNode] {.async: (raw: true, raises: [CancelledError, JsonRpcError]).} =
+  ls.callAction(name, JsonString LspConv.encode(params))
 
 proc initLs*(params: CommandLineParams, storageDir: string): LanguageServer =
   LanguageServer(
@@ -357,8 +365,7 @@ proc showMessage*(
 ) {.raises: [].} =
   proc notify() =
     ls.notify(
-      "window/showMessage",
-      JsonString LspConv.encode(ShowMessageParams(`type`: typ.int, message: message)),
+      "window/showMessage", ShowMessageParams(`type`: typ.int, message: message)
     )
 
   let verbosity = ls.getWorkspaceConfiguration.notificationVerbosity.get(
@@ -382,7 +389,7 @@ proc applyEdit*(
 ): Future[ApplyWorkspaceEditResponse] {.
     async: (raises: [CancelledError, ValueError, JsonRpcError])
 .} =
-  let res = await ls.call("workspace/applyEdit", JsonString LspConv.encode(params))
+  let res = await ls.call("workspace/applyEdit", params)
   res.to(ApplyWorkspaceEditResponse)
 
 proc toPendingRequestStatus(pr: PendingRequest): PendingRequestStatus =
@@ -659,17 +666,12 @@ proc progress*(ls: LanguageServer, token, kind: string, title = "") =
   if ls.progressSupported:
     ls.notify(
       "$/progress",
-      JsonString LspConv.encode(
-        ProgressParams(token: token, value: some %*{"kind": kind, "title": title})
-      ),
+      ProgressParams(token: token, value: some %*{"kind": kind, "title": title}),
     )
 
 proc workDoneProgressCreate*(ls: LanguageServer, token: string) =
   if ls.progressSupported:
-    discard ls.call(
-      "window/workDoneProgress/create",
-      JsonString LspConv.encode(ProgressParams(token: token)),
-    )
+    discard ls.call("window/workDoneProgress/create", ProgressParams(token: token))
 
 proc cancelPendingFileChecks*(ls: LanguageServer, nimsuggest: Nimsuggest) =
   # stop all checks on file level if we are going to run checks on project
@@ -808,7 +810,7 @@ proc sendDiagnostics*(
       "uri": pathToUri(path),
       "diagnostics": diagnostics.map(x => x.toUtf16Pos(ls).toDiagnostic),
     }
-  ls.notify("textDocument/publishDiagnostics", JsonString LspConv.encode(params))
+  ls.notify("textDocument/publishDiagnostics", params)
   if diagnostics.len != 0:
     ls.filesWithDiags.incl path
   else:
@@ -1137,7 +1139,7 @@ proc checkProject*(
         debug "Sending zero diags", path = path
         let params =
           PublishDiagnosticsParams %* {"uri": pathToUri(path), "diagnostics": @[]}
-        ls.notify("textDocument/publishDiagnostics", JsonString LspConv.encode(params))
+        ls.notify("textDocument/publishDiagnostics", params)
     ls.filesWithDiags = filesWithDiags
     return
 
@@ -1182,7 +1184,7 @@ proc checkProject*(
       debug "Sending zero diags", path = path
       let params =
         PublishDiagnosticsParams %* {"uri": pathToUri(path), "diagnostics": @[]}
-      ls.notify("textDocument/publishDiagnostics", JsonString LspConv.encode(params))
+      ls.notify("textDocument/publishDiagnostics", params)
   ls.filesWithDiags = filesWithDiags
 
   if nimsuggest.needsCheckProject:
@@ -1329,9 +1331,7 @@ proc maybeRegisterCapabilityDidChangeConfiguration*(ls: LanguageServer) =
         ]
       )
     )
-    let registration = ls.call(
-      "client/registerCapability", JsonString LspConv.encode(registrationParams)
-    )
+    let registration = ls.call("client/registerCapability", registrationParams)
     ls.didChangeConfigurationRegistrationRequest = registration
     registration.addCallback do(data: pointer) {.gcsafe.}:
       if registration.completed:
@@ -1363,9 +1363,7 @@ proc maybeRequestConfigurationFromClient*(
     debug "Requesting configuration from the client"
     try:
       let configurationParams = ConfigurationParams %* {"items": [{"section": "nim"}]}
-      let configuration = await ls.call(
-        "workspace/configuration", JsonString LspConv.encode(configurationParams)
-      )
+      let configuration = await ls.call("workspace/configuration", configurationParams)
       debug "Received the following configuration", configuration = $configuration
       #the first configuration is not a change, so there is nothing to handle
       let

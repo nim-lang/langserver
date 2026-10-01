@@ -290,8 +290,8 @@ proc initActions*(ls: LanguageServer) =
     asyncSpawn call()
     fut
 
-  ls.call = callAction
-  ls.notify = notifyAction
+  ls.callAction = callAction
+  ls.notifyAction = notifyAction
   ls.onExit = onExit
 
 proc serve*(ls: LanguageServer): Future[void] =
