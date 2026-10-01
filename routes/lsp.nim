@@ -35,7 +35,7 @@ proc initialize*(
   proc onClientProcessExitAsync(): Future[void] {.async: (raises: [IOError, OSError]).} =
     debug "onClientProcessExitAsync"
     try:
-      await p.ls.stopNimsuggestProcesses
+      await p.ls.shutdownNimsuggest
       await p.onExit()
     except CatchableError as ex:
       error "Error in onClientProcessExit ", msg = ex.msg
@@ -982,7 +982,7 @@ proc shutdown*(
 ): Future[JsonNode] {.async: (raises: [ApplicationError]).} =
   ls.checkInitialized()
   debug "Shutting down"
-  await ls.stopNimsuggestProcesses()
+  await ls.shutdownNimsuggest()
   ls.isShutdown = true
   # let id = input{"id"}.extractId
   result = newJNull()
@@ -993,7 +993,7 @@ proc exit*(
 ): Future[JsonNode] {.async: (raises: [IOError, OSError]).} =
   if not p.ls.isShutdown:
     debug "Received an exit request without prior shutdown request"
-    await p.ls.stopNimsuggestProcesses()
+    await p.ls.shutdownNimsuggest()
   debug "Quitting process"
   result = newJNull()
   await p.onExit()

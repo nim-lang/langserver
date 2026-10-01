@@ -18,7 +18,7 @@ suite "Nimlangserver misc":
   )
 
   suiteTeardown:
-    waitFor ls.stopNimsuggestProcesses()
+    waitFor ls.shutdownNimsuggest()
 
   test "after a period of inactivity, nimsuggest should be stopped":
     let initParams =
@@ -61,7 +61,7 @@ suite "Nimlangserver fail count":
   )
 
   suiteTeardown:
-    waitFor ls.stopNimsuggestProcesses()
+    waitFor ls.shutdownNimsuggest()
 
   test "fail count is reset when a nimsuggest starts successfully":
     # ls.failTable only ever increments, so a project that crashes and
@@ -121,7 +121,7 @@ suite "Nimlangserver idle nimsuggest cleanup":
   )
 
   suiteTeardown:
-    waitFor ls.stopNimsuggestProcesses()
+    waitFor ls.shutdownNimsuggest()
 
   test "idle nimsuggest is removed even when an open file was already evicted":
     # Regression test for #420: a URI evicted from ls.openFiles while the

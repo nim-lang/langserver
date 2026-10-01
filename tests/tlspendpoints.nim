@@ -42,7 +42,7 @@ suite "LSP endpoints":
   )
 
   suiteTeardown:
-    waitFor ls.stopNimsuggestProcesses()
+    waitFor ls.shutdownNimsuggest()
 
   test "textDocument/typeDefinition answers for a typed symbol":
     let locations = to(
@@ -456,7 +456,7 @@ suite "LSP messages before initialize":
     helloWorldUri = fixtureUri(helloWorldFile)
 
   suiteTeardown:
-    waitFor ls.stopNimsuggestProcesses()
+    waitFor ls.shutdownNimsuggest()
 
   test "requests are refused and notifications dropped until initialize":
     # Every route reads state that initialize sets: didOpen used to await a nil
@@ -510,7 +510,7 @@ suite "LSP socket transport with more than one client":
   )
 
   suiteTeardown:
-    waitFor ls.stopNimsuggestProcesses()
+    waitFor ls.shutdownNimsuggest()
 
   test "the only client is answered":
     let status =

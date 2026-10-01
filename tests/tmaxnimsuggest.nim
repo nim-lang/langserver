@@ -44,7 +44,7 @@ suite "Single nimsuggest instance under concurrent opens":
   let files = [RootFile, OtherFile, ThirdFile]
 
   suiteTeardown:
-    waitFor ls.stopNimsuggestProcesses()
+    waitFor ls.shutdownNimsuggest()
 
   test "modules opened at the same time share one nimsuggest":
     discard waitFor client.initialize(initParams())
@@ -68,7 +68,7 @@ suite "Idle nimsuggest instance under the cap":
   let client = newClient(cmdParams.port)
 
   suiteTeardown:
-    waitFor ls.stopNimsuggestProcesses()
+    waitFor ls.shutdownNimsuggest()
 
   test "a file of an idle nimsuggest reopens within the cap":
     discard waitFor client.initialize(initParams())

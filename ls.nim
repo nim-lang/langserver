@@ -166,7 +166,7 @@ type
     filesWithDiags*: HashSet[string]
     nimsuggestInit*: Future[void].Raising([CancelledError, OSError])
     lastNimsuggest*: Nimsuggest
-    childNimsuggestProcessesStopped*: bool
+    isShutdownNimsuggest*: bool
     initialized*: bool
       #Set once initialize has run. Until then routes can't rely on its state.
     isShutdown*: bool
@@ -1277,7 +1277,7 @@ proc createOrRestartNimsuggestImpl(
 proc createOrRestartNimsuggestUnprotected(
     ls: LanguageServer, projectFile: string, uri: string
 ): Future[void] {.async: (raises: [CancelledError]).} =
-  if ls.childNimsuggestProcessesStopped:
+  if ls.isShutdownNimsuggest:
     debug "Not starting nimsuggest, the server is shutting down",
       projectFile = projectFile
     return
@@ -1371,9 +1371,9 @@ proc getCharacter*(
   else:
     none(int)
 
-proc stopNimsuggestProcesses*(ls: LanguageServer) {.async: (raises: []).} =
+proc shutdownNimsuggest*(ls: LanguageServer) {.async: (raises: []).} =
   debug "stopping child nimsuggest processes"
-  ls.childNimsuggestProcessesStopped = true
+  ls.isShutdownNimsuggest = true
   var shutdowns: seq[Future[void].Raising([])]
   for creation in ls.nimsuggestCreations.values:
     shutdowns.add creation.cancelAndWait()

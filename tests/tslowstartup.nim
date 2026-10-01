@@ -73,7 +73,7 @@ suite "Nimsuggest startup for a slow mapped root":
     )
 
   suiteTeardown:
-    waitFor ls.stopNimsuggestProcesses()
+    waitFor ls.shutdownNimsuggest()
 
   test "files opened during startup share a single nimsuggest for their root":
     check not ls.nimsuggestInit.finished
@@ -96,7 +96,7 @@ suite "Requests during startup":
   let (ls, client) = startSlowRootServer(mappedConfiguration)
 
   suiteTeardown:
-    waitFor ls.stopNimsuggestProcesses()
+    waitFor ls.shutdownNimsuggest()
 
   test "a request behind didOpen waits for the file instead of answering empty":
     check not ls.nimsuggestInit.finished
@@ -109,7 +109,7 @@ suite "Project resolution during startup":
   let (ls, client) = startSlowRootServer(defaultConfiguration)
 
   suiteTeardown:
-    waitFor ls.stopNimsuggestProcesses()
+    waitFor ls.shutdownNimsuggest()
 
   test "a file opened during startup uses the startup nimsuggest":
     check not ls.nimsuggestInit.finished
@@ -130,7 +130,7 @@ suite "Shutdown during nimsuggest startup":
   test "stopping cancels the nimsuggest that is still starting":
     check waitUntil(entryPath in ls.nimsuggestCreations, CallTimeout)
     let creation = ls.nimsuggestCreations.getOrDefault(entryPath)
-    waitFor ls.stopNimsuggestProcesses()
+    waitFor ls.shutdownNimsuggest()
     check creation.cancelled
     check ls.nimsuggestCreations.len == 0
     check entryPath notin ls.projectFiles

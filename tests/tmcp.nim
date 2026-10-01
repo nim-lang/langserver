@@ -91,7 +91,7 @@ suite "MCP routes":
   waitFor ls.nimsuggestInit
 
   suiteTeardown:
-    waitFor ls.stopNimsuggestProcesses()
+    waitFor ls.shutdownNimsuggest()
 
   test "initialize returns MCP info":
     check initRes.protocolVersion == McpProtocolVersion
@@ -271,7 +271,7 @@ suite "MCP tools":
     (ls, _) = waitFor initMcpServer(entryPoint)
 
   suiteTeardown:
-    waitFor ls.stopNimsuggestProcesses()
+    waitFor ls.shutdownNimsuggest()
     setCurrentDir(savedDir)
 
   test "callTool nimFindReferences returns structured references":
