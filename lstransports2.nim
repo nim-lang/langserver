@@ -2,8 +2,8 @@
 ##
 ## Framing, routing, request/response correlation and error responses all come
 ## from `json_rpc`: the served connection becomes a bidirectional
-## `RpcConnection` speaking the LSP `Content-Length` framing (see
-## `stdioFraming` for the one exception), and incoming requests are dispatched
+## `RpcConnection` speaking `Content-Length` framing for LSP and newline
+## delimited JSON for MCP (see `framing`), and incoming requests are dispatched
 ## through `ls.srv.router`. What is left here is the glue the language server
 ## needs on top of that:
 ##
@@ -171,6 +171,23 @@ proc stopSocketServer(ls: LanguageServer) {.async: (raises: []).} =
   srv.stop()
   await srv.closeWait()
 
+proc recvJsonLine(
+    transport: StreamTransport, limit: int
+): Future[seq[byte]] {.async: (raises: [CancelledError, TransportError]).} =
+  toBytes(await transport.readLine(limit, sep = "\n"))
+
+proc sendJsonLine(
+    transport: StreamTransport, msg: seq[byte]
+) {.async: (raises: [CancelledError, TransportError]).} =
+  discard await transport.write(msg & toBytes("\n"))
+
+proc framing(ls: LanguageServer): Framing =
+  case ls.serverMode
+  of lsp:
+    Framing.httpHeader()
+  of mcp:
+    Framing.init(recvJsonLine, sendJsonLine)
+
 proc processSocketClient(
     ls: LanguageServer, server: StreamServer, transport: StreamTransport
 ) {.async: (raises: []).} =
@@ -183,7 +200,7 @@ proc processSocketClient(
 
   var conn: RpcSocketClient #Captured by the router, assigned right below
   conn = RpcSocketClient.new(
-    framing = Framing.httpHeader(),
+    framing = ls.framing(),
     router = proc(
         request: RequestBatchRx
     ): Future[seq[byte]] {.async: (raises: [], raw: true).} =
@@ -200,30 +217,12 @@ proc processSocketClient(
   await ls.stopSocketServer()
   ls.endServing()
 
-proc recvJsonLine(
-    transport: StreamTransport, limit: int
-): Future[seq[byte]] {.async: (raises: [CancelledError, TransportError]).} =
-  toBytes(await transport.readLine(limit, sep = "\n"))
-
-proc sendJsonLine(
-    transport: StreamTransport, msg: seq[byte]
-) {.async: (raises: [CancelledError, TransportError]).} =
-  discard await transport.write(msg & toBytes("\n"))
-
-# XXX MCP needs to be jsonLine in socket mode as well
-proc stdioFraming(ls: LanguageServer): Framing =
-  case ls.serverMode
-  of lsp:
-    Framing.httpHeader()
-  of mcp:
-    Framing.init(recvJsonLine, sendJsonLine)
-
 proc processStdioClient(
     ls: LanguageServer, server: RpcStdioServer, input, output: StreamTransport
 ) {.async: (raises: []).} =
   var conn: RpcStdioClient
   conn = RpcStdioClient.new(
-    framing = ls.stdioFraming(),
+    framing = ls.framing(),
     router = proc(
         request: RequestBatchRx
     ): Future[seq[byte]] {.async: (raises: [], raw: true).} =

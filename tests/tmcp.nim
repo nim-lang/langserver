@@ -5,8 +5,7 @@ import
   unittest2,
   ../[nimlangserver, ls, utils],
   ../protocol/types,
-  ../routes/mcp,
-  ./lspsocketclient
+  ../routes/mcp
 
 type McpSocketClient = ref object
   transport: StreamTransport
@@ -58,10 +57,10 @@ proc callRpc(
   inc client.nextId
   let id = client.nextId
   let reqJson = %*{"jsonrpc": "2.0", "id": id, "method": name, "params": params}
-  discard await client.transport.write(wrapContentWithContentLength($reqJson))
+  discard await client.transport.write($reqJson & "\n")
 
   while true:
-    let response = await processContentLength(client.transport)
+    let response = await client.transport.readLine(sep = "\n")
     if response == "":
       raise newException(IOError, "MCP server disconnected")
 

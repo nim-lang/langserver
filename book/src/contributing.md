@@ -23,7 +23,7 @@ Client
 ├─ LSP client (editor)
 │  └─ JSON-RPC over stdio or a socket, with Content-Length framing
 └─ MCP client
-   └─ JSON-RPC over stdio (one JSON object per line) or a socket
+   └─ JSON-RPC over stdio or a socket, one JSON object per line
 
 nimlangserver.nim
 └─ builds LanguageServer state, starts transport, registers routes
@@ -75,7 +75,7 @@ The MCP flow is the same shared pipeline with a thinner route layer:
 
 - `LanguageServer` is a shared state object for both modes. The `serverMode` field switches the shape of the initialize params/capabilities stored inside it.
 - The server serves a single connection per process, since `ls` holds a single session; stdio has one connection by construction. In socket mode `processSocketClient` hangs up on any other connection, and when the client leaves the server stops listening and exits, as it does when stdin closes. If no client connects within `SocketConnectTimeout` (30s), it exits with an error.
-- `lstransports2.nim` is shared by both modes and by both transports; the transports differ only in where the connection comes from — stdio serves the pipes the spawning client left on our descriptors, the socket server serves every accepted client. The framing is `Content-Length` everywhere except MCP over stdio, which is newline delimited JSON, as MCP clients expect.
+- `lstransports2.nim` is shared by both modes and by both transports; the transports differ only in where the connection comes from — stdio serves the pipes the spawning client left on our descriptors, the socket server serves every accepted client. The framing depends on the mode, not the transport: `Content-Length` for LSP and newline delimited JSON for MCP, as MCP clients expect.
 - Messages are dispatched concurrently, with one ordering guarantee: the part of a handler that runs before its first `await` completes before the next message is read off the connection. `lstransports2.route` returns immediately instead of awaiting the handler, and chronos runs async bodies eagerly, so that prefix is the only place where ordering against later messages is guaranteed. Anything a following message could observe — the `openFiles` entry, the stash file contents — has to be applied there.
 - MCP currently treats the current working directory as the workspace root (`getRootPath(McpInitializeParams)` returns `getCurrentDir()`), so start the server from the workspace you want to inspect.
 - `tickLs` in `nimlangserver.nim` keeps running after initialization and calls `ls.tick()` to prune completed requests and stop idle `nimsuggest` processes.
