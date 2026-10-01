@@ -10,5 +10,5 @@ import
   ./[
     tprojectsetup, textensions, tmisc, ttestrunner, tmcp, tlspendpoints,
     tlspdiagnostics, tlspconfig, tutils, tasyncsafety, tslowstartup, tmaxnimsuggest,
-    tidlefiles,
+    tidlefiles, tnimcheck,
   ]
