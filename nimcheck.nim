@@ -36,7 +36,7 @@ proc parseCheckResults*(lines: seq[string]): seq[CheckResult] =
   result = @[]
   var
     context: seq[string] # lines for the next diagnostic
-    open = false         # whether a line that starts nothing goes on result[^1]
+    open = false # whether a line that starts nothing goes on result[^1]
     m: RegexMatch2
 
   let dotsPattern = re2"^\.+$"
@@ -44,7 +44,7 @@ proc parseCheckResults*(lines: seq[string]): seq[CheckResult] =
   let contextPattern = re2"^[^(]+\(\d+,\s*\d+\)\s+.*$"
   let ownPattern = re2"^(Hint|Warning|Error):\s*(.*)$"
 
-  proc extend(msg: var string; line: string) =
+  proc extend(msg: var string, line: string) =
     if msg.len < 2048:
       msg &= "\n" & line
 
