@@ -278,6 +278,7 @@ EOF
 <tr><td><code>nim.nimsuggestIdleTimeout</code></td><td>Timeout in ms before an idle <code>nimsuggest</code> is stopped. Default: 120 seconds.</td></tr>
 <tr><td><code>nim.useNimCheck</code></td><td>Use <code>nim check</code> instead of <code>nimsuggest</code> for linting. Default: <code>true</code>.</td></tr>
 <tr><td><code>nim.maxNimsuggestProcesses</code></td><td>Maximum number of live <code>nimsuggest</code> processes. <code>0</code> means unlimited. Default: <code>0</code>.</td></tr>
+<tr><td><code>nim.nimsuggestMaxMemory</code></td><td>Memory cap per <code>nimsuggest</code> process in MB. <code>nimsuggest</code> quits when the value is reached. <code>0</code> means unlimited. Default: <code>nimsuggest</code>'s own default (4000 MB). Requires a <code>nimsuggest</code> advertising the <code>maxMemory</code> capability; ignored otherwise.</td></tr>
 <tr><td><code>nim.nimsuggestTimeout</code></td><td>Timeout in ms for the <code>nimsuggest</code> startup + initial compilation. Default: 60 seconds.</td></tr>
 </tbody></table>
 </div>
