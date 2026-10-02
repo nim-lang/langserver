@@ -114,24 +114,25 @@ Install [lsp-mode](https://github.com/emacs-lsp/lsp-mode) and `nim-mode` from ME
 
 LSP configuration is supplied by the client/editor via `nim.*` settings.
 
-| Setting                       | Description                                                                                                                      |
-| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `nim.projectMapping`          | Map file path patterns to `nimsuggest` project roots.                                                                            |
-| `nim.timeout`                 | Request timeout in ms before `nimlangserver` restarts. Default: 2 minutes.                                                       |
-| `nim.nimsuggestPath`          | Path to `nimsuggest`. Default: `"nimsuggest"`.                                                                                   |
-| `nim.autoCheckFile`           | Check the file on the fly.                                                                                                       |
-| `nim.autoCheckProject`        | Check the project after saving.                                                                                                  |
-| `nim.autoRestart`             | Auto-restart `nimsuggest` once after a crash. The server won't restart if there were no successful calls since the last restart. |
-| `nim.workingDirectoryMapping` | Configure the working directory for specific projects.                                                                           |
-| `nim.checkOnSave`             | Check the file on save.                                                                                                          |
-| `nim.logNimsuggest`           | Enable `nimsuggest` logging.                                                                                                     |
-| `nim.inlayHints`              | Configure inlay hints. Exception hints are off by default due to their compile-time cost.                                        |
-| `nim.notificationVerbosity`   | Notification verbosity: `"none"`, `"error"`, `"warning"`, or `"info"`.                                                           |
-| `nim.formatOnSave`            | Format on save (requires `nph` on `PATH`).                                                                                       |
-| `nim.nimsuggestIdleTimeout`   | Timeout in ms before an idle `nimsuggest` is stopped. Default: 120 seconds.                                                      |
-| `nim.useNimCheck`             | Use `nim check` instead of `nimsuggest` for linting. Default: `true`.                                                            |
-| `nim.maxNimsuggestProcesses`  | Maximum number of live `nimsuggest` processes. `0` means unlimited. Default: `0`.                                                |
-| `nim.nimsuggestTimeout`       | Timeout in ms for the `nimsuggest` startup + initial compilation. Default: 60 seconds.                                           |
+| Setting                       | Description                                                                                                                                                       |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `nim.projectMapping`          | Map file path patterns to `nimsuggest` project roots.                                                                                                             |
+| `nim.timeout`                 | Request timeout in ms before `nimlangserver` restarts. Default: 2 minutes.                                                                                        |
+| `nim.nimsuggestPath`          | Path to `nimsuggest`. Default: `"nimsuggest"`.                                                                                                                    |
+| `nim.autoCheckFile`           | Check the file on the fly.                                                                                                                                        |
+| `nim.autoCheckProject`        | Check the project after saving.                                                                                                                                   |
+| `nim.autoRestart`             | Auto-restart `nimsuggest` once after a crash. The server won't restart if there were no successful calls since the last restart.                                  |
+| `nim.workingDirectoryMapping` | Configure the working directory for specific projects.                                                                                                            |
+| `nim.checkOnSave`             | Check the file on save.                                                                                                                                           |
+| `nim.logNimsuggest`           | Enable `nimsuggest` logging.                                                                                                                                      |
+| `nim.inlayHints`              | Configure inlay hints. Exception hints are off by default due to their compile-time cost.                                                                         |
+| `nim.notificationVerbosity`   | Notification verbosity: `"none"`, `"error"`, `"warning"`, or `"info"`.                                                                                            |
+| `nim.formatOnSave`            | Format on save (requires `nph` on `PATH`).                                                                                                                        |
+| `nim.nimsuggestIdleTimeout`   | Timeout in ms before an idle `nimsuggest` is stopped. Default: 120 seconds.                                                                                       |
+| `nim.useNimCheck`             | Use `nim check` instead of `nimsuggest` for linting. Default: `true`.                                                                                             |
+| `nim.maxNimsuggestProcesses`  | Maximum number of live `nimsuggest` processes. `0` means unlimited. Default: `0`.                                                                                 |
+| `nim.nimsuggestMaxMemory`     | Memory cap per `nimsuggest` process in MB. `nimsuggest` quits when the value is reached. `0` means unlimited. Default: `nimsuggest`'s own default (4000 MB). Requires a `nimsuggest` advertising the `maxMemory` capability; ignored otherwise. |
+| `nim.nimsuggestTimeout`       | Timeout in ms for the `nimsuggest` startup + initial compilation. Default: 60 seconds.                                                                            |
 
 ### Project mapping example
 

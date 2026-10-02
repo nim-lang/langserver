@@ -92,6 +92,8 @@ type
       #max number of nimsuggest processes to keep alive. zero means unlimited
     nimsuggestTimeout*: Option[int]
       #timeout for the nimsuggest startup + initial compilation
+    nimsuggestMaxMemory*: Option[int]
+      #memory cap per nimsuggest process in MB. zero means unlimited
     useNimTrack*: Option[bool]
 
   NlsFileInfo* = ref object of RootObj
@@ -1244,6 +1246,7 @@ proc createOrRestartNimsuggestImpl(
         workingDir,
         configuration.logNimsuggest.get(false),
         configuration.exceptionHintsEnabled,
+        configuration.nimsuggestMaxMemory,
       )
       if not await chronos.withTimeout(
         projectFut,

@@ -102,6 +102,7 @@ type
     capabilities*: set[NimsuggestCapability]
     nimsuggestPath*: string
     version*: string
+    args*: seq[string]
     project*: Project
 
   Nimsuggest* = ref NimsuggestImpl
@@ -360,6 +361,7 @@ proc createNimsuggest*(
     workingDir = getCurrentDir(),
     enableLog: bool = false,
     enableExceptionInlayHints: bool = false,
+    maxMemory: Option[int] = none int,
 ): Future[Project] {.
     async: (
       raises: [
@@ -408,6 +410,11 @@ proc createNimsuggest*(
       args.add("--log")
     ns.capabilities = getNimsuggestCapabilities(nimsuggestPath)
     debug "Nimsuggest Capabilities", capabilities = ns.capabilities
+    if maxMemory.isSome:
+      if nsMaxMemory in ns.capabilities:
+        args.add("--maxMemory:" & $maxMemory.get())
+      else:
+        warn "ignoring nimsuggestMaxMemory: nimsuggest has no --maxMemory support"
     if nsExceptionInlayHints in ns.capabilities:
       if enableExceptionInlayHints:
         args.add("--exceptionInlayHints:on")
@@ -421,6 +428,7 @@ proc createNimsuggest*(
       stderrHandle = AsyncProcess.Pipe,
     )
     debug "Nimsuggest started with args", args = args
+    ns.args = args
     asyncSpawn logNsError(result)
     let portLine = await result.process.stdoutStream.readLine(sep = "\n")
     debug "Nimsuggest port", portLine = portLine
