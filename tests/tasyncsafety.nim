@@ -36,7 +36,7 @@ suite "Async safety":
     helloWorldPath = uriToPath(helloWorldUri)
 
   suiteTeardown:
-    waitFor ls.stopNimsuggestProcesses()
+    waitFor ls.shutdownNimsuggest()
 
   test "didOpenFile writes the stash file before it suspends":
     removeFile(ls.uriStorageLocation(helloWorldUri))
@@ -116,7 +116,7 @@ suite "Replacing a running nimsuggest":
     helloWorldPath = uriToPath(helloWorldUri)
 
   suiteTeardown:
-    waitFor ls.stopNimsuggestProcesses()
+    waitFor ls.shutdownNimsuggest()
 
   test "stopping the replaced instance is not handled as a crash":
     let textDocument = TextDocumentItem(
@@ -177,7 +177,7 @@ suite "Documents closed while a handler is suspended":
     Diagnostics = "textDocument/publishDiagnostics"
 
   suiteTeardown:
-    waitFor ls.stopNimsuggestProcesses()
+    waitFor ls.shutdownNimsuggest()
 
   proc settle(): int =
     ## A check that runs while another is in progress re-arms itself

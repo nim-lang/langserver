@@ -43,7 +43,7 @@ suite "LSP diagnostics":
   )
 
   suiteTeardown:
-    waitFor ls.stopNimsuggestProcesses()
+    waitFor ls.shutdownNimsuggest()
 
   test "Opening a file with a type error publishes diagnostics for it":
     proc hasAnyDiagnostic(json: JsonNode): bool {.gcsafe, raises: [CatchableError].} =

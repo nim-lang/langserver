@@ -19,7 +19,7 @@ suite "Nimlangserver extensions":
   )
 
   suiteTeardown:
-    waitFor ls.stopNimsuggestProcesses()
+    waitFor ls.shutdownNimsuggest()
 
   test "calling extension/suggest with restart in the project uri should restart nimsuggest":
     let initParams =

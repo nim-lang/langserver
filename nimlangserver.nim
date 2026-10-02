@@ -200,7 +200,7 @@ proc registerProcMonitor(ls: LanguageServer) =
     .} =
       debug "onCmdLineClientProcessExitAsync"
       try:
-        await ls.stopNimsuggestProcesses
+        await ls.shutdownNimsuggest
         await ls.onExit()
       except IOError, OSError:
         let ex = getCurrentException()

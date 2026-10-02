@@ -18,7 +18,7 @@ suite "Nimlangserver":
   waitFor client.connect("localhost", cmdParams.port)
 
   suiteTeardown:
-    waitFor ls.stopNimsuggestProcesses()
+    waitFor ls.shutdownNimsuggest()
 
   test "initialize from the client should call initialized on the server":
     let initParams =
@@ -56,7 +56,7 @@ suite "Suggest API selection":
   client.notify("initialized", newJObject())
 
   suiteTeardown:
-    waitFor ls.stopNimsuggestProcesses()
+    waitFor ls.shutdownNimsuggest()
 
   test "Suggest api":
     #The client adds the notifications into the call table and we wait until they arrived.   
@@ -104,7 +104,7 @@ suite "LSP features":
   client.notify("textDocument/didOpen", %didOpenParams)
 
   suiteTeardown:
-    waitFor ls.stopNimsuggestProcesses()
+    waitFor ls.shutdownNimsuggest()
 
   test "Sending hover.":
     let
@@ -293,7 +293,7 @@ suite "Null configuration:":
   client.notify("initialized", newJObject())
 
   suiteTeardown:
-    waitFor ls.stopNimsuggestProcesses()
+    waitFor ls.shutdownNimsuggest()
 
   test "Null configuration":
     client.notify("textDocument/didOpen", %createDidOpenParams("projects/hw/hw.nim"))
