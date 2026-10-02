@@ -197,6 +197,10 @@ type
       #Project file to fail count
       #List of errors (crashes) nimsuggest has had since the lsp session started
     checkInProgress*: bool
+    pendingChecks*: OrderedSet[string]
+      #Checks asked for while one ran: run after it, in order, each once
+    projectDiags*: Table[string, HashSet[string]]
+      #Checked uri to the files its last check reported: what its next check clears
 
   Certainty* = enum
     None
@@ -1085,10 +1089,21 @@ proc checkProject*(
     )
 .} =
   if ls.checkInProgress:
+    # one check at a time: this one runs after it, rather than not at all (a project
+    # opened while another is being checked would otherwise go unchecked until saved)
+    ls.pendingChecks.incl uri
     return
   ls.checkInProgress = true
   defer:
     ls.checkInProgress = false
+    if ls.pendingChecks.len > 0:
+      var next = ""
+      for pending in ls.pendingChecks:
+        next = pending
+        break
+      ls.pendingChecks.excl next
+      callSoon do(data: pointer) {.gcsafe.}:
+        traceAsyncErrors ls.checkProject(next)
 
   if not ls.getWorkspaceConfiguration().autoCheckProject.get(true):
     return
@@ -1117,14 +1132,16 @@ proc checkProject*(
     for (path, diags) in groupBy(diagnostics, getFilePath):
       ls.sendDiagnostics(diags, path)
 
-    # clean files with no diags
-    for path in ls.filesWithDiags:
+    # clean the files this project's last check reported that this one didn't (not
+    # another project's: checked one after the other, they'd clear each other's)
+    for path in ls.projectDiags.getOrDefault(uri):
       if not filesWithDiags.contains path:
         debug "Sending zero diags", path = path
         let params =
           PublishDiagnosticsParams %* {"uri": pathToUri(path), "diagnostics": @[]}
         ls.notify("textDocument/publishDiagnostics", %params)
-    ls.filesWithDiags = filesWithDiags
+        ls.filesWithDiags.excl path
+    ls.projectDiags[uri] = filesWithDiags
     return
 
   debug "Running diagnostics", uri = uri
@@ -1162,14 +1179,16 @@ proc checkProject*(
   for (path, diags) in groupBy(diagnostics, getFilepath):
     ls.sendDiagnostics(diags, path)
 
-  # clean files with no diags
-  for path in ls.filesWithDiags:
+  # clean the files this project's last check reported that this one didn't (not
+  # another project's: checked one after the other, they'd clear each other's)
+  for path in ls.projectDiags.getOrDefault(uri):
     if not filesWithDiags.contains path:
       debug "Sending zero diags", path = path
       let params =
         PublishDiagnosticsParams %* {"uri": pathToUri(path), "diagnostics": @[]}
       ls.notify("textDocument/publishDiagnostics", %params)
-  ls.filesWithDiags = filesWithDiags
+      ls.filesWithDiags.excl path
+  ls.projectDiags[uri] = filesWithDiags
 
   if nimsuggest.needsCheckProject:
     nimsuggest.needsCheckProject = false
