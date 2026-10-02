@@ -1,10 +1,10 @@
 import
-  std/[options, json, os, jsonutils, sequtils, strutils, sugar, strformat],
+  std/[options, json, os, sequtils, strutils, strformat],
   json_rpc/[rpcclient],
   chronicles,
   unittest2,
   ../[nimlangserver, ls, lstransports, utils],
-  ../protocol/[enums, types],
+  ../protocol/[types],
   ./[lspsocketclient, testhelpers]
 
 const CallTimeout = 30.seconds
@@ -42,7 +42,7 @@ suite "LSP endpoints":
   )
 
   suiteTeardown:
-    waitFor ls.stopNimsuggestProcesses()
+    waitFor ls.shutdownNimsuggest()
 
   test "textDocument/typeDefinition answers for a typed symbol":
     let locations = to(
@@ -53,6 +53,17 @@ suite "LSP endpoints":
     )
     for location in locations:
       check location.uri.len > 0
+
+  test "textDocument/declaration answers with the declaring location":
+    let locations = to(
+      client.callTimeout(
+        "textDocument/declaration", %positionParams(helloWorldUri, 1, 6)
+      ),
+      seq[Location],
+    )
+    check locations.len == 1
+    check locations.len >= 1 and locations[0].uri == helloWorldUri
+    check locations.len >= 1 and locations[0].range.start.line == 0
 
   test "textDocument/documentSymbol lists the symbols of the file":
     let params = DocumentSymbolParams %* {"textDocument": {"uri": helloWorldUri}}
@@ -169,6 +180,25 @@ suite "LSP endpoints":
     let status =
       to(client.callTimeout("extension/status", newJObject()), NimLangServerStatus)
     check status.version == LSPVersion
+
+  test "workspace/executeCommand recompiles a project it doesn't know":
+    let params =
+      ExecuteCommandParams %*
+      {"command": RECOMPILE_COMMAND, "arguments": [%"/tmp/not-a-project.nim"]}
+    discard client.callTimeout("workspace/executeCommand", %params)
+    let status =
+      to(client.callTimeout("extension/status", newJObject()), NimLangServerStatus)
+    check status.version == LSPVersion
+
+  test "workspace/executeCommand without arguments is answered with an error":
+    let params = ExecuteCommandParams %* {"command": RECOMPILE_COMMAND, "arguments": []}
+    var raised = false
+    try:
+      discard client.callTimeout("workspace/executeCommand", %params)
+    except JsonRpcError as ex:
+      raised = true
+      check "-32602" in ex.msg
+    check raised
 
   test "textDocument/didClose removes the file from the open set":
     let other = "projects/hw/useRoot.nim"
@@ -342,8 +372,8 @@ suite "LSP endpoints":
       seq[Location],
     )
     check locations.len == 1
-    check locations[0].uri.contains("hw.nim")
-    check locations[0].range.start.line == 0
+    check locations.len >= 1 and locations[0].uri.contains("hw.nim")
+    check locations.len >= 1 and locations[0].range.start.line == 0
 
   test "documentSymbol reports a non ascii symbol at a UTF-16 offset":
     let params = DocumentSymbolParams %* {"textDocument": {"uri": helloWorldUri}}
@@ -410,6 +440,56 @@ suite "LSP endpoints":
       check readFile(stash).normalizeText ==
         readFile("tests" / helloWorldFile).normalizeText
 
+suite "LSP messages before initialize":
+  let cmdParams =
+    CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
+  let ls = main(cmdParams)
+  let client = newLspSocketClient()
+  client.registerNotification(
+    "window/showMessage", "window/workDoneProgress/create", "workspace/configuration",
+    "extension/statusUpdate", "textDocument/publishDiagnostics", "$/progress",
+  )
+  waitFor client.connect("localhost", cmdParams.port)
+
+  let
+    helloWorldFile = "projects/hw/hw.nim"
+    helloWorldUri = fixtureUri(helloWorldFile)
+
+  suiteTeardown:
+    waitFor ls.shutdownNimsuggest()
+
+  test "requests are refused and notifications dropped until initialize":
+    # Every route reads state that initialize sets: didOpen used to await a nil
+    # nimsuggestInit, and extension/tasks used to segfault on a nil
+    # lspInitializeParams.
+    # client.notify sends an id, so write a real notification by hand.
+    let didOpen = %*{
+      "jsonrpc": "2.0",
+      "method": "textDocument/didOpen",
+      "params": %createDidOpenParams(helloWorldFile),
+    }
+    discard waitFor client.transport.write(wrapContentWithContentLength($didOpen))
+
+    try:
+      discard client.callTimeout("extension/tasks", newJObject())
+      checkpoint "extension/tasks was answered before initialize"
+      fail()
+    except JsonRpcError as err:
+      check "-32002" in err.msg
+
+    discard waitFor client.initialize(
+      LspInitializeParams %* {
+        "processId": %getCurrentProcessId(),
+        "rootUri": fixtureUri("projects/hw/"),
+        "capabilities": {"window": {"workDoneProgress": false}},
+      }
+    )
+
+    let status =
+      to(client.callTimeout("extension/status", newJObject()), NimLangServerStatus)
+    check status.version == LSPVersion
+    check helloWorldUri notin ls.openFiles
+
 suite "LSP socket transport with more than one client":
   let cmdParams =
     CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
@@ -428,6 +508,9 @@ suite "LSP socket transport with more than one client":
       "capabilities": {"window": {"workDoneProgress": false}},
     }
   )
+
+  suiteTeardown:
+    waitFor ls.shutdownNimsuggest()
 
   test "the only client is answered":
     let status =

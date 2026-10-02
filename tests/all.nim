@@ -1,3 +1,5 @@
+{.warning[UnusedImport]: off.}
+
 import ./[tsuggestapi, tnimlangserver]
 
 # XXX getNimPath's nimsuggestPath missing ExeExt
@@ -7,5 +9,6 @@ when not defined(windows):
 import
   ./[
     tprojectsetup, textensions, tmisc, ttestrunner, tmcp, tlspendpoints,
-    tlspdiagnostics, tlspconfig, tutils, tasyncsafety,
+    tlspdiagnostics, tlspconfig, tutils, tasyncsafety, tslowstartup, tmaxnimsuggest,
+    tidlefiles,
   ]

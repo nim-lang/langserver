@@ -1,10 +1,9 @@
 import
-  std/[options, json, os, jsonutils, sequtils, strutils, sugar, strformat],
+  std/[options, json, os, sequtils, sugar, strformat],
   json_rpc/[rpcclient],
-  chronicles,
   unittest2,
-  ../[nimlangserver, ls, lstransports, utils],
-  ../protocol/[enums, types],
+  ../[nimlangserver, ls, utils],
+  ../protocol/[types],
   ./[lspsocketclient, testhelpers]
 
 suite "nimble setup":
@@ -19,6 +18,9 @@ suite "nimble setup":
     "textDocument/publishDiagnostics", "$/progress",
   )
   let testProjectDir = absolutePath "tests" / "projects" / "testproject"
+
+  suiteTeardown:
+    waitFor ls.shutdownNimsuggest()
 
   test "should pick `testproject.nim` as the main file and provide suggestions":
     let entryPoint = testProjectDir / "src" / "testproject.nim"
@@ -41,7 +43,7 @@ suite "nimble setup":
         "position": {"line": 7, "character": 0},
         "textDocument": {"uri": pathToUri(entryPoint)},
       }
-    let ns = waitFor ls.projectFiles[entryPoint].ns
+    let ns = ls.projectFiles[entryPoint].ns
     client.notify(
       "textDocument/didOpen",
       %createDidOpenParams("projects/testproject/src/testproject.nim"),
@@ -98,6 +100,9 @@ suite "Project Mapping":
   )
   let projectsDir = absolutePath "tests" / "projects"
 
+  suiteTeardown:
+    waitFor ls.shutdownNimsuggest()
+
   test "should use projectMapping fileRegex to find project file":
     let initParams =
       LspInitializeParams %* {
@@ -110,7 +115,7 @@ suite "Project Mapping":
     let configurationParams =
       @[NlsConfig(projectMapping: some @[NlsNimsuggestConfig(fileRegex: "nonimble*")])]
     let nonimbleProject = projectsDir / "nonimbleproject.nim"
-    ls.workspaceConfiguration.complete(%configurationParams)
+    ls.setWorkspaceConfiguration(%configurationParams)
 
     let projectFile = waitFor getProjectFile(nonimbleProject, ls)
     let matchingMsg = fmt"RegEx matched `nonimble*` for file `{nonimbleProject}`"

@@ -2,8 +2,7 @@ import
   std/[options, os, strutils, unicode, streams],
   chronos,
   unittest2,
-  ../[utils, ls, lstransports],
-  ../protocol/types
+  ../[utils, ls, lstransports]
 
 suite "UTF-16 position mapping":
   test "an ASCII only line needs no correction":

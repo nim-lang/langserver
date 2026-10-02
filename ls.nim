@@ -10,7 +10,7 @@ import
   chronos/[threadsync, asyncproc],
   chronicles,
   json_serialization,
-  json_rpc/[servers/socketserver],
+  json_rpc/[errors, servers/socketserver],
   regex,
   stew/byteutils,
   ./protocol/[enums, types],
@@ -38,6 +38,7 @@ const
   NIM_EXPAND_ARC_BY_DEFAULT* = false
   NIM_EXPAND_MACRO_BY_DEFAULT* = false
   NIM_MAX_NS_PROCESSES* = 1
+  MaxNimsuggestFails = 10
 
 type
   NlsNimsuggestConfig* = ref object of RootObj
@@ -89,6 +90,8 @@ type
     nimExpandMacro*: Option[bool]
     maxNimsuggestProcesses*: Option[int]
       #max number of nimsuggest processes to keep alive. zero means unlimited
+    nimsuggestTimeout*: Option[int]
+      #timeout for the nimsuggest startup + initial compilation
     useNimTrack*: Option[bool]
 
   NlsFileInfo* = ref object of RootObj
@@ -99,6 +102,7 @@ type
     checkInProgress*: bool
     needsChecking*: bool
     textDocument*: TextDocumentItem
+    nimsuggestProject*: string
 
   CommandLineParams* = object
     clientProcessId*: Option[int]
@@ -149,19 +153,22 @@ type
     call*: CallAction
     onExit*: OnExitCallback
     projectFiles*: Table[string, Project]
-    nimsuggestCreations*: Table[string, Future[void].Raising([])]
+    nimsuggestCreations*: Table[string, Future[void].Raising([CancelledError])]
     openFiles*: Table[string, NlsFileInfo]
-    idleOpenFiles*: Table[string, NlsFileInfo]
-      #We close the file when its inactive and store it here.
-    workspaceConfiguration*: Future[JsonNode].Raising([CancelledError])
-    prevWorkspaceConfiguration*: Future[JsonNode].Raising([CancelledError])
+    workspaceConfiguration*: NlsConfig
+      #What the client configured us with, or the defaults until it does.
+      #Set through setWorkspaceConfiguration, read through getWorkspaceConfiguration.
+    workspaceConfigurationReady*: Future[void].Raising([CancelledError])
+      #Completed the first time a configuration is known, and never replaced.
     inlayHintsRefreshRequest*: Future[JsonNode].Raising([CancelledError])
     didChangeConfigurationRegistrationRequest*:
       Future[JsonNode].Raising([CancelledError])
     filesWithDiags*: HashSet[string]
     nimsuggestInit*: Future[void].Raising([CancelledError, OSError])
-    lastNimsuggest*: Future[Nimsuggest].Raising([CancelledError])
-    childNimsuggestProcessesStopped*: bool
+    lastNimsuggest*: Nimsuggest
+    isShutdownNimsuggest*: bool
+    initialized*: bool
+      #Set once initialize has run. Until then routes can't rely on its state.
     isShutdown*: bool
     storageDir*: string
     cmdLineClientProcessId*: Option[int]
@@ -225,12 +232,12 @@ macro `%*`*(t: untyped, inputStream: untyped): untyped =
 
 proc initLs*(params: CommandLineParams, storageDir: string): LanguageServer =
   LanguageServer(
-    workspaceConfiguration: Future[JsonNode].Raising([CancelledError]).init("initLs"),
+    workspaceConfiguration: NlsConfig(),
+    workspaceConfigurationReady: Future[void].Raising([CancelledError]).init("initLs"),
     filesWithDiags: initHashSet[string](),
     serverMode: params.mode.get(),
     transportMode: params.transport.get(),
     openFiles: initTable[string, NlsFileInfo](),
-    # idleOpenFiles: initTable[string, NlsFileInfo](),
     responseMap: newTable[string, Future[JsonNode].Raising([CancelledError])](),
     storageDir: storageDir,
     cmdLineClientProcessId: params.clientProcessId,
@@ -255,7 +262,7 @@ func typeHintsEnabled*(cnf: NlsConfig): bool =
     result = cnf.inlayHints.get.typeHints.get.enable.get
 
 func exceptionHintsEnabled*(cnf: NlsConfig): bool =
-  result = true
+  result = false
   if cnf.inlayHints.isSome and cnf.inlayHints.get.exceptionHints.isSome and
       cnf.inlayHints.get.exceptionHints.get.enable.isSome:
     result = cnf.inlayHints.get.exceptionHints.get.enable.get
@@ -326,7 +333,10 @@ proc getNimbleDumpInfo*(
 proc parseWorkspaceConfiguration*(conf: JsonNode): NlsConfig =
   try:
     if conf.kind == JObject and conf["settings"].kind == JObject:
-      return conf["settings"]["nim"].to(NlsConfig)
+      let nimSettings = conf["settings"]["nim"]
+      if nimSettings.kind == JNull:
+        return NlsConfig() #the client has no settings for us
+      return nimSettings.to(NlsConfig)
   except ValueError:
     discard
   try:
@@ -340,29 +350,23 @@ proc parseWorkspaceConfiguration*(conf: JsonNode): NlsConfig =
     debug "Failed to parse the configuration.", error = getCurrentExceptionMsg()
     result = NlsConfig()
 
+proc setWorkspaceConfiguration*(ls: LanguageServer, conf: JsonNode) {.raises: [].} =
+  ls.workspaceConfiguration = parseWorkspaceConfiguration(conf)
+  if not ls.workspaceConfigurationReady.finished:
+    ls.workspaceConfigurationReady.complete()
+
 proc getWorkspaceConfiguration*(ls: LanguageServer): NlsConfig {.raises: [].} =
-  try:
-    #this is the root of a lot a problems as there are multiple race conditions here.
-    #since most request doesn't really rely on the configuration, we can just go ahead and
-    #return a default one until we have the right one.
-    #TODO review and handle project specific confs when received instead of reliying in this func
-    if ls.workspaceConfiguration.finished:
-      return parseWorkspaceConfiguration(ls.workspaceConfiguration.read)
-    return NlsConfig()
-  except CancelledError, FuturePendingError:
-    let ex = getCurrentException()
-    error "Failed to get workspace configuration", error = ex.msg
-    writeStackTrace(ex)
+  #TODO review and handle project specific confs when received instead of reliying in this func
+  if ls.workspaceConfiguration.isNil:
+    NlsConfig()
+  else:
+    ls.workspaceConfiguration
 
 proc getAndWaitForWorkspaceConfiguration*(
     ls: LanguageServer
-): Future[NlsConfig] {.async: (raises: []).} =
-  try:
-    let conf = await ls.workspaceConfiguration
-    return parseWorkspaceConfiguration(conf)
-  except CancelledError as ex:
-    error "Failed to get workspace configuration", error = ex.msg
-    writeStackTrace(ex)
+): Future[NlsConfig] {.async: (raises: [CancelledError]).} =
+  await ls.workspaceConfigurationReady.join()
+  ls.getWorkspaceConfiguration()
 
 proc showMessage*(
     ls: LanguageServer, message: string, typ: MessageType
@@ -403,27 +407,33 @@ proc toPendingRequestStatus(pr: PendingRequest): PendingRequestStatus =
   result.projectFile = pr.projectFile.get("")
   result.state = $pr.state
 
+# https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#responseMessage
+proc checkInitialized*(ls: LanguageServer) {.raises: [ApplicationError].} =
+  if not ls.initialized:
+    raise (ref ApplicationError)(
+      code: ErrorCode.ServerNotInitialized.int, msg: "Server not initialized"
+    )
+
+proc filesServedBy(ls: LanguageServer, projectFile: string): seq[string] =
+  for uri, file in ls.openFiles:
+    if file.nimsuggestProject == projectFile:
+      result.add uri
+
 proc getLspStatus*(ls: LanguageServer): NimLangServerStatus {.raises: [].} =
   result.lspPath = getAppFilename()
   result.version = LSPVersion
   result.extensionCapabilities = ls.extensionCapabilities.toSeq
   for project in ls.projectFiles.values:
-    let futNs = project.ns
-    if futNs.finished:
-      var ns =
-        try:
-          futNs.read()
-        except CancelledError, FuturePendingError:
-          continue
-      var nsStatus = NimSuggestStatus(
+    let ns = project.ns
+    if ns != nil:
+      var nsStatus = NimsuggestStatus(
         projectFile: project.file,
         capabilities: ns.capabilities.toSeq,
         version: ns.version,
         path: ns.nimsuggestPath,
         port: ns.port,
       )
-      for open in ns.openFiles:
-        nsStatus.openFiles.add open
+      nsStatus.openFiles = ls.filesServedBy(project.file)
       result.nimsuggestInstances.add nsStatus
   for openFile in ls.openFiles.keys:
     let openFilePath = openFile.uriToPath
@@ -438,6 +448,16 @@ proc sendStatusChanged*(ls: LanguageServer) {.raises: [].} =
     ls.notify("extension/statusUpdate", status)
     ls.lastStatusSent = status
 
+proc waitProjectFile*(
+    file: NlsFileInfo
+): Future[string] {.async: (raises: [CancelledError, OSError, RegexError]).} =
+  ## Wait without allowing a cancelled request to cancel the shared future.
+  await file.projectFile.join()
+  try:
+    file.projectFile.read()
+  except FuturePendingError:
+    raiseAssert "project file future remained pending after join"
+
 proc addProjectFileToPendingRequest*(
     ls: LanguageServer, id: uint, uri: string
 ) {.async: (raises: []).} =
@@ -446,7 +466,7 @@ proc addProjectFileToPendingRequest*(
       var projectFile = uri.uriToPath()
       if projectFile notin ls.projectFiles:
         if uri in ls.openFiles:
-          projectFile = await ls.openFiles[uri].projectFile
+          projectFile = await ls.openFiles[uri].waitProjectFile()
 
       ls.pendingRequests[id].projectFile = some projectFile
       ls.sendStatusChanged
@@ -517,7 +537,7 @@ proc getNimVersion(nimDir: string): string {.raises: [OSError, IOError].} =
     if line.startsWith(NimCompilerVersion):
       return line
 
-proc getNimSuggestPathAndVersion(
+proc getNimsuggestPathAndVersion(
     ls: LanguageServer, conf: NlsConfig, workingDir: string
 ): Future[(string, string)] {.async: (raises: [CancelledError, OSError, IOError]).} =
   let nimbleFiles = walkFiles(workingDir / "*.nimble").toSeq
@@ -547,10 +567,10 @@ proc getNimSuggestPathAndVersion(
 proc getNimPath*(
     ls: LanguageServer, conf: NlsConfig, workingDir = ""
 ): Future[Option[string]] {.async: (raises: [CancelledError, OSError, IOError]).} =
-  if conf.nimSuggestPath.isSome and conf.nimsuggestPath.get().fileExists():
-    some(conf.nimSuggestPath.get.parentDir / "nim")
+  if conf.nimsuggestPath.isSome and conf.nimsuggestPath.get().fileExists():
+    some(conf.nimsuggestPath.get.parentDir / "nim")
   else:
-    let (nimsuggestPath, _) = await ls.getNimSuggestPathAndVersion(conf, workingDir)
+    let (nimsuggestPath, _) = await ls.getNimsuggestPathAndVersion(conf, workingDir)
     let path =
       if nimsuggestPath.fileExists():
         nimsuggestPath.parentDir / "nim"
@@ -657,7 +677,7 @@ proc workDoneProgressCreate*(ls: LanguageServer, token: string) =
 proc cancelPendingFileChecks*(ls: LanguageServer, nimsuggest: Nimsuggest) =
   # stop all checks on file level if we are going to run checks on project
   # level.
-  for uri in nimsuggest.openFiles:
+  for uri in ls.filesServedBy(nimsuggest.project.file):
     let fileData = ls.openFiles.getOrDefault(uri)
     if fileData != nil:
       let cancelFileCheck = fileData.cancelFileCheck
@@ -737,7 +757,7 @@ proc toDiagnostic(suggest: Suggest): Diagnostic =
 
     return
       Diagnostic %* {
-        "uri": pathToUri(filepath),
+        "uri": pathToUri(filePath),
         "range": range(line - 1, column, line - 1, endColumn),
         "severity":
           case forth
@@ -811,7 +831,57 @@ proc warnIfUnknown*(
 
 proc createOrRestartNimsuggest*(
   ls: LanguageServer, projectFile: string, uri = ""
-): Future[void] {.async: (raises: []).}
+): Future[void] {.async: (raw: true, raises: [CancelledError]).}
+
+proc isLiveNimsuggestProject(ls: LanguageServer, projectFile: string): bool =
+  projectFile in ls.projectFiles or projectFile in ls.nimsuggestCreations
+
+proc liveNimsuggestProjects*(ls: LanguageServer): seq[string] =
+  ## Running + starting instances.
+  for entryPoint in ls.entryPoints:
+    if ls.isLiveNimsuggestProject(entryPoint) and entryPoint notin result:
+      result.add entryPoint
+  for projectFile in ls.projectFiles.keys:
+    if projectFile notin result:
+      result.add projectFile
+  for projectFile in ls.nimsuggestCreations.keys:
+    if projectFile notin result:
+      result.add projectFile
+
+proc canSpawnNimsuggest(ls: LanguageServer): bool =
+  let nsCount = ls.liveNimsuggestProjects.len
+  let conf = ls.getWorkspaceConfiguration()
+  let maxNimsuggestProcesses = conf.maxNimsuggestProcesses.get(NIM_MAX_NS_PROCESSES)
+  result = maxNimsuggestProcesses == 0 or nsCount < maxNimsuggestProcesses
+  debug "canSpawnNimsuggest",
+    result = result, nsCount = nsCount, maxNimsuggestProcesses = maxNimsuggestProcesses
+
+proc reuseLiveNimsuggestProject(ls: LanguageServer): string =
+  let live = ls.liveNimsuggestProjects
+  if live.len > 0:
+    result = live[0]
+    debug "Reached the maximum instances of nimsuggest, reusing the first nimsuggest instance",
+      project = result
+
+proc mappedProjectFiles(ls: LanguageServer): seq[string] {.raises: [OSError].} =
+  let rootPath =
+    case ls.serverMode
+    of mcp:
+      ls.mcpInitializeParams.getRootPath()
+    of lsp:
+      ls.lspInitializeParams.getRootPath()
+  ls.getWorkspaceConfiguration().projectMapping.get(@[]).mapIt(
+    rootPath / it.projectFile
+  )
+
+proc nimsuggestProjectFor(
+    ls: LanguageServer, projectFile: string
+): string {.raises: [OSError].} =
+  if ls.isLiveNimsuggestProject(projectFile) or projectFile in ls.mappedProjectFiles() or
+      ls.canSpawnNimsuggest():
+    projectFile
+  else:
+    ls.reuseLiveNimsuggestProject()
 
 proc initNimsuggestInstances*(
     ls: LanguageServer, rootPath: string
@@ -825,9 +895,25 @@ proc initNimsuggestInstances*(
     let nimbleDumpInfo = await ls.getNimbleDumpInfo(nimbleFile)
     ls.entryPoints = nimbleDumpInfo.getNimbleEntryPoints(rootPath)
     for entryPoint in ls.entryPoints:
-      debug "Starting nimsuggest for entry point ", entry = entryPoint
-      if entryPoint notin ls.projectFiles:
+      if not ls.isLiveNimsuggestProject(entryPoint) and ls.canSpawnNimsuggest():
+        debug "Starting nimsuggest for entry point ", entry = entryPoint
         await ls.createOrRestartNimsuggest(entryPoint)
+
+proc failoverProject(ls: LanguageServer, projectFile: string): string =
+  if ls.failTable.getOrDefault(projectFile, 0) < MaxNimsuggestFails:
+    projectFile
+  else:
+    let others = ls.projectFiles.keys.toSeq.filterIt(
+      it != projectFile and ls.failTable.getOrDefault(it, 0) < MaxNimsuggestFails
+    )
+    if others.len > 0:
+      others[0]
+    else:
+      ""
+
+proc hasServingNimsuggest(ls: LanguageServer, file: NlsFileInfo): bool =
+  file.nimsuggestProject != "" and ls.isLiveNimsuggestProject(file.nimsuggestProject) and
+    ls.failTable.getOrDefault(file.nimsuggestProject, 0) < MaxNimsuggestFails
 
 proc getNimsuggestInner(
     ls: LanguageServer, uri: string
@@ -837,40 +923,38 @@ proc getNimsuggestInner(
     debug "File is no longer open", uri = uri
     return nil
 
-  let projectFile = await file.projectFile
-  if not ls.projectFiles.hasKey(projectFile):
-    debug "Creating new nimsuggest instance", uri = uri, projectFile = projectFile
-    await ls.createOrRestartNimsuggest(projectFile, uri)
+  let projectFile = await file.waitProjectFile()
+  if not ls.hasServingNimsuggest(file):
+    let ownProject = ls.nimsuggestProjectFor(projectFile)
+    file.nimsuggestProject = ls.failoverProject(ownProject)
+    if file.nimsuggestProject notin ["", ownProject]:
+      debug "Reusing nimsuggest instance for",
+        uri = uri, projectFile = file.nimsuggestProject
+  let nsProject = file.nimsuggestProject
+  if nsProject == "":
+    return nil
+  if not ls.projectFiles.hasKey(nsProject):
+    debug "Creating new nimsuggest instance", uri = uri, projectFile = nsProject
+    await ls.createOrRestartNimsuggest(nsProject, uri)
     # Wait a bit to allow nimsuggest to start
     await sleepAsync(10)
-
-  const MaxFails = 10
-  if ls.failTable.getOrDefault(projectFile, 0) >= MaxFails:
-    let nextNs = ls.projectFiles.keys.toSeq.filterIt(it != projectFile)
-    if nextNs.len > 0:
-      let nextNs = nextNs[0]
-      let project = ls.projectFiles.getOrDefault(nextNs)
-      if project != nil:
-        debug "Reusing nimsuggest instance for", uri = uri, projectFile = nextNs
-        return await project.ns
-    return nil
 
   # Check multiple times with small delays
   var attempts = 0
   const maxAttempts = 10
   while attempts < maxAttempts:
-    let project = ls.projectFiles.getOrDefault(projectFile)
+    let project = ls.projectFiles.getOrDefault(nsProject)
     if project != nil:
       ls.lastNimsuggest = project.ns
-      return await project.ns
+      return project.ns
 
     inc attempts
     if attempts < maxAttempts:
       await sleepAsync(100)
       debug "Waiting for nimsuggest to initialize",
-        uri = uri, projectFile = projectFile, attempt = attempts
+        uri = uri, projectFile = nsProject, attempt = attempts
 
-  debug "Failed to get nimsuggest after waiting", uri = uri, projectFile = projectFile
+  debug "Failed to get nimsuggest after waiting", uri = uri, projectFile = nsProject
   return nil
 
 proc tryGetNimsuggest*(
@@ -880,7 +964,7 @@ proc tryGetNimsuggest*(
 .}
 
 proc checkFile*(
-  ls: LanguageServer, uri: string
+  ls: LanguageServer, file: NlsFileInfo
 ): Future[void] {.
   async: (
     raises: [
@@ -896,24 +980,25 @@ proc didCloseFile*(
   debug "Closed the following document:", uri = uri
 
   let file = ls.openFiles.getOrDefault(uri)
-  if file != nil and file.changed:
-    # check the file if it is closed but not saved.
-    traceAsyncErrors ls.checkFile(uri)
-
   ls.openFiles.del uri
 
-proc makeIdleFile*(
-    ls: LanguageServer, file: NlsFileInfo
-): Future[void] {.async: (raises: []).} =
-  let uri = file.textDocument.uri
-  if uri in ls.openFiles:
-    await ls.didCloseFile(uri)
-    ls.idleOpenFiles[uri] = file
-    ls.openFiles.del(uri)
+  if file != nil and file.changed:
+    # check the file if it is closed but not saved.
+    traceAsyncErrors ls.checkFile(file)
 
 proc getProjectFile*(
   fileUri: string, ls: LanguageServer
 ): Future[string] {.async: (raises: [CancelledError, OSError, RegexError]).}
+
+proc getProjectFileAfterStartup(
+    ls: LanguageServer, fileUri: string
+): Future[string] {.async: (raises: [CancelledError, OSError, RegexError]).} =
+  ## Resolve files after Nimble entry-point startup has completed. Otherwise
+  ## the single-process limit can make auto-guessing fall back to the opened
+  ## file while the intended entry-point nimsuggest is still compiling.
+  if not ls.nimsuggestInit.isNil:
+    await ls.nimsuggestInit.join()
+  await getProjectFile(fileUri, ls)
 
 proc didOpenFile*(
     ls: LanguageServer, textDocument: TextDocumentItem
@@ -922,7 +1007,7 @@ proc didOpenFile*(
     debug "New document opened for URI:", uri = uri
     let
       file = open(ls.uriStorageLocation(uri), fmWrite)
-      projectFileFuture = getProjectFile(uriToPath(uri), ls)
+      projectFileFuture = ls.getProjectFileAfterStartup(uriToPath(uri))
 
     ls.openFiles[uri] = NlsFileInfo(
       projectFile: projectFileFuture,
@@ -931,9 +1016,6 @@ proc didOpenFile*(
       textDocument: textDocument,
     )
 
-    if uri in ls.idleOpenFiles:
-      ls.idleOpenFiles.del(uri)
-
     for line in text.splitLines:
       let openFile = ls.openFiles.getOrDefault(uri)
       if openFile != nil:
@@ -941,13 +1023,13 @@ proc didOpenFile*(
         file.writeLine line
     file.close()
 
-    let projectFile = await projectFileFuture
+    let openFile = ls.openFiles.getOrDefault(uri)
+    if openFile == nil:
+      return
+    let projectFile = await openFile.waitProjectFile()
     debug "Document associated with the following projectFile",
       uri = uri, projectFile = projectFile
-    if not ls.projectFiles.hasKey(projectFile):
-      debug "Will create nimsuggest for this file", uri = uri
-      await ls.createOrRestartNimsuggest(projectFile, uri)
-    let ns = await ls.tryGetNimSuggest(uri)
+    let ns = await ls.tryGetNimsuggest(uri)
     if ns.isSome:
       discard ls.warnIfUnknown(ns.get(), uri, projectFile)
 
@@ -967,12 +1049,8 @@ proc tryGetNimsuggest*(
 ): Future[Option[Nimsuggest]] {.
     async: (raises: [CancelledError, OSError, IOError, RegexError])
 .} =
-  let idleFile = ls.idleOpenFiles.getOrDefault(uri)
-  if idleFile != nil:
-    await didOpenFile(ls, idleFile.textDocument)
-
   if uri notin ls.openFiles:
-    return none(NimSuggest)
+    return none(Nimsuggest)
 
   var retryCount = 0
   const maxRetries = 3
@@ -981,6 +1059,10 @@ proc tryGetNimsuggest*(
     if not ns.isNil:
       return some ns
 
+    let file = ls.openFiles.getOrDefault(uri)
+    if file == nil or file.nimsuggestProject == "":
+      break
+
     # If nimsuggest is nil, wait a bit and retry
     inc retryCount
     if retryCount < maxRetries:
@@ -988,7 +1070,7 @@ proc tryGetNimsuggest*(
       await sleepAsync(10000 * retryCount) # Exponential backoff
 
   debug "Nimsuggest not found after retries", uri = uri
-  return none(NimSuggest)
+  return none(Nimsuggest)
 
 proc checkProject*(
     ls: LanguageServer, uri: string
@@ -1044,7 +1126,7 @@ proc checkProject*(
     return
 
   debug "Running diagnostics", uri = uri
-  let ns = await ls.tryGetNimSuggest(uri)
+  let ns = await ls.tryGetNimsuggest(uri)
   if ns.isNone:
     return
   let nimsuggest = ns.get
@@ -1064,13 +1146,13 @@ proc checkProject*(
     ls.progress(token, "end")
 
   proc getFilepath(s: Suggest): string =
-    s.filepath
+    s.filePath
 
   let
     diagnostics = nimsuggest.chk(uriToPath(uri), ls.uriToStash(uri)).await().filter(
-        sug => sug.filepath != "???"
+        sug => sug.filePath != "???"
       )
-    filesWithDiags = diagnostics.map(s => s.filepath).toHashSet
+    filesWithDiags = diagnostics.map(s => s.filePath).toHashSet
 
   ls.progress(token, "end")
 
@@ -1099,23 +1181,23 @@ proc onErrorCallback(
   let
     ls = args[0]
     uri = args[1]
-  debug "NimSuggest needed to be restarted due to an error "
+  debug "Nimsuggest needed to be restarted due to an error "
   ls.failTable[project.file] = ls.failTable.getOrDefault(project.file, 0) + 1
   debug "Fail count", count = ls.failTable[project.file]
   let configuration = ls.getWorkspaceConfiguration()
   warn "Server stopped.", projectFile = project.file
   try:
-    if configuration.autoRestart.get(true) and project.ns.completed and
-        project.ns.read.successfullCall:
+    if configuration.autoRestart.get(true) and project.ns != nil and
+        project.ns.successfullCall:
       await ls.createOrRestartNimsuggest(project.file, uri)
     else:
       ls.showMessage(
         fmt "Server failed with {project.errorMessage}.", MessageType.Error
       )
-  except CancelledError, FuturePendingError:
+  except CancelledError:
     let ex = getCurrentException()
     error "An error has ocurred while handling nimsuggest err", msg = ex.msg
-    writeStacktrace(ex)
+    writeStackTrace(ex)
   finally:
     if project.file != "":
       ls.projectErrors.add ProjectError(
@@ -1126,95 +1208,99 @@ proc onErrorCallback(
       ls.sendStatusChanged()
 
 proc createOrRestartNimsuggestImpl(
-    ls: LanguageServer, projectFile: string, uri = ""
-): Future[void] {.async: (raises: []).} =
-  try:
-    debug "Starting createOrRestartNimsuggest", projectFile = projectFile, uri = uri
-    let
-      configuration = ls.getWorkspaceConfiguration()
-      workingDir = await ls.getWorkingDir(projectFile)
-      (nimsuggestPath, version) =
-        await ls.getNimSuggestPathAndVersion(configuration, workingDir)
-      timeout = configuration.timeout.get(REQUEST_TIMEOUT)
-      restartCallback = proc(ns: Nimsuggest): Future[void] {.async: (raises: []).} =
-        warn "Restarting the server due to requests being to slow",
-          projectFile = projectFile
-        ls.showMessage(
-          fmt "Restarting nimsuggest for file {projectFile} due to timeout.",
-          MessageType.Warning,
-        )
-        await ls.createOrRestartNimsuggest(projectFile, uri)
-        ls.sendStatusChanged()
-      errorCallback = partial(onErrorCallback, (ls, uri))
+    ls: LanguageServer, projectFile: string, uri: string
+): Future[void] {.async: (raises: [CancelledError]).} =
+  let projectNext =
+    try:
+      debug "Starting createOrRestartNimsuggest", projectFile = projectFile, uri = uri
+      let
+        configuration = ls.getWorkspaceConfiguration()
+        workingDir = await ls.getWorkingDir(projectFile)
+        (nimsuggestPath, version) =
+          await ls.getNimsuggestPathAndVersion(configuration, workingDir)
+        timeout = configuration.timeout.get(REQUEST_TIMEOUT)
+        restartCallback = proc(
+            ns: Nimsuggest
+        ): Future[void] {.async: (raises: [CancelledError]).} =
+          warn "Restarting the server due to requests being to slow",
+            projectFile = projectFile
+          ls.showMessage(
+            fmt "Restarting nimsuggest for file {projectFile} due to timeout.",
+            MessageType.Warning,
+          )
+          await ls.createOrRestartNimsuggest(projectFile, uri)
+          ls.sendStatusChanged()
+        errorCallback = partial(onErrorCallback, (ls, uri))
 
-    debug "Creating new nimsuggest project", projectFile = projectFile
+      debug "Creating new nimsuggest project", projectFile = projectFile
 
-    let projectFut = createNimsuggest(
-      projectFile,
-      nimsuggestPath,
-      version,
-      timeout,
-      restartCallback,
-      errorCallback,
-      workingDir,
-      configuration.logNimsuggest.get(false),
-      configuration.exceptionHintsEnabled,
-    )
-    if not await chronos.withTimeout(
-      projectFut, chronos.milliseconds(NIMSUGGEST_STARTUP_TIMEOUT)
-    ):
-      error "Nimsuggest startup timed out", projectFile = projectFile
-      return
+      let projectFut = createNimsuggest(
+        projectFile,
+        nimsuggestPath,
+        version,
+        timeout,
+        restartCallback,
+        errorCallback,
+        workingDir,
+        configuration.logNimsuggest.get(false),
+        configuration.exceptionHintsEnabled,
+      )
+      if not await chronos.withTimeout(
+        projectFut,
+        chronos.milliseconds(
+          configuration.nimsuggestTimeout.get(NIMSUGGEST_STARTUP_TIMEOUT)
+        ),
+      ):
+        error "Nimsuggest startup timed out", projectFile = projectFile
+        nil
+      else:
+        await projectFut
+    except CancelledError as exc:
+      debug "Create/restart nimsuggest cancelled", projectFile = projectFile
+      raise exc
+    except ValueError, OSError, IOError, AsyncProcessError, AsyncStreamError:
+      error "Failed to create/restart nimsuggest",
+        projectFile = projectFile, error = getCurrentExceptionMsg()
+      nil
 
-    let projectNext = await projectFut
-    if projectFile in ls.projectFiles:
-      var project = ls.projectFiles[projectFile]
+  if projectNext != nil:
+    debug "Nimsuggest initialized successfully", projectFile = projectFile
+    let project = ls.projectFiles.getOrDefault(projectFile)
+    if project != nil:
       project.stop()
     ls.projectFiles[projectFile] = projectNext
+    ls.failTable.del(projectFile)
+    ls.showMessage(fmt "Nimsuggest initialized for {projectFile}", MessageType.Info)
+    traceAsyncErrors ls.checkProject(uri)
+    ls.sendStatusChanged()
 
-    projectNext.ns.addCallback do(data: pointer) {.raises: [], gcsafe.}:
-      if projectNext.ns.failed:
-        let msg = projectNext.ns.error.msg
-        error "Nimsuggest initialization failed", projectFile = projectFile, error = msg
-
-        ls.showMessage(
-          fmt "Nimsuggest initialization for {projectFile} failed with: {msg}",
-          MessageType.Error,
-        )
-      else:
-        debug "Nimsuggest initialized successfully", projectFile = projectFile
-        ls.failTable.del(projectFile)
-
-        ls.showMessage(fmt "Nimsuggest initialized for {projectFile}", MessageType.Info)
-        traceAsyncErrors ls.checkProject(uri)
-        try:
-          projectNext.ns.read().openFiles.incl uri
-        except CancelledError, FuturePendingError:
-          error "Nimsuggest was cancelled before it could track the file",
-            projectFile = projectFile, uri = uri, error = getCurrentExceptionMsg()
-      ls.sendStatusChanged()
-  except CancelledError, ValueError, OSError, IOError, AsyncProcessError,
-      AsyncStreamError:
-    error "Failed to create/restart nimsuggest",
-      projectFile = projectFile, error = getCurrentExceptionMsg()
-
-proc createOrRestartNimsuggest*(
-    ls: LanguageServer, projectFile: string, uri = ""
-): Future[void] {.async: (raises: []).} =
+proc createOrRestartNimsuggestUnprotected(
+    ls: LanguageServer, projectFile: string, uri: string
+): Future[void] {.async: (raises: [CancelledError]).} =
+  if ls.isShutdownNimsuggest:
+    debug "Not starting nimsuggest, the server is shutting down",
+      projectFile = projectFile
+    return
   let inFlight = ls.nimsuggestCreations.getOrDefault(projectFile)
   if not inFlight.isNil and not inFlight.finished:
     await inFlight
-    return
+  else:
+    let creation = ls.createOrRestartNimsuggestImpl(projectFile, uri)
+    ls.nimsuggestCreations[projectFile] = creation
+    try:
+      await creation
+    finally:
+      if ls.nimsuggestCreations.getOrDefault(projectFile) == creation:
+        ls.nimsuggestCreations.del(projectFile)
 
-  let creation = ls.createOrRestartNimsuggestImpl(projectFile, uri)
-  ls.nimsuggestCreations[projectFile] = creation
-  await creation
-  if ls.nimsuggestCreations.getOrDefault(projectFile) == creation:
-    ls.nimsuggestCreations.del(projectFile)
+proc createOrRestartNimsuggest*(
+    ls: LanguageServer, projectFile: string, uri = ""
+): Future[void] {.async: (raw: true, raises: [CancelledError]).} =
+  ls.createOrRestartNimsuggestUnprotected(projectFile, uri).join()
 
 proc restartAllNimsuggestInstances(
     ls: LanguageServer
-): Future[void] {.async: (raises: []).} =
+): Future[void] {.async: (raises: [CancelledError]).} =
   debug "Restarting all nimsuggest instances"
   for projectFile in ls.projectFiles.keys.toSeq:
     await ls.createOrRestartNimsuggest(projectFile, projectFile.pathToUri)
@@ -1239,7 +1325,7 @@ proc maybeRegisterCapabilityDidChangeConfiguration*(ls: LanguageServer) =
 
 proc handleConfigurationChanges*(
     ls: LanguageServer, oldConfiguration, newConfiguration: NlsConfig
-): Future[void] {.async: (raises: []).} =
+): Future[void] {.async: (raises: [CancelledError]).} =
   if ls.lspClientCapabilities.workspace.isSome and
       ls.lspClientCapabilities.workspace.get.inlayHint.isSome and
       ls.lspClientCapabilities.workspace.get.inlayHint.get.refreshSupport.get(false) and
@@ -1258,27 +1344,23 @@ proc maybeRequestConfigurationFromClient*(
     debug "Requesting configuration from the client"
     try:
       let configurationParams = ConfigurationParams %* {"items": [{"section": "nim"}]}
-
-      ls.prevWorkspaceConfiguration = ls.workspaceConfiguration
-
-      let requested = ls.call("workspace/configuration", %configurationParams)
-      ls.workspaceConfiguration = requested
-
-      let configuration = await requested
+      let configuration = await ls.call("workspace/configuration", %configurationParams)
       debug "Received the following configuration", configuration = $configuration
-      if not isNil(ls.prevWorkspaceConfiguration) and
-          ls.prevWorkspaceConfiguration.finished:
-        let
-          oldConfiguration =
-            parseWorkspaceConfiguration(ls.prevWorkspaceConfiguration.read)
-          newConfiguration = parseWorkspaceConfiguration(configuration)
-        await ls.handleConfigurationChanges(oldConfiguration, newConfiguration)
-    except CancelledError, FuturePendingError:
+      #the first configuration is not a change, so there is nothing to handle
+      let
+        hadConfiguration = ls.workspaceConfigurationReady.finished
+        oldConfiguration = ls.getWorkspaceConfiguration()
+      ls.setWorkspaceConfiguration(configuration)
+      if hadConfiguration:
+        await ls.handleConfigurationChanges(
+          oldConfiguration, ls.getWorkspaceConfiguration()
+        )
+    except CancelledError:
       error "Failed to handle the client configuration",
         error = getCurrentExceptionMsg()
   else:
     debug "Client does not support workspace/configuration"
-    ls.workspaceConfiguration.complete(newJArray())
+    ls.setWorkspaceConfiguration(newJArray()) #the defaults, and no one waits anymore
 
 proc getCharacter*(
     ls: LanguageServer, uri: string, line: int, character: int
@@ -1289,25 +1371,15 @@ proc getCharacter*(
   else:
     none(int)
 
-proc stopNimsuggestProcesses*(ls: LanguageServer) {.async: (raises: []).} =
-  if not ls.childNimsuggestProcessesStopped:
-    debug "stopping child nimsuggest processes"
-    ls.childNimsuggestProcessesStopped = true
-    for project in ls.projectFiles.values:
-      project.stop()
-  else:
-    debug "child nimsuggest processes already stopped: CHECK!"
-
-proc stopNimsuggestProcessesP*(ls: LanguageServer) =
-  waitFor stopNimsuggestProcesses(ls)
-
-proc shouldSpawnNimsuggest*(ls: LanguageServer): Future[bool] {.async: (raises: []).} =
-  let nsCount = ls.getLspStatus().nimsuggestInstances.len
-  let conf = ls.getWorkspaceConfiguration()
-  let maxNimsuggestProcesses = conf.maxNimsuggestProcesses.get(NIM_MAX_NS_PROCESSES)
-  result = maxNimsuggestProcesses == 0 or nsCount < maxNimsuggestProcesses
-  debug "shouldSpawnNimsuggest",
-    result = result, nsCount = nsCount, maxNimsuggestProcesses = maxNimsuggestProcesses
+proc shutdownNimsuggest*(ls: LanguageServer) {.async: (raises: []).} =
+  debug "stopping child nimsuggest processes"
+  ls.isShutdownNimsuggest = true
+  var shutdowns: seq[Future[void].Raising([])]
+  for creation in ls.nimsuggestCreations.values:
+    shutdowns.add creation.cancelAndWait()
+  for project in ls.projectFiles.values:
+    shutdowns.add project.stopWait()
+  await noCancel allFutures(shutdowns)
 
 proc getProjectFile*(
     fileUri: string, ls: LanguageServer
@@ -1339,17 +1411,13 @@ proc getProjectFile*(
         uri = fileUri, matchedRegex = mapping.fileRegex
 
   #If we reached the maximum instances of nimsuggest, we just return the first project
-  let shouldSpawn = await ls.shouldSpawnNimsuggest()
-  if not shouldSpawn:
-    result = ls.projectFiles.keys.toSeq[0]
-    debug "Reached the maximum instances of nimsuggest, reusing the first nimsuggest instance",
-      project = result
-    return result
+  if not ls.canSpawnNimsuggest():
+    return ls.reuseLiveNimsuggestProject()
 
   result = await ls.getProjectFileAutoGuess(fileUri)
   let project = ls.projectFiles.getOrDefault(result)
   if project != nil:
-    let ns = await project.ns
+    let ns = project.ns
     let isKnown = await ns.isKnown(fileUri)
     if ns.canHandleUnknown and not isKnown:
       debug "File is not known by nimsuggest", uri = fileUri, projectFile = result
@@ -1361,7 +1429,7 @@ proc getProjectFile*(
   debug "getProjectFile ", project = result, fileUri = fileUri
 
 proc checkFile*(
-    ls: LanguageServer, uri: string
+    ls: LanguageServer, file: NlsFileInfo
 ): Future[void] {.
     async: (
       raises: [
@@ -1370,6 +1438,7 @@ proc checkFile*(
       ]
     )
 .} =
+  let uri = file.textDocument.uri
   let conf = await ls.getAndWaitForWorkspaceConfiguration()
   let useNimCheck = conf.useNimCheck.get(USE_NIM_CHECK_BY_DEFAULT)
   let nimPath = await ls.getNimPath(conf)
@@ -1385,9 +1454,23 @@ proc checkFile*(
     ls.sendDiagnostics(checkResults, path)
     return
 
-  let ns = await ls.tryGetNimsuggest(uri)
+  let closed = uri notin ls.openFiles
+  let ns =
+    if closed:
+      let project = ls.projectFiles.getOrDefault(file.nimsuggestProject)
+      if project != nil:
+        some project.ns
+      else:
+        none(Nimsuggest)
+    else:
+      await ls.tryGetNimsuggest(uri)
+  let dirtyFile =
+    if closed:
+      path
+    else:
+      ls.uriToStash(uri)
   if ns.isSome:
-    let diagnostics = ns.get().chkFile(path, ls.uriToStash(uri)).await()
+    let diagnostics = ns.get().chkFile(path, dirtyFile).await()
     ls.progress(token, "end")
     ls.sendDiagnostics(diagnostics, path)
   else:
@@ -1406,14 +1489,20 @@ proc removeCompletedPendingRequests(
   for id in toRemove:
     ls.pendingRequests.del id
 
-proc removeIdleNimsuggests*(ls: LanguageServer) {.async: (raises: [CancelledError]).} =
+proc removeIdleNimsuggests*(
+    ls: LanguageServer
+) {.async: (raises: [CancelledError, OSError]).} =
+  if ls.projectFiles.len == 0:
+    return
   const DefaultNimsuggestIdleTimeout = 120000
   let timeout = ls.getWorkspaceConfiguration().nimsuggestIdleTimeout.get(
       DefaultNimsuggestIdleTimeout
     )
+  let mappedProjects = ls.mappedProjectFiles()
   var toStop = newSeq[Project]()
   for project in ls.projectFiles.values:
-    if project.file in ls.entryPoints: #we only remove non entry point nimsuggests
+    if project.file in ls.entryPoints or project.file in mappedProjects:
+      #we only remove non entry point nimsuggests
       continue
     if project.lastCmdDate.isSome:
       let passedTime = now() - project.lastCmdDate.get()
@@ -1423,13 +1512,6 @@ proc removeIdleNimsuggests*(ls: LanguageServer) {.async: (raises: [CancelledErro
   for project in toStop:
     debug "Removing idle nimsuggest", project = project.file
     project.errorCallback = none(ProjectCallback)
-
-    let ns = await project.ns
-    for uri in ns.openFiles:
-      debug "Removing idle nimsuggest open file", uri = uri
-      let info = ls.openFiles.getOrDefault(uri)
-      if info != nil:
-        await ls.makeIdleFile(info)
     project.stop()
     ls.projectFiles.del(project.file)
 
@@ -1444,6 +1526,7 @@ proc tick*(ls: LanguageServer): Future[void] {.async: (raises: []).} =
     ls.removeCompletedPendingRequests()
     await ls.removeIdleNimsuggests()
     ls.sendStatusChanged
-  except CancelledError as ex:
+  except CancelledError, OSError:
+    let ex = getCurrentException()
     error "Error in tick", msg = ex.msg
-    writeStacktrace(ex)
+    writeStackTrace(ex)

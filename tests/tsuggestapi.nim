@@ -1,5 +1,5 @@
 import
-  std/[os, asyncnet, strutils, options],
+  std/[os, strutils, options],
   chronos,
   chronos/asyncproc,
   unittest2,
@@ -14,7 +14,11 @@ const inputLineWithEndLine =
 suite "Nimsuggest tests":
   let
     helloWorldFile = getCurrentDir() / "tests/projects/hw/hw.nim"
-    nimSuggest = createNimsuggest(helloWorldFile).waitFor.ns.waitFor
+    project = createNimsuggest(helloWorldFile).waitFor
+    nimSuggest = project.ns
+
+  suiteTeardown:
+    project.stop()
 
   test "Parsing qualified path":
     check parseQualifiedPath("a.b.c") == @["a", "b", "c"]
@@ -25,7 +29,7 @@ suite "Nimsuggest tests":
       Suggest(
         filePath: "hw/hw.nim",
         qualifiedPath: @["hw", "a"],
-        symKind: "skProc",
+        symkind: "skProc",
         line: 1,
         column: 5,
         doc: "",
@@ -39,7 +43,7 @@ suite "Nimsuggest tests":
       Suggest(
         filePath: "basic_types.nim",
         qualifiedPath: @["system", "bool", "true"],
-        symKind: "skEnumField",
+        symkind: "skEnumField",
         line: 46,
         column: 15,
         doc: "",
@@ -85,7 +89,7 @@ suite "Nimsuggest error handling":
     # paths run deterministically.
     let helloWorldFile = getCurrentDir() / "tests/projects/hw/hw.nim"
     let project = createNimsuggest(helloWorldFile).waitFor
-    let ns = project.ns.waitFor
+    let ns = project.ns
     var errorCount = 0
     project.errorCallback = some(
       proc(pr: Project) {.async: (raises: []).} =
@@ -102,3 +106,27 @@ suite "Nimsuggest error handling":
 
     check waitUntil(errorCount >= 1)
     check not waitUntil(errorCount > 1, timeout = 300.milliseconds)
+
+  test "a nimsuggest cancelled during startup is marked failed and stopped":
+    let helloWorldFile = getCurrentDir() / "tests/projects/hw/hw.nim"
+    var failed: Project
+    # nimsuggest is spawned before createNimsuggest first waits, so it is
+    # running and still starting up when cancelled
+    let projectFut = createNimsuggest(
+      helloWorldFile,
+      "nimsuggest",
+      "",
+      REQUEST_TIMEOUT,
+      proc(ns: Nimsuggest) {.async: (raises: [CancelledError]).} =
+        discard,
+      proc(pr: Project) {.async: (raises: []).} =
+        failed = pr,
+    )
+
+    check not projectFut.finished
+    waitFor projectFut.cancelAndWait()
+    check projectFut.cancelled
+    check not failed.isNil
+    check not failed.process.isNil
+    check failed.process.running() == AsyncProcessResult[bool].ok(false)
+    waitFor failed.process.closeWait()

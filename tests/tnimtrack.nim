@@ -1,10 +1,9 @@
 import
-  std/[options, json, os, osproc, jsonutils, sequtils, strutils, strformat],
+  std/[options, json, os, osproc, strutils, strformat],
   json_rpc/[rpcclient],
-  chronicles,
   unittest2,
-  ../[nimlangserver, ls, lstransports, utils],
-  ../protocol/[enums, types],
+  ../[nimlangserver, ls, utils],
+  ../protocol/[types],
   ./lspsocketclient
 
 suite "Nim track with nim >= 2.4":
@@ -29,9 +28,7 @@ suite "Nim track with nim >= 2.4":
   waitFor client.connect("localhost", cmdParams.port)
 
   let conf = NlsConfig(useNimTrack: some true)
-  ls.workspaceConfiguration =
-    Future[JsonNode].Raising([CancelledError]).init("tnimtrack")
-  ls.workspaceConfiguration.complete(% @[conf])
+  ls.setWorkspaceConfiguration(% @[conf])
 
   let initParams =
     LspInitializeParams %* {
@@ -50,6 +47,9 @@ suite "Nim track with nim >= 2.4":
   )
 
   let trackUri = fixtureUri("projects/trackproject/src/trackproject.nim")
+
+  suiteTeardown:
+    waitFor ls.shutdownNimsuggest()
 
   test "Definition with nim track":
     client.notify("textDocument/didOpen", %createDidOpenParams(trackFile))
@@ -93,9 +93,7 @@ suite "Nim track unavailable with nim < 2.4":
   waitFor client.connect("localhost", cmdParams.port)
 
   let conf = NlsConfig(useNimTrack: some true)
-  ls.workspaceConfiguration =
-    Future[JsonNode].Raising([CancelledError]).init("tnimtrack")
-  ls.workspaceConfiguration.complete(% @[conf])
+  ls.setWorkspaceConfiguration(% @[conf])
 
   let initParams =
     LspInitializeParams %* {
@@ -114,6 +112,9 @@ suite "Nim track unavailable with nim < 2.4":
   )
 
   let hwUri = fixtureUri("projects/hw/hw.nim")
+
+  suiteTeardown:
+    waitFor ls.shutdownNimsuggest()
 
   test "Definition returns empty":
     let

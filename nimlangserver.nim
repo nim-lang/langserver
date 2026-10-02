@@ -200,7 +200,7 @@ proc registerProcMonitor(ls: LanguageServer) =
     .} =
       debug "onCmdLineClientProcessExitAsync"
       try:
-        await ls.stopNimsuggestProcesses
+        await ls.shutdownNimsuggest
         await ls.onExit()
       except IOError, OSError:
         let ex = getCurrentException()
@@ -252,11 +252,8 @@ when isMainModule:
     asyncSpawn ls.tickLs()
 
     when defined(posix):
-      onSignal(SIGINT, SIGTERM, SIGHUP, SIGQUIT, SIGPIPE):
-        {.cast(gcsafe).}:
-          debug "Terminated via signal", sig
-          ls.stopNimsuggestProcessesP()
-          exitnow(1)
+      onSignal(SIGINT, SIGTERM, SIGHUP, SIGQUIT):
+        exitnow(1)
     runForever()
   except Exception as e:
     error "Error in main"

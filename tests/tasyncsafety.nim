@@ -35,6 +35,9 @@ suite "Async safety":
     helloWorldUri = fixtureUri(helloWorldFile)
     helloWorldPath = uriToPath(helloWorldUri)
 
+  suiteTeardown:
+    waitFor ls.shutdownNimsuggest()
+
   test "didOpenFile writes the stash file before it suspends":
     removeFile(ls.uriStorageLocation(helloWorldUri))
     let textDocument = TextDocumentItem(
@@ -48,7 +51,7 @@ suite "Async safety":
     check fileExists(ls.uriStorageLocation(helloWorldUri))
     check ls.openFiles[helloWorldUri].fingerTable.len > 0
 
-    waitFor opened.wait(30.seconds)
+    check waitFor opened.withTimeout(30.seconds)
 
   test "Concurrent creations for the same project are deduplicated":
     let first = ls.createOrRestartNimsuggest(helloWorldPath, helloWorldUri)
@@ -56,6 +59,21 @@ suite "Async safety":
     check ls.nimsuggestCreations.len == 1
 
     waitFor allFutures(first, second).wait(30.seconds)
+    check ls.nimsuggestCreations.len == 0
+    check ls.projectFiles.len == 1
+    check not ls.projectFiles[helloWorldPath].process.isNil
+
+  test "Cancelling one create leaves the creation for the others":
+    let
+      first = ls.createOrRestartNimsuggest(helloWorldPath, helloWorldUri)
+      second = ls.createOrRestartNimsuggest(helloWorldPath, helloWorldUri)
+    check ls.nimsuggestCreations.len == 1
+
+    waitFor first.cancelAndWait()
+    check first.cancelled
+
+    check waitFor second.withTimeout(30.seconds)
+    check not second.cancelled
     check ls.nimsuggestCreations.len == 0
     check ls.projectFiles.len == 1
     check not ls.projectFiles[helloWorldPath].process.isNil
@@ -98,7 +116,7 @@ suite "Replacing a running nimsuggest":
     helloWorldPath = uriToPath(helloWorldUri)
 
   suiteTeardown:
-    waitFor ls.stopNimsuggestProcesses()
+    waitFor ls.shutdownNimsuggest()
 
   test "stopping the replaced instance is not handled as a crash":
     let textDocument = TextDocumentItem(
@@ -107,13 +125,15 @@ suite "Replacing a running nimsuggest":
       version: 0,
       text: readFile("tests" / helloWorldFile),
     )
-    waitFor ls.didOpenFile(textDocument).wait(30.seconds)
+    check waitFor ls.didOpenFile(textDocument).withTimeout(30.seconds)
     let old = ls.projectFiles[helloWorldPath]
-    let oldNs = waitFor old.ns.wait(30.seconds)
+    let oldNs = old.ns
     # Having served a request is what made the error path auto-restart it.
     check waitUntil(oldNs.successfullCall, timeout = 30.seconds)
 
-    waitFor ls.createOrRestartNimsuggest(helloWorldPath, helloWorldUri).wait(30.seconds)
+    check waitFor ls
+      .createOrRestartNimsuggest(helloWorldPath, helloWorldUri)
+      .withTimeout(30.seconds)
     let replacement = ls.projectFiles[helloWorldPath]
     check replacement != old
 
@@ -145,7 +165,7 @@ suite "Documents closed while a handler is suspended":
         {"window": {"workDoneProgress": false}, "workspace": {"configuration": true}},
     }
   )
-  ls.workspaceConfiguration.complete(% @[NlsConfig()])
+  ls.setWorkspaceConfiguration(% @[NlsConfig()])
 
   let
     helloWorldFile = "projects/hw/hw.nim"
@@ -157,7 +177,7 @@ suite "Documents closed while a handler is suspended":
     Diagnostics = "textDocument/publishDiagnostics"
 
   suiteTeardown:
-    waitFor ls.stopNimsuggestProcesses()
+    waitFor ls.shutdownNimsuggest()
 
   proc settle(): int =
     ## A check that runs while another is in progress re-arms itself
@@ -183,8 +203,8 @@ suite "Documents closed while a handler is suspended":
       version: 0,
       text: readFile("tests" / helloWorldFile),
     )
-    waitFor ls.didOpenFile(textDocument).wait(30.seconds)
-    let ns = waitFor ls.projectFiles[helloWorldPath].ns.wait(30.seconds)
+    check waitFor ls.didOpenFile(textDocument).withTimeout(30.seconds)
+    let ns = ls.projectFiles[helloWorldPath].ns
 
     # hw.nim has an error in it, so any project check publishes for it. That
     # notification is the only externally visible trace a save leaves.
@@ -197,7 +217,7 @@ suite "Documents closed while a handler is suspended":
     # Control: with the file open, saving runs a check. Without this the race
     # case below could pass because nothing ever publishes.
     var published = settle()
-    waitFor lspRoutes.didSave(ls, saveParams).wait(30.seconds)
+    check waitFor lspRoutes.didSave(ls, saveParams).withTimeout(30.seconds)
     check waitUntil(client.calls[Diagnostics].len > published, timeout = 30.seconds)
 
     # Park the handler where it waits in real life. getNimsuggestInner awaits
@@ -205,15 +225,15 @@ suite "Documents closed while a handler is suspended":
     # yield, so without this the whole of didSave would run synchronously and
     # there would be no window at all.
     discard settle()
-    let gate =
+    let fut =
       Future[string].Raising([CancelledError, OSError, RegexError]).init("closed race")
-    ls.openFiles[helloWorldUri].projectFile = gate
+    ls.openFiles[helloWorldUri].projectFile = fut
 
     let saving = lspRoutes.didSave(ls, saveParams)
     check not saving.finished
 
-    # A didClose, or the idle sweep calling makeIdleFile, drops the entry while
-    # the handler is parked. Its openFiles lookups are still ahead of it.
+    # The editor closes the file while the save is still waiting. The save
+    # has not looked the file up yet, so it will find it already closed.
     ls.openFiles.del(helloWorldUri)
     check helloWorldUri notin ls.openFiles
 
@@ -221,8 +241,8 @@ suite "Documents closed while a handler is suspended":
     # so telling nimsuggest to re-read the file is the only thing left that the
     # save can still do — and the file really was written to disk.
     ns.successfullCall = false
-    gate.complete(helloWorldPath)
-    waitFor saving.wait(30.seconds)
+    fut.complete(helloWorldPath)
+    check waitFor saving.withTimeout(30.seconds)
     check waitUntil(ns.successfullCall, timeout = 30.seconds)
 
   test "didClose for a file that was never open is a no-op":
@@ -230,5 +250,5 @@ suite "Documents closed while a handler is suspended":
     check unknownUri notin ls.openFiles
     # Reaching the next line is the assertion: reading `changed` off the missing
     # entry used to dereference nil.
-    waitFor ls.didCloseFile(unknownUri).wait(30.seconds)
+    check waitFor ls.didCloseFile(unknownUri).withTimeout(30.seconds)
     check unknownUri notin ls.openFiles

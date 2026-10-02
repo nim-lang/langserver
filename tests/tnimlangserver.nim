@@ -1,10 +1,9 @@
 import
-  std/[options, json, os, jsonutils, sequtils, strutils, sugar, strformat],
+  std/[options, json, os, sequtils, strutils, sugar, strformat],
   json_rpc/[rpcclient],
-  chronicles,
   unittest2,
-  ../[nimlangserver, ls, lstransports, utils],
-  ../protocol/[enums, types],
+  ../[nimlangserver, ls, utils],
+  ../protocol/[types],
   ./lspsocketclient
 
 suite "Nimlangserver":
@@ -17,6 +16,9 @@ suite "Nimlangserver":
     "extension/statusUpdate", "textDocument/publishDiagnostics", "$/progress",
   )
   waitFor client.connect("localhost", cmdParams.port)
+
+  suiteTeardown:
+    waitFor ls.shutdownNimsuggest()
 
   test "initialize from the client should call initialized on the server":
     let initParams =
@@ -52,6 +54,9 @@ suite "Suggest API selection":
     }
   discard waitFor client.initialize(initParams)
   client.notify("initialized", newJObject())
+
+  suiteTeardown:
+    waitFor ls.shutdownNimsuggest()
 
   test "Suggest api":
     #The client adds the notifications into the call table and we wait until they arrived.   
@@ -97,6 +102,9 @@ suite "LSP features":
   let didOpenParams = createDidOpenParams("projects/hw/hw.nim")
 
   client.notify("textDocument/didOpen", %didOpenParams)
+
+  suiteTeardown:
+    waitFor ls.shutdownNimsuggest()
 
   test "Sending hover.":
     let
@@ -212,7 +220,7 @@ suite "LSP features":
     let changes = client
       .call("textDocument/rename", %renameParams)
       .waitFor()
-      .to(WorkSpaceEdit).changes
+      .to(WorkspaceEdit).changes
       .get()
     check changes.len == 1
     check changes[helloWorldUri].len == 3
@@ -283,6 +291,9 @@ suite "Null configuration:":
 
   discard waitFor client.initialize(initParams)
   client.notify("initialized", newJObject())
+
+  suiteTeardown:
+    waitFor ls.shutdownNimsuggest()
 
   test "Null configuration":
     client.notify("textDocument/didOpen", %createDidOpenParams("projects/hw/hw.nim"))

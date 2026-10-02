@@ -2,12 +2,13 @@
 
 import
   std/[syncio, os, json, strutils, strformat, streams, oids, sequtils, times],
-  json_rpc/[servers/socketserver, private/jrpc_sys, jsonmarshal, rpcclient, router],
+  json_rpc/
+    [errors, servers/socketserver, private/jrpc_sys, jsonmarshal, rpcclient, router],
   chronos,
   chronos/threadsync,
   chronicles,
   ./[ls, utils],
-  ./protocol/types
+  ./protocol/[enums, types]
 
 type
   LspClientResponse* = object
@@ -172,7 +173,7 @@ proc readLspStdin*(
   while true:
     let str = processContentLength(inputStream) & CRLF
     ctx.value = cast[cstring](createShared(char, str.len + 1))
-    copymem(ctx.value[0].addr, str[0].addr, str.len)
+    copyMem(ctx.value[0].addr, str[0].addr, str.len)
     discard ctx.onStdReadSignal.fireSync()
     discard ctx.onMainReadSignal.waitSync()
 
@@ -181,7 +182,7 @@ proc readMcpStdin*(ctx: ptr ReadStdinContext) {.thread, raises: [IOError, OSErro
   while true:
     let str = inputStream.readLine()
     ctx.value = cast[cstring](createShared(char, str.len + 1))
-    copymem(ctx.value[0].addr, str[0].addr, str.len)
+    copyMem(ctx.value[0].addr, str[0].addr, str.len)
     discard ctx.onStdReadSignal.fireSync()
     discard ctx.onMainReadSignal.waitSync()
 
@@ -219,6 +220,16 @@ proc writeOutput*(ls: LanguageServer, content: JsonNode) =
     let ex = getCurrentException()
     error "Error writing output", msg = ex.msg
 
+proc writeError(ls: LanguageServer, req: RequestRx, code: int, message: string) =
+  if req.id.kind == riNull:
+    return # A notification: JSON-RPC forbids replying to it.
+  var errJson = newJObject()
+  errJson["jsonrpc"] = %*"2.0"
+  if req.id.kind == riNumber:
+    errJson["id"] = %*req.id.num
+  errJson["error"] = %*{"code": code, "message": message}
+  ls.writeOutput(errJson)
+
 proc runRpc(
     ls: LanguageServer, req: RequestRx, rpc: RpcProc
 ): Future[void] {.async: (raises: []).} =
@@ -232,17 +243,15 @@ proc runRpc(
       json["id"] = %*req.id.num
     json["result"] = parseJson(res.string)
     ls.writeOutput(json)
-  except CancelledError as ex:
+  except CancelledError:
     debug "[RunRPC]Request cancelled", meth = req.method.get("")
+  except ApplicationError as ex:
+    debug "[RunRPC] Refused", msg = ex.msg, code = ex.code, req = req.`method`
+    ls.writeError(req, ex.code, ex.msg)
   except CatchableError as ex:
     error "[RunRPC] ", msg = ex.msg, req = req.`method`
     writeStackTrace(ex = ex)
-    var errJson = newJObject()
-    errJson["jsonrpc"] = %*"2.0"
-    if req.id.kind == riNumber:
-      errJson["id"] = %*req.id.num
-    errJson["error"] = %*{"code": -32603, "message": ex.msg}
-    ls.writeOutput(errJson)
+    ls.writeError(req, ErrorCode.InternalError.int, ex.msg)
 
 proc processMessage(ls: LanguageServer, message: string) {.raises: [].} =
   try:
@@ -251,7 +260,6 @@ proc processMessage(ls: LanguageServer, message: string) {.raises: [].} =
     let isReq = "method" in contentJson
     if isReq:
       debug "[Processing Message]", request = contentJson["method"].getStr()
-      var fut = Future[JsonString]()
       # LSP allows null or absent params; json_rpc 0.6+ decoder requires array/object
       if contentJson.getOrDefault("params").kind == JNull:
         contentJson["params"] = newJObject()
@@ -387,10 +395,9 @@ proc startSocketServer*(
   proc waitUntilSocketTransportIsReady(
       ls: LanguageServer
   ) {.async: (raises: [CancelledError]).} =
-    when defined(test):
-      return
-    while ls.socketTransport.isNil:
-      await sleepAsync(0)
+    when not defined(test):
+      while ls.socketTransport.isNil:
+        await sleepAsync(0)
 
   debug "Waiting for socket server to be ready"
   waitFor waitUntilSocketTransportIsReady(ls)
