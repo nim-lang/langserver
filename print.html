@@ -332,6 +332,52 @@ EOF
 }
 </code></pre>
 <p>When inside a Nimble project, <code>nimble</code> drives the entry points for <code>nimsuggest</code> automatically.</p>
+<h3 id="multi-entry-point-projects"><a class="header" href="#multi-entry-point-projects">Multi-entry-point projects</a></h3>
+<p>Some Nim packages have several independent entry points. For example, <a href="https://github.com/status-im/nim-chronos">Chronos</a> has a main module <code>chronos.nim</code>, while also providing separate application modules that import only a subset of the package. <a href="https://github.com/mratsim/constantine">Constantine</a> has a similar layout, with several public API modules rather than one module that reaches all of the package.</p>
+<p>For these projects, the file being edited is not always the right <code>nimsuggest</code> project root. Without a mapping, <code>nimlangserver</code> falls back to the opened file, i.e. every opened file is a project root. Nimsuggest will then analyse that file and its imports, but it will not see independent entry points that use the file. This is especially important for generic code: the exact overload may only be known from a concrete instantiation in another entry point.</p>
+<p>Use <code>nim.projectMapping</code> to select the entry point whose compilation context matches the files being edited:</p>
+<pre><code class="language-json">{
+  "nim.projectMapping": [
+    {
+      "projectFile": "chronos/apps/http/httpclient.nim",
+      "fileRegex": "^chronos/apps/http/.*\\.nim$"
+    },
+    {
+      "projectFile": "chronos.nim",
+      "fileRegex": "^chronos/.*\\.nim$"
+    }
+  ]
+}
+</code></pre>
+<p>Mappings are checked in order, so put more specific patterns first. Paths in <code>projectFile</code> and <code>fileRegex</code> are relative to the workspace root. The mapped file must exist and be a compilable Nim entry point; a mapping does not import modules or create generic instantiations by itself.</p>
+<h4 id="chronos"><a class="header" href="#chronos">Chronos</a></h4>
+<p>The core entry point is <code>chronos.nim</code>, but the HTTP application modules are independent entry points. Mapping HTTP sources to <code>httpclient.nim</code> gives nimsuggest the context of the HTTP implementation, while other Chronos files use the core entry point.</p>
+<h4 id="constantine"><a class="header" href="#constantine">Constantine</a></h4>
+<p>Map each source area to an existing public API module that actually exercises the code being edited. For example, elliptic-curve sources can use a suitable elliptic-curve API entry point:</p>
+<pre><code class="language-json">{
+  "nim.projectMapping": [
+    {
+      "projectFile": "constantine/ethereum_bls_signatures.nim",
+      "fileRegex": "^constantine/math/elliptic/.*\\.nim$"
+    },
+    {
+      "projectFile": "constantine/ethereum_bls_signatures.nim",
+      "fileRegex": "^constantine/.*\\.nim$"
+    }
+  ]
+}
+</code></pre>
+<p>The best root depends on the API area. If no existing entry point exercises the required combinations, create a project-local analysis root that imports representative public APIs and, where necessary, contains representative concrete uses. Keep that file as tooling infrastructure rather than treating it as a public package entry point.</p>
+<h4 id="project-local-editor-configuration"><a class="header" href="#project-local-editor-configuration">Project-local editor configuration</a></h4>
+<p>The setting is supplied by the editor's LSP client. For Helix, a project-local <code>.helix/languages.toml</code> can contain:</p>
+<pre><code class="language-toml">[language-server.nimlangserver.config.nim]
+projectMapping = [
+  { projectFile = "chronos/apps/http/httpclient.nim", fileRegex = "^chronos/apps/http/.*\\.nim$" },
+  { projectFile = "chronos.nim", fileRegex = "^chronos/.*\\.nim$" },
+]
+</code></pre>
+<p>For VS Code, put the equivalent JSON setting in the project's <code>.vscode/settings.json</code>. Other editors expose the same <code>nim.projectMapping</code> setting through their LSP client configuration.</p>
+<p>Project mapping is not required for ordinary definitions or every generic lookup. It is needed when precise results depend on a concrete instantiation reachable only from another entry point. Nimsuggest can perform conservative speculative analysis when no instantiation is available, but it cannot infer uses that are outside the selected compilation context.</p>
 <h2 id="inlay-hints"><a class="header" href="#inlay-hints">Inlay hints</a></h2>
 <p>Inlay hints are visual snippets displayed inline by the editor to provide context without cluttering the source.</p>
 <p><code>nimlangserver</code> provides three kinds:</p>
