@@ -3,7 +3,7 @@ import
   chronos,
   json_rpc/errors,
   unittest2,
-  ../[nimlangserver, ls, lstransports, utils],
+  ../[nimlangserver, ls, utils],
   ../protocol/types,
   ../routes/mcp
 
@@ -15,8 +15,7 @@ proc initMcpServer(
     mainFile: string
 ): Future[(LanguageServer, McpInitializeResult)] {.async: (raises: [CatchableError]).} =
   let
-    cmdParams =
-      CommandLineParams(mode: some ServerMode.mcp, transport: some TransportMode.stdio)
+    cmdParams = CommandLineParams(mode: some ServerMode.mcp)
     initParams =
       McpInitializeParams %* {
         "protocolVersion": McpProtocolVersion,
@@ -25,11 +24,11 @@ proc initMcpServer(
       }
     ls = initLs(cmdParams, ensureStorageDir())
 
-  ls.notify = proc(name: string, params: JsonNode) {.gcsafe, raises: [].} =
+  ls.notifyAction = proc(name: string, params: JsonString) {.gcsafe, raises: [].} =
     discard
-  ls.call = proc(
-      name: string, params: JsonNode
-  ): Future[JsonNode] {.async: (raises: [CancelledError]).} =
+  ls.callAction = proc(
+      name: string, params: JsonString
+  ): Future[JsonNode] {.async: (raises: [CancelledError, JsonRpcError]).} =
     newJNull()
   ls.onExit = proc(): Future[void] {.async: (raises: [IOError, OSError]).} =
     discard
@@ -52,28 +51,16 @@ proc close(client: McpSocketClient): Future[void] {.async.} =
   if not client.transport.isNil:
     await client.transport.closeWait()
 
-proc readResponseLine(client: McpSocketClient): Future[string] {.async.} =
-  while true:
-    let chunk = await client.transport.read(1)
-    if chunk.len == 0:
-      return
-
-    let ch = chunk[0].char
-    if ch == '\n':
-      return
-
-    result.add(ch)
-
 proc callRpc(
     client: McpSocketClient, name: string, params: JsonNode
 ): Future[JsonNode] {.async.} =
   inc client.nextId
   let id = client.nextId
   let reqJson = %*{"jsonrpc": "2.0", "id": id, "method": name, "params": params}
-  discard await client.transport.write(wrapContentWithContentLength($reqJson))
+  discard await client.transport.write($reqJson & "\n")
 
   while true:
-    let response = await client.readResponseLine()
+    let response = await client.transport.readLine(sep = "\n")
     if response == "":
       raise newException(IOError, "MCP server disconnected")
 
