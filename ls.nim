@@ -1378,6 +1378,8 @@ proc shutdownNimsuggest*(ls: LanguageServer) {.async: (raises: []).} =
   debug "stopping child nimsuggest processes"
   ls.isShutdownNimsuggest = true
   var shutdowns: seq[Future[void].Raising([])]
+  if not ls.nimsuggestInit.isNil:
+    shutdowns.add ls.nimsuggestInit.cancelAndWait()
   for creation in ls.nimsuggestCreations.values:
     shutdowns.add creation.cancelAndWait()
   for project in ls.projectFiles.values:
