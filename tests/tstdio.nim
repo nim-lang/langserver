@@ -78,6 +78,9 @@ suite "Nimlangserver stdio transport":
     #initialize started it in the background, and its `nimble dump` of the
     #workspace takes far longer than this session, so it must not outlive it
     check ls.nimsuggestInit.finished
+    #nor leave behind a nimsuggest for the entry points the dump finds
+    check ls.nimsuggestCreations.len == 0
+    check ls.projectFiles.len == 0
 
   test "The transport is closed on exit":
     waitFor ls.onExit()
@@ -95,15 +98,14 @@ suite "Nimlangserver stdio transport errors":
     (cliIn, srvOut) = newPipePair() #server -> client
   ls.startStdioServer(srvIn, srvOut)
 
-  suiteTeardown:
-    waitFor ls.onExit()
-    waitFor cliOut.closeWait()
-    waitFor cliIn.closeWait()
-
   test "A message that is not JSON ends the session with an error":
     #A well framed message whose body cannot be parsed stops the connection
     #loop, and the session fails with that error, which is what makes
     #nimlangserver exit with status 1
+    #The reply is read while it is being written, like a real client does. On
+    #Windows closing a pipe blocks until everything written to it was read, and
+    #nothing else runs meanwhile since the test shares the thread with the server
+    let reply = cliIn.read()
     let body = "not json"
     discard waitFor cliOut.write("Content-Length: " & $body.len & "\r\n\r\n" & body)
     check waitFor ls.serve().withTimeout(10.seconds)
@@ -111,5 +113,6 @@ suite "Nimlangserver stdio transport errors":
     check ls.serve().error of JsonRpcError
     check ls.client.isNil
     #The client is told why before the server closes its end
-    let reply = string.fromBytes(waitFor cliIn.read().wait(10.seconds))
-    check "-32600" in reply
+    check "-32600" in string.fromBytes(waitFor reply.wait(10.seconds))
+    waitFor cliOut.closeWait()
+    waitFor cliIn.closeWait()
