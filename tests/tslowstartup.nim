@@ -140,6 +140,29 @@ suite "Shutdown during nimsuggest startup":
     check ls.nimsuggestCreations.len == 0
     check entryPath notin ls.projectFiles
 
+suite "Shutdown while the workspace is being dumped":
+  let (ls, _) = startSlowRootServer(defaultConfiguration)
+
+  test "stopping cancels the startup before it gets to nimsuggest":
+    # `nimble dump` of the workspace takes seconds, so the startup is still
+    # running it and has not asked for a nimsuggest yet
+    check not ls.nimsuggestInit.finished
+    check ls.nimsuggestCreations.len == 0
+    waitFor ls.shutdownNimsuggest()
+    # it is done by the time shutdown returns, so its `nimble dump` is gone too
+    check ls.nimsuggestInit.cancelled
+    check ls.projectFiles.len == 0
+
+suite "Shutdown request while the workspace is being dumped":
+  let (ls, client) = startSlowRootServer(defaultConfiguration)
+
+  test "the shutdown request cancels the startup before answering":
+    check not ls.nimsuggestInit.finished
+    check ls.nimsuggestCreations.len == 0
+    discard waitFor client.call("shutdown", newJObject()).wait(CallTimeout)
+    check ls.nimsuggestInit.cancelled
+    check ls.projectFiles.len == 0
+
 suite "Shared project futures":
   test "joining project resolution does not cancel the shared future":
     let projectFile =
