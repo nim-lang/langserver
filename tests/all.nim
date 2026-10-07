@@ -3,8 +3,8 @@
 import ./[tsuggestapi, tnimlangserver]
 
 # XXX getNimPath's nimsuggestPath missing ExeExt
-when not defined(windows):
-  import ./tnimtrack
+#when not defined(windows):
+#  import ./tnimtrack
 
 import
   ./[
