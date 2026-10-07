@@ -519,3 +519,98 @@ suite "LSP socket transport":
     let status =
       to(clientA.callTimeout("extension/status", newJObject()), NimLangServerStatus)
     check status.version == LSPVersion
+
+proc hasNullMember(node: JsonNode): bool =
+  case node.kind
+  of JObject:
+    for _, value in node:
+      if value.kind == JNull or value.hasNullMember:
+        return true
+  of JArray:
+    for value in node:
+      if value.kind == JNull or value.hasNullMember:
+        return true
+  else:
+    discard
+  false
+
+suite "LSP messages leave unset members out":
+  #Some clients choke on a null where an optional member is expected, e.g.
+  #Neovim 0.12 (nim-lang/langserver#387), so whatever the server sends must
+  #leave unset members out rather than write them as null. A whole result
+  #may still be null, that is how "no result" is answered.
+  let cmdParams =
+    CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
+  let ls = main(cmdParams)
+  let client = newLspSocketClient()
+  client.registerNotification(
+    "window/showMessage", "window/workDoneProgress/create", "workspace/configuration",
+    "extension/statusUpdate", "textDocument/publishDiagnostics", "$/progress",
+  )
+  waitFor client.connect("localhost", cmdParams.port)
+
+  #Called by hand rather than with `client.initialize`, which decodes the
+  #result and so would hide what was actually sent
+  let initializeResult = client.callTimeout(
+    "initialize",
+    %(
+      LspInitializeParams %* {
+        "processId": %getCurrentProcessId(),
+        "rootUri": fixtureUri("projects/hw/"),
+        "capabilities": {"window": {"workDoneProgress": false}},
+      }
+    ),
+  )
+  client.notify("initialized", newJObject())
+
+  let
+    helloWorldFile = "projects/hw/hw.nim"
+    helloWorldUri = fixtureUri(helloWorldFile)
+  client.notify("textDocument/didOpen", %createDidOpenParams(helloWorldFile))
+  check waitFor client.waitForNotificationMessage(
+    fmt"Nimsuggest initialized for {uriToPath(helloWorldUri)}"
+  )
+  client.notify(
+    "textDocument/didSave",
+    %*{
+      "textDocument": {"uri": helloWorldUri}, "text": readFile("tests" / helloWorldFile)
+    },
+  )
+
+  suiteTeardown:
+    waitFor ls.shutdownNimsuggest()
+
+  test "The initialize result":
+    check initializeResult{"capabilities"}.kind == JObject
+    check not initializeResult.hasNullMember
+
+  test "A completion list":
+    let items = client.callTimeout(
+      "textDocument/completion",
+      %*{"textDocument": {"uri": helloWorldUri}, "position": {"line": 3, "character": 2}},
+    )
+    check items.len > 0
+    check not items.hasNullMember
+
+  test "A hover":
+    let hover =
+      client.callTimeout("textDocument/hover", %positionParams(helloWorldUri, 1, 6))
+    check hover.kind == JObject
+    check not hover.hasNullMember
+
+  test "Published diagnostics":
+    proc hasAnyDiagnostic(json: JsonNode): bool {.gcsafe, raises: [CatchableError].} =
+      {.cast(gcsafe).}:
+        json{"uri"}.getStr == helloWorldUri and json{"diagnostics"}.len > 0
+
+    check waitFor client.waitForNotification(
+      "textDocument/publishDiagnostics", hasAnyDiagnostic
+    )
+    for params in client.calls["textDocument/publishDiagnostics"]:
+      check not params.hasNullMember
+
+  test "Every notification and request sent to the client":
+    for name, calls in client.calls:
+      for params in calls:
+        checkpoint name
+        check not params.hasNullMember
