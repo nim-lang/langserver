@@ -12,7 +12,7 @@ import
   json_serialization,
   regex,
   stew/byteutils,
-  ../[testrunner, nimexpand, asyncprocmonitor, suggestapi, trackapi, ls, utils],
+  ../[testrunner, nimexpand, suggestapi, trackapi, ls, utils],
   ../protocol/[enums, types]
 
 import macros except error
@@ -32,33 +32,7 @@ proc getNphPath(): Option[string] {.raises: [OSError].} =
 proc initialize*(
     p: tuple[ls: LanguageServer, onExit: OnExitCallback], params: LspInitializeParams
 ): Future[LspInitializeResult] {.async: (raises: [OSError]).} =
-  proc onClientProcessExitAsync(): Future[void] {.async: (raises: [IOError, OSError]).} =
-    debug "onClientProcessExitAsync"
-    try:
-      await p.ls.shutdownNimsuggest
-      await p.onExit()
-    except CatchableError as ex:
-      error "Error in onClientProcessExit ", msg = ex.msg
-
-  proc onClientProcessExit() {.closure, gcsafe.} =
-    debug "onClientProcessExit"
-    asyncSpawn onClientProcessExitAsync()
-
   debug "Initialize received..."
-  if params.processId.isSome:
-    let pid = params.processId.get
-    if pid.kind == JInt:
-      debug "Registering monitor for process ", pid = pid.num
-      var pidInt = int(pid.num)
-      if p.ls.cmdLineClientProcessId.isSome:
-        if p.ls.cmdLineClientProcessId.get == pidInt:
-          debug "Process ID already specified in command line, no need to register monitor again"
-        else:
-          debug "Warning! Client Process ID in initialize request differs from the one, specified in the command line. This means the client violates the LSP spec!"
-          debug "Will monitor both process IDs..."
-          hookAsyncProcMonitor(pidInt, onClientProcessExit)
-      else:
-        hookAsyncProcMonitor(pidInt, onClientProcessExit)
   p.ls.lspInitializeParams = params
   p.ls.lspClientCapabilities = params.capabilities
   result = LspInitializeResult(
