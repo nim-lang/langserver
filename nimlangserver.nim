@@ -87,7 +87,6 @@ proc showHelp() =
   echo "  --stdio                  Use stdio transport (default)"
   echo "  --socket                 Use socket transport"
   echo "  --port=<port>            Port to use for socket transport"
-  echo "  --clientProcessId=<pid>  Exit when the given process ID terminates"
   echo ""
   const readme = staticRead("README.md")
   echo "CONFIGURATION OPTIONS"
@@ -120,14 +119,6 @@ proc handleParams(): CommandLineParams {.raises: [IOError, OSError, ValueError].
   var i = 1
   while i <= paramCount():
     var param = paramStr(i)
-    if param.startsWith("--clientProcessId="):
-      var pidStr = param.substr(18)
-      try:
-        var pid = pidStr.parseInt
-        result.clientProcessId = some(pid)
-      except ValueError:
-        stderr.writeLine("Invalid client process ID: ", pidStr)
-        quit 1
     if param == "--lsp":
       result.mode = some ServerMode.lsp
     if param == "--mcp":
