@@ -1,7 +1,7 @@
 {.push raises: [], gcsafe.}
 
 import
-  std/[syncio, os, json, strutils, strformat],
+  std/[os, json, strutils, strformat],
   json_rpc/[servers/socketserver, private/jrpc_sys, jsonmarshal, rpcclient, router],
   chronicles,
   chronos,
