@@ -198,7 +198,8 @@ nimlangserver --mcp --socket           # MCP over socket, auto port
 nimlangserver --mcp --socket --port=6001
 </code></pre>
 <p><strong>stdio</strong> is the right choice when the client launches <code>nimlangserver</code> as a subprocess (the normal case for both editors and AI agents).</p>
-<p><strong>socket</strong> is useful when the server and client run in separate environments — for example, a native Windows editor connecting to a server running inside WSL, or when you want a single running server to be reachable from multiple clients.</p>
+<p><strong>socket</strong> is useful when the server and client run in separate environments — for example, a native Windows editor connecting to a server running inside WSL.</p>
+<p>The server serves <strong>one client at a time</strong>, on either transport.</p>
 <footer id="open-on-gh">Found a bug? <a href="https://github.com/nim-lang/langserver//edit/main/book/src/cli.md">Edit this page on GitHub.</a></footer>
                     </main>
 
