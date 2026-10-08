@@ -20,3 +20,4 @@ tests/projects/testrunner/tests/test1
 tests/projects/testrunner/tests/sampletests
 tests/projects/trackproject/.gitignore
 tests/projects/trackproject/config.nims
+tests/nimlangserver_lifecycle*
