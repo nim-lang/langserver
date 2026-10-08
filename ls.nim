@@ -193,7 +193,7 @@ type
     nimblePath*: Option[string]
     entryPoints*: seq[string] #when it's empty, means the nimble version doesnt dump it.
 
-  OnExitCallback* = proc(): Future[void] {.async: (raises: [IOError, OSError]).}
+  OnExitCallback* = proc(): Future[void] {.async: (raises: []).}
     #To be called when the server is shutting down
   NotifyAction* =
     proc(name: string, params: JsonString): Future[void] {.async: (raises: []).}
