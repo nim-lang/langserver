@@ -3,7 +3,7 @@
   "name": "io.github.nim-lang/nimlangserver",
   "title": "Nim Language Server",
   "description": "MCP server providing symbol navigation, diagnostics, and type resolution for Nim projects",
-  "version": "1.14.0",
+  "version": "1.16.0",
   "repository": {
     "url": "https://github.com/nim-lang/langserver",
     "source": "github"
@@ -11,8 +11,8 @@
   "packages": [
     {
       "registryType": "mcpb",
-      "identifier": "https://github.com/nim-lang/langserver/releases/download/v1.14.0/nimlangserver.mcpb",
-      "fileSha256": "a562414768d3f39168021def9e1147405923c951e7044838b20444ed55179926",
+      "identifier": "https://github.com/nim-lang/langserver/releases/download/v1.16.0/nimlangserver.mcpb",
+      "fileSha256": "ef88197615978b0b385cf307bbbaadf5872176ebde1e182238e07a65a73ae40f",
       "transport": {
         "type": "stdio"
       }
