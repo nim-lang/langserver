@@ -105,7 +105,6 @@ type
     nimsuggestProject*: string
 
   CommandLineParams* = object
-    clientProcessId*: Option[int]
     mode*: Option[ServerMode]
     transport*: Option[TransportMode]
     port*: Port #only for sockets
@@ -165,7 +164,6 @@ type
       #Set once initialize has run. Until then routes can't rely on its state.
     isShutdown*: bool
     storageDir*: string
-    cmdLineClientProcessId*: Option[int]
     nimDumpCache*: Table[string, NimbleDumpInfo] #path to NimbleDumpInfo
     entryPoints*: seq[string]
     testRunProcess*: Option[AsyncProcessRef]
@@ -195,7 +193,7 @@ type
     nimblePath*: Option[string]
     entryPoints*: seq[string] #when it's empty, means the nimble version doesnt dump it.
 
-  OnExitCallback* = proc(): Future[void] {.async: (raises: [IOError, OSError]).}
+  OnExitCallback* = proc(): Future[void] {.async: (raises: []).}
     #To be called when the server is shutting down
   NotifyAction* =
     proc(name: string, params: JsonString): Future[void] {.async: (raises: []).}
@@ -232,7 +230,6 @@ proc initLs*(params: CommandLineParams, storageDir: string): LanguageServer =
     transportMode: params.transport.get(stdio),
     openFiles: initTable[string, NlsFileInfo](),
     storageDir: storageDir,
-    cmdLineClientProcessId: params.clientProcessId,
     extensionCapabilities: LspExtensionCapability.items.toSet,
   )
 

@@ -233,7 +233,7 @@ proc processStdioClient(
   ls.endServing(conn.lastError)
 
 proc initActions*(ls: LanguageServer) =
-  let onExit: OnExitCallback = proc() {.async: (raises: [IOError, OSError]).} =
+  let onExit: OnExitCallback = proc() {.async: (raises: []).} =
     ls.endServing()
     case ls.transportMode
     of stdio:
