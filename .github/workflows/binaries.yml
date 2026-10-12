@@ -272,7 +272,7 @@ jobs:
 
   publish-mcp-registry:
     name: Publish to MCP Registry
-    needs: [create-mcpb-bundle]
+    needs: [create-github-release]
     runs-on: ubuntu-latest
     continue-on-error: true
     permissions:
