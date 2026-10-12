@@ -1059,6 +1059,7 @@ type
     nsExceptionInlayHints = "exceptionInlayHints"
     nsUnknownFile = "unknownFile"
     nsMaxMemory = "maxMemory"
+    nsOutline2 = "outline2"
 
   PendingRequestStatus* = object
     name*: string

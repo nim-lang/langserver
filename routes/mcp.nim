@@ -371,7 +371,7 @@ proc callNimListSymbols(
   let nimsuggest = await ls.tryGetNimsuggest(uri)
 
   if nimsuggest.isSome:
-    let symbols = await nimsuggest.get.outline(path)
+    let symbols = await nimsuggest.get.outlineFile(path)
 
     var symbolsJson = newJArray()
     for symbol in symbols:
