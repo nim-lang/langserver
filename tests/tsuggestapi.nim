@@ -77,7 +77,7 @@ suite "Nimsuggest tests":
     check res.len > 0
     for name in ["helloMacro", "helloProc", "Obj", "f"]:
       check res.anyIt(it.qualifiedPath[^1] == name)
-    let command = if nsOutline2 in nimSuggest.capabilities:
+    let command = if "outline2" in nimSuggest.capabilities:
       "outline2 "
     else:
       "outline "
