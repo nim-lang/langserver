@@ -630,7 +630,9 @@ createRangeCommand(inlayHints)
 
 proc outlineFile*(
     self: Nimsuggest, file: string, dirtyfile = ""
-): Future[seq[Suggest]].Raising([CancelledError, NimsuggestError]) =
+): Future[seq[Suggest]] {.
+    async: (raw: true, raises: [CancelledError, NimsuggestError])
+.} =
   if nsOutline2 in self.capabilities:
     self.outline2(file, dirtyfile)
   else:
