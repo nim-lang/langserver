@@ -33,6 +33,7 @@ type
     ideMod
     ideHighlight
     ideOutline
+    ideOutline2
     ideKnown
     ideMsg
     ideProject
@@ -621,10 +622,21 @@ createFileOnlyCommand(chk)
 createFileOnlyCommand(chkFile)
 createFileOnlyCommand(changed)
 createFileOnlyCommand(outline)
+createFileOnlyCommand(outline2)
 createFileOnlyCommand(known)
 createFileOnlyCommand(globalSymbols)
 createGlobalCommand(recompile)
 createRangeCommand(inlayHints)
+
+proc outlineFile*(
+    self: Nimsuggest, file: string, dirtyfile = ""
+): Future[seq[Suggest]] {.
+    async: (raw: true, raises: [CancelledError, NimsuggestError])
+.} =
+  if nsOutline2 in self.capabilities:
+    self.outline2(file, dirtyfile)
+  else:
+    self.outline(file, dirtyfile)
 
 proc `mod`*(
     nimsuggest: Nimsuggest, file: string, dirtyfile = ""
