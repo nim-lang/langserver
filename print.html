@@ -577,7 +577,6 @@ when isMainModule:
 <tr><td><code>--stdio</code></td><td>Use stdio transport. This is the default for both modes.</td></tr>
 <tr><td><code>--socket</code></td><td>Use socket transport.</td></tr>
 <tr><td><code>--port=&lt;port&gt;</code></td><td>Port to listen on when using socket transport. If omitted, a free port is chosen automatically and printed to the console.</td></tr>
-<tr><td><code>--clientProcessId=&lt;pid&gt;</code></td><td>Exit automatically when the process with the given PID terminates. Editors pass this to tie the server lifetime to their own.</td></tr>
 <tr><td><code>--version</code>, <code>-v</code></td><td>Print version information and exit.</td></tr>
 <tr><td><code>--help</code>, <code>-h</code></td><td>Print a help message and exit.</td></tr>
 </tbody></table>
@@ -697,7 +696,6 @@ Backends
 <li><code>nimcheck.nim</code>: <code>nim check --listFullPaths</code> integration used when configuration chooses compiler-based diagnostics instead of <code>nimsuggest</code> diagnostics.</li>
 <li><code>nimexpand.nim</code>: fallback support for macro expansion and ARC expansion via <code>nim c --expandMacro</code> / <code>--expandArc</code>.</li>
 <li><code>testrunner.nim</code>: test discovery and execution for the custom LSP test routes.</li>
-<li><code>asyncprocmonitor.nim</code>: watches a client PID and shuts the server down when that process disappears.</li>
 <li><code>utils.nim</code>: URI/path helpers, UTF conversion helpers, future helpers, process shutdown utilities, temp storage helpers, and JSON-RPC param conversion helpers.</li>
 <li><code>protocol/types.nim</code>: data model types for JSON-RPC, LSP, and MCP payloads.</li>
 <li><code>protocol/enums.nim</code>: protocol enums used by the type layer.</li>
