@@ -16,8 +16,7 @@ nimlangserver [options]
 | `--mcp` | Run in MCP server mode. |
 | `--stdio` | Use stdio transport. This is the default for both modes. |
 | `--socket` | Use socket transport. |
-| `--port=<port>` | Port to listen on when using socket transport. If omitted, a free port is chosen automatically and printed to the console. |
-| `--clientProcessId=<pid>` | Exit automatically when the process with the given PID terminates. Editors pass this to tie the server lifetime to their own. |
+| `--port=<port>` | Port to listen on when using socket transport. If omitted, a free port is chosen automatically and printed to the console. |terminates. Editors pass this to tie the server lifetime to their own. |
 | `--version`, `-v` | Print version information and exit. |
 | `--help`, `-h` | Print a help message and exit. |
 

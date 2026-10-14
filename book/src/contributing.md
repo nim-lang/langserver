@@ -98,7 +98,6 @@ The MCP flow is the same shared pipeline with a thinner route layer:
 - `nimcheck.nim`: `nim check --listFullPaths` integration used when configuration chooses compiler-based diagnostics instead of `nimsuggest` diagnostics.
 - `nimexpand.nim`: fallback support for macro expansion and ARC expansion via `nim c --expandMacro` / `--expandArc`.
 - `testrunner.nim`: test discovery and execution for the custom LSP test routes.
-- `asyncprocmonitor.nim`: watches a client PID and shuts the server down when that process disappears.
 - `utils.nim`: URI/path helpers, UTF conversion helpers, future helpers, process shutdown utilities, temp storage helpers, and JSON-RPC param conversion helpers.
 - `protocol/types.nim`: data model types for JSON-RPC, LSP, and MCP payloads.
 - `protocol/enums.nim`: protocol enums used by the type layer.

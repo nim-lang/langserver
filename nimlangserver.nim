@@ -1,13 +1,13 @@
 {.push raises: [], gcsafe.}
 
 import
-  std/[syncio, os, json, strutils, strformat],
+  std/[os, json, strutils, strformat],
   json_rpc/[servers/socketserver, private/jrpc_sys, jsonmarshal, rpcclient, router],
   chronicles,
   chronos,
   ./protocol/types,
   ./routes/[lsp, mcp],
-  ./[ls, utils, lstransports2, asyncprocmonitor]
+  ./[ls, utils, lstransports2]
 
 when defined(posix):
   import std/posix
@@ -87,7 +87,6 @@ proc showHelp() =
   echo "  --stdio                  Use stdio transport (default)"
   echo "  --socket                 Use socket transport"
   echo "  --port=<port>            Port to use for socket transport"
-  echo "  --clientProcessId=<pid>  Exit when the given process ID terminates"
   echo ""
   const readme = staticRead("README.md")
   echo "CONFIGURATION OPTIONS"
@@ -120,14 +119,6 @@ proc handleParams(): CommandLineParams {.raises: [IOError, OSError, ValueError].
   var i = 1
   while i <= paramCount():
     var param = paramStr(i)
-    if param.startsWith("--clientProcessId="):
-      var pidStr = param.substr(18)
-      try:
-        var pid = pidStr.parseInt
-        result.clientProcessId = some(pid)
-      except ValueError:
-        stderr.writeLine("Invalid client process ID: ", pidStr)
-        quit 1
     if param == "--lsp":
       result.mode = some ServerMode.lsp
     if param == "--mcp":
@@ -162,29 +153,6 @@ proc registerRoutes*(ls: LanguageServer) =
   of mcp:
     ls.srv.registerMcpRoutes(ls)
 
-proc registerProcMonitor(ls: LanguageServer) =
-  if ls.cmdLineClientProcessId.isSome:
-    debug "Registering monitor for process id, specified on command line",
-      clientProcessId = ls.cmdLineClientProcessId.get
-
-    proc onCmdLineClientProcessExitAsync(): Future[void] {.
-        async: (raises: [IOError, OSError])
-    .} =
-      debug "onCmdLineClientProcessExitAsync"
-      try:
-        await ls.shutdownNimsuggest
-        await ls.onExit()
-      except IOError, OSError:
-        let ex = getCurrentException()
-        error "Error in onCmdLineClientProcessExit"
-        writeStackTrace(ex)
-
-    proc onCmdLineClientProcessExit() {.closure.} =
-      debug "onCmdLineClientProcessExit"
-      asyncSpawn onCmdLineClientProcessExitAsync()
-
-    hookAsyncProcMonitor(ls.cmdLineClientProcessId.get, onCmdLineClientProcessExit)
-
 proc tickLs*(ls: LanguageServer, time = 1.seconds) {.async: (raises: []).} =
   await ls.tick()
   try:
@@ -203,7 +171,6 @@ proc main*(
   result.initServer()
   result.registerRoutes()
   result.startServer(cmdLineParams.port)
-  result.registerProcMonitor()
 
 when isMainModule:
   try:
