@@ -219,7 +219,7 @@ suite "File closed with unsaved edits":
     waitFor ls.shutdownNimsuggest()
 
   test "its diagnostics are for the file on disk":
-    ls.setWorkspaceConfiguration(% @[NlsConfig()])
+    ls.setWorkspaceConfiguration(% @[NlsConfig(autoCheckFile: some true)])
     client.openRootFile()
     client.notify(
       "textDocument/didChange",
