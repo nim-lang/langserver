@@ -119,7 +119,7 @@ LSP configuration is supplied by the client/editor via `nim.*` settings.
 | `nim.projectMapping`          | Map file path patterns to `nimsuggest` project roots.                                                                                                             |
 | `nim.timeout`                 | Request timeout in ms before `nimlangserver` restarts. Default: 2 minutes.                                                                                        |
 | `nim.nimsuggestPath`          | Path to `nimsuggest`. Default: `"nimsuggest"`.                                                                                                                    |
-| `nim.autoCheckFile`           | Check the file on the fly.                                                                                                                                        |
+| `nim.autoCheckFile`           | Check the file on the fly. Default: `false`.                                                                                                                      |
 | `nim.autoCheckProject`        | Check the project after saving.                                                                                                                                   |
 | `nim.autoRestart`             | Auto-restart `nimsuggest` once after a crash. The server won't restart if there were no successful calls since the last restart.                                  |
 | `nim.workingDirectoryMapping` | Configure the working directory for specific projects.                                                                                                            |
