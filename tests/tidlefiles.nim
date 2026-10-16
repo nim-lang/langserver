@@ -42,8 +42,11 @@ proc startServer(): (LanguageServer, LspSocketClient) =
         {"window": {"workDoneProgress": true}, "workspace": {"configuration": true}},
     }
   )
-  # The check scheduled after each edit would reopen an idle file on its own.
-  ls.setWorkspaceConfiguration(% @[NlsConfig(autoCheckFile: some false)])
+  # The check scheduled after each edit would reopen an idle file on its own,
+  # and so would a project check still running when the nimsuggest is stopped.
+  ls.setWorkspaceConfiguration(
+    % @[NlsConfig(autoCheckFile: some false, autoCheckProject: some false)]
+  )
   (ls, client)
 
 proc completionLabels(client: LspSocketClient, line, character: int): seq[string] =
@@ -127,7 +130,13 @@ suite "Idle nimsuggest shared by several files":
 
   test "every file it served stays open and is served again":
     ls.setWorkspaceConfiguration(
-      % @[NlsConfig(maxNimsuggestProcesses: some 1, autoCheckFile: some false)]
+      % @[
+        NlsConfig(
+          maxNimsuggestProcesses: some 1,
+          autoCheckFile: some false,
+          autoCheckProject: some false,
+        )
+      ]
     )
     client.openRootFile()
     # The limit is 1, so the other file uses the nimsuggest started for the

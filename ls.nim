@@ -179,6 +179,7 @@ type
       #Project file to fail count
       #List of errors (crashes) nimsuggest has had since the lsp session started
     checkInProgress*: bool
+    token: uint
 
   Certainty* = enum
     None
@@ -232,6 +233,10 @@ proc initLs*(params: CommandLineParams, storageDir: string): LanguageServer =
     storageDir: storageDir,
     extensionCapabilities: LspExtensionCapability.items.toSet,
   )
+
+proc createProgressToken*(ls: LanguageServer): string =
+  inc ls.token
+  "token-" & $ls.token
 
 proc getNimbleEntryPoints*(
     dumpInfo: NimbleDumpInfo, nimbleProjectPath: string
@@ -1094,17 +1099,16 @@ proc checkProject*(
     proc getFilePath(c: CheckResult): string =
       c.file
 
-    let token = fmt "Checking {uri}"
+    let token = ls.createProgressToken()
     ls.workDoneProgressCreate(token)
     ls.progress(token, "begin", fmt "Checking project {uri}")
+    defer:
+      ls.progress(token, "end")
     if uri == "":
       warn "Checking project with empty uri", uri = uri
-      ls.progress(token, "end")
       return
     let diagnostics = await nimCheck(uriToPath(uri), nimPath.get)
     let filesWithDiags = diagnostics.map(r => r.file).toHashSet
-
-    ls.progress(token, "end")
 
     debug "Found diagnostics", file = filesWithDiags
     for (path, diags) in groupBy(diagnostics, getFilePath):
@@ -1132,7 +1136,7 @@ proc checkProject*(
 
   ls.cancelPendingFileChecks(nimsuggest)
 
-  let token = fmt "Checking {uri}"
+  let token = ls.createProgressToken()
   ls.workDoneProgressCreate(token)
   ls.progress(token, "begin", fmt "Checking project {uri.uriToPath}")
   nimsuggest.checkProjectInProgress = true
@@ -1148,8 +1152,6 @@ proc checkProject*(
         sug => sug.filePath != "???"
       )
     filesWithDiags = diagnostics.map(s => s.filePath).toHashSet
-
-  ls.progress(token, "end")
 
   debug "Found diagnostics", file = filesWithDiags
   for (path, diags) in groupBy(diagnostics, getFilepath):
@@ -1448,15 +1450,16 @@ proc checkFile*(
   let conf = await ls.getAndWaitForWorkspaceConfiguration()
   let useNimCheck = conf.useNimCheck.get(USE_NIM_CHECK_BY_DEFAULT)
   let nimPath = await ls.getNimPath(conf)
-  let token = fmt "Checking file {uri}"
+  let token = ls.createProgressToken()
   ls.workDoneProgressCreate(token)
   ls.progress(token, "begin", fmt "Checking {uri.uriToPath}")
+  defer:
+    ls.progress(token, "end")
 
   let path = uriToPath(uri)
 
   if useNimCheck and nimPath.isSome:
     let checkResults = await nimCheck(uriToPath(uri), nimPath.get)
-    ls.progress(token, "end")
     ls.sendDiagnostics(checkResults, path)
     return
 
@@ -1476,11 +1479,8 @@ proc checkFile*(
     else:
       ls.uriToStash(uri)
   if ns.isSome:
-    let diagnostics = ns.get().chkFile(path, dirtyFile).await()
-    ls.progress(token, "end")
+    let diagnostics = await ns.get().chkFile(path, dirtyFile)
     ls.sendDiagnostics(diagnostics, path)
-  else:
-    ls.progress(token, "end")
 
 proc removeCompletedPendingRequests(
     ls: LanguageServer, maxTimeAfterRequestWasCompleted = initDuration(seconds = 10)
