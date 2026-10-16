@@ -376,7 +376,7 @@ proc documentSymbols*(
     @[]
 
 proc scheduleFileCheck(ls: LanguageServer, uri: string) {.gcsafe, raises: [].} =
-  if not ls.getWorkspaceConfiguration().autoCheckFile.get(true):
+  if not ls.getWorkspaceConfiguration().autoCheckFile.get(false):
     return
   # schedule file check after the file is modified
   let fileData = ls.openFiles.getOrDefault(uri)
