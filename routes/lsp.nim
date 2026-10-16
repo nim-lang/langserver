@@ -749,10 +749,9 @@ proc executeCommand*(
     ls.checkProject(projectFile.pathToUri).traceAsyncErrors
   of RECOMPILE_COMMAND:
     debug "Clean build", projectFile = projectFile
-    let
-      token = fmt "Compiling {projectFile}"
-      project = ls.projectFiles.getOrDefault(projectFile)
+    let project = ls.projectFiles.getOrDefault(projectFile)
     if project != nil and project.ns != nil:
+      let token = ls.createProgressToken()
       ls.workDoneProgressCreate(token)
       ls.progress(token, "begin", fmt "Compiling project {projectFile}")
 
