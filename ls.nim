@@ -101,6 +101,7 @@ type
     cancelFileCheck*: Future[void].Raising([CancelledError])
     checkInProgress*: bool
     needsChecking*: bool
+    edits*: uint
     textDocument*: TextDocumentItem
     nimsuggestProject*: string
 
@@ -179,7 +180,6 @@ type
       #Project file to fail count
       #List of errors (crashes) nimsuggest has had since the lsp session started
     checkInProgress*: bool
-    token: uint
 
   Certainty* = enum
     None
@@ -1102,13 +1102,14 @@ proc checkProject*(
     let token = ls.createProgressToken()
     ls.workDoneProgressCreate(token)
     ls.progress(token, "begin", fmt "Checking project {uri}")
-    defer:
-      ls.progress(token, "end")
     if uri == "":
       warn "Checking project with empty uri", uri = uri
+      ls.progress(token, "end")
       return
     let diagnostics = await nimCheck(uriToPath(uri), nimPath.get)
     let filesWithDiags = diagnostics.map(r => r.file).toHashSet
+
+    ls.progress(token, "end")
 
     debug "Found diagnostics", file = filesWithDiags
     for (path, diags) in groupBy(diagnostics, getFilePath):
@@ -1152,6 +1153,8 @@ proc checkProject*(
         sug => sug.filePath != "???"
       )
     filesWithDiags = diagnostics.map(s => s.filePath).toHashSet
+
+  ls.progress(token, "end")
 
   debug "Found diagnostics", file = filesWithDiags
   for (path, diags) in groupBy(diagnostics, getFilepath):
@@ -1447,20 +1450,21 @@ proc checkFile*(
     )
 .} =
   let uri = file.textDocument.uri
+  let edits = file.edits
   let conf = await ls.getAndWaitForWorkspaceConfiguration()
   let useNimCheck = conf.useNimCheck.get(USE_NIM_CHECK_BY_DEFAULT)
   let nimPath = await ls.getNimPath(conf)
   let token = ls.createProgressToken()
   ls.workDoneProgressCreate(token)
   ls.progress(token, "begin", fmt "Checking {uri.uriToPath}")
-  defer:
-    ls.progress(token, "end")
 
   let path = uriToPath(uri)
 
   if useNimCheck and nimPath.isSome:
     let checkResults = await nimCheck(uriToPath(uri), nimPath.get)
-    ls.sendDiagnostics(checkResults, path)
+    ls.progress(token, "end")
+    if file.edits == edits:
+      ls.sendDiagnostics(checkResults, path)
     return
 
   let closed = uri notin ls.openFiles
@@ -1479,8 +1483,12 @@ proc checkFile*(
     else:
       ls.uriToStash(uri)
   if ns.isSome:
-    let diagnostics = await ns.get().chkFile(path, dirtyFile)
-    ls.sendDiagnostics(diagnostics, path)
+    let diagnostics = ns.get().chkFile(path, dirtyFile).await()
+    ls.progress(token, "end")
+    if file.edits == edits:
+      ls.sendDiagnostics(diagnostics, path)
+  else:
+    ls.progress(token, "end")
 
 proc removeCompletedPendingRequests(
     ls: LanguageServer, maxTimeAfterRequestWasCompleted = initDuration(seconds = 10)
