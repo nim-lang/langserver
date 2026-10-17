@@ -1154,8 +1154,6 @@ proc checkProject*(
       )
     filesWithDiags = diagnostics.map(s => s.filePath).toHashSet
 
-  ls.progress(token, "end")
-
   debug "Found diagnostics", file = filesWithDiags
   for (path, diags) in groupBy(diagnostics, getFilepath):
     ls.sendDiagnostics(diags, path)
