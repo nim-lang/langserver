@@ -1130,6 +1130,7 @@ proc didChange*(
 
       info.fingerTable = @[]
       info.changed = true
+      inc info.edits
       if contentChanges.len > 0:
         info.textDocument.text = contentChanges[0].text
         for line in contentChanges[0].text.splitLines:
