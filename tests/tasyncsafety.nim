@@ -29,6 +29,7 @@ suite "Async safety":
         {"window": {"workDoneProgress": false}, "workspace": {"configuration": true}},
     }
   discard waitFor client.initialize(initParams)
+  ls.setWorkspaceConfiguration(% @[NlsConfig()])
 
   let
     helloWorldFile = "projects/hw/hw.nim"
@@ -106,6 +107,7 @@ suite "Replacing a running nimsuggest":
         {"window": {"workDoneProgress": false}, "workspace": {"configuration": true}},
     }
   )
+  ls.setWorkspaceConfiguration(% @[NlsConfig()])
 
   let
     helloWorldFile = "projects/hw/hw.nim"

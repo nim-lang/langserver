@@ -191,6 +191,7 @@ suite "Nimlangserver didOpen visibility":
         "capabilities": {"window": {"workDoneProgress": true}},
       }
     discard waitFor client.initialize(initParams)
+    ls.setWorkspaceConfiguration(% @[NlsConfig()])
 
     #didOpen cannot get past this
     ls.nimsuggestInit =
@@ -230,6 +231,7 @@ suite "Nimlangserver didOpen ordering":
         "capabilities": {"window": {"workDoneProgress": true}},
       }
     discard waitFor client.initialize(initParams)
+    ls.setWorkspaceConfiguration(% @[NlsConfig()])
 
     let startup =
       Future[void].Raising([CancelledError, OSError]).init("parked")
@@ -276,6 +278,7 @@ suite "Nimlangserver request cancelled during startup":
         "capabilities": {"window": {"workDoneProgress": true}},
       }
     discard waitFor client.initialize(initParams)
+    ls.setWorkspaceConfiguration(% @[NlsConfig()])
 
     let startup =
       Future[void].Raising([CancelledError, OSError]).init("parked")
@@ -474,6 +477,7 @@ suite "Nimlangserver nimsuggest creation":
       },
     }
   discard waitFor client.initialize(initParams)
+  ls.setWorkspaceConfiguration(% @[NlsConfig()])
 
   let hwProjectFile = uriToPath(fixtureUri("projects/hw/hw.nim"))
   let hwUri = fixtureUri("projects/hw/hw.nim")
@@ -529,6 +533,7 @@ suite "Nimlangserver nimsuggest timeout restart":
       },
     }
   discard waitFor client.initialize(initParams)
+  ls.setWorkspaceConfiguration(% @[NlsConfig()])
 
   let hwProjectFile = uriToPath(fixtureUri("projects/hw/hw.nim"))
   let hwUri = fixtureUri("projects/hw/hw.nim")
@@ -541,7 +546,7 @@ suite "Nimlangserver nimsuggest timeout restart":
     # here gets 1ms; the restart that replaces it gets the usual configuration
     let original = ls.workspaceConfiguration
     let tight = NlsConfig()
-    tight[] = ls.getWorkspaceConfiguration()[]
+    tight[] = ls.workspaceConfiguration[]
     tight.timeout = some 1
     ls.workspaceConfiguration = tight
     let creation = ls.createOrRestartNimsuggest(hwProjectFile, hwUri)

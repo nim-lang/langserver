@@ -30,6 +30,7 @@ suite "Nimlangserver extensions":
           {"window": {"workDoneProgress": true}, "workspace": {"configuration": true}},
       }
     let initializeResult = waitFor client.initialize(initParams)
+    ls.setWorkspaceConfiguration(% @[NlsConfig()])
 
     check initializeResult.capabilities.textDocumentSync.isSome
 
@@ -62,6 +63,7 @@ suite "Nimlangserver extensions":
           {"window": {"workDoneProgress": true}, "workspace": {"configuration": true}},
       }
     let initializeResult = waitFor client.initialize(initParams)
+    ls.setWorkspaceConfiguration(% @[NlsConfig()])
 
     let tasksFile = "projects/tasks/src/tasks.nim"
     let taskAbsFile = uriToPath(tasksFile.fixtureUri())
@@ -100,6 +102,7 @@ suite "Nimlangserver extensions":
           {"window": {"workDoneProgress": true}, "workspace": {"configuration": true}},
       }
     let initializeResult = waitFor client.initialize(initParams)
+    ls.setWorkspaceConfiguration(% @[NlsConfig()])
 
     let listTestsParams = ListTestsParams(
       entryPoint: "tests/projects/testrunner/tests/sampletests.nim".absolutePath
@@ -124,6 +127,7 @@ suite "Nimlangserver extensions":
           {"window": {"workDoneProgress": true}, "workspace": {"configuration": true}},
       }
     let initializeResult = waitFor client.initialize(initParams)
+    ls.setWorkspaceConfiguration(% @[NlsConfig()])
 
     let runTestsParams = RunTestParams(
       entryPoint: "tests/projects/testrunner/tests/sampletests.nim".absolutePath
@@ -149,6 +153,7 @@ suite "Nimlangserver extensions":
           {"window": {"workDoneProgress": true}, "workspace": {"configuration": true}},
       }
     let initializeResult = waitFor client.initialize(initParams)
+    ls.setWorkspaceConfiguration(% @[NlsConfig()])
 
     let suiteName = "Sample Suite"
     let runTestsParams = RunTestParams(
@@ -173,6 +178,7 @@ suite "Nimlangserver extensions":
       }
 
     let initializeResult = waitFor client.initialize(initParams)
+    ls.setWorkspaceConfiguration(% @[NlsConfig()])
 
     let testName = "Sample Test"
     let runTestsParams = RunTestParams(
@@ -197,6 +203,7 @@ suite "Nimlangserver extensions":
             {"window": {"workDoneProgress": true}, "workspace": {"configuration": true}},
         }
       let initializeResult = waitFor client.initialize(initParams)
+      ls.setWorkspaceConfiguration(% @[NlsConfig()])
 
       let testNames = @["Sample Test", "Sample Test 2"]
       let runTestsParams = RunTestParams(
@@ -221,6 +228,7 @@ suite "Nimlangserver extensions":
       }
 
     let initializeResult = waitFor client.initialize(initParams)
+    ls.setWorkspaceConfiguration(% @[NlsConfig()])
 
     let runTestsParams = RunTestParams(
       entryPoint: "tests/projects/testrunner/tests/failingtest.nim".absolutePath

@@ -33,6 +33,7 @@ suite "nimble setup":
           {"window": {"workDoneProgress": true}, "workspace": {"configuration": true}},
       }
     discard waitFor client.initialize(initParams)
+    ls.setWorkspaceConfiguration(% @[NlsConfig()])
 
     check waitFor client.waitForNotificationMessage(
       fmt"Nimsuggest initialized for {entryPoint}"
