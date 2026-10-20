@@ -7,6 +7,8 @@ import
   ../protocol/[types],
   ./[lspsocketclient, testhelpers]
 
+from std/times import getTime, initDuration, `+`
+
 suite "Nimlangserver misc":
   let cmdParams =
     CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
@@ -633,3 +635,79 @@ suite "Nimlangserver project lookup replaced by a configuration change":
     startup.complete()
     discard waitFor request.wait(60.seconds)
     check ls.openFiles[hwUri].nimsuggestProject == hwPath
+
+suite "Nimlangserver files written behind the editor":
+  let cmdParams =
+    CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
+  let ls = main(cmdParams)
+  let client = newLspSocketClient()
+  waitFor client.connect("localhost", cmdParams.port)
+  client.registerNotification(
+    "window/showMessage", "window/workDoneProgress/create", "workspace/configuration",
+    "extension/statusUpdate", "textDocument/publishDiagnostics", "$/progress",
+  )
+  let
+    dir = getTempDir() / "nimlangserver-written-behind"
+    path = dir / "behind.nim"
+    uri = pathToUri(path)
+  createDir(dir)
+  writeFile(path, "proc a*() = discard\n")
+  discard waitFor client.initialize(
+    LspInitializeParams %* {
+      "processId": %getCurrentProcessId(),
+      "rootUri": pathToUri(dir),
+      "capabilities": {"window": {"workDoneProgress": true}},
+    }
+  )
+  ls.setWorkspaceConfiguration(
+    % @[
+      NlsConfig(
+        autoCheckFile: some false,
+        autoCheckProject: some false,
+        checkOnSave: some false,
+      )
+    ]
+  )
+  client.notify(
+    "textDocument/didOpen",
+    %*{
+      "textDocument":
+        {"uri": uri, "languageId": "nim", "version": 0, "text": readFile(path)}
+    },
+  )
+  check waitUntil(uri in ls.openFiles)
+
+  proc writeBehind(text: string) =
+    writeFile(path, text)
+
+  proc change(text: string) =
+    client.notify(
+      "textDocument/didChange",
+      %*{"textDocument": {"uri": uri, "version": 1}, "contentChanges": [{"text": text}]},
+    )
+    check waitUntil(ls.openFiles[uri].textDocument.text == text)
+
+  suiteTeardown:
+    waitFor ls.shutdownNimsuggest()
+
+  test "typing marks the file unsaved":
+    change("proc a*() = discard\nproc b*() = discard\n")
+    check ls.openFiles[uri].changed
+    check ls.uriToStash(uri) != ""
+
+  test "a reload after the file was written behind the editor is saved":
+    writeBehind("proc c*() = discard\n")
+    change("proc c*() = discard\n")
+    check not ls.openFiles[uri].changed
+    check ls.uriToStash(uri) == ""
+
+  test "an edit on top of a file written behind the editor stays unsaved":
+    writeBehind("proc d*() = discard\n")
+    change("proc e*() = discard\n")
+    check ls.openFiles[uri].changed
+
+  test "saving after typing marks it saved":
+    change("proc d*() = discard\n")
+    writeFile(path, "proc d*() = discard\n")
+    client.notify("textDocument/didSave", %*{"textDocument": {"uri": uri}})
+    check waitUntil(not ls.openFiles[uri].changed)

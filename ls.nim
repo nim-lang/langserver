@@ -107,6 +107,7 @@ type
     edits*: uint
     textDocument*: TextDocumentItem
     nimsuggestProject*: string
+    diskModified*: Time #Of the file on disk when we last knew it had the editor's text
 
   CommandLineParams* = object
     mode*: Option[ServerMode]
@@ -987,6 +988,7 @@ proc didOpenFile*(
       changed: false,
       fingerTable: @[],
       textDocument: textDocument,
+      diskModified: uriToPath(uri).modificationTime,
     )
     ls.openFiles[uri] = openFile
 

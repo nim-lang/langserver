@@ -1,7 +1,7 @@
 {.push raises: [], gcsafe.}
 
 import
-  std/[macros, unicode, uri, strformat, os, strutils, options, json, net, paths],
+  std/[macros, unicode, uri, strformat, os, strutils, options, json, net, paths, times],
   chronos,
   chronicles,
   chronos/asyncproc,
@@ -64,6 +64,13 @@ proc utf16Len*(utf8Str: string): int =
       result += 2
     else:
       discard
+
+proc modificationTime*(path: string): Time =
+  ## The zero time for a file that can't be read.
+  try:
+    getLastModificationTime(path)
+  except OSError:
+    Time()
 
 proc utf16to8*(fingerTable: FingerTable, utf16pos: int): int =
   result = utf16pos

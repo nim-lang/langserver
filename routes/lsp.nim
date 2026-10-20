@@ -1132,6 +1132,26 @@ proc setTrace*(
   ls.checkInitialized()
   debug "setTrace", value = params.value
 
+proc fileSaved(
+    ls: LanguageServer, uri: string
+) {.async: (raises: [CancelledError, OSError, IOError, RegexError]).} =
+  ## The file on disk has the editor's text.
+  let info = ls.openFiles.getOrDefault(uri)
+  #Before any await, so a change that comes after it is not undone
+  if info != nil:
+    info.changed = false
+  let config = await ls.workspaceConfigurationWait()
+  let nimsuggest = await ls.tryGetNimsuggest(uri)
+
+  if nimsuggest.isNone:
+    return
+
+  traceAsyncErrors nimsuggest.get.changed(uriToPath(uri))
+
+  if config.checkOnSave.get(true):
+    debug "Checking project", uri = uri
+    traceAsyncErrors ls.checkProject(uri)
+
 proc didChange*(
     ls: LanguageServer, params: DidChangeTextDocumentParams
 ): Future[void] {.
@@ -1161,6 +1181,14 @@ proc didChange*(
       finally:
         file.close()
       await ls.fileCheckDelay(uri)
+      #Something else wrote the file. If the editor reloaded it, the text is the
+      #same and it is as if it had been saved.
+      let path = uriToPath(uri)
+      let modified = path.modificationTime
+      if modified != info.diskModified:
+        info.diskModified = modified
+        if contentChanges[0].text == readFile(path):
+          traceAsyncErrors ls.fileSaved(uri)
 
 proc willSaveWaitUntil*(
     ls: LanguageServer, params: WillSaveTextDocumentParams
@@ -1198,22 +1226,11 @@ proc didSave*(
     async: (raises: [ApplicationError, CancelledError, OSError, IOError, RegexError])
 .} =
   ls.checkInitialized()
-  let
-    uri = params.textDocument.uri
-    config = await ls.workspaceConfigurationWait()
-  let nimsuggest = await ls.tryGetNimsuggest(uri)
-
-  if nimsuggest.isNone:
-    return
-
+  let uri = params.textDocument.uri
   let info = ls.openFiles.getOrDefault(uri)
   if info != nil:
-    info.changed = false
-  traceAsyncErrors nimsuggest.get.changed(uriToPath(uri))
-
-  if config.checkOnSave.get(true):
-    debug "Checking project", uri = uri
-    traceAsyncErrors ls.checkProject(uri)
+    info.diskModified = uriToPath(uri).modificationTime
+  await ls.fileSaved(uri)
 
   # var toStop = newTable[string, Nimsuggest]()
   # #We first get the project file for the current file so we can test if this file recently imported another project
