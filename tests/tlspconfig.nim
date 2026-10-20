@@ -282,9 +282,9 @@ suite "LSP configuration pulled from the client":
     holdConfiguration.complete()
     check waitUntil(ls.workspaceConfiguration.nimsuggestIdleTimeout == some 60000)
 
-  test "toggling the exception inlay hints restarts nimsuggest and asks for a refresh":
+  test "a configuration change stops nimsuggest until the next request and asks for a refresh":
     let projectFile = uriToPath(helloWorldUri)
-    check projectFile in ls.projectFiles
+    check (waitFor ls.tryGetNimsuggest(helloWorldUri).wait(30.seconds)).isSome
     let
       pidBefore = ls.projectFiles[projectFile].process.pid
       refreshesBefore = client.calls["workspace/inlayHint/refresh"].len
@@ -293,9 +293,7 @@ suite "LSP configuration pulled from the client":
     client.notify("workspace/didChangeConfiguration", %*{"settings": newJNull()})
 
     check waitUntil(client.calls["workspace/inlayHint/refresh"].len > refreshesBefore)
+    check projectFile notin ls.projectFiles
 
-    check waitUntil(
-      projectFile in ls.projectFiles and
-        ls.projectFiles[projectFile].process.pid != pidBefore,
-      timeout = 30.seconds,
-    )
+    check (waitFor ls.tryGetNimsuggest(helloWorldUri).wait(30.seconds)).isSome
+    check ls.projectFiles[projectFile].process.pid != pidBefore
