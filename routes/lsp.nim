@@ -1134,7 +1134,14 @@ proc setTrace*(
 
 proc fileSaved(
     ls: LanguageServer, uri: string
-) {.async: (raises: [CancelledError, OSError, IOError, RegexError]).} =
+) {.
+    async: (
+      raises: [
+        CancelledError, AsyncProcessError, AsyncStreamError, OSError, IOError,
+        RegexError, NimsuggestError,
+      ]
+    )
+.} =
   ## The file on disk has the editor's text.
   let info = ls.openFiles.getOrDefault(uri)
   #Before any await, so a change that comes after it is not undone
@@ -1146,11 +1153,11 @@ proc fileSaved(
   if nimsuggest.isNone:
     return
 
-  traceAsyncErrors nimsuggest.get.changed(uriToPath(uri))
+  discard await nimsuggest.get.changed(uriToPath(uri))
 
   if config.checkOnSave.get(true):
     debug "Checking project", uri = uri
-    traceAsyncErrors ls.checkProject(uri)
+    await ls.checkProject(uri)
 
 proc didChange*(
     ls: LanguageServer, params: DidChangeTextDocumentParams
@@ -1222,7 +1229,12 @@ proc willSaveWaitUntil*(
 proc didSave*(
     ls: LanguageServer, params: DidSaveTextDocumentParams
 ): Future[void] {.
-    async: (raises: [ApplicationError, CancelledError, OSError, IOError, RegexError])
+    async: (
+      raises: [
+        ApplicationError, CancelledError, AsyncProcessError, AsyncStreamError, OSError,
+        IOError, RegexError, NimsuggestError,
+      ]
+    )
 .} =
   ls.checkInitialized()
   let uri = params.textDocument.uri
