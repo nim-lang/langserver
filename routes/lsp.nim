@@ -1177,8 +1177,7 @@ proc didChange*(
         info.textDocument.text = contentChanges[0].text
         for line in contentChanges[0].text.splitLines:
           info.fingerTable.add line.createUTFMapping()
-          file.writeLine line
-      finally:
+          file.writeLine line      finally:
         file.close()
       await ls.fileCheckDelay(uri)
       #Something else wrote the file. If the editor reloaded it, the text is the
@@ -1188,7 +1187,7 @@ proc didChange*(
       if modified != info.diskModified:
         info.diskModified = modified
         if contentChanges[0].text == readFile(path):
-          traceAsyncErrors ls.fileSaved(uri)
+          await ls.fileSaved(uri)
 
 proc willSaveWaitUntil*(
     ls: LanguageServer, params: WillSaveTextDocumentParams

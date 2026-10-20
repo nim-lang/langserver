@@ -259,11 +259,11 @@ proc getNimScriptAPITemplatePath*(): string {.raises: [OSError, IOError].} =
 proc shutdownChildProcess*(p: AsyncProcessRef): Future[void] {.async: (raises: []).} =
   try:
     debug "Shutting down process with pid: ", pid = p.processId()
-    let exitCode = await noCancel p.terminateAndWaitForExit(2.seconds)
+    let exitCode = await noCancel p.terminateAndWaitForExit(chronos.seconds(2))
       # debug "Process terminated with exit code: ", exitCode
   except AsyncProcessError:
     try:
-      let forcedExitCode = await noCancel p.killAndWaitForExit(3.seconds)
+      let forcedExitCode = await noCancel p.killAndWaitForExit(chronos.seconds(3))
       debug "Process forcibly killed with exit code: ", exitCode = forcedExitCode
     except AsyncProcessError:
       debug "Could not kill process in time either!"
@@ -281,7 +281,7 @@ proc readAllOutput*(
     result.add(string.fromBytes(data))
 
 proc readErrorOutputUntilExit*(
-    process: AsyncProcessRef, duration: Duration
+    process: AsyncProcessRef, duration: chronos.Duration
 ): Future[tuple[output: string, code: int]] {.
     async: (raises: [CancelledError, AsyncProcessError, AsyncStreamError])
 .} =
@@ -306,7 +306,7 @@ proc readErrorOutputUntilExit*(
       return (output, res)
 
 proc readOutputUntilExit*(
-    process: AsyncProcessRef, duration: Duration
+    process: AsyncProcessRef, duration: chronos.Duration
 ): Future[tuple[output: string, error: string, code: int]] {.
     async: (raises: [CancelledError, AsyncProcessError])
 .} =
