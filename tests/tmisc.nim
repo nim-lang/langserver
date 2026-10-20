@@ -7,8 +7,6 @@ import
   ../protocol/[types],
   ./[lspsocketclient, testhelpers]
 
-from std/times import getTime, initDuration, `+`
-
 suite "Nimlangserver misc":
   let cmdParams =
     CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
