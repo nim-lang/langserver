@@ -375,15 +375,33 @@ proc documentSymbols*(
   else:
     @[]
 
-proc fileCheckDelayImpl(ls: LanguageServer, uri: string) {.async: (raises: [CancelledError]).} =
-  if not ls.getWorkspaceConfiguration().autoCheckFile.get(false):
-    return
-  await sleepAsync(FILE_CHECK_DELAY)
+proc fileCheckDelayImpl(
+    ls: LanguageServer, uri: string
+) {.
+    async: (
+      raises: [
+        CancelledError, AsyncProcessError, AsyncStreamError, OSError, IOError,
+        RegexError, NimsuggestError,
+      ]
+    )
+.} =
   let info = ls.openFiles.getOrDefault(uri)
-  if info != nil:
+  await sleepAsync(FILE_CHECK_DELAY)
+  if info == ls.openFiles.getOrDefault(uri):
     await ls.checkFile(info)
 
-proc fileCheckDelay(ls: LanguageServer, uri: string) {.async: (raises: [CancelledError]).} =
+proc fileCheckDelay(
+    ls: LanguageServer, uri: string
+) {.
+    async: (
+      raises: [
+        CancelledError, AsyncProcessError, AsyncStreamError, OSError, IOError,
+        RegexError, NimsuggestError,
+      ]
+    )
+.} =
+  if not ls.getWorkspaceConfiguration().autoCheckFile.get(false):
+    return
   let info = ls.openFiles.getOrDefault(uri)
   if info == nil:
     return
@@ -393,8 +411,10 @@ proc fileCheckDelay(ls: LanguageServer, uri: string) {.async: (raises: [Cancelle
     await info.fileCheck.cancelAndWait()
     if edits != info.edits:
       return
-  info.fileCheck = fileCheckDelayImpl(ls, uri)
-  await info.fileCheck
+  # still open and same file info
+  if info == ls.openFiles.getOrDefault(uri):
+    info.fileCheck = fileCheckDelayImpl(ls, uri)
+    await info.fileCheck
 
 proc toMdLinks(s: string): string =
   result = s
@@ -1113,7 +1133,14 @@ proc setTrace*(
 
 proc didChange*(
     ls: LanguageServer, params: DidChangeTextDocumentParams
-): Future[void] {.async: (raises: [ApplicationError, IOError]).} =
+): Future[void] {.
+    async: (
+      raises: [
+        ApplicationError, CancelledError, AsyncProcessError, AsyncStreamError, OSError,
+        IOError, RegexError, NimsuggestError,
+      ]
+    )
+.} =
   ls.checkInitialized()
   with params:
     let uri = textDocument.uri

@@ -98,7 +98,12 @@ type
     projectFile*: Future[string].Raising([CancelledError, OSError, RegexError])
     changed*: bool
     fingerTable*: seq[seq[tuple[u16pos, offset: int]]]
-    fileCheck*: Future[void].Raising([CancelledError])
+    fileCheck*: Future[void].Raising(
+      [
+        CancelledError, AsyncProcessError, AsyncStreamError, OSError, IOError,
+        RegexError, NimsuggestError,
+      ]
+    )
     edits*: uint
     textDocument*: TextDocumentItem
     nimsuggestProject*: string
