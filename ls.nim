@@ -1267,6 +1267,7 @@ proc createOrRestartNimsuggest*(
   ls.createOrRestartNimsuggestUnprotected(projectFile, uri).join()
 
 proc stopNimsuggests(ls: LanguageServer) {.async: (raises: []).} =
+  debug "Stopping all nimsuggest instances"
   let
     creations = toSeq(ls.nimsuggestCreations.values)
     projects = toSeq(ls.projectFiles.values)
@@ -1307,8 +1308,9 @@ proc handleConfigurationChanges*(
 ): Future[void] {.async: (raises: [CancelledError]).} =
   if $(%oldConfiguration) == $(%newConfiguration):
     return
-  debug "Stopping all nimsuggest instances"
   let stopping = ls.stopNimsuggests()
+  defer:
+    await stopping
   for uri, file in ls.openFiles:
     file.projectFile = ls.getProjectFileAfterStartup(uri.uriToPath)
     file.nimsuggestProject = ""
@@ -1319,7 +1321,6 @@ proc handleConfigurationChanges*(
     debug "Sending inlayHint refresh"
     #An empty object means no params at all
     ls.inlayHintsRefreshRequest = ls.call("workspace/inlayHint/refresh", JsonString"{}")
-  await stopping
 
 proc maybeRequestConfigurationFromClient*(
     ls: LanguageServer
