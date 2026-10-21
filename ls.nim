@@ -98,9 +98,7 @@ type
     projectFile*: Future[string].Raising([CancelledError, OSError, RegexError])
     changed*: bool
     fingerTable*: seq[seq[tuple[u16pos, offset: int]]]
-    cancelFileCheck*: Future[void].Raising([CancelledError])
-    checkInProgress*: bool
-    needsChecking*: bool
+    fileCheck*: Future[void].Raising([CancelledError])
     edits*: uint
     textDocument*: TextDocumentItem
     nimsuggestProject*: string
@@ -680,12 +678,9 @@ proc cancelPendingFileChecks*(ls: LanguageServer, nimsuggest: Nimsuggest) =
   # stop all checks on file level if we are going to run checks on project
   # level.
   for uri in ls.filesServedBy(nimsuggest.project.file):
-    let fileData = ls.openFiles.getOrDefault(uri)
-    if fileData != nil:
-      let cancelFileCheck = fileData.cancelFileCheck
-      if cancelFileCheck != nil and not cancelFileCheck.finished:
-        cancelFileCheck.complete()
-      fileData.needsChecking = false
+    let info = ls.openFiles.getOrDefault(uri)
+    if info != nil and info.fileCheck != nil and not info.fileCheck.finished():
+      info.fileCheck.cancelSoon()
 
 proc uriStorageLocation*(ls: LanguageServer, uri: string): string =
   ls.storageDir / (hash(uri).toHex & ".nim")

@@ -375,31 +375,26 @@ proc documentSymbols*(
   else:
     @[]
 
-proc scheduleFileCheck(ls: LanguageServer, uri: string) {.gcsafe, raises: [].} =
+proc fileCheckDelayImpl(ls: LanguageServer, uri: string) {.async: (raises: [CancelledError]).} =
   if not ls.getWorkspaceConfiguration().autoCheckFile.get(false):
     return
-  # schedule file check after the file is modified
-  let fileData = ls.openFiles.getOrDefault(uri)
-  if fileData.cancelFileCheck != nil and not fileData.cancelFileCheck.finished:
-    fileData.cancelFileCheck.complete()
+  await sleepAsync(FILE_CHECK_DELAY)
+  let info = ls.openFiles.getOrDefault(uri)
+  if info != nil:
+    await ls.checkFile(info)
 
-  if fileData.checkInProgress:
-    fileData.needsChecking = true
+proc fileCheckDelay(ls: LanguageServer, uri: string) {.async: (raises: [CancelledError]).} =
+  let info = ls.openFiles.getOrDefault(uri)
+  if info == nil:
     return
-
-  var cancelFuture = Future[void].Raising([CancelledError]).init("scheduleFileCheck")
-  fileData.cancelFileCheck = cancelFuture
-
-  sleepAsync(FILE_CHECK_DELAY).addCallback do(data: pointer):
-    if not cancelFuture.finished:
-      fileData.checkInProgress = true
-      ls.checkFile(fileData).addCallback do(data: pointer) {.gcsafe, raises: [].}:
-        let info = ls.openFiles.getOrDefault(uri)
-        if info != nil:
-          info.checkInProgress = false
-          if fileData.needsChecking:
-            fileData.needsChecking = false
-            ls.scheduleFileCheck(uri)
+  let edits = info.edits
+  # run only one file check at a time
+  while info.fileCheck != nil and not info.fileCheck.finished():
+    await info.fileCheck.cancelAndWait()
+    if edits != info.edits:
+      return
+  info.fileCheck = fileCheckDelayImpl(ls, uri)
+  await info.fileCheck
 
 proc toMdLinks(s: string): string =
   result = s
@@ -1123,20 +1118,21 @@ proc didChange*(
   with params:
     let uri = textDocument.uri
     let info = ls.openFiles.getOrDefault(uri)
-    if info != nil:
+    if info == nil:
+      return
+    info.fingerTable = @[]
+    info.changed = true
+    inc info.edits
+    if contentChanges.len > 0:
       let file = open(ls.uriStorageLocation(uri), fmWrite)
-      defer:
-        file.close()
-
-      info.fingerTable = @[]
-      info.changed = true
-      inc info.edits
-      if contentChanges.len > 0:
+      try:
         info.textDocument.text = contentChanges[0].text
         for line in contentChanges[0].text.splitLines:
           info.fingerTable.add line.createUTFMapping()
           file.writeLine line
-        ls.scheduleFileCheck(uri)
+      finally:
+        file.close()
+      await ls.fileCheckDelay(uri)
 
 proc willSaveWaitUntil*(
     ls: LanguageServer, params: WillSaveTextDocumentParams
