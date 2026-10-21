@@ -26,6 +26,7 @@ suite "LSP diagnostics":
       "capabilities": {"window": {"workDoneProgress": false}},
     }
   let initializeResult = waitFor client.initialize(initParams)
+  ls.setWorkspaceConfiguration(% @[NlsConfig()])
   client.notify("initialized", newJObject())
 
   let

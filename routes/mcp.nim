@@ -229,7 +229,7 @@ proc callNimFindReferences(
       TextDocumentItem(uri: uri, languageId: "nim", version: 0, text: readFile(path))
     )
 
-  let config = ls.getWorkspaceConfiguration()
+  let config = await ls.workspaceConfigurationWait()
 
   if config.useNimTrack.get(false):
     let projectFile = await ls.openFiles[uri].waitProjectFile()
@@ -577,6 +577,8 @@ proc initialize*(
     rootPath = getCurrentDir().pathToUri.uriToPath
 
   ls.mcpServerCapabilities = result.capabilities
+  #MCP clients have no settings for us
+  ls.setWorkspaceConfiguration(newJArray())
   ls.nimsuggestInit = ls.initNimsuggestInstances(rootPath)
   ls.initialized = true
 

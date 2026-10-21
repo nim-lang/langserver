@@ -154,7 +154,7 @@ type
     openFiles*: Table[string, NlsFileInfo]
     workspaceConfiguration*: NlsConfig
       #What the client configured us with, or the defaults until it does.
-      #Set through setWorkspaceConfiguration, read through getWorkspaceConfiguration.
+      #Set through setWorkspaceConfiguration, read through workspaceConfigurationWait.
     workspaceConfigurationReady*: Future[void].Raising([CancelledError])
       #Completed the first time a configuration is known, and never replaced.
     inlayHintsRefreshRequest*: Future[JsonNode].Raising([CancelledError, JsonRpcError])
@@ -353,30 +353,31 @@ proc setWorkspaceConfiguration*(ls: LanguageServer, conf: JsonNode) {.raises: []
   if not ls.workspaceConfigurationReady.finished:
     ls.workspaceConfigurationReady.complete()
 
-proc getWorkspaceConfiguration*(ls: LanguageServer): NlsConfig {.raises: [].} =
-  #TODO review and handle project specific confs when received instead of reliying in this func
-  if ls.workspaceConfiguration.isNil:
-    NlsConfig()
-  else:
-    ls.workspaceConfiguration
-
-proc getAndWaitForWorkspaceConfiguration*(
+proc workspaceConfigurationWait*(
     ls: LanguageServer
 ): Future[NlsConfig] {.async: (raises: [CancelledError]).} =
-  await ls.workspaceConfigurationReady.join()
-  ls.getWorkspaceConfiguration()
+  if ls.workspaceConfigurationReady.finished():
+    ls.workspaceConfiguration
+  else:
+    # only ever wait 10s for everyone
+    if not await chronos.withTimeout(
+      ls.workspaceConfigurationReady.join(), chronos.seconds(10)
+    ):
+      if not ls.workspaceConfigurationReady.finished():
+        debug "Workspace config ready timeout; setting default config"
+        ls.setWorkspaceConfiguration(newJArray())
+    ls.workspaceConfiguration
 
 proc showMessage*(
     ls: LanguageServer, message: string, typ: MessageType
-) {.raises: [].} =
+) {.async: (raises: [CancelledError]).} =
   proc notify() =
     ls.notify(
       "window/showMessage", ShowMessageParams(`type`: typ.int, message: message)
     )
 
-  let verbosity = ls.getWorkspaceConfiguration.notificationVerbosity.get(
-    NlsNotificationVerbosity.nvInfo
-  )
+  let conf = await ls.workspaceConfigurationWait()
+  let verbosity = conf.notificationVerbosity.get(NlsNotificationVerbosity.nvInfo)
   debug "ShowMessage ", message = message
   case verbosity
   of nvInfo:
@@ -562,7 +563,7 @@ proc getNimsuggestPathAndVersion(
       nimsuggestPath = findExe "nimsuggest"
   else:
     nimVersion = getNimVersion(nimsuggestPath.parentDir)
-  # ls.showMessage(fmt "Using {nimVersion}", MessageType.Info)
+  # await ls.showMessage(fmt "Using {nimVersion}", MessageType.Info)
   debug "Using {nimVersion}", nimVersion = nimVersion
   (nimsuggestPath, nimVersion)
 
@@ -597,7 +598,7 @@ proc getProjectFileAutoGuess*(
     certainty = Certainty.None
     up = 0
 
-  let conf = ls.getWorkspaceConfiguration()
+  let conf = await ls.workspaceConfigurationWait()
   let maxNimsuggestProcesses = conf.maxNimsuggestProcesses.get(NIM_MAX_NS_PROCESSES)
   # When using only one nimsuggest process, we should not search for parent projects
   # as this will cause all files to be opened in the same nimsuggest process.
@@ -646,7 +647,7 @@ proc getRootPath*(ip: McpInitializeParams): string {.raises: [OSError].} =
 
 proc getWorkingDir*(
     ls: LanguageServer, path: string
-): Future[string] {.async: (raises: [OSError]).} =
+): Future[string] {.async: (raises: [CancelledError, OSError]).} =
   let rootPath =
     case ls.serverMode
     of lsp: ls.lspInitializeParams.getRootPath
@@ -654,7 +655,8 @@ proc getWorkingDir*(
 
   let
     pathRelativeToRoot = path.tryRelativeTo(rootPath)
-    mapping = ls.getWorkspaceConfiguration().workingDirectoryMapping.get(@[])
+    conf = await ls.workspaceConfigurationWait()
+    mapping = conf.workingDirectoryMapping.get(@[])
 
   result = rootPath
 
@@ -825,7 +827,7 @@ proc warnIfUnknown*(
   let path = uri.uriToPath
   let isFileKnown = await ns.isKnown(path)
   if not isFileKnown and not ns.canHandleUnknown:
-    ls.showMessage(
+    await ls.showMessage(
       fmt """{path} is not compiled as part of project {projectFile}.
   In orde to get the IDE features working you must either configure nim.projectMapping or import the module.""",
       MessageType.Warning,
@@ -850,9 +852,8 @@ proc liveNimsuggestProjects*(ls: LanguageServer): seq[string] =
     if projectFile notin result:
       result.add projectFile
 
-proc canSpawnNimsuggest(ls: LanguageServer): bool =
+proc canSpawnNimsuggest(ls: LanguageServer, conf: NlsConfig): bool =
   let nsCount = ls.liveNimsuggestProjects.len
-  let conf = ls.getWorkspaceConfiguration()
   let maxNimsuggestProcesses = conf.maxNimsuggestProcesses.get(NIM_MAX_NS_PROCESSES)
   result = maxNimsuggestProcesses == 0 or nsCount < maxNimsuggestProcesses
   debug "canSpawnNimsuggest",
@@ -865,22 +866,22 @@ proc reuseLiveNimsuggestProject(ls: LanguageServer): string =
     debug "Reached the maximum instances of nimsuggest, reusing the first nimsuggest instance",
       project = result
 
-proc mappedProjectFiles(ls: LanguageServer): seq[string] {.raises: [OSError].} =
+proc mappedProjectFiles(
+    ls: LanguageServer, conf: NlsConfig
+): seq[string] {.raises: [OSError].} =
   let rootPath =
     case ls.serverMode
     of mcp:
       ls.mcpInitializeParams.getRootPath()
     of lsp:
       ls.lspInitializeParams.getRootPath()
-  ls.getWorkspaceConfiguration().projectMapping.get(@[]).mapIt(
-    rootPath / it.projectFile
-  )
+  conf.projectMapping.get(@[]).mapIt(rootPath / it.projectFile)
 
 proc nimsuggestProjectFor(
-    ls: LanguageServer, projectFile: string
+    ls: LanguageServer, conf: NlsConfig, projectFile: string
 ): string {.raises: [OSError].} =
-  if ls.isLiveNimsuggestProject(projectFile) or projectFile in ls.mappedProjectFiles() or
-      ls.canSpawnNimsuggest():
+  if ls.isLiveNimsuggestProject(projectFile) or
+      projectFile in ls.mappedProjectFiles(conf) or ls.canSpawnNimsuggest(conf):
     projectFile
   else:
     ls.reuseLiveNimsuggestProject()
@@ -891,13 +892,14 @@ proc initNimsuggestInstances*(
   if rootPath == "":
     return
 
+  let conf = await ls.workspaceConfigurationWait()
   let nimbleFiles = walkFiles(rootPath / "*.nimble").toSeq
   if nimbleFiles.len > 0:
     let nimbleFile = nimbleFiles[0]
     let nimbleDumpInfo = await ls.getNimbleDumpInfo(nimbleFile)
     ls.entryPoints = nimbleDumpInfo.getNimbleEntryPoints(rootPath)
     for entryPoint in ls.entryPoints:
-      if not ls.isLiveNimsuggestProject(entryPoint) and ls.canSpawnNimsuggest():
+      if not ls.isLiveNimsuggestProject(entryPoint) and ls.canSpawnNimsuggest(conf):
         debug "Starting nimsuggest for entry point ", entry = entryPoint
         await ls.createOrRestartNimsuggest(entryPoint)
 
@@ -927,7 +929,8 @@ proc getNimsuggestInner(
 
   let projectFile = await file.waitProjectFile()
   if not ls.hasServingNimsuggest(file):
-    let ownProject = ls.nimsuggestProjectFor(projectFile)
+    let conf = await ls.workspaceConfigurationWait()
+    let ownProject = ls.nimsuggestProjectFor(conf, projectFile)
     file.nimsuggestProject = ls.failoverProject(ownProject)
     if file.nimsuggestProject notin ["", ownProject]:
       debug "Reusing nimsuggest instance for",
@@ -1007,26 +1010,22 @@ proc didOpenFile*(
 ): Future[void] {.async: (raises: [CancelledError, OSError, IOError, RegexError]).} =
   with textDocument:
     debug "New document opened for URI:", uri = uri
-    let
-      file = open(ls.uriStorageLocation(uri), fmWrite)
-      projectFileFuture = ls.getProjectFileAfterStartup(uriToPath(uri))
-    ls.openFiles[uri] = NlsFileInfo(
+    let file = open(ls.uriStorageLocation(uri), fmWrite)
+    defer:
+      file.close()
+    let projectFileFuture = ls.getProjectFileAfterStartup(uriToPath(uri))
+    let openFile = NlsFileInfo(
       projectFile: projectFileFuture,
       changed: false,
       fingerTable: @[],
       textDocument: textDocument,
     )
+    ls.openFiles[uri] = openFile
 
     for line in text.splitLines:
-      let openFile = ls.openFiles.getOrDefault(uri)
-      if openFile != nil:
-        openFile.fingerTable.add line.createUTFMapping()
-        file.writeLine line
-    file.close()
+      openFile.fingerTable.add line.createUTFMapping()
+      file.writeLine line
 
-    let openFile = ls.openFiles.getOrDefault(uri)
-    if openFile == nil:
-      return
     let projectFile = await openFile.waitProjectFile()
     debug "Document associated with the following projectFile",
       uri = uri, projectFile = projectFile
@@ -1043,7 +1042,7 @@ proc didOpenFile*(
       await didOpenFile(ls, textDocument)
 
       debug "Opening project file", uri = projectFile, file = uri
-    ls.showMessage(fmt "Opening {uri}", MessageType.Info)
+    await ls.showMessage(fmt "Opening {uri}", MessageType.Info)
 
 proc tryGetNimsuggest*(
     ls: LanguageServer, uri: string
@@ -1089,9 +1088,9 @@ proc checkProject*(
   defer:
     ls.checkInProgress = false
 
-  if not ls.getWorkspaceConfiguration().autoCheckProject.get(true):
+  let conf = await ls.workspaceConfigurationWait()
+  if not conf.autoCheckProject.get(true):
     return
-  let conf = await ls.getAndWaitForWorkspaceConfiguration()
   let useNimCheck = conf.useNimCheck.get(USE_NIM_CHECK_BY_DEFAULT)
 
   let nimPath = await ls.getNimPath(conf)
@@ -1182,14 +1181,14 @@ proc onErrorCallback(
   debug "Nimsuggest needed to be restarted due to an error "
   ls.failTable[project.file] = ls.failTable.getOrDefault(project.file, 0) + 1
   debug "Fail count", count = ls.failTable[project.file]
-  let configuration = ls.getWorkspaceConfiguration()
   warn "Server stopped.", projectFile = project.file
   try:
+    let configuration = await ls.workspaceConfigurationWait()
     if configuration.autoRestart.get(true) and project.ns != nil and
         project.ns.successfullCall:
       await ls.createOrRestartNimsuggest(project.file, uri)
     else:
-      ls.showMessage(
+      await ls.showMessage(
         fmt "Server failed with {project.errorMessage}.", MessageType.Error
       )
   except CancelledError:
@@ -1212,7 +1211,7 @@ proc createOrRestartNimsuggestImpl(
     try:
       debug "Starting createOrRestartNimsuggest", projectFile = projectFile, uri = uri
       let
-        configuration = ls.getWorkspaceConfiguration()
+        configuration = await ls.workspaceConfigurationWait()
         workingDir = await ls.getWorkingDir(projectFile)
         (nimsuggestPath, version) =
           await ls.getNimsuggestPathAndVersion(configuration, workingDir)
@@ -1222,7 +1221,7 @@ proc createOrRestartNimsuggestImpl(
         ): Future[void] {.async: (raises: [CancelledError]).} =
           warn "Restarting the server due to requests being to slow",
             projectFile = projectFile
-          ls.showMessage(
+          await ls.showMessage(
             fmt "Restarting nimsuggest for file {projectFile} due to timeout.",
             MessageType.Warning,
           )
@@ -1269,9 +1268,11 @@ proc createOrRestartNimsuggestImpl(
       project.stop()
     ls.projectFiles[projectFile] = projectNext
     ls.failTable.del(projectFile)
-    ls.showMessage(fmt "Nimsuggest initialized for {projectFile}", MessageType.Info)
     traceAsyncErrors ls.checkProject(uri)
     ls.sendStatusChanged()
+    await ls.showMessage(
+      fmt "Nimsuggest initialized for {projectFile}", MessageType.Info
+    )
 
 proc createOrRestartNimsuggestUnprotected(
     ls: LanguageServer, projectFile: string, uri: string
@@ -1353,21 +1354,21 @@ proc maybeRequestConfigurationFromClient*(
       #the first configuration is not a change, so there is nothing to handle
       let
         hadConfiguration = ls.workspaceConfigurationReady.finished
-        oldConfiguration = ls.getWorkspaceConfiguration()
+        oldConfiguration = ls.workspaceConfiguration
       ls.setWorkspaceConfiguration(configuration)
       if hadConfiguration:
-        await ls.handleConfigurationChanges(
-          oldConfiguration, ls.getWorkspaceConfiguration()
-        )
+        await ls.handleConfigurationChanges(oldConfiguration, ls.workspaceConfiguration)
     except CancelledError:
       error "Failed to handle the client configuration",
         error = getCurrentExceptionMsg()
     except JsonRpcError as exc:
       error "Failed to request the client configuration", error = exc.msg
-      ls.setWorkspaceConfiguration(newJArray())
+      if not ls.workspaceConfigurationReady.finished():
+        ls.setWorkspaceConfiguration(newJArray())
   else:
     debug "Client does not support workspace/configuration"
-    ls.setWorkspaceConfiguration(newJArray()) #the defaults, and no one waits anymore
+    if not ls.workspaceConfigurationReady.finished():
+      ls.setWorkspaceConfiguration(newJArray())
 
 proc getCharacter*(
     ls: LanguageServer, uri: string, line: int, character: int
@@ -1401,13 +1402,14 @@ proc getProjectFile*(
       of lsp:
         ls.lspInitializeParams.getRootPath()
     pathRelativeToRoot = fileUri.tryRelativeTo(rootPath)
-    mappings = ls.getWorkspaceConfiguration().projectMapping.get(@[])
+    conf = await ls.workspaceConfigurationWait()
+    mappings = conf.projectMapping.get(@[])
 
   for mapping in mappings:
     var m: RegexMatch2
     if pathRelativeToRoot.isSome and
         find(pathRelativeToRoot.get(), re2(mapping.fileRegex), m):
-      ls.showMessage(
+      await ls.showMessage(
         fmt"RegEx matched `{mapping.fileRegex}` for file `{fileUri}`", MessageType.Info
       )
       result = rootPath / mapping.projectFile
@@ -1420,7 +1422,7 @@ proc getProjectFile*(
         uri = fileUri, matchedRegex = mapping.fileRegex
 
   #If we reached the maximum instances of nimsuggest, we just return the first project
-  if not ls.canSpawnNimsuggest():
+  if not ls.canSpawnNimsuggest(conf):
     return ls.reuseLiveNimsuggestProject()
 
   result = await ls.getProjectFileAutoGuess(fileUri)
@@ -1449,7 +1451,7 @@ proc checkFile*(
 .} =
   let uri = file.textDocument.uri
   let edits = file.edits
-  let conf = await ls.getAndWaitForWorkspaceConfiguration()
+  let conf = await ls.workspaceConfigurationWait()
   let useNimCheck = conf.useNimCheck.get(USE_NIM_CHECK_BY_DEFAULT)
   let nimPath = await ls.getNimPath(conf)
   let token = ls.createProgressToken()
@@ -1505,10 +1507,9 @@ proc removeIdleNimsuggests*(
   if ls.projectFiles.len == 0:
     return
   const DefaultNimsuggestIdleTimeout = 120000
-  let timeout = ls.getWorkspaceConfiguration().nimsuggestIdleTimeout.get(
-      DefaultNimsuggestIdleTimeout
-    )
-  let mappedProjects = ls.mappedProjectFiles()
+  let conf = await ls.workspaceConfigurationWait()
+  let timeout = conf.nimsuggestIdleTimeout.get(DefaultNimsuggestIdleTimeout)
+  let mappedProjects = ls.mappedProjectFiles(conf)
   var toStop = newSeq[Project]()
   for project in ls.projectFiles.values:
     if project.file in ls.entryPoints or project.file in mappedProjects:
@@ -1525,7 +1526,7 @@ proc removeIdleNimsuggests*(
     project.stop()
     ls.projectFiles.del(project.file)
 
-    ls.showMessage(
+    await ls.showMessage(
       fmt"Nimsuggest for {project.file} was stopped because it was idle for too long",
       MessageType.Info,
     )

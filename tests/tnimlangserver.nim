@@ -29,6 +29,7 @@ suite "Nimlangserver":
           {"window": {"workDoneProgress": true}, "workspace": {"configuration": true}},
       }
     let initializeResult = waitFor client.initialize(initParams)
+    ls.setWorkspaceConfiguration(% @[NlsConfig()])
 
     check initializeResult.capabilities.textDocumentSync.isSome
 
@@ -53,6 +54,7 @@ suite "Suggest API selection":
         {"window": {"workDoneProgress": true}, "workspace": {"configuration": true}},
     }
   discard waitFor client.initialize(initParams)
+  ls.setWorkspaceConfiguration(% @[NlsConfig()])
   client.notify("initialized", newJObject())
 
   suiteTeardown:
@@ -97,6 +99,7 @@ suite "LSP features":
     }
 
   discard waitFor client.initialize(initParams)
+  ls.setWorkspaceConfiguration(% @[NlsConfig()])
 
   client.notify("initialized", newJObject())
   let didOpenParams = createDidOpenParams("projects/hw/hw.nim")
@@ -290,6 +293,7 @@ suite "Null configuration:":
     }
 
   discard waitFor client.initialize(initParams)
+  ls.setWorkspaceConfiguration(% @[NlsConfig()])
   client.notify("initialized", newJObject())
 
   suiteTeardown:
