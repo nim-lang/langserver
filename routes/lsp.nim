@@ -375,31 +375,46 @@ proc documentSymbols*(
   else:
     @[]
 
-proc scheduleFileCheck(ls: LanguageServer, uri: string) {.gcsafe, raises: [].} =
+proc fileCheckDelayImpl(
+    ls: LanguageServer, uri: string
+) {.
+    async: (
+      raises: [
+        CancelledError, AsyncProcessError, AsyncStreamError, OSError, IOError,
+        RegexError, NimsuggestError,
+      ]
+    )
+.} =
+  let info = ls.openFiles.getOrDefault(uri)
+  await sleepAsync(FILE_CHECK_DELAY)
+  if info == ls.openFiles.getOrDefault(uri):
+    await ls.checkFile(info)
+
+proc fileCheckDelay(
+    ls: LanguageServer, uri: string
+) {.
+    async: (
+      raises: [
+        CancelledError, AsyncProcessError, AsyncStreamError, OSError, IOError,
+        RegexError, NimsuggestError,
+      ]
+    )
+.} =
   if not ls.getWorkspaceConfiguration().autoCheckFile.get(false):
     return
-  # schedule file check after the file is modified
-  let fileData = ls.openFiles.getOrDefault(uri)
-  if fileData.cancelFileCheck != nil and not fileData.cancelFileCheck.finished:
-    fileData.cancelFileCheck.complete()
-
-  if fileData.checkInProgress:
-    fileData.needsChecking = true
+  let info = ls.openFiles.getOrDefault(uri)
+  if info == nil:
     return
-
-  var cancelFuture = Future[void].Raising([CancelledError]).init("scheduleFileCheck")
-  fileData.cancelFileCheck = cancelFuture
-
-  sleepAsync(FILE_CHECK_DELAY).addCallback do(data: pointer):
-    if not cancelFuture.finished:
-      fileData.checkInProgress = true
-      ls.checkFile(fileData).addCallback do(data: pointer) {.gcsafe, raises: [].}:
-        let info = ls.openFiles.getOrDefault(uri)
-        if info != nil:
-          info.checkInProgress = false
-          if fileData.needsChecking:
-            fileData.needsChecking = false
-            ls.scheduleFileCheck(uri)
+  let edits = info.edits
+  # run only one file check at a time
+  while info.fileCheck != nil and not info.fileCheck.finished():
+    await info.fileCheck.cancelAndWait()
+    if edits != info.edits:
+      return
+  # still open and same file info
+  if info == ls.openFiles.getOrDefault(uri):
+    info.fileCheck = fileCheckDelayImpl(ls, uri)
+    await info.fileCheck
 
 proc toMdLinks(s: string): string =
   result = s
@@ -1118,24 +1133,33 @@ proc setTrace*(
 
 proc didChange*(
     ls: LanguageServer, params: DidChangeTextDocumentParams
-): Future[void] {.async: (raises: [ApplicationError, IOError]).} =
+): Future[void] {.
+    async: (
+      raises: [
+        ApplicationError, CancelledError, AsyncProcessError, AsyncStreamError, OSError,
+        IOError, RegexError, NimsuggestError,
+      ]
+    )
+.} =
   ls.checkInitialized()
   with params:
     let uri = textDocument.uri
     let info = ls.openFiles.getOrDefault(uri)
-    if info != nil:
+    if info == nil:
+      return
+    info.fingerTable = @[]
+    info.changed = true
+    inc info.edits
+    if contentChanges.len > 0:
       let file = open(ls.uriStorageLocation(uri), fmWrite)
-      defer:
-        file.close()
-
-      info.fingerTable = @[]
-      info.changed = true
-      if contentChanges.len > 0:
+      try:
         info.textDocument.text = contentChanges[0].text
         for line in contentChanges[0].text.splitLines:
           info.fingerTable.add line.createUTFMapping()
           file.writeLine line
-        ls.scheduleFileCheck(uri)
+      finally:
+        file.close()
+      await ls.fileCheckDelay(uri)
 
 proc willSaveWaitUntil*(
     ls: LanguageServer, params: WillSaveTextDocumentParams

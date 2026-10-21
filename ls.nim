@@ -98,9 +98,13 @@ type
     projectFile*: Future[string].Raising([CancelledError, OSError, RegexError])
     changed*: bool
     fingerTable*: seq[seq[tuple[u16pos, offset: int]]]
-    cancelFileCheck*: Future[void].Raising([CancelledError])
-    checkInProgress*: bool
-    needsChecking*: bool
+    fileCheck*: Future[void].Raising(
+      [
+        CancelledError, AsyncProcessError, AsyncStreamError, OSError, IOError,
+        RegexError, NimsuggestError,
+      ]
+    )
+    edits*: uint
     textDocument*: TextDocumentItem
     nimsuggestProject*: string
 
@@ -679,12 +683,9 @@ proc cancelPendingFileChecks*(ls: LanguageServer, nimsuggest: Nimsuggest) =
   # stop all checks on file level if we are going to run checks on project
   # level.
   for uri in ls.filesServedBy(nimsuggest.project.file):
-    let fileData = ls.openFiles.getOrDefault(uri)
-    if fileData != nil:
-      let cancelFileCheck = fileData.cancelFileCheck
-      if cancelFileCheck != nil and not cancelFileCheck.finished:
-        cancelFileCheck.complete()
-      fileData.needsChecking = false
+    let info = ls.openFiles.getOrDefault(uri)
+    if info != nil and info.fileCheck != nil and not info.fileCheck.finished():
+      info.fileCheck.cancelSoon()
 
 proc uriStorageLocation*(ls: LanguageServer, uri: string): string =
   ls.storageDir / (hash(uri).toHex & ".nim")
@@ -1447,6 +1448,7 @@ proc checkFile*(
     )
 .} =
   let uri = file.textDocument.uri
+  let edits = file.edits
   let conf = await ls.getAndWaitForWorkspaceConfiguration()
   let useNimCheck = conf.useNimCheck.get(USE_NIM_CHECK_BY_DEFAULT)
   let nimPath = await ls.getNimPath(conf)
@@ -1460,7 +1462,8 @@ proc checkFile*(
 
   if useNimCheck and nimPath.isSome:
     let checkResults = await nimCheck(uriToPath(uri), nimPath.get)
-    ls.sendDiagnostics(checkResults, path)
+    if file.edits == edits:
+      ls.sendDiagnostics(checkResults, path)
     return
 
   let closed = uri notin ls.openFiles
@@ -1480,7 +1483,8 @@ proc checkFile*(
       ls.uriToStash(uri)
   if ns.isSome:
     let diagnostics = await ns.get().chkFile(path, dirtyFile)
-    ls.sendDiagnostics(diagnostics, path)
+    if file.edits == edits:
+      ls.sendDiagnostics(diagnostics, path)
 
 proc removeCompletedPendingRequests(
     ls: LanguageServer, maxTimeAfterRequestWasCompleted = initDuration(seconds = 10)

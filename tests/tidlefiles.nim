@@ -237,6 +237,42 @@ suite "File closed with unsaved edits":
     check waitUntil(client.diagnosticsFor(uri) > published, 30.seconds)
     check client.lastDiagnosticsFor(uri).len == 0
 
+suite "File edited while it is checked":
+  let (ls, client) = startServer()
+  let uri = RootFile.fixtureUri
+
+  suiteTeardown:
+    waitFor ls.shutdownNimsuggest()
+
+  test "the outdated diagnostics are not published":
+    ls.setWorkspaceConfiguration(
+      % @[NlsConfig(autoCheckFile: some false, autoCheckProject: some false)]
+    )
+    client.openRootFile()
+    let published = client.diagnosticsFor(uri)
+
+    let checking = ls.checkFile(ls.openFiles[uri])
+    # A call, unlike a notification, returns once the edit is applied.
+    discard waitFor client
+      .call(
+        "textDocument/didChange",
+        %*{
+          "textDocument": {"uri": uri, "version": 2},
+          "contentChanges":
+            [{"text": readFile("tests" / RootFile) & "echo notDefinedAnywhere\n"}],
+        },
+      )
+      .wait(60.seconds)
+    waitFor checking
+    # The reply comes after every notification sent before it.
+    check client.completionLabels(4, 7).len > 0
+    check client.diagnosticsFor(uri) == published
+
+    waitFor ls.checkFile(ls.openFiles[uri])
+    check client.completionLabels(4, 7).len > 0
+    check client.diagnosticsFor(uri) == published + 1
+    check client.lastDiagnosticsFor(uri).len > 0
+
 suite "Failed nimsuggest with no other to fall back to":
   let (ls, client) = startServer()
   let rootProject = RootFile.fixtureUri.uriToPath
