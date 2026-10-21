@@ -655,7 +655,8 @@ proc getWorkingDir*(
 
   let
     pathRelativeToRoot = path.tryRelativeTo(rootPath)
-    mapping = (await ls.workspaceConfigurationWait()).workingDirectoryMapping.get(@[])
+    conf = await ls.workspaceConfigurationWait()
+    mapping = conf.workingDirectoryMapping.get(@[])
 
   result = rootPath
 
