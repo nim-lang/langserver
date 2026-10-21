@@ -495,22 +495,20 @@ suite "Nimlangserver nimsuggest creation":
     check ls.projectFiles.len == 1
     check not ls.projectFiles[hwProjectFile].process.isNil
 
-  test "handleConfigurationChanges restarts nimsuggest before it returns":
+  test "handleConfigurationChanges leaves nimsuggest alone when nothing changed":
     let previousPid = ls.projectFiles[hwProjectFile].process.pid
-    let oldConfiguration = NlsConfig(
-      inlayHints: some NlsInlayHintsConfig(
-        exceptionHints: some NlsInlayExceptionHintsConfig(enable: some true)
-      )
-    )
-    let newConfiguration = NlsConfig(
-      inlayHints: some NlsInlayHintsConfig(
-        exceptionHints: some NlsInlayExceptionHintsConfig(enable: some false)
-      )
-    )
+    waitFor ls.handleConfigurationChanges(NlsConfig(), NlsConfig()).wait(60.seconds)
+    check ls.projectFiles[hwProjectFile].process.pid == previousPid
+    check ls.inlayHintsRefreshRequest.isNil
+
+  test "handleConfigurationChanges stops nimsuggest before it returns":
+    let oldConfiguration = NlsConfig(timeout: some 120000)
+    let newConfiguration = NlsConfig(timeout: some 60000)
     waitFor ls.handleConfigurationChanges(oldConfiguration, newConfiguration).wait(
       60.seconds
     )
-    check ls.projectFiles[hwProjectFile].process.pid != previousPid
+    check ls.projectFiles.len == 0
+    check ls.nimsuggestCreations.len == 0
     check not ls.inlayHintsRefreshRequest.isNil
 
 suite "Nimlangserver nimsuggest timeout restart":
@@ -564,3 +562,74 @@ suite "Nimlangserver nimsuggest timeout restart":
       proc(json: JsonNode): bool =
         json{"nimsuggestInstances"}.getElems.anyIt(it{"port"}.getInt == port),
     )
+
+suite "Nimlangserver project lookup replaced by a configuration change":
+  let cmdParams =
+    CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
+  let ls = main(cmdParams)
+  let client = newLspSocketClient()
+  waitFor client.connect("localhost", cmdParams.port)
+  client.registerNotification(
+    "window/showMessage", "window/workDoneProgress/create", "workspace/configuration",
+    "extension/statusUpdate", "textDocument/publishDiagnostics", "$/progress",
+  )
+  discard waitFor client.initialize(
+    LspInitializeParams %* {
+      "processId": %getCurrentProcessId(),
+      "rootUri": fixtureUri("projects/hw/"),
+      "capabilities": {"window": {"workDoneProgress": true}},
+    }
+  )
+  let before = NlsConfig(autoCheckFile: some false, autoCheckProject: some false)
+  ls.setWorkspaceConfiguration(% @[before])
+
+  let
+    hwUri = fixtureUri("projects/hw/hw.nim")
+    hwPath = uriToPath(hwUri)
+    rootPath = uriToPath(fixtureUri("projects/hw/root.nim"))
+
+  suiteTeardown:
+    waitFor ls.shutdownNimsuggest()
+
+  test "a request waiting on the replaced lookup uses the new one":
+    # The lookup made under the old configuration is still running when the
+    # configuration changes, and a request is waiting on it
+    let oldLookup =
+      Future[string].Raising([CancelledError, OSError, RegexError]).init("oldLookup")
+    ls.openFiles[hwUri] = NlsFileInfo(projectFile: oldLookup)
+    let request = ls.tryGetNimsuggest(hwUri)
+
+    let after = NlsConfig(
+      autoCheckFile: some false, autoCheckProject: some false, timeout: some 1234
+    )
+    ls.setWorkspaceConfiguration(% @[after])
+    waitFor ls.handleConfigurationChanges(before, after).wait(60.seconds)
+    check (waitFor ls.openFiles[hwUri].waitProjectFile().wait(60.seconds)) == hwPath
+
+    # The old lookup finishes with what the old configuration would have picked
+    oldLookup.complete(rootPath)
+    discard waitFor request.wait(60.seconds)
+    check ls.openFiles[hwUri].nimsuggestProject == hwPath
+
+  test "a request waiting on the replaced lookup waits for the new one too":
+    # The new lookup can't finish before the old one does
+    let startup = Future[void].Raising([CancelledError, OSError]).init("parked")
+    ls.nimsuggestInit = startup
+    let oldLookup =
+      Future[string].Raising([CancelledError, OSError, RegexError]).init("oldLookup")
+    ls.openFiles[hwUri] = NlsFileInfo(projectFile: oldLookup)
+    let request = ls.tryGetNimsuggest(hwUri)
+
+    let changed = NlsConfig(
+      autoCheckFile: some false, autoCheckProject: some false, timeout: some 4321
+    )
+    let current = ls.workspaceConfiguration
+    ls.setWorkspaceConfiguration(% @[changed])
+    waitFor ls.handleConfigurationChanges(current, changed).wait(60.seconds)
+    check not ls.openFiles[hwUri].projectFile.finished
+
+    # The request wakes up before the new lookup can, its callback is queued first
+    oldLookup.complete(rootPath)
+    startup.complete()
+    discard waitFor request.wait(60.seconds)
+    check ls.openFiles[hwUri].nimsuggestProject == hwPath
