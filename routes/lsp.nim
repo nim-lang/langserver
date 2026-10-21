@@ -304,7 +304,7 @@ proc extensionSuggest*(
       return SuggestResult()
 
   template restart(ls: LanguageServer, project: Project, projectFile: string) =
-    ls.showMessage(fmt "Restarting nimsuggest {projectFile}", MessageType.Info)
+    await ls.showMessage(fmt "Restarting nimsuggest {projectFile}", MessageType.Info)
     project.errorCallback = none(ProjectCallback)
     project.stop()
     await ls.createOrRestartNimsuggest(projectFile, projectFile.pathToUri)
@@ -864,7 +864,7 @@ proc format*(
   if res != 0:
     let err = string.fromBytes(process.stderrStream.read().await)
     error "There was an error trying to format the document. ", err = err
-    ls.showMessage(&"Error formating {uri}:{err}", MessageType.Error)
+    await ls.showMessage(&"Error formating {uri}:{err}", MessageType.Error)
     return none(TextEdit)
 
   #if enough time has passed since last modification, we skip the formatting:   
@@ -902,7 +902,7 @@ proc formatting*(
   if nphPath.isNone:
     warn "Formatting requested but nph is not on the PATH",
       uri = params.textDocument.uri
-    ls.showMessage(
+    await ls.showMessage(
       "Formatting requires nph, which was not found on the PATH", MessageType.Warning
     )
     return @[]

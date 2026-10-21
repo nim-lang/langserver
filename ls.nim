@@ -370,35 +370,26 @@ proc workspaceConfigurationWait*(
 
 proc showMessage*(
     ls: LanguageServer, message: string, typ: MessageType
-) {.raises: [].} =
-  ## Sent once the configuration tells which messages are wanted.
+) {.async: (raises: [CancelledError]).} =
   proc notify() =
     ls.notify(
       "window/showMessage", ShowMessageParams(`type`: typ.int, message: message)
     )
 
-  proc send() {.async: (raises: []).} =
-    let verbosity =
-      try:
-        (await ls.workspaceConfigurationWait()).notificationVerbosity.get(
-          NlsNotificationVerbosity.nvInfo
-        )
-      except CancelledError:
-        return
-    case verbosity
-    of nvInfo:
-      notify()
-    of nvWarning:
-      if typ.int <= MessageType.Warning.int:
-        notify()
-    of nvError:
-      if typ == MessageType.Error:
-        notify()
-    else:
-      discard
-
+  let conf = await ls.workspaceConfigurationWait()
+  let verbosity = conf.notificationVerbosity.get(NlsNotificationVerbosity.nvInfo)
   debug "ShowMessage ", message = message
-  asyncSpawn send()
+  case verbosity
+  of nvInfo:
+    notify()
+  of nvWarning:
+    if typ.int <= MessageType.Warning.int:
+      notify()
+  of nvError:
+    if typ == MessageType.Error:
+      notify()
+  else:
+    discard
 
 proc applyEdit*(
     ls: LanguageServer, params: ApplyWorkspaceEditParams
@@ -572,7 +563,7 @@ proc getNimsuggestPathAndVersion(
       nimsuggestPath = findExe "nimsuggest"
   else:
     nimVersion = getNimVersion(nimsuggestPath.parentDir)
-  # ls.showMessage(fmt "Using {nimVersion}", MessageType.Info)
+  # await ls.showMessage(fmt "Using {nimVersion}", MessageType.Info)
   debug "Using {nimVersion}", nimVersion = nimVersion
   (nimsuggestPath, nimVersion)
 
@@ -835,7 +826,7 @@ proc warnIfUnknown*(
   let path = uri.uriToPath
   let isFileKnown = await ns.isKnown(path)
   if not isFileKnown and not ns.canHandleUnknown:
-    ls.showMessage(
+    await ls.showMessage(
       fmt """{path} is not compiled as part of project {projectFile}.
   In orde to get the IDE features working you must either configure nim.projectMapping or import the module.""",
       MessageType.Warning,
@@ -1050,7 +1041,7 @@ proc didOpenFile*(
       await didOpenFile(ls, textDocument)
 
       debug "Opening project file", uri = projectFile, file = uri
-    ls.showMessage(fmt "Opening {uri}", MessageType.Info)
+    await ls.showMessage(fmt "Opening {uri}", MessageType.Info)
 
 proc tryGetNimsuggest*(
     ls: LanguageServer, uri: string
@@ -1196,7 +1187,7 @@ proc onErrorCallback(
         project.ns.successfullCall:
       await ls.createOrRestartNimsuggest(project.file, uri)
     else:
-      ls.showMessage(
+      await ls.showMessage(
         fmt "Server failed with {project.errorMessage}.", MessageType.Error
       )
   except CancelledError:
@@ -1229,7 +1220,7 @@ proc createOrRestartNimsuggestImpl(
         ): Future[void] {.async: (raises: [CancelledError]).} =
           warn "Restarting the server due to requests being to slow",
             projectFile = projectFile
-          ls.showMessage(
+          await ls.showMessage(
             fmt "Restarting nimsuggest for file {projectFile} due to timeout.",
             MessageType.Warning,
           )
@@ -1276,9 +1267,11 @@ proc createOrRestartNimsuggestImpl(
       project.stop()
     ls.projectFiles[projectFile] = projectNext
     ls.failTable.del(projectFile)
-    ls.showMessage(fmt "Nimsuggest initialized for {projectFile}", MessageType.Info)
     traceAsyncErrors ls.checkProject(uri)
     ls.sendStatusChanged()
+    await ls.showMessage(
+      fmt "Nimsuggest initialized for {projectFile}", MessageType.Info
+    )
 
 proc createOrRestartNimsuggestUnprotected(
     ls: LanguageServer, projectFile: string, uri: string
@@ -1415,7 +1408,7 @@ proc getProjectFile*(
     var m: RegexMatch2
     if pathRelativeToRoot.isSome and
         find(pathRelativeToRoot.get(), re2(mapping.fileRegex), m):
-      ls.showMessage(
+      await ls.showMessage(
         fmt"RegEx matched `{mapping.fileRegex}` for file `{fileUri}`", MessageType.Info
       )
       result = rootPath / mapping.projectFile
@@ -1532,7 +1525,7 @@ proc removeIdleNimsuggests*(
     project.stop()
     ls.projectFiles.del(project.file)
 
-    ls.showMessage(
+    await ls.showMessage(
       fmt"Nimsuggest for {project.file} was stopped because it was idle for too long",
       MessageType.Info,
     )
