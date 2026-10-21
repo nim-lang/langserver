@@ -1244,24 +1244,6 @@ proc didSave*(
     info.diskModified = uriToPath(uri).modificationTime
   await ls.fileSaved(uri)
 
-  # var toStop = newTable[string, Nimsuggest]()
-  # #We first get the project file for the current file so we can test if this file recently imported another project
-  # let thisProjectFile = await getProjectFile(uri.uriToPath, ls)
-
-  # let ns: Nimsuggest = await ls.projectFiles[thisProjectFile]
-  # if ns.canHandleUnknown:
-  #   for projectFile in ls.projectFiles.keys:
-  #     if projectFile in ls.entryPoints: continue
-  #     let isKnown = await ns.isKnown(projectFile)
-  #     if isKnown:
-  #       toStop[projectFile] = await ls.projectFiles[projectFile]
-
-  #   for projectFile, ns in toStop:
-  #     ns.stop()
-  #     ls.projectFiles.del projectFile
-  #   if toStop.len > 0:
-  #     ls.sendStatusChanged()
-
 proc didClose*(
     ls: LanguageServer, params: DidCloseTextDocumentParams
 ): Future[void] {.async: (raises: [ApplicationError]).} =
