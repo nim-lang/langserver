@@ -1184,7 +1184,8 @@ proc didChange*(
         info.textDocument.text = contentChanges[0].text
         for line in contentChanges[0].text.splitLines:
           info.fingerTable.add line.createUTFMapping()
-          file.writeLine line      finally:
+          file.writeLine line
+      finally:
         file.close()
       await ls.fileCheckDelay(uri)
       #Something else wrote the file. If the editor reloaded it, the text is the
