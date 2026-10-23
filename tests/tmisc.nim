@@ -688,23 +688,24 @@ suite "Nimlangserver files written behind the editor":
   suiteTeardown:
     waitFor ls.shutdownNimsuggest()
 
-  test "typing marks the file unsaved":
+  test "a file written behind the editor is saved only when the editor reloads it":
+    # typing marks the file unsaved
     change("proc a*() = discard\nproc b*() = discard\n")
     check ls.openFiles[uri].changed
     check ls.uriToStash(uri) != ""
 
-  test "a reload after the file was written behind the editor is saved":
+    # a reload after the file was written behind the editor is saved
     writeBehind("proc c*() = discard\n")
     change("proc c*() = discard\n")
     check not ls.openFiles[uri].changed
     check ls.uriToStash(uri) == ""
 
-  test "an edit on top of a file written behind the editor stays unsaved":
+    # an edit on top of a file written behind the editor stays unsaved
     writeBehind("proc d*() = discard\n")
     change("proc e*() = discard\n")
     check ls.openFiles[uri].changed
 
-  test "saving after typing marks it saved":
+    # saving after typing marks it saved
     change("proc d*() = discard\n")
     writeFile(path, "proc d*() = discard\n")
     client.notify("textDocument/didSave", %*{"textDocument": {"uri": uri}})
