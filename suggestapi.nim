@@ -92,6 +92,7 @@ type
   NimsuggestImpl* = object
     checkProjectInProgress*: bool
     needsCheckProject*: bool
+    stale*: bool
     successfullCall*: bool
     port*: int
     root: string

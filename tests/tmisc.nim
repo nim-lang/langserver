@@ -4,7 +4,7 @@ import
   chronos/asyncproc,
   unittest2,
   ../[nimlangserver, ls, lstransports2, suggestapi, utils],
-  ../protocol/[types],
+  ../protocol/[enums, types],
   ./[lspsocketclient, testhelpers]
 
 suite "Nimlangserver misc":
@@ -644,6 +644,10 @@ suite "Nimlangserver files written behind the editor":
     "window/showMessage", "window/workDoneProgress/create", "workspace/configuration",
     "extension/statusUpdate", "textDocument/publishDiagnostics", "$/progress",
   )
+  proc answerNull(params: JsonNode): Future[JsonNode] {.async.} =
+    newJNull()
+
+  client.registerRequest("client/registerCapability", answerNull)
   let
     dir = getTempDir() / "nimlangserver-written-behind"
     path = dir / "behind.nim"
@@ -654,7 +658,10 @@ suite "Nimlangserver files written behind the editor":
     LspInitializeParams %* {
       "processId": %getCurrentProcessId(),
       "rootUri": pathToUri(dir),
-      "capabilities": {"window": {"workDoneProgress": true}},
+      "capabilities": {
+        "window": {"workDoneProgress": true},
+        "workspace": {"didChangeWatchedFiles": {"dynamicRegistration": true}},
+      },
     }
   )
   ls.setWorkspaceConfiguration(
@@ -666,6 +673,7 @@ suite "Nimlangserver files written behind the editor":
       )
     ]
   )
+  client.notify("initialized", newJObject())
   client.notify(
     "textDocument/didOpen",
     %*{
@@ -688,17 +696,34 @@ suite "Nimlangserver files written behind the editor":
   suiteTeardown:
     waitFor ls.shutdownNimsuggest()
 
-  test "a file written behind the editor is saved only when the editor reloads it":
+  test "the server watches nim files":
+    var watchers: seq[JsonNode]
+    for call in client.calls["client/registerCapability"]:
+      for registration in call{"registrations"}:
+        if registration{"method"}.getStr == "workspace/didChangeWatchedFiles":
+          watchers.add registration{"registrationOptions", "watchers"}.getElems
+    check watchers.len == 1
+    check watchers[0]{"globPattern"}.getStr == "**/*.nim"
+
+  test "a change to a watched file marks the nimsuggests stale":
+    check waitUntil(
+      ls.projectFiles.len > 0 and toSeq(ls.projectFiles.values).allIt(it.ns != nil),
+      60.seconds,
+    )
+    for project in ls.projectFiles.values:
+      check not project.ns.stale
+    writeBehind("proc z*() = discard\n")
+    client.notify(
+      "workspace/didChangeWatchedFiles",
+      %*{"changes": [{"uri": uri, "type": FileChangeType.Changed.int}]},
+    )
+    check waitUntil(toSeq(ls.projectFiles.values).allIt(it.ns.stale))
+
+  test "a file written behind the editor stays unsaved until the editor saves it":
     # typing marks the file unsaved
     change("proc a*() = discard\nproc b*() = discard\n")
     check ls.openFiles[uri].changed
     check ls.uriToStash(uri) != ""
-
-    # a reload after the file was written behind the editor is saved
-    writeBehind("proc c*() = discard\n")
-    change("proc c*() = discard\n")
-    check not ls.openFiles[uri].changed
-    check ls.uriToStash(uri) == ""
 
     # an edit on top of a file written behind the editor stays unsaved
     writeBehind("proc d*() = discard\n")

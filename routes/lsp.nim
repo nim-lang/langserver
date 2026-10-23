@@ -1110,6 +1110,7 @@ proc initialized*(
   ls.checkInitialized()
   debug "Client initialized."
   maybeRegisterCapabilityDidChangeConfiguration(ls)
+  maybeRegisterCapabilityDidChangeWatchedFiles(ls)
   await maybeRequestConfigurationFromClient(ls)
 
 proc cancelRequest*(
@@ -1131,33 +1132,6 @@ proc setTrace*(
 ) {.async: (raises: [ApplicationError]).} =
   ls.checkInitialized()
   debug "setTrace", value = params.value
-
-proc fileSaved(
-    ls: LanguageServer, uri: string
-) {.
-    async: (
-      raises: [
-        CancelledError, AsyncProcessError, AsyncStreamError, OSError, IOError,
-        RegexError, NimsuggestError,
-      ]
-    )
-.} =
-  ## The file on disk has the editor's text.
-  let info = ls.openFiles.getOrDefault(uri)
-  #Before any await, so a change that comes after it is not undone
-  if info != nil:
-    info.changed = false
-  let config = await ls.workspaceConfigurationWait()
-  let nimsuggest = await ls.tryGetNimsuggest(uri)
-
-  if nimsuggest.isNone:
-    return
-
-  discard await nimsuggest.get.changed(uriToPath(uri))
-
-  if config.checkOnSave.get(true):
-    debug "Checking project", uri = uri
-    await ls.checkProject(uri)
 
 proc didChange*(
     ls: LanguageServer, params: DidChangeTextDocumentParams
@@ -1188,14 +1162,6 @@ proc didChange*(
       finally:
         file.close()
       await ls.fileCheckDelay(uri)
-      #Something else wrote the file. If the editor reloaded it, the text is the
-      #same and it is as if it had been saved.
-      let path = uriToPath(uri)
-      let modified = path.modificationTime
-      if modified != info.diskModified:
-        info.diskModified = modified
-        if contentChanges[0].text == readFile(path):
-          await ls.fileSaved(uri)
 
 proc willSaveWaitUntil*(
     ls: LanguageServer, params: WillSaveTextDocumentParams
@@ -1230,19 +1196,43 @@ proc willSaveWaitUntil*(
 proc didSave*(
     ls: LanguageServer, params: DidSaveTextDocumentParams
 ): Future[void] {.
-    async: (
-      raises: [
-        ApplicationError, CancelledError, AsyncProcessError, AsyncStreamError, OSError,
-        IOError, RegexError, NimsuggestError,
-      ]
-    )
+    async: (raises: [ApplicationError, CancelledError, OSError, IOError, RegexError])
 .} =
   ls.checkInitialized()
-  let uri = params.textDocument.uri
+  let
+    uri = params.textDocument.uri
+    config = await ls.workspaceConfigurationWait()
+  let nimsuggest = await ls.tryGetNimsuggest(uri)
+
+  if nimsuggest.isNone:
+    return
+
   let info = ls.openFiles.getOrDefault(uri)
   if info != nil:
-    info.diskModified = uriToPath(uri).modificationTime
-  await ls.fileSaved(uri)
+    info.changed = false
+  traceAsyncErrors nimsuggest.get.changed(uriToPath(uri))
+
+  if config.checkOnSave.get(true):
+    debug "Checking project", uri = uri
+    traceAsyncErrors ls.checkProject(uri)
+
+  # var toStop = newTable[string, Nimsuggest]()
+  # #We first get the project file for the current file so we can test if this file recently imported another project
+  # let thisProjectFile = await getProjectFile(uri.uriToPath, ls)
+
+  # let ns: Nimsuggest = await ls.projectFiles[thisProjectFile]
+  # if ns.canHandleUnknown:
+  #   for projectFile in ls.projectFiles.keys:
+  #     if projectFile in ls.entryPoints: continue
+  #     let isKnown = await ns.isKnown(projectFile)
+  #     if isKnown:
+  #       toStop[projectFile] = await ls.projectFiles[projectFile]
+
+  #   for projectFile, ns in toStop:
+  #     ns.stop()
+  #     ls.projectFiles.del projectFile
+  #   if toStop.len > 0:
+  #     ls.sendStatusChanged()
 
 proc didClose*(
     ls: LanguageServer, params: DidCloseTextDocumentParams
@@ -1257,6 +1247,13 @@ proc didOpen*(
 .} =
   ls.checkInitialized()
   await ls.didOpenFile(params.textDocument)
+
+proc didChangeWatchedFiles*(
+    ls: LanguageServer, params: DidChangeWatchedFilesParams
+): Future[void] {.async: (raises: [ApplicationError]).} =
+  ls.checkInitialized()
+  debug "Watched files changed", changes = params.changes.get(@[]).len
+  ls.markNimsuggestsStale()
 
 proc didChangeConfiguration*(
     ls: LanguageServer, conf: JsonNode

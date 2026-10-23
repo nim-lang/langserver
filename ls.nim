@@ -107,7 +107,6 @@ type
     edits*: uint
     textDocument*: TextDocumentItem
     nimsuggestProject*: string
-    diskModified*: Time #Of the file on disk when we last knew it had the editor's text
 
   CommandLineParams* = object
     mode*: Option[ServerMode]
@@ -486,6 +485,13 @@ proc requiresDynamicRegistrationForDidChangeConfiguration(ls: LanguageServer): b
   ls.lspClientCapabilities.workspace.isSome and
     ls.lspClientCapabilities.workspace.get.didChangeConfiguration.isSome and
     ls.lspClientCapabilities.workspace.get.didChangeConfiguration.get.dynamicRegistration.get(
+      false
+    )
+
+proc supportsDynamicRegistrationForDidChangeWatchedFiles(ls: LanguageServer): bool =
+  ls.lspClientCapabilities.workspace.isSome and
+    ls.lspClientCapabilities.workspace.get.didChangeWatchedFiles.isSome and
+    ls.lspClientCapabilities.workspace.get.didChangeWatchedFiles.get.dynamicRegistration.get(
       false
     )
 
@@ -988,7 +994,6 @@ proc didOpenFile*(
       changed: false,
       fingerTable: @[],
       textDocument: textDocument,
-      diskModified: uriToPath(uri).modificationTime,
     )
     ls.openFiles[uri] = openFile
 
@@ -1304,6 +1309,47 @@ proc maybeRegisterCapabilityDidChangeConfiguration*(ls: LanguageServer) =
       else:
         warn "The didChangeConfiguration registration failed",
           err = registration.error.msg
+
+proc maybeRegisterCapabilityDidChangeWatchedFiles*(ls: LanguageServer) =
+  if ls.supportsDynamicRegistrationForDidChangeWatchedFiles:
+    let registrationParams = RegistrationParams(
+      registrations: some(
+        @[
+          Registration(
+            id: "798b37f2-6a93-455a-887b-500ea761ed84",
+            `method`: "workspace/didChangeWatchedFiles",
+            registrationOptions: some(
+              %DidChangeWatchedFilesRegistrationOptions(
+                watchers: some(
+                  @[
+                    FileSystemWatcher(
+                      globPattern: "**/*.nim",
+                      kind: some(
+                        WatchKind.Create.int or WatchKind.Change.int or
+                          WatchKind.Delete.int
+                      ),
+                    )
+                  ]
+                )
+              )
+            ),
+          )
+        ]
+      )
+    )
+    let registration = ls.call("client/registerCapability", registrationParams)
+    registration.addCallback do(data: pointer) {.gcsafe.}:
+      if registration.completed:
+        debug "Got response for the didChangeWatchedFiles registration:",
+          res = $registration.read()
+      else:
+        warn "The didChangeWatchedFiles registration failed",
+          err = registration.error.msg
+
+proc markNimsuggestsStale*(ls: LanguageServer) =
+  for project in ls.projectFiles.values:
+    if project.ns != nil:
+      project.ns.stale = true
 
 proc handleConfigurationChanges*(
     ls: LanguageServer, oldConfiguration, newConfiguration: NlsConfig

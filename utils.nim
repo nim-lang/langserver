@@ -1,7 +1,7 @@
 {.push raises: [], gcsafe.}
 
 import
-  std/[macros, unicode, uri, strformat, os, strutils, options, json, net, paths, times],
+  std/[macros, unicode, uri, strformat, os, strutils, options, json, net, paths],
   chronos,
   chronicles,
   chronos/asyncproc,
@@ -64,13 +64,6 @@ proc utf16Len*(utf8Str: string): int =
       result += 2
     else:
       discard
-
-proc modificationTime*(path: string): Time =
-  ## The zero time for a file that can't be read.
-  try:
-    getLastModificationTime(path)
-  except OSError:
-    Time()
 
 proc utf16to8*(fingerTable: FingerTable, utf16pos: int): int =
   result = utf16pos
@@ -259,11 +252,11 @@ proc getNimScriptAPITemplatePath*(): string {.raises: [OSError, IOError].} =
 proc shutdownChildProcess*(p: AsyncProcessRef): Future[void] {.async: (raises: []).} =
   try:
     debug "Shutting down process with pid: ", pid = p.processId()
-    let exitCode = await noCancel p.terminateAndWaitForExit(chronos.seconds(2))
+    let exitCode = await noCancel p.terminateAndWaitForExit(2.seconds)
       # debug "Process terminated with exit code: ", exitCode
   except AsyncProcessError:
     try:
-      let forcedExitCode = await noCancel p.killAndWaitForExit(chronos.seconds(3))
+      let forcedExitCode = await noCancel p.killAndWaitForExit(3.seconds)
       debug "Process forcibly killed with exit code: ", exitCode = forcedExitCode
     except AsyncProcessError:
       debug "Could not kill process in time either!"
@@ -281,7 +274,7 @@ proc readAllOutput*(
     result.add(string.fromBytes(data))
 
 proc readErrorOutputUntilExit*(
-    process: AsyncProcessRef, duration: chronos.Duration
+    process: AsyncProcessRef, duration: Duration
 ): Future[tuple[output: string, code: int]] {.
     async: (raises: [CancelledError, AsyncProcessError, AsyncStreamError])
 .} =
@@ -306,7 +299,7 @@ proc readErrorOutputUntilExit*(
       return (output, res)
 
 proc readOutputUntilExit*(
-    process: AsyncProcessRef, duration: chronos.Duration
+    process: AsyncProcessRef, duration: Duration
 ): Future[tuple[output: string, error: string, code: int]] {.
     async: (raises: [CancelledError, AsyncProcessError])
 .} =
