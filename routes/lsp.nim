@@ -1237,7 +1237,7 @@ proc didChangeWatchedFiles*(
   ls.checkInitialized()
   debug "Watched files changed", changes = params.changes.get(@[]).len
   let conf = await ls.workspaceConfigurationWait()
-  if conf.autoCheckProject.get(true) and
+  if conf.autoCheckProject.get(true) and conf.checkOnSave.get(true) and
       not conf.useNimCheck.get(USE_NIM_CHECK_BY_DEFAULT):
     ls.markNimsuggestsStale()
 
