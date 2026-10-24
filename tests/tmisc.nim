@@ -705,7 +705,7 @@ suite "Nimlangserver files written behind the editor":
     check watchers.len == 1
     check watchers[0]{"globPattern"}.getStr == "**/*.nim"
 
-  test "a change to a watched file marks the nimsuggests stale":
+  test "a change to a watched file marks the nimsuggests stale until a project check":
     check waitUntil(
       ls.projectFiles.len > 0 and toSeq(ls.projectFiles.values).allIt(it.ns != nil),
       60.seconds,
@@ -718,6 +718,28 @@ suite "Nimlangserver files written behind the editor":
       %*{"changes": [{"uri": uri, "type": FileChangeType.Changed.int}]},
     )
     check waitUntil(toSeq(ls.projectFiles.values).allIt(it.ns.stale))
+
+    let project = ls.projectFiles[ls.openFiles[uri].nimsuggestProject]
+    ls.setWorkspaceConfiguration(
+      % @[
+        NlsConfig(
+          autoCheckFile: some false,
+          autoCheckProject: some true,
+          checkOnSave: some false,
+        )
+      ]
+    )
+    waitFor ls.checkProject(uri)
+    check not project.ns.stale
+    ls.setWorkspaceConfiguration(
+      % @[
+        NlsConfig(
+          autoCheckFile: some false,
+          autoCheckProject: some false,
+          checkOnSave: some false,
+        )
+      ]
+    )
 
   test "a file written behind the editor stays unsaved until the editor saves it":
     # typing marks the file unsaved

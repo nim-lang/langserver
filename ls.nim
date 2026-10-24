@@ -1122,6 +1122,7 @@ proc checkProject*(
   proc getFilepath(s: Suggest): string =
     s.filePath
 
+  nimsuggest.stale = false
   let
     diagnostics = nimsuggest.chk(uriToPath(uri), ls.uriToStash(uri)).await().filter(
         sug => sug.filePath != "???"
