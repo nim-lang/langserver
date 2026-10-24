@@ -634,7 +634,7 @@ suite "Nimlangserver project lookup replaced by a configuration change":
     discard waitFor request.wait(60.seconds)
     check ls.openFiles[hwUri].nimsuggestProject == hwPath
 
-suite "Nimlangserver files written behind the editor":
+suite "External file edits":
   let cmdParams =
     CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
   let ls = main(cmdParams)
@@ -649,8 +649,8 @@ suite "Nimlangserver files written behind the editor":
 
   client.registerRequest("client/registerCapability", answerNull)
   let
-    dir = getTempDir() / "nimlangserver-written-behind"
-    path = dir / "behind.nim"
+    dir = getTempDir() / "nimlangserver-external-edits"
+    path = dir / "main.nim"
     uri = pathToUri(path)
     depPath = dir / "dep.nim"
     depUri = pathToUri(depPath)
@@ -687,7 +687,7 @@ suite "Nimlangserver files written behind the editor":
   check waitUntil(uri in ls.openFiles)
   check waitFor client.waitForNotificationMessage(fmt"Opening {uri}")
 
-  proc writeBehind(text: string) =
+  proc editExternally(text: string) =
     writeFile(path, text)
 
   proc change(text: string) =
@@ -781,14 +781,14 @@ suite "Nimlangserver files written behind the editor":
     check waitUntil(not project.ns.checkProjectInProgress)
     check projectChecks() == checksBefore + 1
 
-  test "a file written behind the editor stays unsaved until the editor saves it":
+  test "an externally edited file stays unsaved until the editor saves it":
     # typing marks the file unsaved
     change("proc a*() = discard\nproc b*() = discard\n")
     check ls.openFiles[uri].changed
     check ls.uriToStash(uri) != ""
 
-    # an edit on top of a file written behind the editor stays unsaved
-    writeBehind("proc d*() = discard\n")
+    # an edit on top of an external edit stays unsaved
+    editExternally("proc d*() = discard\n")
     change("proc e*() = discard\n")
     check ls.openFiles[uri].changed
 
