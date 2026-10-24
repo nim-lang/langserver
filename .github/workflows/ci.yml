@@ -43,10 +43,10 @@ jobs:
         shell: bash
         run: nimble -yl install -d
 
-      - name: Bootstrap nim track toolchain
-        shell: bash
-        working-directory: tests/projects/trackproject
-        run: nimble -yl setup
+      #- name: Bootstrap nim track toolchain
+      #  shell: bash
+      #  working-directory: tests/projects/trackproject
+      #  run: nimble -yl setup
 
       - name: Nimble Test
         shell: bash
