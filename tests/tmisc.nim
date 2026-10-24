@@ -652,8 +652,11 @@ suite "Nimlangserver files written behind the editor":
     dir = getTempDir() / "nimlangserver-written-behind"
     path = dir / "behind.nim"
     uri = pathToUri(path)
+    depPath = dir / "dep.nim"
+    depUri = pathToUri(depPath)
   createDir(dir)
-  writeFile(path, "proc a*() = discard\n")
+  writeFile(depPath, "proc x*() = discard\n")
+  writeFile(path, "import dep\nproc a*() = discard\n")
   discard waitFor client.initialize(
     LspInitializeParams %* {
       "processId": %getCurrentProcessId(),
@@ -668,8 +671,8 @@ suite "Nimlangserver files written behind the editor":
     % @[
       NlsConfig(
         autoCheckFile: some false,
-        autoCheckProject: some false,
-        checkOnSave: some false,
+        autoCheckProject: some true,
+        checkOnSave: some true,
       )
     ]
   )
@@ -682,6 +685,7 @@ suite "Nimlangserver files written behind the editor":
     },
   )
   check waitUntil(uri in ls.openFiles)
+  check waitFor client.waitForNotificationMessage(fmt"Opening {uri}")
 
   proc writeBehind(text: string) =
     writeFile(path, text)
@@ -692,6 +696,15 @@ suite "Nimlangserver files written behind the editor":
       %*{"textDocument": {"uri": uri, "version": 1}, "contentChanges": [{"text": text}]},
     )
     check waitUntil(ls.openFiles[uri].textDocument.text == text)
+
+  proc hover() =
+    discard client.call(
+      "textDocument/hover",
+      %*{"textDocument": {"uri": uri}, "position": {"line": 1, "character": 5}},
+    ).waitFor
+
+  proc projectChecks(): int =
+    client.calls["window/workDoneProgress/create"].len
 
   suiteTeardown:
     waitFor ls.shutdownNimsuggest()
@@ -704,42 +717,69 @@ suite "Nimlangserver files written behind the editor":
           watchers.add registration{"registrationOptions", "watchers"}.getElems
     check watchers.len == 1
     check watchers[0]{"globPattern"}.getStr == "**/*.nim"
+    check waitUntil(ls.watchingFiles)
 
   test "a change to a watched file marks the nimsuggests stale until a project check":
     check waitUntil(
       ls.projectFiles.len > 0 and toSeq(ls.projectFiles.values).allIt(it.ns != nil),
       60.seconds,
     )
-    for project in ls.projectFiles.values:
-      check not project.ns.stale
-    writeBehind("proc z*() = discard\n")
+    let project = ls.projectFiles[ls.openFiles[uri].nimsuggestProject]
+    check waitUntil(not project.ns.checkProjectInProgress)
+    check not project.ns.stale
+
+    # dep.nim is not open, so only the watcher tells the server about it
+    proc changeDep(text: string) =
+      writeFile(depPath, text)
+      client.notify(
+        "workspace/didChangeWatchedFiles",
+        %*{"changes": [{"uri": depUri, "type": FileChangeType.Changed.int}]},
+      )
+      check waitUntil(project.ns.stale)
+
+    # a request served by a stale nimsuggest checks the project
+    changeDep("proc x*() = discard\nproc y*() = discard\n")
+    hover()
+    check not project.ns.stale
+
+    # so does opening a file
+    check waitUntil(not project.ns.checkProjectInProgress)
+    changeDep("proc x*() = discard\nproc z*() = discard\n")
+    client.notify("textDocument/didClose", %*{"textDocument": {"uri": uri}})
+    check waitUntil(uri notin ls.openFiles)
+    client.notify(
+      "textDocument/didOpen",
+      %*{
+        "textDocument":
+          {"uri": uri, "languageId": "nim", "version": 0, "text": readFile(path)}
+      },
+    )
+    check waitUntil(not project.ns.stale)
+    check ls.projectFiles[ls.openFiles[uri].nimsuggestProject] == project
+
+  test "with the watcher, a save is checked once, through the watched file change":
+    let project = ls.projectFiles[ls.openFiles[uri].nimsuggestProject]
+    check waitUntil(not project.ns.checkProjectInProgress)
+    let checksBefore = projectChecks()
+
+    let text = "import dep\nproc a*() = discard\nproc s*() = discard\n"
+    change(text)
+    writeFile(path, text)
+    client.notify("textDocument/didSave", %*{"textDocument": {"uri": uri}})
+    check waitUntil(not ls.openFiles[uri].changed)
+    hover()
+    check projectChecks() == checksBefore
+
+    # the editor's watcher reports the saved file a moment later
     client.notify(
       "workspace/didChangeWatchedFiles",
       %*{"changes": [{"uri": uri, "type": FileChangeType.Changed.int}]},
     )
-    check waitUntil(toSeq(ls.projectFiles.values).allIt(it.ns.stale))
-
-    let project = ls.projectFiles[ls.openFiles[uri].nimsuggestProject]
-    ls.setWorkspaceConfiguration(
-      % @[
-        NlsConfig(
-          autoCheckFile: some false,
-          autoCheckProject: some true,
-          checkOnSave: some false,
-        )
-      ]
-    )
-    waitFor ls.checkProject(uri)
-    check not project.ns.stale
-    ls.setWorkspaceConfiguration(
-      % @[
-        NlsConfig(
-          autoCheckFile: some false,
-          autoCheckProject: some false,
-          checkOnSave: some false,
-        )
-      ]
-    )
+    check waitUntil(project.ns.stale)
+    hover()
+    check waitUntil(projectChecks() == checksBefore + 1)
+    check waitUntil(not project.ns.checkProjectInProgress)
+    check projectChecks() == checksBefore + 1
 
   test "a file written behind the editor stays unsaved until the editor saves it":
     # typing marks the file unsaved
