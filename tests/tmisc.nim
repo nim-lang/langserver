@@ -4,7 +4,7 @@ import
   chronos/asyncproc,
   unittest2,
   ../[nimlangserver, ls, lstransports2, suggestapi, utils],
-  ../protocol/[types],
+  ../protocol/[enums, types],
   ./[lspsocketclient, testhelpers]
 
 suite "Nimlangserver misc":
@@ -633,3 +633,167 @@ suite "Nimlangserver project lookup replaced by a configuration change":
     startup.complete()
     discard waitFor request.wait(60.seconds)
     check ls.openFiles[hwUri].nimsuggestProject == hwPath
+
+suite "External file edits":
+  let cmdParams =
+    CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
+  let ls = main(cmdParams)
+  let client = newLspSocketClient()
+  waitFor client.connect("localhost", cmdParams.port)
+  client.registerNotification(
+    "window/showMessage", "window/workDoneProgress/create", "workspace/configuration",
+    "extension/statusUpdate", "textDocument/publishDiagnostics", "$/progress",
+  )
+  proc answerNull(params: JsonNode): Future[JsonNode] {.async.} =
+    newJNull()
+
+  client.registerRequest("client/registerCapability", answerNull)
+  let
+    dir = getTempDir() / "nimlangserver-external-edits"
+    path = dir / "main.nim"
+    uri = pathToUri(path)
+    depPath = dir / "dep.nim"
+    depUri = pathToUri(depPath)
+  createDir(dir)
+  writeFile(depPath, "proc x*() = discard\n")
+  writeFile(path, "import dep\nproc a*() = discard\n")
+  discard waitFor client.initialize(
+    LspInitializeParams %* {
+      "processId": %getCurrentProcessId(),
+      "rootUri": pathToUri(dir),
+      "capabilities": {
+        "window": {"workDoneProgress": true},
+        "workspace": {"didChangeWatchedFiles": {"dynamicRegistration": true}},
+      },
+    }
+  )
+  ls.setWorkspaceConfiguration(
+    % @[
+      NlsConfig(
+        autoCheckFile: some false,
+        autoCheckProject: some true,
+        checkOnSave: some true,
+      )
+    ]
+  )
+  client.notify("initialized", newJObject())
+  client.notify(
+    "textDocument/didOpen",
+    %*{
+      "textDocument":
+        {"uri": uri, "languageId": "nim", "version": 0, "text": readFile(path)}
+    },
+  )
+  check waitUntil(uri in ls.openFiles)
+  check waitFor client.waitForNotificationMessage(fmt"Opening {uri}")
+
+  proc editExternally(text: string) =
+    writeFile(path, text)
+
+  proc change(text: string) =
+    client.notify(
+      "textDocument/didChange",
+      %*{"textDocument": {"uri": uri, "version": 1}, "contentChanges": [{"text": text}]},
+    )
+    check waitUntil(ls.openFiles[uri].textDocument.text == text)
+
+  proc hover() =
+    discard client.call(
+      "textDocument/hover",
+      %*{"textDocument": {"uri": uri}, "position": {"line": 1, "character": 5}},
+    ).waitFor
+
+  proc projectChecks(): int =
+    client.calls["window/workDoneProgress/create"].len
+
+  suiteTeardown:
+    waitFor ls.shutdownNimsuggest()
+
+  test "the server watches nim files":
+    var watchers: seq[JsonNode]
+    for call in client.calls["client/registerCapability"]:
+      for registration in call{"registrations"}:
+        if registration{"method"}.getStr == "workspace/didChangeWatchedFiles":
+          watchers.add registration{"registrationOptions", "watchers"}.getElems
+    check watchers.len == 1
+    check watchers[0]{"globPattern"}.getStr == "**/*.nim"
+    check waitUntil(ls.watchingFiles)
+
+  test "a change to a watched file marks the nimsuggests stale until a project check":
+    check waitUntil(
+      ls.projectFiles.len > 0 and toSeq(ls.projectFiles.values).allIt(it.ns != nil),
+      60.seconds,
+    )
+    let project = ls.projectFiles[ls.openFiles[uri].nimsuggestProject]
+    check waitUntil(not project.ns.checkProjectInProgress)
+    check not project.ns.stale
+
+    # dep.nim is not open, so only the watcher tells the server about it
+    proc changeDep(text: string) =
+      writeFile(depPath, text)
+      client.notify(
+        "workspace/didChangeWatchedFiles",
+        %*{"changes": [{"uri": depUri, "type": FileChangeType.Changed.int}]},
+      )
+      check waitUntil(project.ns.stale)
+
+    # a request served by a stale nimsuggest checks the project
+    changeDep("proc x*() = discard\nproc y*() = discard\n")
+    hover()
+    check not project.ns.stale
+
+    # so does opening a file
+    check waitUntil(not project.ns.checkProjectInProgress)
+    changeDep("proc x*() = discard\nproc z*() = discard\n")
+    client.notify("textDocument/didClose", %*{"textDocument": {"uri": uri}})
+    check waitUntil(uri notin ls.openFiles)
+    client.notify(
+      "textDocument/didOpen",
+      %*{
+        "textDocument":
+          {"uri": uri, "languageId": "nim", "version": 0, "text": readFile(path)}
+      },
+    )
+    check waitUntil(not project.ns.stale)
+    check ls.projectFiles[ls.openFiles[uri].nimsuggestProject] == project
+
+  test "with the watcher, a save is checked once, through the watched file change":
+    let project = ls.projectFiles[ls.openFiles[uri].nimsuggestProject]
+    check waitUntil(not project.ns.checkProjectInProgress)
+    let checksBefore = projectChecks()
+
+    let text = "import dep\nproc a*() = discard\nproc s*() = discard\n"
+    change(text)
+    writeFile(path, text)
+    client.notify("textDocument/didSave", %*{"textDocument": {"uri": uri}})
+    check waitUntil(not ls.openFiles[uri].changed)
+    hover()
+    check projectChecks() == checksBefore
+
+    # the editor's watcher reports the saved file a moment later
+    client.notify(
+      "workspace/didChangeWatchedFiles",
+      %*{"changes": [{"uri": uri, "type": FileChangeType.Changed.int}]},
+    )
+    check waitUntil(project.ns.stale)
+    hover()
+    check waitUntil(projectChecks() == checksBefore + 1)
+    check waitUntil(not project.ns.checkProjectInProgress)
+    check projectChecks() == checksBefore + 1
+
+  test "an externally edited file stays unsaved until the editor saves it":
+    # typing marks the file unsaved
+    change("proc a*() = discard\nproc b*() = discard\n")
+    check ls.openFiles[uri].changed
+    check ls.uriToStash(uri) != ""
+
+    # an edit on top of an external edit stays unsaved
+    editExternally("proc d*() = discard\n")
+    change("proc e*() = discard\n")
+    check ls.openFiles[uri].changed
+
+    # saving after typing marks it saved
+    change("proc d*() = discard\n")
+    writeFile(path, "proc d*() = discard\n")
+    client.notify("textDocument/didSave", %*{"textDocument": {"uri": uri}})
+    check waitUntil(not ls.openFiles[uri].changed)

@@ -1110,6 +1110,7 @@ proc initialized*(
   ls.checkInitialized()
   debug "Client initialized."
   maybeRegisterCapabilityDidChangeConfiguration(ls)
+  maybeRegisterCapabilityDidChangeWatchedFiles(ls)
   await maybeRequestConfigurationFromClient(ls)
 
 proc cancelRequest*(
@@ -1211,27 +1212,10 @@ proc didSave*(
     info.changed = false
   traceAsyncErrors nimsuggest.get.changed(uriToPath(uri))
 
-  if config.checkOnSave.get(true):
+  let useNimCheck = config.useNimCheck.get(USE_NIM_CHECK_BY_DEFAULT)
+  if config.checkOnSave.get(true) and (useNimCheck or not ls.watchingFiles):
     debug "Checking project", uri = uri
     traceAsyncErrors ls.checkProject(uri)
-
-  # var toStop = newTable[string, Nimsuggest]()
-  # #We first get the project file for the current file so we can test if this file recently imported another project
-  # let thisProjectFile = await getProjectFile(uri.uriToPath, ls)
-
-  # let ns: Nimsuggest = await ls.projectFiles[thisProjectFile]
-  # if ns.canHandleUnknown:
-  #   for projectFile in ls.projectFiles.keys:
-  #     if projectFile in ls.entryPoints: continue
-  #     let isKnown = await ns.isKnown(projectFile)
-  #     if isKnown:
-  #       toStop[projectFile] = await ls.projectFiles[projectFile]
-
-  #   for projectFile, ns in toStop:
-  #     ns.stop()
-  #     ls.projectFiles.del projectFile
-  #   if toStop.len > 0:
-  #     ls.sendStatusChanged()
 
 proc didClose*(
     ls: LanguageServer, params: DidCloseTextDocumentParams
@@ -1246,6 +1230,16 @@ proc didOpen*(
 .} =
   ls.checkInitialized()
   await ls.didOpenFile(params.textDocument)
+
+proc didChangeWatchedFiles*(
+    ls: LanguageServer, params: DidChangeWatchedFilesParams
+): Future[void] {.async: (raises: [ApplicationError, CancelledError]).} =
+  ls.checkInitialized()
+  debug "Watched files changed", changes = params.changes.get(@[]).len
+  let conf = await ls.workspaceConfigurationWait()
+  if conf.autoCheckProject.get(true) and conf.checkOnSave.get(true) and
+      not conf.useNimCheck.get(USE_NIM_CHECK_BY_DEFAULT):
+    ls.markNimsuggestsStale()
 
 proc didChangeConfiguration*(
     ls: LanguageServer, conf: JsonNode
