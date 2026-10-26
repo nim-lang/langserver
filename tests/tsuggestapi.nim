@@ -95,7 +95,7 @@ suite "Nimsuggest error handling":
   test "a dying nimsuggest fires the error callback exactly once":
     # Regression test for #428: markFailed fired errorCallback on every call,
     # so one crash triggered it once per failure path (closed socket in
-    # processQueue + stderr EOF in logNsError) and the server restarted the
+    # processQueue + stdout EOF in watchExit) and the server restarted the
     # same project twice, concurrently. Suspend the child before issuing a
     # command so the command is in flight when the process is killed and both
     # paths run deterministically.

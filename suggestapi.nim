@@ -342,16 +342,16 @@ proc getNimsuggestCapabilities*(
       if cap.isSome:
         result.incl(cap.get)
 
-proc logNsError(project: Project) {.async: (raises: []).} =
-  var err: string
+proc watchExit(project: Project) {.async: (raises: []).} =
+  var message = "Nimsuggest exited."
   try:
-    err = string.fromBytes(await project.process.stderrStream.read())
+    discard await project.process.stdoutStream.read()
   except CancelledError:
     return
   except AsyncStreamError as exc:
-    err = exc.msg
-  error "NimSuggest Error (stderr)", err = err
-  await project.markFailed(err)
+    message = exc.msg
+  error "Nimsuggest exited", root = project.file, message = message
+  await project.markFailed(message)
 
 proc createNimsuggest*(
     root: string,
@@ -427,11 +427,10 @@ proc createNimsuggest*(
       arguments = args,
       options = {UsePath},
       stdoutHandle = AsyncProcess.Pipe,
-      stderrHandle = AsyncProcess.Pipe,
+      stderrHandle = ProcessStreamHandle(),
     )
     debug "Nimsuggest started with args", args = args
     ns.args = args
-    asyncSpawn logNsError(result)
     let portLine = await result.process.stdoutStream.readLine(sep = "\n")
     debug "Nimsuggest port", portLine = portLine
     ns.port =
@@ -443,6 +442,7 @@ proc createNimsuggest*(
         error "Nimsuggest nextLine", nextLine = nextLine
         raise exc
     result.ns = ns
+    asyncSpawn watchExit(result)
   finally:
     if result.ns.isNil:
       await result.markFailed "Unable to start nimsuggest."
