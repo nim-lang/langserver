@@ -158,8 +158,6 @@ type
     workspaceConfigurationReady*: Future[void].Raising([CancelledError])
       #Completed the first time a configuration is known, and never replaced.
     inlayHintsRefreshRequest*: Future[JsonNode].Raising([CancelledError, JsonRpcError])
-    didChangeConfigurationRegistrationRequest*:
-      Future[JsonNode].Raising([CancelledError, JsonRpcError])
     watchingFiles*: bool
     filesWithDiags*: HashSet[string]
     nimsuggestInit*: Future[void].Raising([CancelledError, OSError])
@@ -1305,7 +1303,9 @@ proc stopNimsuggests(ls: LanguageServer) {.async: (raises: []).} =
     stops.add project.stopWait()
   await noCancel allFutures(stops)
 
-proc maybeRegisterCapabilityDidChangeConfiguration*(ls: LanguageServer) =
+proc maybeRegisterCapabilityDidChangeConfiguration*(
+    ls: LanguageServer
+) {.async: (raises: [CancelledError]).} =
   if ls.requiresDynamicRegistrationForDidChangeConfiguration:
     let registrationParams = RegistrationParams(
       registrations: some(
@@ -1317,52 +1317,35 @@ proc maybeRegisterCapabilityDidChangeConfiguration*(ls: LanguageServer) =
         ]
       )
     )
-    let registration = ls.call("client/registerCapability", registrationParams)
-    ls.didChangeConfigurationRegistrationRequest = registration
-    registration.addCallback do(data: pointer) {.gcsafe.}:
-      if registration.completed:
-        debug "Got response for the didChangeConfiguration registration:",
-          res = $registration.read()
-      else:
-        warn "The didChangeConfiguration registration failed",
-          err = registration.error.msg
+    try:
+      let res = await ls.call("client/registerCapability", registrationParams)
+      debug "Got response for the didChangeConfiguration registration:", res = $res
+    except JsonRpcError as err:
+      warn "The didChangeConfiguration registration failed", err = err.msg
 
-proc maybeRegisterCapabilityDidChangeWatchedFiles*(ls: LanguageServer) =
+proc maybeRegisterCapabilityDidChangeWatchedFiles*(
+    ls: LanguageServer
+) {.async: (raises: [CancelledError]).} =
   if ls.supportsDynamicRegistrationForDidChangeWatchedFiles:
-    let registrationParams = RegistrationParams(
-      registrations: some(
-        @[
-          Registration(
-            id: "798b37f2-6a93-455a-887b-500ea761ed84",
-            `method`: "workspace/didChangeWatchedFiles",
-            registrationOptions: some(
-              %DidChangeWatchedFilesRegistrationOptions(
-                watchers: some(
-                  @[
-                    FileSystemWatcher(
-                      globPattern: "**/*.nim",
-                      kind: some(
-                        WatchKind.Create.int or WatchKind.Change.int or
-                          WatchKind.Delete.int
-                      ),
-                    )
-                  ]
-                )
-              )
-            ),
-          )
-        ]
+    let watchers = @[
+      FileSystemWatcher(
+        globPattern: "**/*.nim",
+        kind: some(WatchKind.Create.int or WatchKind.Change.int or WatchKind.Delete.int),
       )
+    ]
+    let reg = Registration(
+      id: "workspace-did-change-watched-files",
+      `method`: "workspace/didChangeWatchedFiles",
+      registrationOptions:
+        some(%DidChangeWatchedFilesRegistrationOptions(watchers: some(watchers))),
     )
-    let registration = ls.call("client/registerCapability", registrationParams)
-    registration.addCallback do(data: pointer) {.gcsafe.}:
-      if registration.completed:
-        debug "Got response for the didChangeWatchedFiles registration:",
-          res = $registration.read()
-        ls.watchingFiles = true
-      else:
-        warn "The didChangeWatchedFiles registration failed",
-          err = registration.error.msg
+    let regParams = RegistrationParams(registrations: some(@[reg]))
+    try:
+      let res = await ls.call("client/registerCapability", regParams)
+      debug "Got response for the didChangeWatchedFiles registration:", res = $res
+      ls.watchingFiles = true
+    except JsonRpcError as err:
+      warn "The didChangeWatchedFiles registration failed", err = err.msg
 
 proc markNimsuggestsStale*(ls: LanguageServer) =
   for project in ls.projectFiles.values:

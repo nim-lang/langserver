@@ -1106,12 +1106,13 @@ proc cancelTest*(
 #Notifications
 proc initialized*(
     ls: LanguageServer, _: JsonNode
-): Future[void] {.async: (raises: [ApplicationError]).} =
+): Future[void] {.async: (raises: [ApplicationError, CancelledError]).} =
   ls.checkInitialized()
   debug "Client initialized."
-  maybeRegisterCapabilityDidChangeConfiguration(ls)
-  maybeRegisterCapabilityDidChangeWatchedFiles(ls)
-  await maybeRequestConfigurationFromClient(ls)
+  let changeConf = maybeRegisterCapabilityDidChangeConfiguration(ls)
+  let watchFiles = maybeRegisterCapabilityDidChangeWatchedFiles(ls)
+  let reqConf = maybeRequestConfigurationFromClient(ls)
+  await allFutures(changeConf, watchFiles, reqConf)
 
 proc cancelRequest*(
     ls: LanguageServer, params: CancelParams
