@@ -611,6 +611,13 @@ proc getRootPath*(ip: LspInitializeParams): string {.raises: [OSError].} =
 proc getRootPath*(ip: McpInitializeParams): string {.raises: [OSError].} =
   getCurrentDir().pathToUri.uriToPath
 
+proc getRootPath(ls: LanguageServer): string {.raises: [OSError].} =
+  case ls.serverMode
+  of mcp:
+    ls.mcpInitializeParams.getRootPath()
+  of lsp:
+    ls.lspInitializeParams.getRootPath()
+
 proc getWorkingDir*(
     ls: LanguageServer, path: string
 ): Future[string] {.async: (raises: [CancelledError, OSError]).} =
@@ -862,8 +869,13 @@ proc nimsuggestProjectFor(
   else:
     ls.reuseLiveNimsuggestProject()
 
-proc packageNimbleFile(file, rootPath: string): string {.raises: [OSError].} =
+proc packageNimbleFile(ls: LanguageServer, file: string): string {.raises: [OSError].} =
+  let rootPath = ls.getRootPath()
   let inRoot = file.isRelTo(rootPath)
+  if inRoot:
+    for nimbleFile in ls.nimblePackageLoads.keys:
+      if nimbleFile.isRelTo(rootPath) and file.isRelTo(nimbleFile.parentDir):
+        return nimbleFile
   var dir = file.parentDir
   while true:
     let nimbleFiles = walkFiles(dir / "*.nimble").toSeq
@@ -1436,12 +1448,7 @@ proc getProjectFile*(
     fileUri: string, ls: LanguageServer
 ): Future[string] {.async: (raises: [CancelledError, OSError, RegexError]).} =
   let
-    rootPath =
-      case ls.serverMode
-      of mcp:
-        ls.mcpInitializeParams.getRootPath()
-      of lsp:
-        ls.lspInitializeParams.getRootPath()
+    rootPath = ls.getRootPath()
     pathRelativeToRoot = fileUri.tryRelativeTo(rootPath)
     conf = await ls.workspaceConfigurationWait()
     mappings = conf.projectMapping.get(@[])
@@ -1462,7 +1469,7 @@ proc getProjectFile*(
       trace "getProjectFile does not match",
         uri = fileUri, matchedRegex = mapping.fileRegex
 
-  let nimbleFile = packageNimbleFile(fileUri, rootPath)
+  let nimbleFile = ls.packageNimbleFile(fileUri)
   let package =
     if nimbleFile.len > 0:
       await ls.nimblePackage(nimbleFile)

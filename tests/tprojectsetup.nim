@@ -170,3 +170,8 @@ suite "Nimble packages":
     check load != nil
     discard waitFor getProjectFile(projectsDir / "vendored" / "vendored.nim", ls)
     check ls.nimblePackageLoads.getOrDefault(nimbleFile) == load
+
+  test "a file of a known package keeps resolving to it":
+    let dep = projectsDir / "vendored" / "vendor" / "dep" / "dep.nim"
+    check projectsDir / "vendored" / "vendored.nimble" in ls.nimblePackageLoads
+    check (waitFor getProjectFile(dep, ls)) == projectsDir / "vendored" / "vendored.nim"
