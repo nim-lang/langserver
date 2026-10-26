@@ -187,6 +187,6 @@ suite "Nimble packages":
     let package = ls.nimblePackages[projectsDir / "vendored" / "vendored.nimble"]
     let nimPath = waitFor ls.getNimPath(NlsConfig(), dep)
     if package.nimDir.isSome and package.nimDir.get.dirExists:
-      check nimPath == some(package.nimDir.get / "nim")
+      check nimPath == some(package.nimDir.get / "nim".addFileExt(ExeExt))
     else:
       check nimPath == some(findExe "nim")

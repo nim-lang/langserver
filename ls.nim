@@ -566,7 +566,7 @@ proc getNimsuggestPathAndVersion(
     let nimDir = package.nimDir.get ""
     if nimDir != "" and nimDir.dirExists:
       nimVersion = getNimVersion(nimDir) & " from " & nimDir
-      nimsuggestPath = nimDir / "nimsuggest"
+      nimsuggestPath = nimDir / "nimsuggest".addFileExt(ExeExt)
     else:
       nimVersion = getNimVersion("")
       nimsuggestPath = findExe "nimsuggest"
@@ -580,12 +580,12 @@ proc getNimPath*(
     ls: LanguageServer, conf: NlsConfig, file: string
 ): Future[Option[string]] {.async: (raises: [CancelledError, OSError, IOError]).} =
   if conf.nimsuggestPath.isSome and conf.nimsuggestPath.get().fileExists():
-    some(conf.nimsuggestPath.get.parentDir / "nim")
+    some(conf.nimsuggestPath.get.parentDir / "nim".addFileExt(ExeExt))
   else:
     let (nimsuggestPath, _) = await ls.getNimsuggestPathAndVersion(conf, file)
     let path =
       if nimsuggestPath.fileExists():
-        nimsuggestPath.parentDir / "nim"
+        nimsuggestPath.parentDir / "nim".addFileExt(ExeExt)
       else:
         findExe "nim"
 
@@ -969,8 +969,6 @@ proc didOpenFile*(
   with textDocument:
     debug "New document opened for URI:", uri = uri
     let file = open(ls.uriStorageLocation(uri), fmWrite)
-    defer:
-      file.close()
     let projectFileFuture = getProjectFile(uriToPath(uri), ls)
     let openFile = NlsFileInfo(
       projectFile: projectFileFuture,
@@ -980,9 +978,12 @@ proc didOpenFile*(
     )
     ls.openFiles[uri] = openFile
 
-    for line in text.splitLines:
-      openFile.fingerTable.add line.createUTFMapping()
-      file.writeLine line
+    try:
+      for line in text.splitLines:
+        openFile.fingerTable.add line.createUTFMapping()
+        file.writeLine line
+    finally:
+      file.close()
 
     let projectFile = await openFile.waitProjectFile()
     debug "Document associated with the following projectFile",
