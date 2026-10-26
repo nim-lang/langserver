@@ -714,7 +714,7 @@ suite "External file edits":
     for call in client.calls["client/registerCapability"]:
       for registration in call{"registrations"}:
         if registration{"method"}.getStr == "workspace/didChangeWatchedFiles":
-          watchers.add registration{"registrationOptions", "watchers"}.getElems
+          watchers.add registration{"registerOptions", "watchers"}.getElems
     check watchers.len == 1
     check watchers[0]{"globPattern"}.getStr == "**/*.nim"
     check waitUntil(ls.watchingFiles)

@@ -772,7 +772,7 @@ type
   Registration* = ref object of RootObj
     id*: string
     `method`*: string
-    registrationOptions*: OptionalNode
+    registerOptions*: OptionalNode
 
   RegistrationParams* = ref object of RootObj
     registrations*: OptionalSeq[Registration]
