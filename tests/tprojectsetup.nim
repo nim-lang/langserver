@@ -35,19 +35,17 @@ suite "nimble setup":
     discard waitFor client.initialize(initParams)
     ls.setWorkspaceConfiguration(% @[NlsConfig()])
 
-    check waitFor client.waitForNotificationMessage(
-      fmt"Nimsuggest initialized for {entryPoint}"
-    )
-
     let completionParams =
       CompletionParams %* {
         "position": {"line": 7, "character": 0},
         "textDocument": {"uri": pathToUri(entryPoint)},
       }
-    let ns = ls.projectFiles[entryPoint].ns
     client.notify(
       "textDocument/didOpen",
       %createDidOpenParams("projects/testproject/src/testproject.nim"),
+    )
+    check waitFor client.waitForNotificationMessage(
+      fmt"Nimsuggest initialized for {entryPoint}"
     )
     check waitFor client.waitForNotification(
       "window/showMessage",
@@ -129,3 +127,46 @@ suite "Project Mapping":
     let expectedProjectFile = nonimbleProject
 
     check projectFile == expectedProjectFile
+
+suite "Nimble packages":
+  let cmdParams =
+    CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
+  let ls = main(cmdParams)
+  let client = newLspSocketClient()
+  waitFor client.connect("localhost", cmdParams.port)
+  client.registerNotification(
+    "window/showMessage", "window/workDoneProgress/create", "workspace/configuration",
+    "extension/statusUpdate", "textDocument/publishDiagnostics", "$/progress",
+  )
+  let projectsDir = absolutePath "tests" / "projects"
+  discard waitFor client.initialize(
+    LspInitializeParams %* {
+      "processId": %getCurrentProcessId(),
+      "rootUri": fixtureUri("projects"),
+      "capabilities": {"workspace": {"configuration": true}},
+    }
+  )
+  ls.setWorkspaceConfiguration(% @[NlsConfig()])
+
+  suiteTeardown:
+    waitFor ls.shutdownNimsuggest()
+
+  test "a file of a vendored package belongs to the package that vendors it":
+    let dep = projectsDir / "vendored" / "vendor" / "dep" / "dep.nim"
+    check (waitFor getProjectFile(dep, ls)) == projectsDir / "vendored" / "vendored.nim"
+    check projectsDir / "vendored" / "vendor" / "dep" / "dep.nimble" notin
+      ls.nimblePackages
+
+  test "a folder with several nimble files is not a package":
+    let sub = projectsDir / "twonimbles" / "sub" / "sub.nim"
+    let other = projectsDir / "twonimbles" / "sub" / "other.nim"
+    check (waitFor getProjectFile(other, ls)) == sub
+    # the entry point is in the package's folder, not in the workspace's
+    check sub in ls.entryPoints
+
+  test "a package is dumped once":
+    let nimbleFile = projectsDir / "vendored" / "vendored.nimble"
+    let load = ls.nimblePackageLoads.getOrDefault(nimbleFile)
+    check load != nil
+    discard waitFor getProjectFile(projectsDir / "vendored" / "vendored.nim", ls)
+    check ls.nimblePackageLoads.getOrDefault(nimbleFile) == load

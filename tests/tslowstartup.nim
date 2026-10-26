@@ -76,7 +76,6 @@ suite "Nimsuggest startup for a slow mapped root":
     waitFor ls.shutdownNimsuggest()
 
   test "files opened during startup share a single nimsuggest for their root":
-    check not ls.nimsuggestInit.finished
     client.notify("textDocument/didOpen", %createDidOpenParams(otherFile))
     client.notify("textDocument/didOpen", %createDidOpenParams(rootFile))
 
@@ -99,27 +98,21 @@ suite "Requests during startup":
     waitFor ls.shutdownNimsuggest()
 
   test "a request behind didOpen waits for the file instead of answering empty":
-    check not ls.nimsuggestInit.finished
     client.notify("textDocument/didOpen", %createDidOpenParams(otherFile))
     check waitUntil(otherUri in ls.openFiles, 1.seconds)
     let symbols = waitFor client.documentSymbols(otherFile).wait(CallTimeout)
     check symbols.getElems.anyIt(it["name"].getStr == "other")
 
-suite "Project resolution during startup":
+suite "Project resolution with a single nimsuggest":
   let (ls, client) = startSlowRootServer(defaultConfiguration)
 
   suiteTeardown:
     waitFor ls.shutdownNimsuggest()
 
-  test "a file opened during startup uses the startup nimsuggest":
-    check not ls.nimsuggestInit.finished
+  test "a file of a nimble package uses the package's nimsuggest":
     client.notify("textDocument/didOpen", %createDidOpenParams(otherFile))
 
-    check waitUntil(
-      otherUri in ls.openFiles and ls.openFiles[otherUri].projectFile.finished and
-        ls.nimsuggestInit.finished,
-      CallTimeout,
-    )
+    check waitUntil(entryPath in ls.projectFiles, CallTimeout)
     check not waitUntil(ls.projectFiles.len > 1, 8.seconds)
     check (waitFor ls.openFiles[otherUri].waitProjectFile()) == entryPath
     check toSeq(ls.projectFiles.keys) == @[entryPath]
@@ -128,6 +121,9 @@ suite "Shutdown during nimsuggest startup":
   let (ls, client) = startSlowRootServer(defaultConfiguration)
 
   test "stopping cancels the nimsuggest that is still starting":
+    client.notify(
+      "textDocument/didOpen", %createDidOpenParams("projects/slowroot/slowroot.nim")
+    )
     check waitUntil(entryPath in ls.nimsuggestCreations, CallTimeout)
     let creation = ls.nimsuggestCreations.getOrDefault(entryPath)
     waitFor ls.shutdownNimsuggest()
@@ -139,29 +135,6 @@ suite "Shutdown during nimsuggest startup":
     waitFor ls.createOrRestartNimsuggest(entryPath).wait(30.seconds)
     check ls.nimsuggestCreations.len == 0
     check entryPath notin ls.projectFiles
-
-suite "Shutdown while the workspace is being dumped":
-  let (ls, _) = startSlowRootServer(defaultConfiguration)
-
-  test "stopping cancels the startup before it gets to nimsuggest":
-    # `nimble dump` of the workspace takes seconds, so the startup is still
-    # running it and has not asked for a nimsuggest yet
-    check not ls.nimsuggestInit.finished
-    check ls.nimsuggestCreations.len == 0
-    waitFor ls.shutdownNimsuggest()
-    # it is done by the time shutdown returns, so its `nimble dump` is gone too
-    check ls.nimsuggestInit.cancelled
-    check ls.projectFiles.len == 0
-
-suite "Shutdown request while the workspace is being dumped":
-  let (ls, client) = startSlowRootServer(defaultConfiguration)
-
-  test "the shutdown request cancels the startup before answering":
-    check not ls.nimsuggestInit.finished
-    check ls.nimsuggestCreations.len == 0
-    discard waitFor client.call("shutdown", newJObject()).wait(CallTimeout)
-    check ls.nimsuggestInit.cancelled
-    check ls.projectFiles.len == 0
 
 suite "Shared project futures":
   test "joining project resolution does not cancel the shared future":

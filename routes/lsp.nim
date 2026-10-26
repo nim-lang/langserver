@@ -81,14 +81,10 @@ proc initialize*(
     if docCaps.rename.isSome and docCaps.rename.get().prepareSupport.get(false):
       result.capabilities.renameProvider = %*{"prepareProvider": true}
 
-  debug "Initialize completed. Trying to start nimsuggest instances"
+  debug "Initialize completed."
 
-  let
-    ls = p.ls
-    rootPath = ls.lspInitializeParams.getRootPath
-
+  let ls = p.ls
   ls.lspServerCapabilities = result.capabilities
-  ls.nimsuggestInit = ls.initNimsuggestInstances(rootPath)
   ls.initialized = true
 
 proc toCompletionItem(suggest: Suggest): CompletionItem =

@@ -570,16 +570,12 @@ proc initialize*(
     serverInfo:
       McpInitializeParams_serverInfo(name: "nimlangserver", version: LSPVersion),
   )
-  debug "Initialize completed. Trying to start nimsuggest instances"
+  debug "Initialize completed."
 
-  let
-    ls = p.ls
-    rootPath = getCurrentDir().pathToUri.uriToPath
-
+  let ls = p.ls
   ls.mcpServerCapabilities = result.capabilities
   #MCP clients have no settings for us
   ls.setWorkspaceConfiguration(newJArray())
-  ls.nimsuggestInit = ls.initNimsuggestInstances(rootPath)
   ls.initialized = true
 
 proc listTools*(
@@ -610,8 +606,6 @@ proc callTool*(
 .} =
   ls.checkInitialized()
   debug "Call tool received...", name = params.name
-
-  await ls.nimsuggestInit
 
   case params.name
   of "nimFindReferences":
