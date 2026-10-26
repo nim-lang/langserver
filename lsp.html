@@ -267,16 +267,16 @@ EOF
 <tr><td><code>nim.timeout</code></td><td>Request timeout in ms before <code>nimlangserver</code> restarts. Default: 2 minutes.</td></tr>
 <tr><td><code>nim.nimsuggestPath</code></td><td>Path to <code>nimsuggest</code>. Default: <code>"nimsuggest"</code>.</td></tr>
 <tr><td><code>nim.autoCheckFile</code></td><td>Check the file on the fly. Default: <code>false</code>.</td></tr>
-<tr><td><code>nim.autoCheckProject</code></td><td>Check the project after saving.</td></tr>
+<tr><td><code>nim.autoCheckProject</code></td><td>Enable project checks. Default: <code>true</code>.</td></tr>
 <tr><td><code>nim.autoRestart</code></td><td>Auto-restart <code>nimsuggest</code> once after a crash. The server won't restart if there were no successful calls since the last restart.</td></tr>
 <tr><td><code>nim.workingDirectoryMapping</code></td><td>Configure the working directory for specific projects.</td></tr>
-<tr><td><code>nim.checkOnSave</code></td><td>Check the file on save.</td></tr>
+<tr><td><code>nim.checkOnSave</code></td><td>Check the project on save (requires <code>nim.autoCheckProject</code>). Default: <code>true</code>.</td></tr>
 <tr><td><code>nim.logNimsuggest</code></td><td>Enable <code>nimsuggest</code> logging.</td></tr>
 <tr><td><code>nim.inlayHints</code></td><td>Configure inlay hints. Exception hints are off by default due to their compile-time cost.</td></tr>
 <tr><td><code>nim.notificationVerbosity</code></td><td>Notification verbosity: <code>"none"</code>, <code>"error"</code>, <code>"warning"</code>, or <code>"info"</code>.</td></tr>
 <tr><td><code>nim.formatOnSave</code></td><td>Format on save (requires <code>nph</code> on <code>PATH</code>).</td></tr>
 <tr><td><code>nim.nimsuggestIdleTimeout</code></td><td>Timeout in ms before an idle <code>nimsuggest</code> is stopped. Default: 120 seconds.</td></tr>
-<tr><td><code>nim.useNimCheck</code></td><td>Use <code>nim check</code> instead of <code>nimsuggest</code> for linting. Default: <code>true</code>.</td></tr>
+<tr><td><code>nim.useNimCheck</code></td><td>Use <code>nim check</code> instead of <code>nimsuggest</code> for linting. Default: <code>false</code>.</td></tr>
 <tr><td><code>nim.maxNimsuggestProcesses</code></td><td>Maximum number of live <code>nimsuggest</code> processes. <code>0</code> means unlimited. Default: <code>0</code>.</td></tr>
 <tr><td><code>nim.nimsuggestMaxMemory</code></td><td>Memory cap per <code>nimsuggest</code> process in MB. <code>nimsuggest</code> quits when the value is reached. <code>0</code> means unlimited. Default: <code>nimsuggest</code>'s own default (4000 MB). Requires a <code>nimsuggest</code> advertising the <code>maxMemory</code> capability; ignored otherwise.</td></tr>
 <tr><td><code>nim.nimsuggestTimeout</code></td><td>Timeout in ms for the <code>nimsuggest</code> startup + initial compilation. Default: 60 seconds.</td></tr>
