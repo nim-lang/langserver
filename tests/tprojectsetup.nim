@@ -75,16 +75,13 @@ suite "nimble setup":
 
     check ls.projectFiles.len == 1
 
-  test "getNimbleDumpInfo reports the project's name and srcDir and caches it":
+  test "the nimble package reports its source dir and main file":
     let nimbleFile = testProjectDir / "testproject.nimble"
-    let info = waitFor ls.getNimbleDumpInfo(nimbleFile)
-    check info.name == "testproject"
-    check info.srcDir == "src"
-    check nimbleFile in ls.nimDumpCache
-
-    let cached = waitFor ls.getNimbleDumpInfo(nimbleFile)
-    check cached.name == info.name
-    check cached.srcDir == info.srcDir
+    let package = waitFor ls.nimblePackage(nimbleFile)
+    check package.dir == testProjectDir
+    check package.sourceDir == testProjectDir / "src"
+    check package.projectFile == testProjectDir / "src" / "testproject.nim"
+    check package.projectFile in package.entryPoints
 
 suite "Project Mapping":
   let cmdParams =
@@ -175,3 +172,20 @@ suite "Nimble packages":
     let dep = projectsDir / "vendored" / "vendor" / "dep" / "dep.nim"
     check projectsDir / "vendored" / "vendored.nimble" in ls.nimblePackageLoads
     check (waitFor getProjectFile(dep, ls)) == projectsDir / "vendored" / "vendored.nim"
+
+  test "nimsuggest runs in the folder of the file's package":
+    let dep = projectsDir / "vendored" / "vendor" / "dep" / "dep.nim"
+    check (waitFor ls.getWorkingDir(dep)) == projectsDir / "vendored"
+
+  test "a file outside of any package runs in the workspace":
+    let hw = projectsDir / "hw" / "hw.nim"
+    check (waitFor ls.getWorkingDir(hw)) == ls.lspInitializeParams.getRootPath
+
+  test "nim comes from the Nim of the file's package":
+    let dep = projectsDir / "vendored" / "vendor" / "dep" / "dep.nim"
+    let package = ls.nimblePackages[projectsDir / "vendored" / "vendored.nimble"]
+    let nimPath = waitFor ls.getNimPath(NlsConfig(), dep)
+    if package.nimDir.isSome and package.nimDir.get.dirExists:
+      check nimPath == some(package.nimDir.get / "nim")
+    else:
+      check nimPath == some(findExe "nim")

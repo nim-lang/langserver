@@ -155,7 +155,7 @@ proc definition*(
       let projectFile = await info.waitProjectFile()
       let timeout = config.timeout.get(REQUEST_TIMEOUT)
       let workingDir = await ls.getWorkingDir(projectFile)
-      let nimPath = await ls.getNimPath(config, workingDir)
+      let nimPath = await ls.getNimPath(config, projectFile)
       if nimPath.isNone:
         return @[]
       result = (
@@ -477,14 +477,14 @@ proc hover*(
           content.value.add &"```nim\n{expanded[0].doc}\n```"
         else:
           # debug "Couldnt expand the macro. Trying with nim expand", suggest = suggest[]
-          let nimPath = await ls.getNimPath(config)
+          let nimPath = await ls.getNimPath(config, uriToPath(uri))
           if nimPath.isSome:
             let expanded = await nimExpandMacro(nimPath.get, suggest, uriToPath(uri))
             content.value.add &"```nim\n{expanded}\n```"
       if suggest.section == ideDef and suggest.symkind in ["skProc"] and
           config.nimExpandArc.get(NIM_EXPAND_ARC_BY_DEFAULT):
         debug "#Expanding arc", suggest = suggest[]
-        let nimPath = await ls.getNimPath(config)
+        let nimPath = await ls.getNimPath(config, uriToPath(uri))
         if nimPath.isSome:
           let expanded = await nimExpandArc(nimPath.get, suggest, uriToPath(uri))
           let arcContent = "#Expanded arc \n" & expanded
@@ -520,7 +520,7 @@ proc references*(
       let mode = if includeDeclaration: tmDefUsages else: tmUsages
       let timeout = config.timeout.get(REQUEST_TIMEOUT)
       let workingDir = await ls.getWorkingDir(projectFile)
-      let nimPath = await ls.getNimPath(config, workingDir)
+      let nimPath = await ls.getNimPath(config, projectFile)
       if nimPath.isNone:
         return @[]
       let refs = await track(
@@ -1049,7 +1049,8 @@ proc listTests*(
   ls.checkInitialized()
   let config = await ls.workspaceConfigurationWait()
   let workspaceRoot = ls.lspInitializeParams.getRootPath
-  let nimPath = await ls.getNimPath(config, workspaceRoot)
+  let nimPath =
+    await ls.getNimPath(config, getFullPath(params.entryPoint, workspaceRoot))
   if nimPath.isNone:
     error "Nim path not found when listing tests"
     return ListTestsResult(
@@ -1073,7 +1074,8 @@ proc runTests*(
   ls.checkInitialized()
   let config = await ls.workspaceConfigurationWait()
   let workspaceRoot = ls.lspInitializeParams.getRootPath
-  let nimPath = await ls.getNimPath(config, workspaceRoot)
+  let nimPath =
+    await ls.getNimPath(config, getFullPath(params.entryPoint, workspaceRoot))
   if nimPath.isNone:
     error "Nim path not found when running tests"
     return RunTestProjectResult()

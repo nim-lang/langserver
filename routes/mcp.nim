@@ -235,7 +235,7 @@ proc callNimFindReferences(
     let projectFile = await ls.openFiles[uri].waitProjectFile()
     let timeout = config.timeout.get(REQUEST_TIMEOUT)
     let workingDir = await ls.getWorkingDir(projectFile)
-    let nimPath = await ls.getNimPath(config, workingDir)
+    let nimPath = await ls.getNimPath(config, projectFile)
     if nimPath.isNone:
       return McpCallToolResult(
         content: @[McpContentBlock(`type`: TextContent, text: "Nim not found")],
