@@ -158,8 +158,7 @@ type
     workspaceConfigurationReady*: Future[void].Raising([CancelledError])
       #Completed the first time a configuration is known, and never replaced.
     inlayHintsRefreshRequest*: Future[JsonNode].Raising([CancelledError, JsonRpcError])
-    didChangeConfigurationRegistrationRequest*:
-      Future[JsonNode].Raising([CancelledError, JsonRpcError])
+    watchingFiles*: bool
     filesWithDiags*: HashSet[string]
     nimsuggestInit*: Future[void].Raising([CancelledError, OSError])
     lastNimsuggest*: Nimsuggest
@@ -485,6 +484,13 @@ proc requiresDynamicRegistrationForDidChangeConfiguration(ls: LanguageServer): b
   ls.lspClientCapabilities.workspace.isSome and
     ls.lspClientCapabilities.workspace.get.didChangeConfiguration.isSome and
     ls.lspClientCapabilities.workspace.get.didChangeConfiguration.get.dynamicRegistration.get(
+      false
+    )
+
+proc supportsDynamicRegistrationForDidChangeWatchedFiles(ls: LanguageServer): bool =
+  ls.lspClientCapabilities.workspace.isSome and
+    ls.lspClientCapabilities.workspace.get.didChangeWatchedFiles.isSome and
+    ls.lspClientCapabilities.workspace.get.didChangeWatchedFiles.get.dynamicRegistration.get(
       false
     )
 
@@ -1012,6 +1018,60 @@ proc didOpenFile*(
       debug "Opening project file", uri = projectFile, file = uri
     await ls.showMessage(fmt "Opening {uri}", MessageType.Info)
 
+proc checkNimsuggestProject(
+    ls: LanguageServer, uri: string, nimsuggest: Nimsuggest
+): Future[void] {.
+    async: (
+      raises: [
+        CancelledError, AsyncProcessError, AsyncStreamError, OSError, IOError,
+        RegexError, NimsuggestError,
+      ]
+    )
+.} =
+  if nimsuggest.checkProjectInProgress:
+    debug "Check project is already running", uri = uri
+    nimsuggest.needsCheckProject = true
+    return
+
+  ls.cancelPendingFileChecks(nimsuggest)
+
+  let token = ls.createProgressToken()
+  ls.workDoneProgressCreate(token)
+  ls.progress(token, "begin", fmt "Checking project {uri.uriToPath}")
+  nimsuggest.checkProjectInProgress = true
+  defer:
+    nimsuggest.checkProjectInProgress = false
+    ls.progress(token, "end")
+
+  proc getFilepath(s: Suggest): string =
+    s.filePath
+
+  nimsuggest.stale = false
+  let
+    diagnostics = nimsuggest.chk(uriToPath(uri), ls.uriToStash(uri)).await().filter(
+        sug => sug.filePath != "???"
+      )
+    filesWithDiags = diagnostics.map(s => s.filePath).toHashSet
+
+  debug "Found diagnostics", file = filesWithDiags
+  for (path, diags) in groupBy(diagnostics, getFilepath):
+    ls.sendDiagnostics(diags, path)
+
+  # clean files with no diags
+  for path in ls.filesWithDiags:
+    if not filesWithDiags.contains path:
+      debug "Sending zero diags", path = path
+      let params =
+        PublishDiagnosticsParams %* {"uri": pathToUri(path), "diagnostics": @[]}
+      ls.notify("textDocument/publishDiagnostics", params)
+  ls.filesWithDiags = filesWithDiags
+
+  if nimsuggest.needsCheckProject:
+    nimsuggest.needsCheckProject = false
+    callSoon do(data: pointer) {.gcsafe.}:
+      debug "Running delayed check project...", uri = uri
+      traceAsyncErrors ls.checkNimsuggestProject(uri, nimsuggest)
+
 proc tryGetNimsuggest*(
     ls: LanguageServer, uri: string
 ): Future[Option[Nimsuggest]] {.
@@ -1025,6 +1085,9 @@ proc tryGetNimsuggest*(
   while retryCount < maxRetries:
     let ns = await getNimsuggestInner(ls, uri)
     if not ns.isNil:
+      if ns.stale and not ns.checkProjectInProgress:
+        ns.stale = false
+        traceAsyncErrors ls.checkNimsuggestProject(uri, ns)
       return some ns
 
     let file = ls.openFiles.getOrDefault(uri)
@@ -1059,11 +1122,12 @@ proc checkProject*(
   let conf = await ls.workspaceConfigurationWait()
   if not conf.autoCheckProject.get(true):
     return
-  let useNimCheck = conf.useNimCheck.get(USE_NIM_CHECK_BY_DEFAULT)
 
-  let nimPath = await ls.getNimPath(conf)
+  if conf.useNimCheck.get(USE_NIM_CHECK_BY_DEFAULT):
+    let nimPath = await ls.getNimPath(conf)
+    if nimPath.isNone:
+      return
 
-  if useNimCheck and nimPath.isSome:
     proc getFilePath(c: CheckResult): string =
       c.file
 
@@ -1096,49 +1160,7 @@ proc checkProject*(
   let ns = await ls.tryGetNimsuggest(uri)
   if ns.isNone:
     return
-  let nimsuggest = ns.get
-  if nimsuggest.checkProjectInProgress:
-    debug "Check project is already running", uri = uri
-    nimsuggest.needsCheckProject = true
-    return
-
-  ls.cancelPendingFileChecks(nimsuggest)
-
-  let token = ls.createProgressToken()
-  ls.workDoneProgressCreate(token)
-  ls.progress(token, "begin", fmt "Checking project {uri.uriToPath}")
-  nimsuggest.checkProjectInProgress = true
-  defer:
-    nimsuggest.checkProjectInProgress = false
-    ls.progress(token, "end")
-
-  proc getFilepath(s: Suggest): string =
-    s.filePath
-
-  let
-    diagnostics = nimsuggest.chk(uriToPath(uri), ls.uriToStash(uri)).await().filter(
-        sug => sug.filePath != "???"
-      )
-    filesWithDiags = diagnostics.map(s => s.filePath).toHashSet
-
-  debug "Found diagnostics", file = filesWithDiags
-  for (path, diags) in groupBy(diagnostics, getFilepath):
-    ls.sendDiagnostics(diags, path)
-
-  # clean files with no diags
-  for path in ls.filesWithDiags:
-    if not filesWithDiags.contains path:
-      debug "Sending zero diags", path = path
-      let params =
-        PublishDiagnosticsParams %* {"uri": pathToUri(path), "diagnostics": @[]}
-      ls.notify("textDocument/publishDiagnostics", params)
-  ls.filesWithDiags = filesWithDiags
-
-  if nimsuggest.needsCheckProject:
-    nimsuggest.needsCheckProject = false
-    callSoon do(data: pointer) {.gcsafe.}:
-      debug "Running delayed check project...", uri = uri
-      traceAsyncErrors ls.checkProject(uri)
+  await ls.checkNimsuggestProject(uri, ns.get)
 
 proc onErrorCallback(
     args: (LanguageServer, string), project: Project
@@ -1281,7 +1303,9 @@ proc stopNimsuggests(ls: LanguageServer) {.async: (raises: []).} =
     stops.add project.stopWait()
   await noCancel allFutures(stops)
 
-proc maybeRegisterCapabilityDidChangeConfiguration*(ls: LanguageServer) =
+proc maybeRegisterCapabilityDidChangeConfiguration*(
+    ls: LanguageServer
+) {.async: (raises: [CancelledError]).} =
   if ls.requiresDynamicRegistrationForDidChangeConfiguration:
     let registrationParams = RegistrationParams(
       registrations: some(
@@ -1293,15 +1317,40 @@ proc maybeRegisterCapabilityDidChangeConfiguration*(ls: LanguageServer) =
         ]
       )
     )
-    let registration = ls.call("client/registerCapability", registrationParams)
-    ls.didChangeConfigurationRegistrationRequest = registration
-    registration.addCallback do(data: pointer) {.gcsafe.}:
-      if registration.completed:
-        debug "Got response for the didChangeConfiguration registration:",
-          res = $registration.read()
-      else:
-        warn "The didChangeConfiguration registration failed",
-          err = registration.error.msg
+    try:
+      let res = await ls.call("client/registerCapability", registrationParams)
+      debug "Got response for the didChangeConfiguration registration:", res = $res
+    except JsonRpcError as err:
+      warn "The didChangeConfiguration registration failed", err = err.msg
+
+proc maybeRegisterCapabilityDidChangeWatchedFiles*(
+    ls: LanguageServer
+) {.async: (raises: [CancelledError]).} =
+  if ls.supportsDynamicRegistrationForDidChangeWatchedFiles:
+    let watchers = @[
+      FileSystemWatcher(
+        globPattern: "**/*.nim",
+        kind: some(WatchKind.Create.int or WatchKind.Change.int or WatchKind.Delete.int),
+      )
+    ]
+    let reg = Registration(
+      id: "workspace-did-change-watched-files",
+      `method`: "workspace/didChangeWatchedFiles",
+      registerOptions:
+        some(%DidChangeWatchedFilesRegistrationOptions(watchers: some(watchers))),
+    )
+    let regParams = RegistrationParams(registrations: some(@[reg]))
+    try:
+      let res = await ls.call("client/registerCapability", regParams)
+      debug "Got response for the didChangeWatchedFiles registration:", res = $res
+      ls.watchingFiles = true
+    except JsonRpcError as err:
+      warn "The didChangeWatchedFiles registration failed", err = err.msg
+
+proc markNimsuggestsStale*(ls: LanguageServer) =
+  for project in ls.projectFiles.values:
+    if project.ns != nil:
+      project.ns.stale = true
 
 proc handleConfigurationChanges*(
     ls: LanguageServer, oldConfiguration, newConfiguration: NlsConfig
@@ -1429,8 +1478,6 @@ proc checkFile*(
   let uri = file.textDocument.uri
   let edits = file.edits
   let conf = await ls.workspaceConfigurationWait()
-  let useNimCheck = conf.useNimCheck.get(USE_NIM_CHECK_BY_DEFAULT)
-  let nimPath = await ls.getNimPath(conf)
   let token = ls.createProgressToken()
   ls.workDoneProgressCreate(token)
   ls.progress(token, "begin", fmt "Checking {uri.uriToPath}")
@@ -1439,7 +1486,10 @@ proc checkFile*(
 
   let path = uriToPath(uri)
 
-  if useNimCheck and nimPath.isSome:
+  if conf.useNimCheck.get(USE_NIM_CHECK_BY_DEFAULT):
+    let nimPath = await ls.getNimPath(conf)
+    if nimPath.isNone:
+      return
     let checkResults = await nimCheck(uriToPath(uri), nimPath.get)
     if file.edits == edits:
       ls.sendDiagnostics(checkResults, path)

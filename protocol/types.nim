@@ -772,7 +772,7 @@ type
   Registration* = ref object of RootObj
     id*: string
     `method`*: string
-    registrationOptions*: OptionalNode
+    registerOptions*: OptionalNode
 
   RegistrationParams* = ref object of RootObj
     registrations*: OptionalSeq[Registration]
@@ -1292,6 +1292,8 @@ LspJson.useDefaultReaderFor(TextDocumentContentChangeEvent)
 LspJson.useDefaultReaderFor(WillSaveTextDocumentParams)
 LspJson.useDefaultReaderFor(DidSaveTextDocumentParams)
 LspJson.useDefaultReaderFor(DidCloseTextDocumentParams)
+LspJson.useDefaultReaderFor(DidChangeWatchedFilesParams)
+LspJson.useDefaultReaderFor(FileEvent)
 LspJson.useDefaultReaderFor(CompletionParams)
 LspJson.useDefaultReaderFor(CompletionContext)
 LspJson.useDefaultReaderFor(ReferenceContext)
