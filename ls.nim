@@ -545,22 +545,16 @@ proc loadNimblePackage(
       package.entryPoints.add projectFile
   ls.nimblePackages[nimbleFile] = package
 
-proc nimblePackage*(
-    ls: LanguageServer, nimbleFile: string
-): Future[NimblePackage] {.async: (raises: [CancelledError]).} =
+proc nimblePackage(
+    ls: LanguageServer, file: string
+): Future[NimblePackage] {.async: (raises: [CancelledError, OSError]).} =
+  let nimbleFile = ls.packageNimbleFile(file)
+  if nimbleFile.len == 0:
+    return NimblePackage()
   if nimbleFile notin ls.nimblePackageLoads:
     ls.nimblePackageLoads[nimbleFile] = ls.loadNimblePackage(nimbleFile)
   await ls.nimblePackageLoads.getOrDefault(nimbleFile).join()
   ls.nimblePackages.getOrDefault(nimbleFile)
-
-proc filePackage(
-    ls: LanguageServer, file: string
-): Future[NimblePackage] {.async: (raises: [CancelledError, OSError]).} =
-  let nimbleFile = ls.packageNimbleFile(file)
-  if nimbleFile.len > 0:
-    await ls.nimblePackage(nimbleFile)
-  else:
-    NimblePackage()
 
 proc getNimsuggestPathAndVersion(
     ls: LanguageServer, conf: NlsConfig, file: string
@@ -568,7 +562,7 @@ proc getNimsuggestPathAndVersion(
   var nimsuggestPath = expandTilde(conf.nimsuggestPath.get(""))
   var nimVersion = ""
   if nimsuggestPath == "":
-    let package = await ls.filePackage(file)
+    let package = await ls.nimblePackage(file)
     let nimDir = package.nimDir.get ""
     if nimDir != "" and nimDir.dirExists:
       nimVersion = getNimVersion(nimDir) & " from " & nimDir
@@ -649,7 +643,7 @@ proc getWorkingDir*(
     if pathRelativeToRoot.isSome and m.projectFile == pathRelativeToRoot.get():
       return rootPath / m.directory
 
-  let package = await ls.filePackage(path)
+  let package = await ls.nimblePackage(path)
   if package.dir.len > 0: package.dir else: rootPath
 
 proc progressSupported(ls: LanguageServer): bool =
@@ -1432,7 +1426,7 @@ proc getProjectFile*(
       trace "getProjectFile does not match",
         uri = fileUri, matchedRegex = mapping.fileRegex
 
-  let package = await ls.filePackage(fileUri)
+  let package = await ls.nimblePackage(fileUri)
   #If we reached the maximum instances of nimsuggest, we just return the first project
   if not ls.canSpawnNimsuggest(conf):
     return ls.reuseLiveNimsuggestProject(package)

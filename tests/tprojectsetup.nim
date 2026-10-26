@@ -76,8 +76,9 @@ suite "nimble setup":
     check ls.projectFiles.len == 1
 
   test "the nimble package reports its source dir and main file":
-    let nimbleFile = testProjectDir / "testproject.nimble"
-    let package = waitFor ls.nimblePackage(nimbleFile)
+    let entryPoint = testProjectDir / "src" / "testproject.nim"
+    discard waitFor getProjectFile(entryPoint, ls)
+    let package = ls.nimblePackages[testProjectDir / "testproject.nimble"]
     check package.dir == testProjectDir
     check package.sourceDir == testProjectDir / "src"
     check package.projectFile == testProjectDir / "src" / "testproject.nim"
