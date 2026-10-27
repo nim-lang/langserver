@@ -56,7 +56,7 @@ Backends
 ### LSP flow
 
 1. `nimlangserver.nim` parses CLI flags, creates `LanguageServer`, registers LSP routes, and starts the stdio or socket transport.
-2. `routes/lsp.nim.initialize` stores client capabilities and eagerly starts `nimsuggest` for nimble entry points.
+2. `routes/lsp.nim.initialize` stores client capabilities. No `nimsuggest` is started yet: one starts when a file's project is first needed, on `didOpen`.
 3. `lstransports2.nim` (`json-rpc`) reads and decodes the JSON-RPC messages and its router looks up the registered route and invokes the handler.
 4. Route handlers use `ls.nim` helpers such as `didOpenFile`, `getProjectFile`, and `tryGetNimsuggest`.
 5. `suggestapi.nim` sends the actual command to `nimsuggest`, parses the tab-separated result, and returns structured objects.
@@ -67,7 +67,7 @@ Backends
 The MCP flow is the same shared pipeline with a thinner route layer:
 
 1. `nimlangserver.nim` registers `initialize`, `tools/list`, `tools/call`, and `notifications/initialized` from `routes/mcp.nim`.
-2. `routes/mcp.nim.initialize` stores MCP capabilities and eagerly starts `nimsuggest` for the current working directory's nimble entry points.
+2. `routes/mcp.nim.initialize` stores MCP capabilities. As in LSP, `nimsuggest` starts when a tool first opens a file.
 3. `tools/call` dispatches by tool name, usually opens the target file if needed, obtains a `nimsuggest` instance via `tryGetNimsuggest`, and converts the result into `McpCallToolResult`.
 4. `structuredContent` is the authoritative machine-readable result; `content` mirrors it as JSON text for clients that only read text blocks.
 
@@ -83,7 +83,7 @@ The MCP flow is the same shared pipeline with a thinner route layer:
 ## Historical architecture notes
 
 - `nimlangserver` is still best thought of as a fairly thin proxy between a client and one or more long-lived `nimsuggest` processes. In normal operation there is one `nimsuggest` instance per project/configuration pair, and requests are routed to the matching instance.
-- Project discovery is implemened through `ls.nim:getProjectFileAutoGuess`, `ls.nim:getNimbleDumpInfo`, and the `nimble dump`-based entry-point discovery path.
+- Project discovery is in `ls.nim:getProjectFile`: a `projectMapping` match wins, then the main file of the file's nimble package, then `ls.nim:getProjectFileAutoGuess`. The package (`ls.nim:nimblePackage`) is the outermost folder with exactly one `.nimble` between the file and the workspace root, or the nearest one for a file outside the workspace; it is read once per session with `nimble dump`. The package also decides the working directory and the Nim used for `nimsuggest`.
 - If no better project root is found, the opened file may become its own project file. That fallback is still an important behavior to remember when debugging odd workspace-root or include-file issues.
 - File editing is not delegated directly to `nimsuggest`. `nimlangserver` mirrors open file contents into temporary shadow files and passes those paths to backend operations. When debugging stale or surprising results, inspect `ls.nim:didOpenFile`, stash-path helpers, and the code paths that decide whether a file is treated as dirty.
 

@@ -75,8 +75,6 @@ suite "MCP routes":
     mainFile = absolutePath("nimlangserver.nim")
     (ls, initRes) = waitFor initMcpServer(mainFile)
 
-  waitFor ls.nimsuggestInit
-
   suiteTeardown:
     waitFor ls.shutdownNimsuggest()
 
@@ -136,7 +134,6 @@ suite "MCP routes":
     check "structuredContent" notin unknown
 
   test "tools/call is refused until initialize":
-    # callTool awaits nimsuggestInit, which only initialize assigns.
     let
       emptyDir = getTempDir() / "nimlangserver-mcp-no-project"
       savedDir = getCurrentDir()

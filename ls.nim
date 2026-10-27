@@ -160,15 +160,14 @@ type
     inlayHintsRefreshRequest*: Future[JsonNode].Raising([CancelledError, JsonRpcError])
     watchingFiles*: bool
     filesWithDiags*: HashSet[string]
-    nimsuggestInit*: Future[void].Raising([CancelledError, OSError])
     lastNimsuggest*: Nimsuggest
     isShutdownNimsuggest*: bool
     initialized*: bool
       #Set once initialize has run. Until then routes can't rely on its state.
     isShutdown*: bool
     storageDir*: string
-    nimDumpCache*: Table[string, NimbleDumpInfo] #path to NimbleDumpInfo
-    entryPoints*: seq[string]
+    nimblePackages*: Table[string, NimblePackage] #nimble file to its package
+    nimblePackageLoads*: Table[string, Future[void].Raising([CancelledError])]
     testRunProcess*: Option[AsyncProcessRef]
       #There is only one test run process at a time
     srv*: RpcServer #Both modes use it to store the routes
@@ -188,14 +187,13 @@ type
     None
     Folder
     Cfg
-    Nimble
 
-  NimbleDumpInfo* = object
-    srcDir*: string
-    name*: string
+  NimblePackage* = object
+    dir*: string
+    sourceDir*: string
     nimDir*: Option[string]
-    nimblePath*: Option[string]
-    entryPoints*: seq[string] #when it's empty, means the nimble version doesnt dump it.
+    projectFile*: string
+    entryPoints*: seq[string]
 
   OnExitCallback* = proc(): Future[void] {.async: (raises: []).}
     #To be called when the server is shutting down
@@ -241,17 +239,6 @@ proc createProgressToken*(ls: LanguageServer): string =
   inc ls.token
   "token-" & $ls.token
 
-proc getNimbleEntryPoints*(
-    dumpInfo: NimbleDumpInfo, nimbleProjectPath: string
-): seq[string] =
-  if dumpInfo.entryPoints.len > 0:
-    result = dumpInfo.entryPoints.mapIt(nimbleProjectPath / it)
-  else:
-    #Nimble doesnt include the entry points, returning the nimble project file as the entry point
-    let sourceDir = nimbleProjectPath / dumpInfo.srcDir
-    result = @[sourceDir / (dumpInfo.name & ".nim")]
-  result = result.filterIt(it.fileExists)
-
 func typeHintsEnabled*(cnf: NlsConfig): bool =
   result = true
   if cnf.inlayHints.isSome and cnf.inlayHints.get.typeHints.isSome and
@@ -278,54 +265,6 @@ proc supportSignatureHelp*(cc: LspClientCapabilities): bool =
     return false
   let caps = cc.textDocument
   caps.isSome and caps.get.signatureHelp.isSome
-
-proc getNimbleDumpInfo*(
-    ls: LanguageServer, nimbleFile: string, workingDir = ""
-): Future[NimbleDumpInfo] {.async: (raises: [CancelledError]).} =
-  if nimbleFile in ls.nimDumpCache:
-    return ls.nimDumpCache.getOrDefault(nimbleFile)
-  debug "nimble dump starting",
-    nimbleFile = nimbleFile, nimbleDir = getEnv("NIMBLE_DIR")
-  var process: AsyncProcessRef
-  try:
-    process = await startProcess(
-      "nimble",
-      workingDir = nimbleFile.parentDir(),
-      arguments = @["dump"],
-      options = {UsePath},
-      stderrHandle = ProcessStreamHandle(), # None => chronos doesn't
-      # manage stderr, child inherits ours
-      stdoutHandle = AsyncProcess.Pipe,
-    )
-    let info = string.fromBytes(process.stdoutStream.read().await)
-
-    for line in info.splitLines:
-      if line.startsWith("srcDir"):
-        result.srcDir = line[(1 + line.find '"') ..^ 2]
-      if line.startsWith("name"):
-        result.name = line[(1 + line.find '"') ..^ 2]
-      if line.startsWith("nimDir"):
-        result.nimDir = some line[(1 + line.find '"') ..^ 2]
-      if line.startsWith("nimblePath"):
-        result.nimblePath = some line[(1 + line.find '"') ..^ 2]
-      if line.startsWith("entryPoints"):
-        result.entryPoints =
-          line[(1 + line.find '"') ..^ 2].split(',').mapIt(it.strip(chars = {' ', '"'}))
-
-    var nimbleFile = nimbleFile
-    if nimbleFile == "" and result.nimblePath.isSome:
-      nimbleFile = result.nimblePath.get
-    if nimbleFile != "":
-      ls.nimDumpCache[nimbleFile] = result
-
-    debug "nimble dump finished",
-      nimbleFile = nimbleFile, nimDir = result.nimDir.get("")
-  except OSError, IOError, AsyncProcessError, AsyncStreamError:
-    debug "Failed to get nimble dump info",
-      nimbleFile = nimbleFile, err = getCurrentExceptionMsg()
-  finally:
-    if process != nil:
-      await shutdownChildProcess(process)
 
 proc parseWorkspaceConfiguration*(conf: JsonNode): NlsConfig =
   try:
@@ -514,24 +453,120 @@ proc getNimVersion(nimDir: string): string {.raises: [OSError, IOError].} =
     if line.startsWith(NimCompilerVersion):
       return line
 
-proc getNimsuggestPathAndVersion(
-    ls: LanguageServer, conf: NlsConfig, workingDir: string
-): Future[(string, string)] {.async: (raises: [CancelledError, OSError, IOError]).} =
-  let nimbleFiles = walkFiles(workingDir / "*.nimble").toSeq
-
-  let nimbleDumpInfo =
-    if nimbleFiles.len > 0:
-      await ls.getNimbleDumpInfo(nimbleFiles[0], workingDir)
+proc getRootPath*(ip: LspInitializeParams): string {.raises: [OSError].} =
+  if ip.rootUri.isNone or ip.rootUri.get == "":
+    if ip.rootPath.isSome and ip.rootPath.get != "":
+      return ip.rootPath.get
     else:
-      await ls.getNimbleDumpInfo("", workingDir)
+      return getCurrentDir().pathToUri.uriToPath
 
-  let nimDir = nimbleDumpInfo.nimDir.get ""
+  ip.rootUri.get.uriToPath
+
+proc getRootPath*(ip: McpInitializeParams): string {.raises: [OSError].} =
+  getCurrentDir().pathToUri.uriToPath
+
+proc getRootPath(ls: LanguageServer): string {.raises: [OSError].} =
+  case ls.serverMode
+  of mcp:
+    ls.mcpInitializeParams.getRootPath()
+  of lsp:
+    ls.lspInitializeParams.getRootPath()
+
+proc packageNimbleFile(ls: LanguageServer, file: string): string {.raises: [OSError].} =
+  let rootPath = ls.getRootPath()
+  let inRoot = file.isRelTo(rootPath)
+  if inRoot:
+    for nimbleFile in ls.nimblePackageLoads.keys:
+      if nimbleFile.isRelTo(rootPath) and file.isRelTo(nimbleFile.parentDir):
+        return nimbleFile
+  var dir = file.parentDir
+  while true:
+    let nimbleFiles = walkFiles(dir / "*.nimble").toSeq
+    if nimbleFiles.len == 1:
+      result = nimbleFiles[0]
+      if not inRoot:
+        return
+    elif nimbleFiles.len > 1:
+      debug "Ignoring a folder with several nimble files", dir = dir
+    let parent = dir.parentDir
+    if parent.len == 0 or parent == dir or (inRoot and not parent.isRelTo(rootPath)):
+      return
+    dir = parent
+
+proc loadNimblePackage(
+    ls: LanguageServer, nimbleFile: string
+) {.async: (raises: [CancelledError]).} =
+  let packageDir = nimbleFile.parentDir
+  var
+    package = NimblePackage(dir: packageDir)
+    name, srcDir: string
+    entryPoints: seq[string]
+  debug "nimble dump starting",
+    nimbleFile = nimbleFile, nimbleDir = getEnv("NIMBLE_DIR")
+  var process: AsyncProcessRef
+  try:
+    process = await startProcess(
+      "nimble",
+      workingDir = packageDir,
+      arguments = @["dump"],
+      options = {UsePath},
+      stderrHandle = ProcessStreamHandle(), # None => chronos doesn't
+      # manage stderr, child inherits ours
+      stdoutHandle = AsyncProcess.Pipe,
+    )
+    let info = string.fromBytes(process.stdoutStream.read().await)
+
+    for line in info.splitLines:
+      if line.startsWith("srcDir"):
+        srcDir = line[(1 + line.find '"') ..^ 2]
+      if line.startsWith("name"):
+        name = line[(1 + line.find '"') ..^ 2]
+      if line.startsWith("nimDir"):
+        package.nimDir = some line[(1 + line.find '"') ..^ 2]
+      if line.startsWith("entryPoints"):
+        entryPoints =
+          line[(1 + line.find '"') ..^ 2].split(',').mapIt(it.strip(chars = {' ', '"'}))
+
+    debug "nimble dump finished",
+      nimbleFile = nimbleFile, nimDir = package.nimDir.get("")
+  except OSError, IOError, AsyncProcessError, AsyncStreamError:
+    debug "Failed to get nimble dump info",
+      nimbleFile = nimbleFile, err = getCurrentExceptionMsg()
+  finally:
+    if process != nil:
+      await shutdownChildProcess(process)
+
+  package.sourceDir = packageDir / srcDir
+  package.entryPoints = entryPoints.mapIt(packageDir / it).filterIt(it.fileExists)
+  let projectFile = package.sourceDir / (name & ".nim")
+  if name.len > 0 and fileExists(projectFile):
+    package.projectFile = projectFile
+    if projectFile notin package.entryPoints:
+      package.entryPoints.add projectFile
+  ls.nimblePackages[nimbleFile] = package
+
+proc nimblePackage(
+    ls: LanguageServer, file: string
+): Future[NimblePackage] {.async: (raises: [CancelledError, OSError]).} =
+  let nimbleFile = ls.packageNimbleFile(file)
+  if nimbleFile.len == 0:
+    return NimblePackage()
+  if nimbleFile notin ls.nimblePackageLoads:
+    ls.nimblePackageLoads[nimbleFile] = ls.loadNimblePackage(nimbleFile)
+  await ls.nimblePackageLoads.getOrDefault(nimbleFile).join()
+  ls.nimblePackages.getOrDefault(nimbleFile)
+
+proc getNimsuggestPathAndVersion(
+    ls: LanguageServer, conf: NlsConfig, file: string
+): Future[(string, string)] {.async: (raises: [CancelledError, OSError, IOError]).} =
   var nimsuggestPath = expandTilde(conf.nimsuggestPath.get(""))
   var nimVersion = ""
   if nimsuggestPath == "":
+    let package = await ls.nimblePackage(file)
+    let nimDir = package.nimDir.get ""
     if nimDir != "" and nimDir.dirExists:
       nimVersion = getNimVersion(nimDir) & " from " & nimDir
-      nimsuggestPath = nimDir / "nimsuggest"
+      nimsuggestPath = nimDir / "nimsuggest".addFileExt(ExeExt)
     else:
       nimVersion = getNimVersion("")
       nimsuggestPath = findExe "nimsuggest"
@@ -542,15 +577,15 @@ proc getNimsuggestPathAndVersion(
   (nimsuggestPath, nimVersion)
 
 proc getNimPath*(
-    ls: LanguageServer, conf: NlsConfig, workingDir = ""
+    ls: LanguageServer, conf: NlsConfig, file: string
 ): Future[Option[string]] {.async: (raises: [CancelledError, OSError, IOError]).} =
   if conf.nimsuggestPath.isSome and conf.nimsuggestPath.get().fileExists():
-    some(conf.nimsuggestPath.get.parentDir / "nim")
+    some(conf.nimsuggestPath.get.parentDir / "nim".addFileExt(ExeExt))
   else:
-    let (nimsuggestPath, _) = await ls.getNimsuggestPathAndVersion(conf, workingDir)
+    let (nimsuggestPath, _) = await ls.getNimsuggestPathAndVersion(conf, file)
     let path =
       if nimsuggestPath.fileExists():
-        nimsuggestPath.parentDir / "nim"
+        nimsuggestPath.parentDir / "nim".addFileExt(ExeExt)
       else:
         findExe "nim"
 
@@ -590,57 +625,30 @@ proc getProjectFileAutoGuess*(
     ) and certainty <= Cfg:
       result = path / current.addFileExt(".nim")
       certainty = Cfg
-    if certainty <= Nimble:
-      for nimble in walkFiles(path / "*.nimble"):
-        let dumpInfo = await ls.getNimbleDumpInfo(nimble)
-        let name = dumpInfo.name
-        let sourceDir = path / dumpInfo.srcDir
-        let projectFile = sourceDir / (name & ".nim")
-        if sourceDir.len != 0 and name.len != 0 and file.isRelTo(sourceDir) and
-            fileExists(projectFile):
-          debug "Found nimble project", projectFile = projectFile
-          result = projectFile
-          certainty = Nimble
-          return
     if path == dir:
       break
     path = dir
     inc up
 
-proc getRootPath*(ip: LspInitializeParams): string {.raises: [OSError].} =
-  if ip.rootUri.isNone or ip.rootUri.get == "":
-    if ip.rootPath.isSome and ip.rootPath.get != "":
-      return ip.rootPath.get
-    else:
-      return getCurrentDir().pathToUri.uriToPath
-
-  ip.rootUri.get.uriToPath
-
-proc getRootPath*(ip: McpInitializeParams): string {.raises: [OSError].} =
-  getCurrentDir().pathToUri.uriToPath
-
 proc getWorkingDir*(
     ls: LanguageServer, path: string
 ): Future[string] {.async: (raises: [CancelledError, OSError]).} =
-  let rootPath =
-    case ls.serverMode
-    of lsp: ls.lspInitializeParams.getRootPath
-    of mcp: ls.mcpInitializeParams.getRootPath
-
   let
+    rootPath = ls.getRootPath()
     pathRelativeToRoot = path.tryRelativeTo(rootPath)
     conf = await ls.workspaceConfigurationWait()
     mapping = conf.workingDirectoryMapping.get(@[])
 
-  result = rootPath
-
   for m in mapping:
     if pathRelativeToRoot.isSome and m.projectFile == pathRelativeToRoot.get():
-      result = rootPath / m.directory
-      break
+      return rootPath / m.directory
+
+  let package = await ls.nimblePackage(path)
+  if package.dir.len > 0: package.dir else: rootPath
 
 proc progressSupported(ls: LanguageServer): bool =
-  result = ls.lspInitializeParams.capabilities.window
+  ls.serverMode == lsp and
+    ls.lspInitializeParams.capabilities.window
     .get(ClientCapabilities_window()).workDoneProgress
     .get(false)
 
@@ -814,6 +822,10 @@ proc createOrRestartNimsuggest*(
 proc isLiveNimsuggestProject(ls: LanguageServer, projectFile: string): bool =
   projectFile in ls.projectFiles or projectFile in ls.nimsuggestCreations
 
+proc entryPoints*(ls: LanguageServer): seq[string] =
+  for package in ls.nimblePackages.values:
+    result.add package.entryPoints
+
 proc liveNimsuggestProjects*(ls: LanguageServer): seq[string] =
   ## Running + starting instances.
   for entryPoint in ls.entryPoints:
@@ -833,23 +845,22 @@ proc canSpawnNimsuggest(ls: LanguageServer, conf: NlsConfig): bool =
   debug "canSpawnNimsuggest",
     result = result, nsCount = nsCount, maxNimsuggestProcesses = maxNimsuggestProcesses
 
-proc reuseLiveNimsuggestProject(ls: LanguageServer): string =
+proc reuseLiveNimsuggestProject(ls: LanguageServer, package = NimblePackage()): string =
   let live = ls.liveNimsuggestProjects
-  if live.len > 0:
-    result = live[0]
+  let own = package.entryPoints.filterIt(it in live)
+  if own.len > 0 or live.len > 0:
+    result =
+      if own.len > 0:
+        own[^1]
+      else:
+        live[0]
     debug "Reached the maximum instances of nimsuggest, reusing the first nimsuggest instance",
       project = result
 
 proc mappedProjectFiles(
     ls: LanguageServer, conf: NlsConfig
 ): seq[string] {.raises: [OSError].} =
-  let rootPath =
-    case ls.serverMode
-    of mcp:
-      ls.mcpInitializeParams.getRootPath()
-    of lsp:
-      ls.lspInitializeParams.getRootPath()
-  conf.projectMapping.get(@[]).mapIt(rootPath / it.projectFile)
+  conf.projectMapping.get(@[]).mapIt(ls.getRootPath() / it.projectFile)
 
 proc nimsuggestProjectFor(
     ls: LanguageServer, conf: NlsConfig, projectFile: string
@@ -859,23 +870,6 @@ proc nimsuggestProjectFor(
     projectFile
   else:
     ls.reuseLiveNimsuggestProject()
-
-proc initNimsuggestInstances*(
-    ls: LanguageServer, rootPath: string
-) {.async: (raises: [CancelledError, OSError]).} =
-  if rootPath == "":
-    return
-
-  let conf = await ls.workspaceConfigurationWait()
-  let nimbleFiles = walkFiles(rootPath / "*.nimble").toSeq
-  if nimbleFiles.len > 0:
-    let nimbleFile = nimbleFiles[0]
-    let nimbleDumpInfo = await ls.getNimbleDumpInfo(nimbleFile)
-    ls.entryPoints = nimbleDumpInfo.getNimbleEntryPoints(rootPath)
-    for entryPoint in ls.entryPoints:
-      if not ls.isLiveNimsuggestProject(entryPoint) and ls.canSpawnNimsuggest(conf):
-        debug "Starting nimsuggest for entry point ", entry = entryPoint
-        await ls.createOrRestartNimsuggest(entryPoint)
 
 proc failoverProject(ls: LanguageServer, projectFile: string): string =
   if ls.failTable.getOrDefault(projectFile, 0) < MaxNimsuggestFails:
@@ -969,25 +963,13 @@ proc getProjectFile*(
   fileUri: string, ls: LanguageServer
 ): Future[string] {.async: (raises: [CancelledError, OSError, RegexError]).}
 
-proc getProjectFileAfterStartup(
-    ls: LanguageServer, fileUri: string
-): Future[string] {.async: (raises: [CancelledError, OSError, RegexError]).} =
-  ## Resolve files after Nimble entry-point startup has completed. Otherwise
-  ## the single-process limit can make auto-guessing fall back to the opened
-  ## file while the intended entry-point nimsuggest is still compiling.
-  if not ls.nimsuggestInit.isNil:
-    await ls.nimsuggestInit.join()
-  await getProjectFile(fileUri, ls)
-
 proc didOpenFile*(
     ls: LanguageServer, textDocument: TextDocumentItem
 ): Future[void] {.async: (raises: [CancelledError, OSError, IOError, RegexError]).} =
   with textDocument:
     debug "New document opened for URI:", uri = uri
     let file = open(ls.uriStorageLocation(uri), fmWrite)
-    defer:
-      file.close()
-    let projectFileFuture = ls.getProjectFileAfterStartup(uriToPath(uri))
+    let projectFileFuture = getProjectFile(uriToPath(uri), ls)
     let openFile = NlsFileInfo(
       projectFile: projectFileFuture,
       changed: false,
@@ -996,9 +978,12 @@ proc didOpenFile*(
     )
     ls.openFiles[uri] = openFile
 
-    for line in text.splitLines:
-      openFile.fingerTable.add line.createUTFMapping()
-      file.writeLine line
+    try:
+      for line in text.splitLines:
+        openFile.fingerTable.add line.createUTFMapping()
+        file.writeLine line
+    finally:
+      file.close()
 
     let projectFile = await openFile.waitProjectFile()
     debug "Document associated with the following projectFile",
@@ -1124,7 +1109,7 @@ proc checkProject*(
     return
 
   if conf.useNimCheck.get(USE_NIM_CHECK_BY_DEFAULT):
-    let nimPath = await ls.getNimPath(conf)
+    let nimPath = await ls.getNimPath(conf, uriToPath(uri))
     if nimPath.isNone:
       return
 
@@ -1204,7 +1189,7 @@ proc createOrRestartNimsuggestImpl(
         configuration = await ls.workspaceConfigurationWait()
         workingDir = await ls.getWorkingDir(projectFile)
         (nimsuggestPath, version) =
-          await ls.getNimsuggestPathAndVersion(configuration, workingDir)
+          await ls.getNimsuggestPathAndVersion(configuration, projectFile)
         timeout = configuration.timeout.get(REQUEST_TIMEOUT)
         restartCallback = proc(
             ns: Nimsuggest
@@ -1361,7 +1346,7 @@ proc handleConfigurationChanges*(
   defer:
     await stopping
   for uri, file in ls.openFiles:
-    file.projectFile = ls.getProjectFileAfterStartup(uri.uriToPath)
+    file.projectFile = getProjectFile(uri.uriToPath, ls)
     file.nimsuggestProject = ""
   ls.sendStatusChanged()
   if ls.lspClientCapabilities.workspace.isSome and
@@ -1412,8 +1397,8 @@ proc shutdownNimsuggest*(ls: LanguageServer) {.async: (raises: []).} =
   debug "stopping child nimsuggest processes"
   ls.isShutdownNimsuggest = true
   var shutdowns: seq[Future[void].Raising([])]
-  if not ls.nimsuggestInit.isNil:
-    shutdowns.add ls.nimsuggestInit.cancelAndWait()
+  for load in ls.nimblePackageLoads.values:
+    shutdowns.add load.cancelAndWait()
   shutdowns.add ls.stopNimsuggests()
   await noCancel allFutures(shutdowns)
 
@@ -1421,12 +1406,7 @@ proc getProjectFile*(
     fileUri: string, ls: LanguageServer
 ): Future[string] {.async: (raises: [CancelledError, OSError, RegexError]).} =
   let
-    rootPath =
-      case ls.serverMode
-      of mcp:
-        ls.mcpInitializeParams.getRootPath()
-      of lsp:
-        ls.lspInitializeParams.getRootPath()
+    rootPath = ls.getRootPath()
     pathRelativeToRoot = fileUri.tryRelativeTo(rootPath)
     conf = await ls.workspaceConfigurationWait()
     mappings = conf.projectMapping.get(@[])
@@ -1447,11 +1427,16 @@ proc getProjectFile*(
       trace "getProjectFile does not match",
         uri = fileUri, matchedRegex = mapping.fileRegex
 
+  let package = await ls.nimblePackage(fileUri)
   #If we reached the maximum instances of nimsuggest, we just return the first project
   if not ls.canSpawnNimsuggest(conf):
-    return ls.reuseLiveNimsuggestProject()
+    return ls.reuseLiveNimsuggestProject(package)
 
-  result = await ls.getProjectFileAutoGuess(fileUri)
+  if package.projectFile.len > 0 and fileUri.isRelTo(package.sourceDir):
+    debug "Found nimble project", projectFile = package.projectFile
+    result = package.projectFile
+  else:
+    result = await ls.getProjectFileAutoGuess(fileUri)
   let project = ls.projectFiles.getOrDefault(result)
   if project != nil:
     let ns = project.ns
@@ -1487,7 +1472,7 @@ proc checkFile*(
   let path = uriToPath(uri)
 
   if conf.useNimCheck.get(USE_NIM_CHECK_BY_DEFAULT):
-    let nimPath = await ls.getNimPath(conf)
+    let nimPath = await ls.getNimPath(conf, path)
     if nimPath.isNone:
       return
     let checkResults = await nimCheck(uriToPath(uri), nimPath.get)

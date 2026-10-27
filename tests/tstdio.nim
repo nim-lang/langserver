@@ -74,11 +74,7 @@ suite "Nimlangserver stdio transport":
     let res = waitFor client.call("shutdown", params(%*{})).wait(30.seconds)
     check res == JsonString("null")
 
-  test "shutdown stops the nimsuggest startup still in flight":
-    #initialize started it in the background, and its `nimble dump` of the
-    #workspace takes far longer than this session, so it must not outlive it
-    check ls.nimsuggestInit.finished
-    #nor leave behind a nimsuggest for the entry points the dump finds
+  test "no nimsuggest is started before a file is opened":
     check ls.nimsuggestCreations.len == 0
     check ls.projectFiles.len == 0
 

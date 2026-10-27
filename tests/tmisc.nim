@@ -191,11 +191,8 @@ suite "Nimlangserver didOpen visibility":
         "capabilities": {"window": {"workDoneProgress": true}},
       }
     discard waitFor client.initialize(initParams)
-    ls.setWorkspaceConfiguration(% @[NlsConfig()])
 
-    #didOpen cannot get past this
-    ls.nimsuggestInit =
-      Future[void].Raising([CancelledError, OSError]).init("parked")
+    #No configuration yet, so didOpen cannot get past resolving the project
     let file = "projects/hw/hw.nim"
     client.notify("textDocument/didOpen", %createDidOpenParams(file))
     waitFor sleepAsync(200)
@@ -231,22 +228,19 @@ suite "Nimlangserver didOpen ordering":
         "capabilities": {"window": {"workDoneProgress": true}},
       }
     discard waitFor client.initialize(initParams)
-    ls.setWorkspaceConfiguration(% @[NlsConfig()])
 
-    let startup =
-      Future[void].Raising([CancelledError, OSError]).init("parked")
-    ls.nimsuggestInit = startup #So didOpen gets no further than registering the file
+    #No configuration yet, so didOpen gets no further than registering the file
     let file = "projects/hw/hw.nim"
     let uri = fixtureUri(file)
     client.notify("textDocument/didOpen", %createDidOpenParams(file))
     let request = client.call("textDocument/definition", %positionParams(uri, 1, 6))
 
-    # The file's project is only resolved once the startup is done, so the
+    # The file's project is only resolved once the configuration is known, so the
     # request waits for it rather than being answered as if the file were unknown.
     waitFor sleepAsync(1.seconds)
     check not request.finished
 
-    startup.complete()
+    ls.setWorkspaceConfiguration(% @[NlsConfig()])
     let locations = to(waitFor request.wait(30.seconds), seq[Location])
 
     check locations.len == 1
@@ -267,8 +261,8 @@ suite "Nimlangserver request cancelled during startup":
     waitFor ls.shutdownNimsuggest()
 
   test "cancelling it leaves the open file and the startup untouched":
-    # The request waits on the file's `projectFile`, which waits on
-    # `nimsuggestInit`; both are shared. Cancelling the request used to cancel
+    # The request waits on the file's `projectFile`, which waits on the
+    # configuration; both are shared. Cancelling the request used to cancel
     # them along with it, so `didOpen` failed and every later request for the
     # file was answered with "Request cancelled".
     let initParams =
@@ -278,11 +272,8 @@ suite "Nimlangserver request cancelled during startup":
         "capabilities": {"window": {"workDoneProgress": true}},
       }
     discard waitFor client.initialize(initParams)
-    ls.setWorkspaceConfiguration(% @[NlsConfig()])
 
-    let startup =
-      Future[void].Raising([CancelledError, OSError]).init("parked")
-    ls.nimsuggestInit = startup
+    #No configuration yet, so the project lookup is still running
     let file = "projects/hw/hw.nim"
     let uri = fixtureUri(file)
     client.notify("textDocument/didOpen", %createDidOpenParams(file))
@@ -292,12 +283,12 @@ suite "Nimlangserver request cancelled during startup":
     client.notify("$/cancelRequest", %*{"id": id})
 
     check waitFor cancelled.withTimeout(10.seconds)
-    check not startup.cancelled
+    check not ls.workspaceConfigurationReady.cancelled
     check uri in ls.openFiles
     if uri in ls.openFiles:
       check not ls.openFiles[uri].projectFile.cancelled
 
-    startup.complete()
+    ls.setWorkspaceConfiguration(% @[NlsConfig()])
     let locations = to(
       waitFor client
       .call("textDocument/definition", %positionParams(uri, 1, 6))
@@ -612,9 +603,6 @@ suite "Nimlangserver project lookup replaced by a configuration change":
     check ls.openFiles[hwUri].nimsuggestProject == hwPath
 
   test "a request waiting on the replaced lookup waits for the new one too":
-    # The new lookup can't finish before the old one does
-    let startup = Future[void].Raising([CancelledError, OSError]).init("parked")
-    ls.nimsuggestInit = startup
     let oldLookup =
       Future[string].Raising([CancelledError, OSError, RegexError]).init("oldLookup")
     ls.openFiles[hwUri] = NlsFileInfo(projectFile: oldLookup)
@@ -625,12 +613,16 @@ suite "Nimlangserver project lookup replaced by a configuration change":
     )
     let current = ls.workspaceConfiguration
     ls.setWorkspaceConfiguration(% @[changed])
+    # The new lookup can't finish before the old one does: it waits on the
+    # configuration, which is made to look unknown again
+    let parked = Future[void].Raising([CancelledError]).init("parked")
+    ls.workspaceConfigurationReady = parked
     waitFor ls.handleConfigurationChanges(current, changed).wait(60.seconds)
     check not ls.openFiles[hwUri].projectFile.finished
 
     # The request wakes up before the new lookup can, its callback is queued first
     oldLookup.complete(rootPath)
-    startup.complete()
+    parked.complete()
     discard waitFor request.wait(60.seconds)
     check ls.openFiles[hwUri].nimsuggestProject == hwPath
 
