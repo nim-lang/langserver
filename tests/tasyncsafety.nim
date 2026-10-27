@@ -136,7 +136,7 @@ suite "Replacing a running nimsuggest":
     let replacement = ls.projectFiles[helloWorldPath]
     check replacement != old
 
-    # Wait for the old process to be gone and its stderr closing handled, then
+    # Wait for the old process to be gone and its stdout closing handled, then
     # give anything that triggers time to run.
     check waitUntil(old.failed, timeout = 30.seconds)
     waitFor sleepAsync(2.seconds)
