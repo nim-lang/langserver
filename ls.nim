@@ -161,7 +161,7 @@ type
     watchingFiles*: bool
     filesWithDiags*: HashSet[string]
     lastNimsuggest*: Nimsuggest
-    isShutdownNimsuggest*: bool
+    nimsuggestShutdown: Future[void].Raising([])
     initialized*: bool
       #Set once initialize has run. Until then routes can't rely on its state.
     isShutdown*: bool
@@ -240,6 +240,9 @@ proc initLs*(params: CommandLineParams, storageDir: string): LanguageServer =
 proc createProgressToken*(ls: LanguageServer): string =
   inc ls.token
   "token-" & $ls.token
+
+proc isShutdownNimsuggest*(ls: LanguageServer): bool =
+  ls.nimsuggestShutdown != nil
 
 func typeHintsEnabled*(cnf: NlsConfig): bool =
   result = true
@@ -1399,14 +1402,18 @@ proc getCharacter*(
   else:
     none(int)
 
-proc shutdownNimsuggest*(ls: LanguageServer) {.async: (raises: []).} =
+proc shutdownNimsuggestImpl(ls: LanguageServer) {.async: (raises: []).} =
   debug "stopping child nimsuggest processes"
-  ls.isShutdownNimsuggest = true
   var shutdowns: seq[Future[void].Raising([])]
   for load in ls.nimblePackageLoads.values:
     shutdowns.add load.cancelAndWait()
   shutdowns.add ls.stopNimsuggests()
   await noCancel allFutures(shutdowns)
+
+proc shutdownNimsuggest*(ls: LanguageServer) {.async: (raises: []).} =
+  if ls.nimsuggestShutdown == nil:
+    ls.nimsuggestShutdown = ls.shutdownNimsuggestImpl()
+  await noCancel ls.nimsuggestShutdown
 
 proc getProjectFile*(
     fileUri: string, ls: LanguageServer

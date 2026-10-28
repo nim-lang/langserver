@@ -253,3 +253,45 @@ suite "Documents closed while a handler is suspended":
     # entry used to dereference nil.
     check waitFor ls.didCloseFile(unknownUri).withTimeout(30.seconds)
     check unknownUri notin ls.openFiles
+
+suite "Shutting down twice":
+  let cmdParams =
+    CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
+  let ls = main(cmdParams)
+  let client = newLspSocketClient()
+  waitFor client.connect("localhost", cmdParams.port)
+  client.registerNotification(
+    "window/showMessage", "window/workDoneProgress/create", "workspace/configuration",
+    "extension/statusUpdate", "textDocument/publishDiagnostics", "$/progress",
+  )
+  discard waitFor client.initialize(
+    LspInitializeParams %* {
+      "processId": %getCurrentProcessId(),
+      "rootUri": fixtureUri("projects/hw/"),
+      "capabilities":
+        {"window": {"workDoneProgress": false}, "workspace": {"configuration": true}},
+    }
+  )
+  ls.setWorkspaceConfiguration(% @[NlsConfig()])
+
+  let
+    helloWorldFile = "projects/hw/hw.nim"
+    helloWorldUri = fixtureUri(helloWorldFile)
+
+  test "a second shutdown waits for the first one to stop nimsuggest":
+    # exit can arrive while shutdown is still stopping nimsuggest. If the
+    # second call returned early the server would quit with it still running.
+    let textDocument = TextDocumentItem(
+      uri: helloWorldUri,
+      languageId: "nim",
+      version: 0,
+      text: readFile("tests" / helloWorldFile),
+    )
+    check waitFor ls.didOpenFile(textDocument).withTimeout(30.seconds)
+    check (waitFor ls.tryGetNimsuggest(helloWorldUri).wait(30.seconds)).isSome
+
+    let first = ls.shutdownNimsuggest()
+    let second = ls.shutdownNimsuggest()
+    check not first.finished
+    check waitFor second.withTimeout(30.seconds)
+    check first.finished
