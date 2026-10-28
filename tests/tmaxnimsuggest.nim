@@ -164,8 +164,10 @@ suite "Last used nimsuggest over the cap":
         NlsConfig(
           maxNimsuggestProcesses: some 1,
           projectMapping: some @[
+            # The regex matches the path relative to the root, which uses
+            # backslashes on Windows.
             NlsNimsuggestConfig(
-              projectFile: "vendored/vendor/dep/dep.nim", fileRegex: "dep/dep"
+              projectFile: "vendored/vendor/dep/dep.nim", fileRegex: r"dep[/\\]dep"
             )
           ],
         )
