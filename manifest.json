@@ -41,7 +41,7 @@
     },
     {
       "name": "nimFindSymbols",
-      "description": "Find symbols matching the given search query in the current workspace."
+      "description": "Find symbols matching the given search query in the project of the given .nim file URI."
     },
     {
       "name": "nimListSymbols",
@@ -49,7 +49,7 @@
     },
     {
       "name": "nimCheckProject",
-      "description": "Get diagnostics (errors, warnings, and hints) for the current workspace."
+      "description": "Get diagnostics (errors, warnings, and hints) for the project of the given .nim file URI."
     },
     {
       "name": "nimCheckFile",
@@ -96,11 +96,14 @@
             {
               "name": "nimFindSymbols",
               "title": "Find symbols in .nim files",
-              "description": "Find symbols matching the given search query in the current workspace.",
+              "description": "Find symbols matching the given search query in the project of the given .nim file URI.",
               "inputSchema": {
                 "type": "object",
-                "properties": { "query": { "type": "string" } },
-                "required": ["query"]
+                "properties": {
+                  "uri": { "type": "string", "format": "uri" },
+                  "query": { "type": "string" }
+                },
+                "required": ["uri", "query"]
               },
               "outputSchema": {
                 "type": "object",
@@ -153,12 +156,12 @@
             },
             {
               "name": "nimCheckProject",
-              "title": "Check the current workspace",
-              "description": "Get diagnostics (errors, warnings, and hints) for the current workspace.",
+              "title": "Check a project",
+              "description": "Get diagnostics (errors, warnings, and hints) for the project of the given .nim file URI.",
               "inputSchema": {
                 "type": "object",
-                "properties": {},
-                "required": []
+                "properties": { "uri": { "type": "string", "format": "uri" } },
+                "required": ["uri"]
               },
               "outputSchema": {
                 "type": "object",
