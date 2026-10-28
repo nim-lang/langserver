@@ -200,6 +200,11 @@ suite "Nimble packages":
     check not ls.nimblePackages[nimbleFile].dumpFailed
     check ls.nimblePackages[nimbleFile].projectFile == mainFile
 
+  test "a file outside the source dir belongs to the package project":
+    let package = projectsDir / "mcpproject"
+    check (waitFor getProjectFile(package / "tests" / "test1.nim", ls)) ==
+      package / "src" / "mcpproject.nim"
+
   test "a file of a known package keeps resolving to it":
     let dep = projectsDir / "vendored" / "vendor" / "dep" / "dep.nim"
     check projectsDir / "vendored" / "vendored.nimble" in ls.nimblePackageLoads

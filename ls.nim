@@ -820,18 +820,6 @@ proc sendDiagnostics*(
   else:
     ls.filesWithDiags.excl path
 
-proc warnIfUnknown*(
-    ls: LanguageServer, ns: Nimsuggest, uri: string, projectFile: string
-): Future[void] {.async: (raises: [CancelledError]).} =
-  let path = uri.uriToPath
-  let isFileKnown = await ns.isKnown(path)
-  if not isFileKnown and not ns.canHandleUnknown:
-    await ls.showMessage(
-      fmt """{path} is not compiled as part of project {projectFile}.
-  In orde to get the IDE features working you must either configure nim.projectMapping or import the module.""",
-      MessageType.Warning,
-    )
-
 proc createOrRestartNimsuggest*(
   ls: LanguageServer, projectFile: string, uri = ""
 ): Future[void] {.async: (raw: true, raises: [CancelledError]).}
@@ -1005,10 +993,6 @@ proc didOpenFile*(
     let projectFile = await openFile.waitProjectFile()
     debug "Document associated with the following projectFile",
       uri = uri, projectFile = projectFile
-    let ns = await ls.tryGetNimsuggest(uri)
-    if ns.isSome:
-      discard ls.warnIfUnknown(ns.get(), uri, projectFile)
-
     let projectFileUri = projectFile.pathToUri
     if projectFileUri notin ls.openFiles:
       var textDocument = TextDocumentItem(
@@ -1449,18 +1433,11 @@ proc getProjectFile*(
   if not ls.canSpawnNimsuggest(conf):
     return ls.reuseLiveNimsuggestProject(package)
 
-  if package.projectFile.len > 0 and fileUri.isRelTo(package.sourceDir):
+  if package.projectFile.len > 0:
     debug "Found nimble project", projectFile = package.projectFile
     result = package.projectFile
   else:
     result = await ls.getProjectFileAutoGuess(fileUri)
-  let project = ls.projectFiles.getOrDefault(result)
-  if project != nil:
-    let ns = project.ns
-    let isKnown = await ns.isKnown(fileUri)
-    if ns.canHandleUnknown and not isKnown:
-      debug "File is not known by nimsuggest", uri = fileUri, projectFile = result
-      result = fileUri
 
   if result == "":
     result = fileUri
