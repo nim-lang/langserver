@@ -171,7 +171,7 @@ suite "Nimble packages":
 
   test "a failed nimble dump is retried once the nimble file changes":
     let
-      packageDir = getTempDir() / "nimlangserver-broken-nimble"
+      packageDir = projectsDir / "brokennimble"
       nimbleFile = packageDir / "broken.nimble"
       mainFile = packageDir / "src" / "broken.nim"
     createDir(packageDir / "src")
