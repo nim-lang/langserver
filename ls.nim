@@ -562,6 +562,9 @@ proc isFailedDumpOutdated(
 proc nimblePackage(
     ls: LanguageServer, file: string
 ): Future[NimblePackage] {.async: (raises: [CancelledError, OSError]).} =
+  if ls.isShutdownNimsuggest:
+    debug "Not running nimble dump, the server is shutting down", file = file
+    return NimblePackage()
   let nimbleFile = ls.packageNimbleFile(file)
   if nimbleFile.len == 0:
     return NimblePackage()
@@ -569,10 +572,6 @@ proc nimblePackage(
     ls.nimblePackages.del(nimbleFile)
     ls.nimblePackageLoads.del(nimbleFile)
   if nimbleFile notin ls.nimblePackageLoads:
-    if ls.isShutdownNimsuggest:
-      debug "Not running nimble dump, the server is shutting down",
-        nimbleFile = nimbleFile
-      return NimblePackage()
     ls.nimblePackageLoads[nimbleFile] = ls.loadNimblePackage(nimbleFile)
   await ls.nimblePackageLoads.getOrDefault(nimbleFile).join()
   ls.nimblePackages.getOrDefault(nimbleFile)
