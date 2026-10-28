@@ -1,0 +1,3 @@
+proc otherMain*() = discard
+
+otherMain()

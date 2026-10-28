@@ -86,7 +86,7 @@ suite "Idle nimsuggest instance under the cap":
     # nimsuggests. Stop that nimsuggest as if it had been idle for too long.
     # The third file stays open.
     let thirdUri = ThirdFile.fixtureUri
-    let reused = waitFor ls.openFiles.getOrDefault(thirdUri).waitProjectFile()
+    let reused = ls.openFiles.getOrDefault(thirdUri).nimsuggestProject
     let project = ls.projectFiles.getOrDefault(reused)
     check project != nil
     for live in ls.projectFiles.values:
@@ -105,3 +105,43 @@ suite "Idle nimsuggest instance under the cap":
     check client.completes(thirdUri)
     check ls.projectFiles.len == 2
     check reused notin ls.projectFiles
+
+suite "Reusing a nimsuggest instance of the file's package":
+  let cmdParams =
+    CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
+  let ls = main(cmdParams)
+  let client = newClient(cmdParams.port)
+  let packageDir = absolutePath "tests" / "projects" / "duobins"
+
+  suiteTeardown:
+    waitFor ls.shutdownNimsuggest()
+
+  test "a file over the cap reuses the nimsuggest of its own package":
+    discard waitFor client.initialize(
+      LspInitializeParams %* {
+        "processId": %getCurrentProcessId(),
+        "rootUri": fixtureUri("projects"),
+        "capabilities": {"workspace": {"configuration": true}},
+      }
+    )
+    ls.setWorkspaceConfiguration(% @[NlsConfig(maxNimsuggestProcesses: some 2)])
+    let
+      mainFile = packageDir / "duobins.nim"
+      otherBin = packageDir / "other.nim"
+      mainUri = "projects/duobins/duobins.nim".fixtureUri
+
+    # The package's second binary has its own nimsuggest.
+    waitFor ls.createOrRestartNimsuggest(otherBin)
+    waitFor ls.didOpenFile(createDidOpenParams("projects/duobins/duobins.nim").textDocument)
+    check mainFile in ls.projectFiles
+
+    # The main file's nimsuggest stops and another package takes its slot, so the
+    # limit is reached and the main file has no nimsuggest of its own.
+    let project = ls.projectFiles[mainFile]
+    ls.projectFiles.del mainFile
+    waitFor project.stopWait()
+    waitFor ls.didOpenFile(createDidOpenParams("projects/vendored/vendored.nim").textDocument)
+    check ls.projectFiles.len == 2
+
+    check (waitFor ls.tryGetNimsuggest(mainUri)).isSome
+    check ls.openFiles[mainUri].nimsuggestProject == otherBin

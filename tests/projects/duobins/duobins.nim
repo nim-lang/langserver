@@ -1,0 +1,3 @@
+proc duobinsMain*() = discard
+
+duobinsMain()
