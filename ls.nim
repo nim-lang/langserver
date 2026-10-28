@@ -161,7 +161,6 @@ type
     watchingFiles*: bool
     filesWithDiags*: HashSet[string]
     lastNimsuggest*: Nimsuggest
-    isShutdownNimsuggest*: bool
     nimsuggestShutdown: Future[void].Raising([])
     initialized*: bool
       #Set once initialize has run. Until then routes can't rely on its state.
@@ -241,6 +240,9 @@ proc initLs*(params: CommandLineParams, storageDir: string): LanguageServer =
 proc createProgressToken*(ls: LanguageServer): string =
   inc ls.token
   "token-" & $ls.token
+
+proc isShutdownNimsuggest*(ls: LanguageServer): bool =
+  ls.nimsuggestShutdown != nil
 
 func typeHintsEnabled*(cnf: NlsConfig): bool =
   result = true
@@ -1409,8 +1411,7 @@ proc shutdownNimsuggestImpl(ls: LanguageServer) {.async: (raises: []).} =
   await noCancel allFutures(shutdowns)
 
 proc shutdownNimsuggest*(ls: LanguageServer) {.async: (raises: []).} =
-  if ls.nimsuggestShutdown.isNil:
-    ls.isShutdownNimsuggest = true
+  if ls.nimsuggestShutdown == nil:
     ls.nimsuggestShutdown = ls.shutdownNimsuggestImpl()
   await noCancel ls.nimsuggestShutdown
 
