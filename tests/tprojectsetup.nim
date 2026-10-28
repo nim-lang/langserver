@@ -74,7 +74,7 @@ suite "nimble setup":
 
   test "the nimble package reports its source dir and main file":
     let entryPoint = testProjectDir / "src" / "testproject.nim"
-    discard waitFor getProjectFile(entryPoint, ls)
+    discard waitFor ls.getProjectFile(entryPoint)
     let package = ls.nimblePackages[testProjectDir / "testproject.nimble"]
     check package.dir == testProjectDir
     check package.sourceDir == testProjectDir / "src"
@@ -111,7 +111,7 @@ suite "Project Mapping":
     let nonimbleProject = projectsDir / "nonimbleproject.nim"
     ls.setWorkspaceConfiguration(%configurationParams)
 
-    let projectFile = waitFor getProjectFile(nonimbleProject, ls)
+    let projectFile = waitFor ls.getProjectFile(nonimbleProject)
     let matchingMsg = fmt"RegEx matched `nonimble*` for file `{nonimbleProject}`"
 
     check waitFor client.waitForNotification(
@@ -148,14 +148,14 @@ suite "Nimble packages":
 
   test "a file of a vendored package belongs to the package that vendors it":
     let dep = projectsDir / "vendored" / "vendor" / "dep" / "dep.nim"
-    check (waitFor getProjectFile(dep, ls)) == projectsDir / "vendored" / "vendored.nim"
+    check (waitFor ls.getProjectFile(dep)) == projectsDir / "vendored" / "vendored.nim"
     check projectsDir / "vendored" / "vendor" / "dep" / "dep.nimble" notin
       ls.nimblePackages
 
   test "a folder with several nimble files is not a package":
     let sub = projectsDir / "twonimbles" / "sub" / "sub.nim"
     let other = projectsDir / "twonimbles" / "sub" / "other.nim"
-    check (waitFor getProjectFile(other, ls)) == sub
+    check (waitFor ls.getProjectFile(other)) == sub
     # the entry point is in the package's folder, not in the workspace's
     check sub in ls.entryPoints
 
@@ -163,7 +163,7 @@ suite "Nimble packages":
     let nimbleFile = projectsDir / "vendored" / "vendored.nimble"
     let load = ls.nimblePackageLoads.getOrDefault(nimbleFile)
     check load != nil
-    discard waitFor getProjectFile(projectsDir / "vendored" / "vendored.nim", ls)
+    discard waitFor ls.getProjectFile(projectsDir / "vendored" / "vendored.nim")
     check ls.nimblePackageLoads.getOrDefault(nimbleFile) == load
 
   test "a failed nimble dump is retried once the nimble file changes":
@@ -175,12 +175,12 @@ suite "Nimble packages":
     writeFile(mainFile, "echo 1\n")
     writeFile(nimbleFile, "srcDir = \"src\"\nthis is not nim(\n")
 
-    discard waitFor getProjectFile(mainFile, ls)
+    discard waitFor ls.getProjectFile(mainFile)
     check ls.nimblePackages[nimbleFile].dumpFailed
     check (waitFor ls.getWorkingDir(mainFile)) == packageDir
 
     let failedLoad = ls.nimblePackageLoads[nimbleFile]
-    discard waitFor getProjectFile(mainFile, ls)
+    discard waitFor ls.getProjectFile(mainFile)
     check ls.nimblePackageLoads[nimbleFile] == failedLoad
 
     # the mtime moves explicitly so the change is seen on coarse filesystems
@@ -193,19 +193,19 @@ suite "Nimble packages":
     )
     setLastModificationTime(nimbleFile, fromUnix(brokenTime.toUnix + 2))
 
-    check (waitFor getProjectFile(mainFile, ls)) == mainFile
+    check (waitFor ls.getProjectFile(mainFile)) == mainFile
     check not ls.nimblePackages[nimbleFile].dumpFailed
     check ls.nimblePackages[nimbleFile].projectFile == mainFile
 
   test "a file outside the source dir belongs to the package project":
     let package = projectsDir / "mcpproject"
-    check (waitFor getProjectFile(package / "tests" / "test1.nim", ls)) ==
+    check (waitFor ls.getProjectFile(package / "tests" / "test1.nim")) ==
       package / "src" / "mcpproject.nim"
 
   test "a file of a known package keeps resolving to it":
     let dep = projectsDir / "vendored" / "vendor" / "dep" / "dep.nim"
     check projectsDir / "vendored" / "vendored.nimble" in ls.nimblePackageLoads
-    check (waitFor getProjectFile(dep, ls)) == projectsDir / "vendored" / "vendored.nim"
+    check (waitFor ls.getProjectFile(dep)) == projectsDir / "vendored" / "vendored.nim"
 
   test "nimsuggest runs in the folder of the file's package":
     let dep = projectsDir / "vendored" / "vendor" / "dep" / "dep.nim"
@@ -228,5 +228,5 @@ suite "Nimble packages":
     let nimbleFile = projectsDir / "multimodules" / "multimodules.nimble"
     check nimbleFile notin ls.nimblePackageLoads
     waitFor ls.shutdownNimsuggest()
-    discard waitFor getProjectFile(projectsDir / "multimodules" / "rootmodule.nim", ls)
+    discard waitFor ls.getProjectFile(projectsDir / "multimodules" / "rootmodule.nim")
     check nimbleFile notin ls.nimblePackageLoads

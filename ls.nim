@@ -856,7 +856,7 @@ proc canSpawnNimsuggest(ls: LanguageServer, conf: NlsConfig): bool =
   debug "canSpawnNimsuggest",
     result = result, nsCount = nsCount, maxNimsuggestProcesses = maxNimsuggestProcesses
 
-proc reuseLiveNimsuggestProject(ls: LanguageServer, package = NimblePackage()): string =
+proc reuseLiveNimsuggestProject(ls: LanguageServer, package: NimblePackage): string =
   let live = ls.liveNimsuggestProjects
   let own = package.entryPoints.filterIt(it in live)
   if own.len > 0 or live.len > 0:
@@ -874,13 +874,21 @@ proc mappedProjectFiles(
   conf.projectMapping.get(@[]).mapIt(ls.getRootPath() / it.projectFile)
 
 proc nimsuggestProjectFor(
-    ls: LanguageServer, conf: NlsConfig, projectFile: string
-): string {.raises: [OSError].} =
+    ls: LanguageServer, uri: string
+): Future[string] {.async: (raises: [CancelledError, OSError, RegexError]).} =
+  let file = ls.openFiles.getOrDefault(uri)
+  if file == nil:
+    return ""
+  let conf = await ls.workspaceConfigurationWait()
+  let projectFile = await file.waitProjectFile()
   if ls.isLiveNimsuggestProject(projectFile) or
-      projectFile in ls.mappedProjectFiles(conf) or ls.canSpawnNimsuggest(conf):
+      projectFile in ls.mappedProjectFiles(conf):
     projectFile
+  elif not ls.canSpawnNimsuggest(conf):
+    let package = await ls.nimblePackage(uri.uriToPath)
+    ls.reuseLiveNimsuggestProject(package)
   else:
-    ls.reuseLiveNimsuggestProject()
+    projectFile
 
 proc failoverProject(ls: LanguageServer, projectFile: string): string =
   if ls.failTable.getOrDefault(projectFile, 0) < MaxNimsuggestFails:
@@ -906,10 +914,8 @@ proc getNimsuggestInner(
     debug "File is no longer open", uri = uri
     return nil
 
-  let projectFile = await file.waitProjectFile()
   if not ls.hasServingNimsuggest(file):
-    let conf = await ls.workspaceConfigurationWait()
-    let ownProject = ls.nimsuggestProjectFor(conf, projectFile)
+    let ownProject = await ls.nimsuggestProjectFor(uri)
     file.nimsuggestProject = ls.failoverProject(ownProject)
     if file.nimsuggestProject notin ["", ownProject]:
       debug "Reusing nimsuggest instance for",
@@ -971,7 +977,7 @@ proc didCloseFile*(
     traceAsyncErrors ls.checkFile(file)
 
 proc getProjectFile*(
-  fileUri: string, ls: LanguageServer
+  ls: LanguageServer, uri: string
 ): Future[string] {.async: (raises: [CancelledError, OSError, RegexError]).}
 
 proc didOpenFile*(
@@ -980,7 +986,7 @@ proc didOpenFile*(
   with textDocument:
     debug "New document opened for URI:", uri = uri
     let file = open(ls.uriStorageLocation(uri), fmWrite)
-    let projectFileFuture = getProjectFile(uriToPath(uri), ls)
+    let projectFileFuture = ls.getProjectFile(uriToPath(uri))
     let openFile = NlsFileInfo(
       projectFile: projectFileFuture,
       changed: false,
@@ -1355,7 +1361,7 @@ proc handleConfigurationChanges*(
   defer:
     await stopping
   for uri, file in ls.openFiles:
-    file.projectFile = getProjectFile(uri.uriToPath, ls)
+    file.projectFile = ls.getProjectFile(uri.uriToPath)
     file.nimsuggestProject = ""
   ls.sendStatusChanged()
   if ls.lspClientCapabilities.workspace.isSome and
@@ -1416,11 +1422,11 @@ proc shutdownNimsuggest*(ls: LanguageServer) {.async: (raises: []).} =
   await noCancel ls.nimsuggestShutdown
 
 proc getProjectFile*(
-    fileUri: string, ls: LanguageServer
+    ls: LanguageServer, uri: string
 ): Future[string] {.async: (raises: [CancelledError, OSError, RegexError]).} =
   let
     rootPath = ls.getRootPath()
-    pathRelativeToRoot = fileUri.tryRelativeTo(rootPath)
+    pathRelativeToRoot = uri.tryRelativeTo(rootPath)
     conf = await ls.workspaceConfigurationWait()
     mappings = conf.projectMapping.get(@[])
 
@@ -1429,32 +1435,27 @@ proc getProjectFile*(
     if pathRelativeToRoot.isSome and
         find(pathRelativeToRoot.get(), re2(mapping.fileRegex), m):
       await ls.showMessage(
-        fmt"RegEx matched `{mapping.fileRegex}` for file `{fileUri}`", MessageType.Info
+        fmt"RegEx matched `{mapping.fileRegex}` for file `{uri}`", MessageType.Info
       )
       result = rootPath / mapping.projectFile
       if fileExists(result):
         trace "getProjectFile?",
-          project = result, uri = fileUri, matchedRegex = mapping.fileRegex
+          project = result, uri = uri, matchedRegex = mapping.fileRegex
         return result
     else:
-      trace "getProjectFile does not match",
-        uri = fileUri, matchedRegex = mapping.fileRegex
+      trace "getProjectFile does not match", uri = uri, matchedRegex = mapping.fileRegex
 
-  let package = await ls.nimblePackage(fileUri)
-  #If we reached the maximum instances of nimsuggest, we just return the first project
-  if not ls.canSpawnNimsuggest(conf):
-    return ls.reuseLiveNimsuggestProject(package)
-
+  let package = await ls.nimblePackage(uri)
   if package.projectFile.len > 0:
     debug "Found nimble project", projectFile = package.projectFile
     result = package.projectFile
   else:
-    result = await ls.getProjectFileAutoGuess(fileUri)
+    result = await ls.getProjectFileAutoGuess(uri)
 
   if result == "":
-    result = fileUri
+    result = uri
 
-  debug "getProjectFile ", project = result, fileUri = fileUri
+  debug "getProjectFile ", project = result, uri = uri
 
 proc checkFile*(
     ls: LanguageServer, file: NlsFileInfo

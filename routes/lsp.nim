@@ -710,7 +710,7 @@ proc codeAction*(
     async: (raises: [ApplicationError, CancelledError, OSError, RegexError])
 .} =
   ls.checkInitialized()
-  let projectUri = await getProjectFile(params.textDocument.uri.uriToPath, ls)
+  let projectUri = await ls.getProjectFile(params.textDocument.uri.uriToPath)
   return
     seq[CodeAction] %* [
       {
