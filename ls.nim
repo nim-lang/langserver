@@ -851,16 +851,11 @@ proc canSpawnNimsuggest(ls: LanguageServer, conf: NlsConfig): bool =
   debug "canSpawnNimsuggest",
     result = result, nsCount = nsCount, maxNimsuggestProcesses = maxNimsuggestProcesses
 
-proc reuseLiveNimsuggestProject(
-    ls: LanguageServer, projectFile: string, package: NimblePackage
-): string =
+proc reuseLiveNimsuggestProject(ls: LanguageServer, projectFile: string): string =
   let live = ls.liveNimsuggestProjects
-  let own = package.entryPoints.filterIt(it in live)
   result =
     if projectFile in live:
       projectFile
-    elif own.len > 0:
-      own[^1]
     elif live.len > 0:
       live[0]
     else:
@@ -885,8 +880,7 @@ proc nimsuggestProjectFor(
   if ls.canSpawnNimsuggest(conf):
     projectFile
   else:
-    let package = await ls.nimblePackage(uri.uriToPath)
-    ls.reuseLiveNimsuggestProject(projectFile, package)
+    ls.reuseLiveNimsuggestProject(projectFile)
 
 proc failoverProject(ls: LanguageServer, projectFile: string): string =
   if ls.failTable.getOrDefault(projectFile, 0) < MaxNimsuggestFails:

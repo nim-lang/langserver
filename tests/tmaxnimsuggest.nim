@@ -106,17 +106,17 @@ suite "Idle nimsuggest instance under the cap":
     check ls.projectFiles.len == 2
     check reused notin ls.projectFiles
 
-suite "Reusing a nimsuggest instance of the file's package":
+suite "Reusing a nimsuggest instance over the cap":
   let cmdParams =
     CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
   let ls = main(cmdParams)
   let client = newClient(cmdParams.port)
-  let packageDir = absolutePath "tests" / "projects" / "duobins"
+  let projectsDir = absolutePath "tests" / "projects"
 
   suiteTeardown:
     waitFor ls.shutdownNimsuggest()
 
-  test "a file over the cap reuses the nimsuggest of its own package":
+  test "a file over the cap is served by its own project when it is live":
     discard waitFor client.initialize(
       LspInitializeParams %* {
         "processId": %getCurrentProcessId(),
@@ -125,42 +125,23 @@ suite "Reusing a nimsuggest instance of the file's package":
       }
     )
     ls.setWorkspaceConfiguration(% @[NlsConfig(maxNimsuggestProcesses: some 2)])
-    let
-      mainFile = packageDir / "duobins.nim"
-      otherBin = packageDir / "other.nim"
-      mainUri = "projects/duobins/duobins.nim".fixtureUri
-
-    # The package's second entry point has its own nimsuggest.
-    waitFor ls.createOrRestartNimsuggest(otherBin)
-    waitFor ls.didOpenFile(createDidOpenParams("projects/duobins/duobins.nim").textDocument)
-    check mainFile in ls.projectFiles
-
-    # The main file's nimsuggest stops and another package takes its slot, so the
-    # limit is reached and the main file has no nimsuggest of its own.
-    let project = ls.projectFiles[mainFile]
-    ls.projectFiles.del mainFile
-    waitFor project.stopWait()
-    waitFor ls.didOpenFile(createDidOpenParams("projects/vendored/vendored.nim").textDocument)
+    let files = ["projects/hw/hw.nim", "projects/vendored/vendored.nim"]
+    for file in files:
+      waitFor ls.didOpenFile(createDidOpenParams(file).textDocument)
     check ls.projectFiles.len == 2
 
-    check (waitFor ls.tryGetNimsuggest(mainUri)).isSome
-    check ls.openFiles[mainUri].nimsuggestProject == otherBin
-
-  test "a file over the cap is served by its own project when it is live":
-    let
-      mainFile = packageDir / "duobins.nim"
-      otherBin = packageDir / "other.nim"
-      mainUri = "projects/duobins/duobins.nim".fixtureUri
-
-    # Both entry points of the package run, so the cap is reached with the
-    # file's own project live next to the package's other entry point.
-    waitFor ls.createOrRestartNimsuggest(mainFile)
-    check mainFile in ls.projectFiles
-    check otherBin in ls.projectFiles
-
-    ls.openFiles[mainUri].nimsuggestProject = ""
-    check (waitFor ls.tryGetNimsuggest(mainUri)).isSome
-    check ls.openFiles[mainUri].nimsuggestProject == mainFile
+    # The cap is reached, so both files go through the reuse. Only one of them
+    # can be the first live instance, so the other one is served by its own
+    # project only if the reuse prefers it.
+    for file in files:
+      ls.openFiles[file.fixtureUri].nimsuggestProject = ""
+    for file in files:
+      check (waitFor ls.tryGetNimsuggest(file.fixtureUri)).isSome
+    check ls.openFiles["projects/hw/hw.nim".fixtureUri].nimsuggestProject ==
+      projectsDir / "hw" / "hw.nim"
+    check ls.openFiles["projects/vendored/vendored.nim".fixtureUri].nimsuggestProject ==
+      projectsDir / "vendored" / "vendored.nim"
+    check ls.projectFiles.len == 2
 
 suite "Mapped project over the cap":
   let cmdParams =
