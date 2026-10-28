@@ -956,8 +956,8 @@ proc shutdown*(
 ): Future[JsonNode] {.async: (raises: [ApplicationError]).} =
   ls.checkInitialized()
   debug "Shutting down"
-  await ls.shutdownNimsuggest()
   ls.isShutdown = true
+  await ls.shutdownNimsuggest()
   # let id = input{"id"}.extractId
   result = newJNull()
   trace "Shutdown complete"
@@ -967,7 +967,7 @@ proc exit*(
 ): Future[JsonNode] {.async: (raises: [IOError, OSError]).} =
   if not p.ls.isShutdown:
     debug "Received an exit request without prior shutdown request"
-    await p.ls.shutdownNimsuggest()
+  await p.ls.shutdownNimsuggest()
   debug "Quitting process"
   result = newJNull()
   await p.onExit()
