@@ -744,7 +744,14 @@ proc codeAction*(
 
 proc executeCommand*(
     ls: LanguageServer, params: ExecuteCommandParams
-): Future[JsonNode] {.async: (raises: [ApplicationError, CancelledError]).} =
+): Future[JsonNode] {.
+    async: (
+      raises: [
+        ApplicationError, CancelledError, OSError, IOError, RegexError, NimsuggestError,
+        AsyncProcessError, AsyncStreamError,
+      ]
+    )
+.} =
   ls.checkInitialized()
   if params.arguments.len == 0:
     raise (ref ApplicationError)(
@@ -752,24 +759,37 @@ proc executeCommand*(
       msg: params.command & " expects the project file as its first argument",
     )
   let projectFile = params.arguments[0].getStr
+  let projectUri = projectFile.pathToUri
   case params.command
   of RESTART_COMMAND:
     debug "Restarting nimsuggest", projectFile = projectFile
-    await ls.createOrRestartNimsuggest(projectFile, projectFile.pathToUri)
+    await ls.createOrRestartNimsuggest(projectFile, projectUri)
   of CHECK_PROJECT_COMMAND:
     debug "Checking project", projectFile = projectFile
-    ls.checkProject(projectFile.pathToUri).traceAsyncErrors
+    if projectUri notin ls.openFiles:
+      await ls.didOpenFile(
+        TextDocumentItem(
+          uri: projectUri, languageId: "nim", version: 0, text: readFile(projectFile)
+        )
+      )
+    await ls.checkProject(projectUri)
   of RECOMPILE_COMMAND:
     debug "Clean build", projectFile = projectFile
     let project = ls.projectFiles.getOrDefault(projectFile)
     if project != nil and project.ns != nil:
+      if projectUri notin ls.openFiles:
+        await ls.didOpenFile(
+          TextDocumentItem(
+            uri: projectUri, languageId: "nim", version: 0, text: readFile(projectFile)
+          )
+        )
       let token = ls.createProgressToken()
       ls.workDoneProgressCreate(token)
       ls.progress(token, "begin", fmt "Compiling project {projectFile}")
-
-      project.ns.recompile().addCallback do(data: pointer):
+      defer:
         ls.progress(token, "end")
-        ls.checkProject(projectFile.pathToUri).traceAsyncErrors
+      discard await project.ns.recompile()
+      await ls.checkProject(projectUri)
 
   result = newJNull()
 

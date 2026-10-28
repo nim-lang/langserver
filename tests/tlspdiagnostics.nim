@@ -2,9 +2,9 @@ import
   std/[options, json, os, strformat],
   json_rpc/[rpcclient],
   unittest2,
-  ../[nimlangserver, ls, utils],
+  ../[nimlangserver, ls, suggestapi, utils],
   ../protocol/[types],
-  ./lspsocketclient
+  ./[lspsocketclient, testhelpers]
 
 const CallTimeout = 30.seconds
 
@@ -118,3 +118,58 @@ suite "LSP diagnostics":
     )
     for capability in LspExtensionCapability:
       check $capability in capabilities
+
+suite "LSP project check command":
+  let cmdParams =
+    CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
+  let ls = main(cmdParams)
+  let client = newLspSocketClient()
+  client.registerNotification(
+    "window/showMessage", "window/workDoneProgress/create", "workspace/configuration",
+    "extension/statusUpdate", "textDocument/publishDiagnostics", "$/progress",
+  )
+  waitFor client.connect("localhost", cmdParams.port)
+  discard waitFor client.initialize(
+    LspInitializeParams %* {
+      "processId": %getCurrentProcessId(),
+      "rootUri": fixtureUri("projects/mcpproject/"),
+      "capabilities": {"window": {"workDoneProgress": false}},
+    }
+  )
+  ls.setWorkspaceConfiguration(% @[NlsConfig(useNimCheck: some false)])
+
+  suiteTeardown:
+    waitFor ls.shutdownNimsuggest()
+
+  test "checks a project whose project file is not open":
+    let
+      projectFile =
+        absolutePath("tests" / "projects" / "mcpproject" / "src" / "mcpproject.nim")
+      errmoduleUri = fixtureUri("projects/mcpproject/src/mcpproject/errmodule.nim")
+
+    # Only a test file is open. It belongs to the package, so the nimsuggest
+    # runs for the package's project file, which the editor never opened.
+    client.openFile("projects/mcpproject/tests/test1.nim")
+    check waitFor client.waitForNotificationMessage(
+      fmt"Nimsuggest initialized for {projectFile}"
+    )
+    check projectFile.pathToUri notin ls.openFiles
+    let project = ls.projectFiles[projectFile]
+    check waitUntil(
+      not ls.checkInProgress and not project.ns.checkProjectInProgress, 30.seconds
+    )
+
+    # errmodule.nim has a type error, so a project check publishes for it.
+    proc errmodulePublishes(): int =
+      for params in client.calls["textDocument/publishDiagnostics"]:
+        if params{"uri"}.getStr == errmoduleUri:
+          inc result
+
+    let published = errmodulePublishes()
+    discard waitFor client
+      .call(
+        "workspace/executeCommand",
+        %*{"command": CHECK_PROJECT_COMMAND, "arguments": [projectFile]},
+      )
+      .wait(CallTimeout)
+    check waitUntil(errmodulePublishes() > published, 30.seconds)

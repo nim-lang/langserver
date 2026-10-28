@@ -1005,15 +1005,6 @@ proc didOpenFile*(
       uri = uri, projectFile = projectFile
     # start ns on open file for chk diagnostics
     discard await ls.tryGetNimsuggest(uri)
-    let projectFileUri = projectFile.pathToUri
-    if projectFileUri notin ls.openFiles:
-      var textDocument = TextDocumentItem(
-        uri: projectFileUri, languageId: "nim", version: 0, text: readFile(projectFile)
-      )
-
-      await didOpenFile(ls, textDocument)
-
-      debug "Opening project file", uri = projectFile, file = uri
     await ls.showMessage(fmt "Opening {uri}", MessageType.Info)
 
 proc checkNimsuggestProject(
