@@ -130,7 +130,7 @@ suite "Reusing a nimsuggest instance of the file's package":
       otherBin = packageDir / "other.nim"
       mainUri = "projects/duobins/duobins.nim".fixtureUri
 
-    # The package's second binary has its own nimsuggest.
+    # The package's second entry point has its own nimsuggest.
     waitFor ls.createOrRestartNimsuggest(otherBin)
     waitFor ls.didOpenFile(createDidOpenParams("projects/duobins/duobins.nim").textDocument)
     check mainFile in ls.projectFiles
