@@ -839,12 +839,7 @@ proc entryPoints*(ls: LanguageServer): seq[string] =
 
 proc liveNimsuggestProjects*(ls: LanguageServer): seq[string] =
   ## Running + starting instances.
-  for entryPoint in ls.entryPoints:
-    if ls.isLiveNimsuggestProject(entryPoint) and entryPoint notin result:
-      result.add entryPoint
-  for projectFile in ls.projectFiles.keys:
-    if projectFile notin result:
-      result.add projectFile
+  result = ls.projectFiles.keys.toSeq
   for projectFile in ls.nimsuggestCreations.keys:
     if projectFile notin result:
       result.add projectFile
@@ -856,17 +851,23 @@ proc canSpawnNimsuggest(ls: LanguageServer, conf: NlsConfig): bool =
   debug "canSpawnNimsuggest",
     result = result, nsCount = nsCount, maxNimsuggestProcesses = maxNimsuggestProcesses
 
-proc reuseLiveNimsuggestProject(ls: LanguageServer, package: NimblePackage): string =
+proc reuseLiveNimsuggestProject(
+    ls: LanguageServer, projectFile: string, package: NimblePackage
+): string =
   let live = ls.liveNimsuggestProjects
   let own = package.entryPoints.filterIt(it in live)
-  if own.len > 0 or live.len > 0:
-    result =
-      if own.len > 0:
-        own[^1]
-      else:
-        live[0]
-    debug "Reached the maximum instances of nimsuggest, reusing the first nimsuggest instance",
-      project = result
+  result =
+    if projectFile in live:
+      projectFile
+    elif own.len > 0:
+      own[^1]
+    elif live.len > 0:
+      live[0]
+    else:
+      ""
+  if result != projectFile:
+    debug "Reached the maximum instances of nimsuggest, reusing a nimsuggest instance",
+      projectFile = projectFile, project = result
 
 proc mappedProjectFiles(
     ls: LanguageServer, conf: NlsConfig
@@ -881,14 +882,11 @@ proc nimsuggestProjectFor(
     return ""
   let conf = await ls.workspaceConfigurationWait()
   let projectFile = await file.waitProjectFile()
-  if ls.isLiveNimsuggestProject(projectFile) or
-      projectFile in ls.mappedProjectFiles(conf):
+  if ls.canSpawnNimsuggest(conf):
     projectFile
-  elif not ls.canSpawnNimsuggest(conf):
-    let package = await ls.nimblePackage(uri.uriToPath)
-    ls.reuseLiveNimsuggestProject(package)
   else:
-    projectFile
+    let package = await ls.nimblePackage(uri.uriToPath)
+    ls.reuseLiveNimsuggestProject(projectFile, package)
 
 proc failoverProject(ls: LanguageServer, projectFile: string): string =
   if ls.failTable.getOrDefault(projectFile, 0) < MaxNimsuggestFails:

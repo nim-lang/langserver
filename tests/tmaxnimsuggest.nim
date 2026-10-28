@@ -145,3 +145,64 @@ suite "Reusing a nimsuggest instance of the file's package":
 
     check (waitFor ls.tryGetNimsuggest(mainUri)).isSome
     check ls.openFiles[mainUri].nimsuggestProject == otherBin
+
+  test "a file over the cap is served by its own project when it is live":
+    let
+      mainFile = packageDir / "duobins.nim"
+      otherBin = packageDir / "other.nim"
+      mainUri = "projects/duobins/duobins.nim".fixtureUri
+
+    # Both entry points of the package run, so the cap is reached with the
+    # file's own project live next to the package's other entry point.
+    waitFor ls.createOrRestartNimsuggest(mainFile)
+    check mainFile in ls.projectFiles
+    check otherBin in ls.projectFiles
+
+    ls.openFiles[mainUri].nimsuggestProject = ""
+    check (waitFor ls.tryGetNimsuggest(mainUri)).isSome
+    check ls.openFiles[mainUri].nimsuggestProject == mainFile
+
+suite "Mapped project over the cap":
+  let cmdParams =
+    CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
+  let ls = main(cmdParams)
+  let client = newClient(cmdParams.port)
+  let projectsDir = absolutePath "tests" / "projects"
+
+  suiteTeardown:
+    waitFor ls.shutdownNimsuggest()
+
+  test "a mapped project does not start a nimsuggest over the cap":
+    discard waitFor client.initialize(
+      LspInitializeParams %* {
+        "processId": %getCurrentProcessId(),
+        "rootUri": fixtureUri("projects"),
+        "capabilities": {"workspace": {"configuration": true}},
+      }
+    )
+    ls.setWorkspaceConfiguration(
+      % @[
+        NlsConfig(
+          maxNimsuggestProcesses: some 1,
+          projectMapping: some @[
+            NlsNimsuggestConfig(
+              projectFile: "multimodules/othermodule.nim",
+              fileRegex: "othermodule",
+            )
+          ],
+        )
+      ]
+    )
+    let
+      hw = projectsDir / "hw" / "hw.nim"
+      mappedUri = "projects/multimodules/othermodule.nim".fixtureUri
+    waitFor ls.didOpenFile(createDidOpenParams("projects/hw/hw.nim").textDocument)
+    check hw in ls.projectFiles
+
+    waitFor ls.didOpenFile(
+      createDidOpenParams("projects/multimodules/othermodule.nim").textDocument
+    )
+    check (waitFor ls.openFiles[mappedUri].waitProjectFile()) ==
+      projectsDir / "multimodules" / "othermodule.nim"
+    check ls.openFiles[mappedUri].nimsuggestProject == hw
+    check ls.projectFiles.len == 1
