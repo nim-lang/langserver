@@ -194,6 +194,8 @@ type
     nimDir*: Option[string]
     projectFile*: string
     entryPoints*: seq[string]
+    dumpFailed*: bool
+    nimbleFileTime: Time #when the dump started
 
   OnExitCallback* = proc(): Future[void] {.async: (raises: []).}
     #To be called when the server is shutting down
@@ -501,10 +503,12 @@ proc loadNimblePackage(
     package = NimblePackage(dir: packageDir)
     name, srcDir: string
     entryPoints: seq[string]
+    exitCode = -1
   debug "nimble dump starting",
     nimbleFile = nimbleFile, nimbleDir = getEnv("NIMBLE_DIR")
   var process: AsyncProcessRef
   try:
+    package.nimbleFileTime = getLastModificationTime(nimbleFile)
     process = await startProcess(
       "nimble",
       workingDir = packageDir,
@@ -526,9 +530,10 @@ proc loadNimblePackage(
       if line.startsWith("entryPoints"):
         entryPoints =
           line[(1 + line.find '"') ..^ 2].split(',').mapIt(it.strip(chars = {' ', '"'}))
+    exitCode = await process.waitForExit()
 
     debug "nimble dump finished",
-      nimbleFile = nimbleFile, nimDir = package.nimDir.get("")
+      nimbleFile = nimbleFile, exitCode = exitCode, nimDir = package.nimDir.get("")
   except OSError, IOError, AsyncProcessError, AsyncStreamError:
     debug "Failed to get nimble dump info",
       nimbleFile = nimbleFile, err = getCurrentExceptionMsg()
@@ -536,6 +541,9 @@ proc loadNimblePackage(
     if process != nil:
       await shutdownChildProcess(process)
 
+  if exitCode != 0:
+    warn "nimble dump failed", nimbleFile = nimbleFile, exitCode = exitCode
+    package.dumpFailed = true
   package.sourceDir = packageDir / srcDir
   package.entryPoints = entryPoints.mapIt(packageDir / it).filterIt(it.fileExists)
   let projectFile = package.sourceDir / (name & ".nim")
@@ -545,12 +553,21 @@ proc loadNimblePackage(
       package.entryPoints.add projectFile
   ls.nimblePackages[nimbleFile] = package
 
+proc isFailedDumpOutdated(
+    ls: LanguageServer, nimbleFile: string
+): bool {.raises: [OSError].} =
+  let package = ls.nimblePackages.getOrDefault(nimbleFile)
+  package.dumpFailed and getLastModificationTime(nimbleFile) != package.nimbleFileTime
+
 proc nimblePackage(
     ls: LanguageServer, file: string
 ): Future[NimblePackage] {.async: (raises: [CancelledError, OSError]).} =
   let nimbleFile = ls.packageNimbleFile(file)
   if nimbleFile.len == 0:
     return NimblePackage()
+  if ls.isFailedDumpOutdated(nimbleFile):
+    ls.nimblePackages.del(nimbleFile)
+    ls.nimblePackageLoads.del(nimbleFile)
   if nimbleFile notin ls.nimblePackageLoads:
     ls.nimblePackageLoads[nimbleFile] = ls.loadNimblePackage(nimbleFile)
   await ls.nimblePackageLoads.getOrDefault(nimbleFile).join()
