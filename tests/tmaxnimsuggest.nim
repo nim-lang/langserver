@@ -50,11 +50,15 @@ suite "Single nimsuggest instance under concurrent opens":
     discard waitFor client.initialize(initParams())
     ls.setWorkspaceConfiguration(% @[NlsConfig(maxNimsuggestProcesses: some 1)])
 
-    # Open all three files at once, before any nimsuggest is running. Each file
-    # would get its own nimsuggest, but the limit is 1, so they must share one.
+    # Open all three files and ask for their nimsuggest at once, before any is
+    # running. Each file would get its own nimsuggest, but the limit is 1, so
+    # they must share one.
     let opening = files.mapIt(ls.didOpenFile(createDidOpenParams(it).textDocument))
+    let starting = files.mapIt(ls.tryGetNimsuggest(it.fixtureUri))
     for fut in opening:
       waitFor fut
+    for fut in starting:
+      check (waitFor fut).isSome
     check ls.projectFiles.len == 1
 
     for file in files:

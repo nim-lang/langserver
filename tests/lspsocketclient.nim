@@ -186,6 +186,10 @@ proc createDidOpenParams*(file: string): DidOpenTextDocumentParams =
       }
     }
 
+proc openFile*(client: LspSocketClient, file: string) =
+  ## Opens the file and, like an editor does, sends a request for it.
+  client.notify("textDocument/didOpen", %createDidOpenParams(file))
+
 proc positionParams*(uri: string, line, character: int): TextDocumentPositionParams =
   return
     TextDocumentPositionParams %*

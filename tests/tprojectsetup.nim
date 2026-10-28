@@ -40,10 +40,7 @@ suite "nimble setup":
         "position": {"line": 7, "character": 0},
         "textDocument": {"uri": pathToUri(entryPoint)},
       }
-    client.notify(
-      "textDocument/didOpen",
-      %createDidOpenParams("projects/testproject/src/testproject.nim"),
-    )
+    client.openFile("projects/testproject/src/testproject.nim")
     check waitFor client.waitForNotificationMessage(
       fmt"Nimsuggest initialized for {entryPoint}"
     )
@@ -199,6 +196,11 @@ suite "Nimble packages":
     check (waitFor getProjectFile(mainFile, ls)) == mainFile
     check not ls.nimblePackages[nimbleFile].dumpFailed
     check ls.nimblePackages[nimbleFile].projectFile == mainFile
+
+  test "a file outside the source dir belongs to the package project":
+    let package = projectsDir / "mcpproject"
+    check (waitFor getProjectFile(package / "tests" / "test1.nim", ls)) ==
+      package / "src" / "mcpproject.nim"
 
   test "a file of a known package keeps resolving to it":
     let dep = projectsDir / "vendored" / "vendor" / "dep" / "dep.nim"

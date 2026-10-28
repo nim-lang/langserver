@@ -125,6 +125,7 @@ suite "Replacing a running nimsuggest":
       text: readFile("tests" / helloWorldFile),
     )
     check waitFor ls.didOpenFile(textDocument).withTimeout(30.seconds)
+    check (waitFor ls.tryGetNimsuggest(helloWorldUri).wait(30.seconds)).isSome
     let old = ls.projectFiles[helloWorldPath]
     let oldNs = old.ns
     # Having served a request is what made the error path auto-restart it.
@@ -203,6 +204,7 @@ suite "Documents closed while a handler is suspended":
       text: readFile("tests" / helloWorldFile),
     )
     check waitFor ls.didOpenFile(textDocument).withTimeout(30.seconds)
+    check (waitFor ls.tryGetNimsuggest(helloWorldUri).wait(30.seconds)).isSome
     let ns = ls.projectFiles[helloWorldPath].ns
 
     # hw.nim has an error in it, so any project check publishes for it. That
