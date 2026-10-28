@@ -223,3 +223,10 @@ suite "Nimble packages":
       check nimPath == some(package.nimDir.get / "nim".addFileExt(ExeExt))
     else:
       check nimPath == some(findExe "nim")
+
+  test "no nimble dump is started once stopped":
+    let nimbleFile = projectsDir / "multimodules" / "multimodules.nimble"
+    check nimbleFile notin ls.nimblePackageLoads
+    waitFor ls.shutdownNimsuggest()
+    discard waitFor getProjectFile(projectsDir / "multimodules" / "rootmodule.nim", ls)
+    check nimbleFile notin ls.nimblePackageLoads

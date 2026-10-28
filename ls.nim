@@ -569,6 +569,10 @@ proc nimblePackage(
     ls.nimblePackages.del(nimbleFile)
     ls.nimblePackageLoads.del(nimbleFile)
   if nimbleFile notin ls.nimblePackageLoads:
+    if ls.isShutdownNimsuggest:
+      debug "Not running nimble dump, the server is shutting down",
+        nimbleFile = nimbleFile
+      return NimblePackage()
     ls.nimblePackageLoads[nimbleFile] = ls.loadNimblePackage(nimbleFile)
   await ls.nimblePackageLoads.getOrDefault(nimbleFile).join()
   ls.nimblePackages.getOrDefault(nimbleFile)
