@@ -53,11 +53,12 @@ proc nimFindSymbols(): McpTool =
     name: "nimFindSymbols",
     title: "Find symbols in .nim files",
     description:
-      "Find symbols matching the given search query in the current workspace.",
+      "Find symbols matching the given search query in the project of the given .nim file URI.",
     inputSchema: McpToolSchema(
       `type`: "object",
-      properties: %*{"query": {"type": "string"}},
-      required: @["query"],
+      properties:
+        %*{"uri": {"type": "string", "format": "uri"}, "query": {"type": "string"}},
+      required: @["uri", "query"],
     ),
     outputSchema: McpToolSchema(
       `type`: "object",
@@ -112,10 +113,14 @@ proc nimListSymbols(): McpTool =
 proc nimCheckProject(): McpTool =
   McpTool(
     name: "nimCheckProject",
-    title: "Check the current workspace",
+    title: "Check a project",
     description:
-      "Get diagnostics (errors, warnings, and hints) for the current workspace.",
-    inputSchema: McpToolSchema(`type`: "object", properties: %*{}, required: @[]),
+      "Get diagnostics (errors, warnings, and hints) for the project of the given .nim file URI.",
+    inputSchema: McpToolSchema(
+      `type`: "object",
+      properties: %*{"uri": {"type": "string", "format": "uri"}},
+      required: @["uri"],
+    ),
     outputSchema: McpToolSchema(
       `type`: "object",
       properties: %*{
@@ -206,6 +211,18 @@ proc nimFindTypeDefinition(): McpTool =
   )
 
 # Tool calls
+
+proc fileUriArgument(params: McpCallToolParams): Option[string] =
+  let uri = params.arguments.get(newJObject()){"uri"}.getStr()
+  if uri.isFileUri:
+    some uri.uriToPath
+  else:
+    none string
+
+proc toolErrorResult(text: string): McpCallToolResult =
+  McpCallToolResult(
+    content: @[McpContentBlock(`type`: TextContent, text: text)], isError: true
+  )
 
 proc callNimFindReferences(
     ls: LanguageServer, params: McpCallToolParams
@@ -299,29 +316,23 @@ proc callNimFindSymbols(
       raises: [CancelledError, KeyError, OSError, IOError, RegexError, NimsuggestError]
     )
 .} =
-  if len(ls.projectFiles) == 0:
-    return McpCallToolResult(
-      content: @[
-        McpContentBlock(`type`: TextContent, text: "Tool works only in Nimble projects")
-      ],
-      isError: true,
-    )
+  let path = params.fileUriArgument()
+  if path.isNone:
+    return toolErrorResult("Argument uri must be a file URI")
+  if path.get.splitFile.ext != ".nim":
+    return toolErrorResult("Argument uri must be a .nim file")
 
   let
-    arguments = params.arguments.get()
-    query = arguments["query"].getStr()
-    path = ls.projectFiles.keys.toSeq[0]
-    uri = path.pathToUri()
+    query = params.arguments.get(newJObject()){"query"}.getStr()
+    uri = path.get.pathToUri()
 
   if uri notin ls.openFiles:
     await ls.didOpenFile(
-      TextDocumentItem(uri: uri, languageId: "nim", version: 0, text: readFile(path))
+      TextDocumentItem(
+        uri: uri, languageId: "nim", version: 0, text: readFile(path.get)
+      )
     )
 
-  # This should probably be reimplemented with ls.lastNimSuggest
-  # but it is not assigned during initiallization and is therefore `nil`.
-  # As as workaround, we "open" the first available projectFile
-  # and use its nimsuggest instance.
   let nimsuggest = await ls.tryGetNimsuggest(uri)
 
   if nimsuggest.isSome:
@@ -400,29 +411,31 @@ proc callNimListSymbols(
 proc callNimCheckProject(
     ls: LanguageServer, params: McpCallToolParams
 ): Future[McpCallToolResult] {.
-    async: (raises: [CancelledError, OSError, IOError, RegexError, NimsuggestError])
-.} =
-  if len(ls.projectFiles) == 0:
-    return McpCallToolResult(
-      content: @[
-        McpContentBlock(`type`: TextContent, text: "Tool works only in Nimble projects")
-      ],
-      isError: true,
+    async: (
+      raises:
+        [CancelledError, ValueError, OSError, IOError, RegexError, NimsuggestError]
     )
+.} =
+  let path = params.fileUriArgument()
+  if path.isNone:
+    return toolErrorResult("Argument uri must be a file URI")
+  if path.get.splitFile.ext != ".nim":
+    return toolErrorResult("Argument uri must be a .nim file")
 
-  let
-    path = ls.projectFiles.keys.toSeq[0]
-    uri = path.pathToUri()
+  let uri = path.get.pathToUri()
 
   if uri notin ls.openFiles:
     await ls.didOpenFile(
-      TextDocumentItem(uri: uri, languageId: "nim", version: 0, text: readFile(path))
+      TextDocumentItem(
+        uri: uri, languageId: "nim", version: 0, text: readFile(path.get)
+      )
     )
 
+  let projectFile = await ls.openFiles[uri].waitProjectFile()
   let nimsuggest = await ls.tryGetNimsuggest(uri)
 
   if nimsuggest.isSome:
-    let diagnostics = await nimsuggest.get.chk(path, path)
+    let diagnostics = await nimsuggest.get.chk(projectFile, projectFile)
 
     var diagJson: seq[JsonNode]
 

@@ -81,6 +81,10 @@ proc utf8to16*(fingerTable: FingerTable, utf8pos: int): int =
     else:
       break
 
+proc isFileUri*(uri: string): bool =
+  let parsed = uri.parseUri
+  parsed.scheme == "file" and parsed.hostname == ""
+
 proc uriToPath*(uri: string): string =
   ## Convert an RFC 8089 file URI to a native, platform-specific, absolute path.
   #let startIdx = when defined(windows): 8 else: 7
