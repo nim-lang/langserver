@@ -644,14 +644,9 @@ proc `mod`*(
 proc isKnown*(
     nimsuggest: Nimsuggest, filePath: string
 ): Future[bool] {.async: (raises: [CancelledError]).} =
-  let fut = nimsuggest.known(filePath)
-  if not await withTimeout(fut):
-    debug "Timeout reached running [isKnown], assuming the file is not known",
-      file = filePath
-    return
   let sug =
     try:
-      await fut
+      await nimsuggest.known(filePath)
     except NimsuggestError as err:
       debug "Failed running [isKnown], assuming the file is not known",
         file = filePath, err = err.msg
