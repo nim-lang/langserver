@@ -1,5 +1,5 @@
 import
-  std/[options, json, os, sequtils, sugar, strformat],
+  std/[options, json, os, sequtils, sugar, strformat, times],
   json_rpc/[rpcclient],
   unittest2,
   ../[nimlangserver, ls, utils],
@@ -168,6 +168,37 @@ suite "Nimble packages":
     check load != nil
     discard waitFor getProjectFile(projectsDir / "vendored" / "vendored.nim", ls)
     check ls.nimblePackageLoads.getOrDefault(nimbleFile) == load
+
+  test "a failed nimble dump is retried once the nimble file changes":
+    let
+      packageDir = projectsDir / "brokennimble"
+      nimbleFile = packageDir / "broken.nimble"
+      mainFile = packageDir / "src" / "broken.nim"
+    createDir(packageDir / "src")
+    writeFile(mainFile, "echo 1\n")
+    writeFile(nimbleFile, "srcDir = \"src\"\nthis is not nim(\n")
+
+    discard waitFor getProjectFile(mainFile, ls)
+    check ls.nimblePackages[nimbleFile].dumpFailed
+    check (waitFor ls.getWorkingDir(mainFile)) == packageDir
+
+    let failedLoad = ls.nimblePackageLoads[nimbleFile]
+    discard waitFor getProjectFile(mainFile, ls)
+    check ls.nimblePackageLoads[nimbleFile] == failedLoad
+
+    # the mtime moves explicitly so the change is seen on coarse filesystems
+    let brokenTime = getLastModificationTime(nimbleFile)
+    writeFile(
+      nimbleFile,
+      "version = \"0.1.0\"\nauthor = \"nimlangserver tests\"\n" &
+        "description = \"Fixture: a package whose nimble file gets fixed\"\n" &
+        "license = \"MIT\"\nsrcDir = \"src\"\n",
+    )
+    setLastModificationTime(nimbleFile, fromUnix(brokenTime.toUnix + 2))
+
+    check (waitFor getProjectFile(mainFile, ls)) == mainFile
+    check not ls.nimblePackages[nimbleFile].dumpFailed
+    check ls.nimblePackages[nimbleFile].projectFile == mainFile
 
   test "a file of a known package keeps resolving to it":
     let dep = projectsDir / "vendored" / "vendor" / "dep" / "dep.nim"

@@ -15,6 +15,7 @@ docs/
 
 tests/nimbleDir/
 tests/projects/testproject/
+tests/projects/brokennimble/
 tests/projects/testrunner/.gitignore
 tests/projects/testrunner/tests/test1
 tests/projects/testrunner/tests/sampletests
