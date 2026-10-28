@@ -993,6 +993,8 @@ proc didOpenFile*(
     let projectFile = await openFile.waitProjectFile()
     debug "Document associated with the following projectFile",
       uri = uri, projectFile = projectFile
+    # start ns on open file for chk diagnostics
+    discard await ls.tryGetNimsuggest(uri)
     let projectFileUri = projectFile.pathToUri
     if projectFileUri notin ls.openFiles:
       var textDocument = TextDocumentItem(
