@@ -176,7 +176,7 @@ suite "LSP configuration pulled from the client":
   let
     helloWorldFile = "projects/hw/hw.nim"
     helloWorldUri = fixtureUri(helloWorldFile)
-  client.notify("textDocument/didOpen", %createDidOpenParams(helloWorldFile))
+  client.openFile(helloWorldFile)
   check waitFor client.waitForNotificationMessage(
     fmt"Nimsuggest initialized for {uriToPath(helloWorldUri)}"
   )

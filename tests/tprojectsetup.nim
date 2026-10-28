@@ -40,10 +40,7 @@ suite "nimble setup":
         "position": {"line": 7, "character": 0},
         "textDocument": {"uri": pathToUri(entryPoint)},
       }
-    client.notify(
-      "textDocument/didOpen",
-      %createDidOpenParams("projects/testproject/src/testproject.nim"),
-    )
+    client.openFile("projects/testproject/src/testproject.nim")
     check waitFor client.waitForNotificationMessage(
       fmt"Nimsuggest initialized for {entryPoint}"
     )

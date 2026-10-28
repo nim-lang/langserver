@@ -40,7 +40,7 @@ suite "Nimlangserver misc":
     let helloWorldUri = fixtureUri("projects/hw/hw.nim")
     let helloWorldFile = "projects/hw/hw.nim"
     let hwAbsFile = uriToPath(helloWorldFile.fixtureUri())
-    client.notify("textDocument/didOpen", %createDidOpenParams(helloWorldFile))
+    client.openFile(helloWorldFile)
 
     check waitFor client.waitForNotificationMessage(
       fmt"Nimsuggest initialized for {hwAbsFile}"
@@ -83,7 +83,7 @@ suite "Nimlangserver fail count":
     let hwAbsFile = uriToPath(helloWorldFile.fixtureUri())
     ls.failTable[hwAbsFile] = 5
 
-    client.notify("textDocument/didOpen", %createDidOpenParams(helloWorldFile))
+    client.openFile(helloWorldFile)
     check waitFor client.waitForNotificationMessage(
       fmt"Nimsuggest initialized for {hwAbsFile}"
     )
@@ -330,7 +330,7 @@ suite "Nimlangserver idle nimsuggest cleanup":
 
     let helloWorldFile = "projects/hw/hw.nim"
     let hwAbsFile = uriToPath(helloWorldFile.fixtureUri())
-    client.notify("textDocument/didOpen", %createDidOpenParams(helloWorldFile))
+    client.openFile(helloWorldFile)
     check waitFor client.waitForNotificationMessage(
       fmt"Nimsuggest initialized for {hwAbsFile}"
     )
@@ -712,6 +712,7 @@ suite "External file edits":
     check waitUntil(ls.watchingFiles)
 
   test "a change to a watched file marks the nimsuggests stale until a project check":
+    hover()
     check waitUntil(
       ls.projectFiles.len > 0 and toSeq(ls.projectFiles.values).allIt(it.ns != nil),
       60.seconds,
@@ -734,7 +735,7 @@ suite "External file edits":
     hover()
     check not project.ns.stale
 
-    # so does opening a file
+    # so does a request for a file opened again
     check waitUntil(not project.ns.checkProjectInProgress)
     changeDep("proc x*() = discard\nproc z*() = discard\n")
     client.notify("textDocument/didClose", %*{"textDocument": {"uri": uri}})
@@ -746,7 +747,8 @@ suite "External file edits":
           {"uri": uri, "languageId": "nim", "version": 0, "text": readFile(path)}
       },
     )
-    check waitUntil(not project.ns.stale)
+    hover()
+    check not project.ns.stale
     check ls.projectFiles[ls.openFiles[uri].nimsuggestProject] == project
 
   test "with the watcher, a save is checked once, through the watched file change":

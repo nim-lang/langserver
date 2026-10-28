@@ -186,6 +186,14 @@ proc createDidOpenParams*(file: string): DidOpenTextDocumentParams =
       }
     }
 
+proc openFile*(client: LspSocketClient, file: string) =
+  ## Opens the file and, like an editor does, sends a request for it.
+  ## didOpen alone does not start a nimsuggest; the request does.
+  client.notify("textDocument/didOpen", %createDidOpenParams(file))
+  discard client.call(
+    "textDocument/documentSymbol", %*{"textDocument": {"uri": fixtureUri(file)}}
+  )
+
 proc positionParams*(uri: string, line, character: int): TextDocumentPositionParams =
   return
     TextDocumentPositionParams %*

@@ -63,7 +63,7 @@ suite "Suggest API selection":
   test "Suggest api":
     #The client adds the notifications into the call table and we wait until they arrived.   
     let helloWorldFile = "projects/hw/hw.nim"
-    client.notify("textDocument/didOpen", %createDidOpenParams(helloWorldFile))
+    client.openFile(helloWorldFile)
 
     let hwAbsFile = helloWorldFile.fixtureUri.uriToPath
     check waitFor client.waitForNotificationMessage(
