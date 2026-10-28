@@ -883,12 +883,12 @@ proc nimsuggestProjectFor(
   let projectFile = await file.waitProjectFile()
   if ls.isLiveNimsuggestProject(projectFile) or
       projectFile in ls.mappedProjectFiles(conf):
-    return projectFile
-  let package = await ls.nimblePackage(uri.uriToPath)
-  if ls.canSpawnNimsuggest(conf):
     projectFile
-  else:
+  elif not ls.canSpawnNimsuggest(conf):
+    let package = await ls.nimblePackage(uri.uriToPath)
     ls.reuseLiveNimsuggestProject(package)
+  else:
+    projectFile
 
 proc failoverProject(ls: LanguageServer, projectFile: string): string =
   if ls.failTable.getOrDefault(projectFile, 0) < MaxNimsuggestFails:
