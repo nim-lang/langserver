@@ -167,8 +167,17 @@ suite "Closed file shared with another":
     waitFor ls.shutdownNimsuggest()
 
   test "a closed file is no longer listed by its nimsuggest":
+    # The other file is mapped to the root file's project, so both are served
+    # by the same nimsuggest.
     ls.setWorkspaceConfiguration(
-      % @[NlsConfig(maxNimsuggestProcesses: some 1, autoCheckFile: some false)]
+      % @[
+        NlsConfig(
+          autoCheckFile: some false,
+          projectMapping: some @[
+            NlsNimsuggestConfig(projectFile: "rootmodule.nim", fileRegex: "othermodule")
+          ],
+        )
+      ]
     )
     client.openRootFile()
     client.notify("textDocument/didOpen", %createDidOpenParams(OtherFile))
@@ -296,13 +305,13 @@ suite "Failed nimsuggest with no other to fall back to":
     check Moment.now() - requested < 5.seconds
     check ls.projectFiles.len == 0
 
-suite "Failover with other failing nimsuggests":
+suite "Failed nimsuggest while others run":
   let (ls, client) = startServer()
 
   suiteTeardown:
     waitFor ls.shutdownNimsuggest()
 
-  test "the file is served by the one that is not failing":
+  test "the file is not served by another nimsuggest":
     ls.setWorkspaceConfiguration(
       % @[NlsConfig(maxNimsuggestProcesses: some 0, autoCheckFile: some false)]
     )
@@ -315,13 +324,11 @@ suite "Failover with other failing nimsuggests":
         .wait(60.seconds)
     check ls.projectFiles.len == 4
 
-    # Every project but the fourth one failed too many times.
-    for file in [RootFile, OtherFile, ThirdFile]:
-      ls.failTable[file.fixtureUri.uriToPath] = 10
-
+    # The other file's project failed too many times. The others don't know
+    # the file, so none of them can serve it.
     let otherUri = OtherFile.fixtureUri
-    discard waitFor client
-      .call("textDocument/completion", %positionParams(otherUri, 4, 7))
-      .wait(60.seconds)
-    check ls.openFiles.getOrDefault(otherUri).nimsuggestProject ==
-      FourthFile.fixtureUri.uriToPath
+    ls.failTable[otherUri.uriToPath] = 10
+
+    check (waitFor ls.tryGetNimsuggest(otherUri)).isNone
+    check ls.openFiles.getOrDefault(otherUri).nimsuggestProject == ""
+    check ls.projectFiles.len == 4
