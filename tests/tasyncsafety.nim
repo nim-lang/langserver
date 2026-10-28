@@ -221,14 +221,15 @@ suite "Documents closed while a handler is suspended":
     check waitFor lspRoutes.didSave(ls, saveParams).withTimeout(30.seconds)
     check waitUntil(client.calls[Diagnostics].len > published, timeout = 30.seconds)
 
-    # Park the handler where it waits in real life. getNimsuggestInner awaits
-    # the file's projectFile, and awaiting an already-resolved future does not
-    # yield, so without this the whole of didSave would run synchronously and
-    # there would be no window at all.
+    # Park the handler where it waits in real life. A file with no serving
+    # nimsuggest yet makes getNimsuggestInner await its projectFile, and
+    # awaiting an already-resolved future does not yield, so without this the
+    # whole of didSave would run synchronously and there would be no window.
     discard settle()
     let fut =
       Future[string].Raising([CancelledError, OSError, RegexError]).init("closed race")
     ls.openFiles[helloWorldUri].projectFile = fut
+    ls.openFiles[helloWorldUri].nimsuggestProject = ""
 
     let saving = lspRoutes.didSave(ls, saveParams)
     check not saving.finished
