@@ -46,23 +46,19 @@ suite "Single nimsuggest instance under concurrent opens":
   suiteTeardown:
     waitFor ls.shutdownNimsuggest()
 
-  test "modules opened at the same time share one nimsuggest":
+  test "modules opened at the same time do not go over the cap":
     discard waitFor client.initialize(initParams())
     ls.setWorkspaceConfiguration(% @[NlsConfig(maxNimsuggestProcesses: some 1)])
 
     # Open all three files and ask for their nimsuggest at once, before any is
-    # running. Each file would get its own nimsuggest, but the limit is 1, so
-    # they must share one.
+    # running. Each file would get its own nimsuggest, but the limit is 1. The
+    # modules don't import each other, so only the file that got the slot is
+    # served.
     let opening = files.mapIt(ls.didOpenFile(createDidOpenParams(it).textDocument))
     let starting = files.mapIt(ls.tryGetNimsuggest(it.fixtureUri))
     for fut in opening:
       waitFor fut
-    for fut in starting:
-      check (waitFor fut).isSome
-    check ls.projectFiles.len == 1
-
-    for file in files:
-      check client.completes(file.fixtureUri)
+    check starting.countIt((waitFor it).isSome) == 1
     check ls.projectFiles.len == 1
 
 suite "Idle nimsuggest instance under the cap":
@@ -74,95 +70,39 @@ suite "Idle nimsuggest instance under the cap":
   suiteTeardown:
     waitFor ls.shutdownNimsuggest()
 
-  test "a file of an idle nimsuggest reopens within the cap":
+  test "a file of an idle nimsuggest does not go over the cap":
     discard waitFor client.initialize(initParams())
     ls.setWorkspaceConfiguration(% @[NlsConfig(maxNimsuggestProcesses: some 2)])
-    for file in [RootFile, OtherFile, ThirdFile]:
+    for file in [RootFile, OtherFile]:
       client.notify("textDocument/didOpen", %createDidOpenParams(file))
       check client.completes(file.fixtureUri)
     check ls.projectFiles.len == 2
 
-    # The limit was reached, so the third file uses one of the two running
-    # nimsuggests. Stop that nimsuggest as if it had been idle for too long.
-    # The third file stays open.
-    let thirdUri = ThirdFile.fixtureUri
-    let reused = ls.openFiles.getOrDefault(thirdUri).nimsuggestProject
-    let project = ls.projectFiles.getOrDefault(reused)
+    # Stop the other file's nimsuggest as if it had been idle for too long. The
+    # other file stays open.
+    let otherUri = OtherFile.fixtureUri
+    let otherProject = ls.openFiles.getOrDefault(otherUri).nimsuggestProject
+    let project = ls.projectFiles.getOrDefault(otherProject)
     check project != nil
     for live in ls.projectFiles.values:
       live.lastCmdDate = some now()
     project.lastCmdDate = some(now() - initDuration(hours = 1))
     waitFor ls.removeIdleNimsuggests()
-    check reused notin ls.projectFiles
-    check thirdUri in ls.openFiles
+    check otherProject notin ls.projectFiles
+    check otherUri in ls.openFiles
 
     # A new file takes the free slot, so the limit is reached again.
     client.notify("textDocument/didOpen", %createDidOpenParams(FourthFile))
     check client.completes(FourthFile.fixtureUri)
     check ls.projectFiles.len == 2
 
-    # Using the third file again serves it from one of the running nimsuggests.
-    check client.completes(thirdUri)
+    # No running nimsuggest knows the other file, so it gets none rather than
+    # restarting its own over the limit.
+    check (waitFor ls.tryGetNimsuggest(otherUri)).isNone
     check ls.projectFiles.len == 2
-    check reused notin ls.projectFiles
+    check otherProject notin ls.projectFiles
 
-suite "Reusing a nimsuggest instance of the file's package":
-  let cmdParams =
-    CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
-  let ls = main(cmdParams)
-  let client = newClient(cmdParams.port)
-  let packageDir = absolutePath "tests" / "projects" / "duobins"
-
-  suiteTeardown:
-    waitFor ls.shutdownNimsuggest()
-
-  test "a file over the cap reuses the nimsuggest of its own package":
-    discard waitFor client.initialize(
-      LspInitializeParams %* {
-        "processId": %getCurrentProcessId(),
-        "rootUri": fixtureUri("projects"),
-        "capabilities": {"workspace": {"configuration": true}},
-      }
-    )
-    ls.setWorkspaceConfiguration(% @[NlsConfig(maxNimsuggestProcesses: some 2)])
-    let
-      mainFile = packageDir / "duobins.nim"
-      otherBin = packageDir / "other.nim"
-      mainUri = "projects/duobins/duobins.nim".fixtureUri
-
-    # The package's second entry point has its own nimsuggest.
-    waitFor ls.createOrRestartNimsuggest(otherBin)
-    waitFor ls.didOpenFile(createDidOpenParams("projects/duobins/duobins.nim").textDocument)
-    check mainFile in ls.projectFiles
-
-    # The main file's nimsuggest stops and another package takes its slot, so the
-    # limit is reached and the main file has no nimsuggest of its own.
-    let project = ls.projectFiles[mainFile]
-    ls.projectFiles.del mainFile
-    waitFor project.stopWait()
-    waitFor ls.didOpenFile(createDidOpenParams("projects/vendored/vendored.nim").textDocument)
-    check ls.projectFiles.len == 2
-
-    check (waitFor ls.tryGetNimsuggest(mainUri)).isSome
-    check ls.openFiles[mainUri].nimsuggestProject == otherBin
-
-  test "a file over the cap is served by its own project when it is live":
-    let
-      mainFile = packageDir / "duobins.nim"
-      otherBin = packageDir / "other.nim"
-      mainUri = "projects/duobins/duobins.nim".fixtureUri
-
-    # Both entry points of the package run, so the cap is reached with the
-    # file's own project live next to the package's other entry point.
-    waitFor ls.createOrRestartNimsuggest(mainFile)
-    check mainFile in ls.projectFiles
-    check otherBin in ls.projectFiles
-
-    ls.openFiles[mainUri].nimsuggestProject = ""
-    check (waitFor ls.tryGetNimsuggest(mainUri)).isSome
-    check ls.openFiles[mainUri].nimsuggestProject == mainFile
-
-suite "Mapped project over the cap":
+suite "Reusing a nimsuggest instance over the cap":
   let cmdParams =
     CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
   let ls = main(cmdParams)
@@ -172,7 +112,7 @@ suite "Mapped project over the cap":
   suiteTeardown:
     waitFor ls.shutdownNimsuggest()
 
-  test "a mapped project does not start a nimsuggest over the cap":
+  test "a file over the cap is served by its own project when it is live":
     discard waitFor client.initialize(
       LspInitializeParams %* {
         "processId": %getCurrentProcessId(),
@@ -180,29 +120,79 @@ suite "Mapped project over the cap":
         "capabilities": {"workspace": {"configuration": true}},
       }
     )
+    ls.setWorkspaceConfiguration(% @[NlsConfig(maxNimsuggestProcesses: some 2)])
+    let files = ["projects/hw/hw.nim", "projects/vendored/vendored.nim"]
+    for file in files:
+      waitFor ls.didOpenFile(createDidOpenParams(file).textDocument)
+    check ls.projectFiles.len == 2
+
+    # The cap is reached, so both files go through the reuse. Only one of them
+    # can be the first live instance, so the other one is served by its own
+    # project only if the reuse prefers it.
+    for file in files:
+      ls.openFiles[file.fixtureUri].nimsuggestProject = ""
+    for file in files:
+      check (waitFor ls.tryGetNimsuggest(file.fixtureUri)).isSome
+    check ls.openFiles["projects/hw/hw.nim".fixtureUri].nimsuggestProject ==
+      projectsDir / "hw" / "hw.nim"
+    check ls.openFiles["projects/vendored/vendored.nim".fixtureUri].nimsuggestProject ==
+      projectsDir / "vendored" / "vendored.nim"
+    check ls.projectFiles.len == 2
+
+suite "Last used nimsuggest over the cap":
+  let cmdParams =
+    CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
+  let ls = main(cmdParams)
+  let client = newClient(cmdParams.port)
+  let projectsDir = absolutePath "tests" / "projects"
+
+  suiteTeardown:
+    waitFor ls.shutdownNimsuggest()
+
+  test "a file over the cap is served by the last used nimsuggest only if it knows it":
+    discard waitFor client.initialize(
+      LspInitializeParams %* {
+        "processId": %getCurrentProcessId(),
+        "rootUri": fixtureUri("projects"),
+        "capabilities": {"workspace": {"configuration": true}},
+      }
+    )
+    # dep.nim gets a project of its own, like a file of a global package
+    # opened through go-to-definition.
     ls.setWorkspaceConfiguration(
       % @[
         NlsConfig(
           maxNimsuggestProcesses: some 1,
           projectMapping: some @[
+            # The regex matches the path relative to the root, which uses
+            # backslashes on Windows.
             NlsNimsuggestConfig(
-              projectFile: "multimodules/othermodule.nim",
-              fileRegex: "othermodule",
+              projectFile: "vendored/vendor/dep/dep.nim", fileRegex: r"dep[/\\]dep"
             )
           ],
         )
       ]
     )
     let
-      hw = projectsDir / "hw" / "hw.nim"
-      mappedUri = "projects/multimodules/othermodule.nim".fixtureUri
-    waitFor ls.didOpenFile(createDidOpenParams("projects/hw/hw.nim").textDocument)
-    check hw in ls.projectFiles
-
+      vendored = projectsDir / "vendored" / "vendored.nim"
+      depUri = "projects/vendored/vendor/dep/dep.nim".fixtureUri
+      hwUri = "projects/hw/hw.nim".fixtureUri
     waitFor ls.didOpenFile(
-      createDidOpenParams("projects/multimodules/othermodule.nim").textDocument
+      createDidOpenParams("projects/vendored/vendored.nim").textDocument
     )
-    check (waitFor ls.openFiles[mappedUri].waitProjectFile()) ==
-      projectsDir / "multimodules" / "othermodule.nim"
-    check ls.openFiles[mappedUri].nimsuggestProject == hw
+    check vendored in ls.projectFiles
+
+    # vendored.nim imports dep.nim, so its nimsuggest serves it.
+    waitFor ls.didOpenFile(
+      createDidOpenParams("projects/vendored/vendor/dep/dep.nim").textDocument
+    )
+    check (waitFor ls.openFiles[depUri].waitProjectFile()) ==
+      projectsDir / "vendored" / "vendor" / "dep" / "dep.nim"
+    check ls.openFiles[depUri].nimsuggestProject == vendored
+    check ls.projectFiles.len == 1
+
+    # hw.nim is not known by it, so it gets no nimsuggest.
+    waitFor ls.didOpenFile(createDidOpenParams("projects/hw/hw.nim").textDocument)
+    check (waitFor ls.tryGetNimsuggest(hwUri)).isNone
+    check ls.openFiles[hwUri].nimsuggestProject == ""
     check ls.projectFiles.len == 1

@@ -852,22 +852,24 @@ proc canSpawnNimsuggest(ls: LanguageServer, conf: NlsConfig): bool =
     result = result, nsCount = nsCount, maxNimsuggestProcesses = maxNimsuggestProcesses
 
 proc reuseLiveNimsuggestProject(
-    ls: LanguageServer, projectFile: string, package: NimblePackage
-): string =
-  let live = ls.liveNimsuggestProjects
-  let own = package.entryPoints.filterIt(it in live)
-  result =
-    if projectFile in live:
-      projectFile
-    elif own.len > 0:
-      own[^1]
-    elif live.len > 0:
-      live[0]
-    else:
-      ""
-  if result != projectFile:
-    debug "Reached the maximum instances of nimsuggest, reusing a nimsuggest instance",
-      projectFile = projectFile, project = result
+    ls: LanguageServer, projectFile, uri: string
+): Future[string] {.async: (raises: [CancelledError]).} =
+  if ls.isLiveNimsuggestProject(projectFile):
+    return projectFile
+  if ls.lastNimsuggest == nil:
+    return ""
+  let project = ls.projectFiles.getOrDefault(ls.lastNimsuggest.project.file)
+  if project == nil:
+    return ""
+  let isKnown = await project.ns.isKnown(uri.uriToPath)
+  if isKnown and project.file in ls.projectFiles:
+    debug "Reached the maximum instances of nimsuggest, reusing the last used instance",
+      uri = uri, project = project.file
+    project.file
+  else:
+    debug "Reached the maximum instances of nimsuggest, the last used instance does not know the file",
+      uri = uri, project = project.file
+    ""
 
 proc mappedProjectFiles(
     ls: LanguageServer, conf: NlsConfig
@@ -882,23 +884,16 @@ proc nimsuggestProjectFor(
     return ""
   let conf = await ls.workspaceConfigurationWait()
   let projectFile = await file.waitProjectFile()
-  if ls.canSpawnNimsuggest(conf):
-    projectFile
-  else:
-    let package = await ls.nimblePackage(uri.uriToPath)
-    ls.reuseLiveNimsuggestProject(projectFile, package)
-
-proc failoverProject(ls: LanguageServer, projectFile: string): string =
-  if ls.failTable.getOrDefault(projectFile, 0) < MaxNimsuggestFails:
-    projectFile
-  else:
-    let others = ls.projectFiles.keys.toSeq.filterIt(
-      it != projectFile and ls.failTable.getOrDefault(it, 0) < MaxNimsuggestFails
-    )
-    if others.len > 0:
-      others[0]
+  let nsProject =
+    if ls.canSpawnNimsuggest(conf):
+      projectFile
     else:
-      ""
+      await ls.reuseLiveNimsuggestProject(projectFile, uri)
+  if ls.failTable.getOrDefault(nsProject, 0) < MaxNimsuggestFails:
+    nsProject
+  else:
+    debug "Nimsuggest failed too many times", uri = uri, projectFile = nsProject
+    ""
 
 proc hasServingNimsuggest(ls: LanguageServer, file: NlsFileInfo): bool =
   file.nimsuggestProject != "" and ls.isLiveNimsuggestProject(file.nimsuggestProject) and
@@ -913,11 +908,7 @@ proc getNimsuggestInner(
     return nil
 
   if not ls.hasServingNimsuggest(file):
-    let ownProject = await ls.nimsuggestProjectFor(uri)
-    file.nimsuggestProject = ls.failoverProject(ownProject)
-    if file.nimsuggestProject notin ["", ownProject]:
-      debug "Reusing nimsuggest instance for",
-        uri = uri, projectFile = file.nimsuggestProject
+    file.nimsuggestProject = await ls.nimsuggestProjectFor(uri)
   let nsProject = file.nimsuggestProject
   if nsProject == "":
     return nil
