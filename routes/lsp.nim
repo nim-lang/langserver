@@ -1167,19 +1167,24 @@ proc didChange*(
     let info = ls.openFiles.getOrDefault(uri)
     if info == nil:
       return
-    info.fingerTable = @[]
-    info.changed = true
+    if contentChanges.len == 0:
+      return
     inc info.edits
-    if contentChanges.len > 0:
-      let file = open(ls.uriStorageLocation(uri), fmWrite)
+    info.fingerTable = @[]
+    let file = open(ls.uriStorageLocation(uri), fmWrite)
+    try:
+      info.textDocument.text = contentChanges[0].text
+      for line in contentChanges[0].text.splitLines:
+        info.fingerTable.add line.createUTFMapping()
+        file.writeLine line
+    finally:
+      file.close()
+    info.changed =
       try:
-        info.textDocument.text = contentChanges[0].text
-        for line in contentChanges[0].text.splitLines:
-          info.fingerTable.add line.createUTFMapping()
-          file.writeLine line
-      finally:
-        file.close()
-      await ls.fileCheckDelay(uri)
+        info.textDocument.text != readFile(uriToPath(uri))
+      except IOError:
+        true
+    await ls.fileCheckDelay(uri)
 
 proc willSaveWaitUntil*(
     ls: LanguageServer, params: WillSaveTextDocumentParams

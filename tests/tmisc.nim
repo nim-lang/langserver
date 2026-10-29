@@ -791,3 +791,17 @@ suite "External file edits":
     writeFile(path, "proc d*() = discard\n")
     client.notify("textDocument/didSave", %*{"textDocument": {"uri": uri}})
     check waitUntil(not ls.openFiles[uri].changed)
+
+  test "a buffer that matches the disk is not unsaved":
+    # the editor reloads an externally edited file it has no unsaved edits for:
+    # a change without a save
+    editExternally("proc f*() = discard\n")
+    change("proc f*() = discard\n")
+    check not ls.openFiles[uri].changed
+    check ls.uriToStash(uri) == ""
+
+    # typing and undoing it
+    change("proc g*() = discard\n")
+    check ls.openFiles[uri].changed
+    change("proc f*() = discard\n")
+    check not ls.openFiles[uri].changed
