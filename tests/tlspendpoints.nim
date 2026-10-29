@@ -330,7 +330,7 @@ suite "LSP endpoints":
           "contentChanges": [{"text": readFile("tests" / plainFile)}],
         },
       )
-      check waitUntil(plainUri in ls.openFiles and ls.openFiles[plainUri].changed)
+      check waitUntil(plainUri in ls.openFiles and ls.openFiles[plainUri].edits > 0)
 
       let params =
         DocumentFormattingParams %* {
