@@ -160,7 +160,7 @@ type
     inlayHintsRefreshRequest*: Future[JsonNode].Raising([CancelledError, JsonRpcError])
     watchingFiles*: bool
     filesWithDiags*: HashSet[string]
-    lastNimsuggest*: Nimsuggest
+    lastNimsuggestProject*: string
     nimsuggestShutdown: Future[void].Raising([])
     initialized*: bool
       #Set once initialize has run. Until then routes can't rely on its state.
@@ -856,9 +856,7 @@ proc reuseLiveNimsuggestProject(
 ): Future[string] {.async: (raises: [CancelledError]).} =
   if ls.isLiveNimsuggestProject(projectFile):
     return projectFile
-  if ls.lastNimsuggest == nil:
-    return ""
-  let project = ls.projectFiles.getOrDefault(ls.lastNimsuggest.project.file)
+  let project = ls.projectFiles.getOrDefault(ls.lastNimsuggestProject)
   if project == nil:
     return ""
   let isKnown = await project.ns.isKnown(uri.uriToPath)
@@ -924,7 +922,7 @@ proc getNimsuggestInner(
   while attempts < maxAttempts:
     let project = ls.projectFiles.getOrDefault(nsProject)
     if project != nil:
-      ls.lastNimsuggest = project.ns
+      ls.lastNimsuggestProject = project.file
       return project.ns
 
     inc attempts
