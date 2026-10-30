@@ -833,10 +833,6 @@ proc createOrRestartNimsuggest*(
 proc isLiveNimsuggestProject(ls: LanguageServer, projectFile: string): bool =
   projectFile in ls.projectFiles or projectFile in ls.nimsuggestCreations
 
-proc entryPoints*(ls: LanguageServer): seq[string] =
-  for package in ls.nimblePackages.values:
-    result.add package.entryPoints
-
 proc liveNimsuggestProjects*(ls: LanguageServer): seq[string] =
   ## Running + starting instances.
   result = ls.projectFiles.keys.toSeq
@@ -866,11 +862,6 @@ proc reuseLastNimsuggestProject(
     debug "Reached the maximum instances of nimsuggest, the last used instance does not know the file",
       uri = uri, project = project.file
     ""
-
-proc mappedProjectFiles(
-    ls: LanguageServer, conf: NlsConfig
-): seq[string] {.raises: [OSError].} =
-  conf.projectMapping.get(@[]).mapIt(ls.getRootPath() / it.projectFile)
 
 proc getProjectFile*(
   ls: LanguageServer, uri: string
@@ -1476,19 +1467,15 @@ proc removeCompletedPendingRequests(
   for id in toRemove:
     ls.pendingRequests.del id
 
-proc removeIdleNimsuggests*(
-    ls: LanguageServer
-) {.async: (raises: [CancelledError, OSError]).} =
+proc removeIdleNimsuggests*(ls: LanguageServer) {.async: (raises: [CancelledError]).} =
   if ls.projectFiles.len == 0:
     return
   const DefaultNimsuggestIdleTimeout = 120000
   let conf = await ls.workspaceConfigurationWait()
   let timeout = conf.nimsuggestIdleTimeout.get(DefaultNimsuggestIdleTimeout)
-  let mappedProjects = ls.mappedProjectFiles(conf)
   var toStop = newSeq[Project]()
   for project in ls.projectFiles.values:
-    if project.file in ls.entryPoints or project.file in mappedProjects:
-      #we only remove non entry point nimsuggests
+    if ls.filesServedBy(project.file).len > 0:
       continue
     if project.lastCmdDate.isSome:
       let passedTime = now() - project.lastCmdDate.get()
@@ -1512,7 +1499,7 @@ proc tick*(ls: LanguageServer): Future[void] {.async: (raises: []).} =
     ls.removeCompletedPendingRequests()
     await ls.removeIdleNimsuggests()
     ls.sendStatusChanged
-  except CancelledError, OSError:
+  except CancelledError:
     let ex = getCurrentException()
     error "Error in tick", msg = ex.msg
     writeStackTrace(ex)
