@@ -46,6 +46,9 @@ suite "Nimlangserver misc":
       fmt"Nimsuggest initialized for {hwAbsFile}"
     )
 
+    # A nimsuggest serving an open file is never stopped.
+    client.notify("textDocument/didClose", %*{"textDocument": {"uri": helloWorldUri}})
+
     check waitFor client.waitForNotificationMessage(
       fmt"Nimsuggest for {hwAbsFile} was stopped because it was idle for too long"
     )

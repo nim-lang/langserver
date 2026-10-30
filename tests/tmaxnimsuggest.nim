@@ -78,18 +78,18 @@ suite "Idle nimsuggest instance under the cap":
       check client.completes(file.fixtureUri)
     check ls.projectFiles.len == 2
 
-    # Stop the other file's nimsuggest as if it had been idle for too long. The
-    # other file stays open.
+    # Close the other file and stop its nimsuggest as if it had been idle for
+    # too long.
     let otherUri = OtherFile.fixtureUri
     let otherProject = ls.openFiles.getOrDefault(otherUri).nimsuggestProject
     let project = ls.projectFiles.getOrDefault(otherProject)
     check project != nil
+    waitFor ls.didCloseFile(otherUri)
     for live in ls.projectFiles.values:
       live.lastCmdDate = some now()
     project.lastCmdDate = some(now() - initDuration(hours = 1))
     waitFor ls.removeIdleNimsuggests()
     check otherProject notin ls.projectFiles
-    check otherUri in ls.openFiles
 
     # A new file takes the free slot, so the limit is reached again.
     client.notify("textDocument/didOpen", %createDidOpenParams(FourthFile))
@@ -98,6 +98,7 @@ suite "Idle nimsuggest instance under the cap":
 
     # No running nimsuggest knows the other file, so it gets none rather than
     # restarting its own over the limit.
+    waitFor ls.didOpenFile(createDidOpenParams(OtherFile).textDocument)
     check (waitFor ls.tryGetNimsuggest(otherUri)).isNone
     check ls.projectFiles.len == 2
     check otherProject notin ls.projectFiles

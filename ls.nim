@@ -1475,6 +1475,8 @@ proc removeIdleNimsuggests*(ls: LanguageServer) {.async: (raises: [CancelledErro
   let timeout = conf.nimsuggestIdleTimeout.get(DefaultNimsuggestIdleTimeout)
   var toStop = newSeq[Project]()
   for project in ls.projectFiles.values:
+    if ls.filesServedBy(project.file).len > 0:
+      continue
     if project.lastCmdDate.isSome:
       let passedTime = now() - project.lastCmdDate.get()
       if passedTime.inMilliseconds > timeout:
