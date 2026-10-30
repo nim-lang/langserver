@@ -224,15 +224,10 @@ proc callNimFindReferences(
     line = arguments["line"].getInt()
     column = arguments["column"].getInt()
 
-  if uri notin ls.openFiles:
-    await ls.didOpenFile(
-      TextDocumentItem(uri: uri, languageId: "nim", version: 0, text: readFile(path))
-    )
-
   let config = await ls.workspaceConfigurationWait()
 
   if config.useNimTrack.get(false):
-    let projectFile = await ls.openFiles[uri].waitProjectFile()
+    let projectFile = await ls.getProjectFile(path)
     let timeout = config.timeout.get(REQUEST_TIMEOUT)
     let workingDir = await ls.getWorkingDir(projectFile)
     let nimPath = await ls.getNimPath(config, projectFile)
@@ -266,7 +261,7 @@ proc callNimFindReferences(
       isError: false,
     )
 
-  let nimsuggest = await ls.tryGetNimsuggest(uri)
+  let nimsuggest = await ls.getNimsuggest(uri)
 
   if nimsuggest.isSome:
     let references = await nimsuggest.get.use(path, path, line, column)
@@ -310,22 +305,10 @@ proc callNimFindSymbols(
   let
     arguments = params.arguments.get()
     query = arguments["query"].getStr()
-    path = ls.projectFiles.keys.toSeq[0]
-    uri = path.pathToUri()
+    nimsuggest = ls.projectFiles.values.toSeq[0].ns
 
-  if uri notin ls.openFiles:
-    await ls.didOpenFile(
-      TextDocumentItem(uri: uri, languageId: "nim", version: 0, text: readFile(path))
-    )
-
-  # This should probably be reimplemented with ls.lastNimSuggest
-  # but it is not assigned during initiallization and is therefore `nil`.
-  # As as workaround, we "open" the first available projectFile
-  # and use its nimsuggest instance.
-  let nimsuggest = await ls.tryGetNimsuggest(uri)
-
-  if nimsuggest.isSome:
-    let symbols = await nimsuggest.get.globalSymbols(query)
+  if nimsuggest != nil:
+    let symbols = await nimsuggest.globalSymbols(query)
 
     var symbolsJson = newJArray()
     for symbol in symbols:
@@ -363,12 +346,7 @@ proc callNimListSymbols(
     path = arguments["path"].getStr().absolutePath
     uri = path.pathToUri()
 
-  if uri notin ls.openFiles:
-    await ls.didOpenFile(
-      TextDocumentItem(uri: uri, languageId: "nim", version: 0, text: readFile(path))
-    )
-
-  let nimsuggest = await ls.tryGetNimsuggest(uri)
+  let nimsuggest = await ls.getNimsuggest(uri)
 
   if nimsuggest.isSome:
     let symbols = await nimsuggest.get.outlineFile(path)
@@ -410,19 +388,10 @@ proc callNimCheckProject(
       isError: true,
     )
 
-  let
-    path = ls.projectFiles.keys.toSeq[0]
-    uri = path.pathToUri()
+  let project = ls.projectFiles.values.toSeq[0]
 
-  if uri notin ls.openFiles:
-    await ls.didOpenFile(
-      TextDocumentItem(uri: uri, languageId: "nim", version: 0, text: readFile(path))
-    )
-
-  let nimsuggest = await ls.tryGetNimsuggest(uri)
-
-  if nimsuggest.isSome:
-    let diagnostics = await nimsuggest.get.chk(path, path)
+  if project.ns != nil:
+    let diagnostics = await project.ns.chk(project.file, project.file)
 
     var diagJson: seq[JsonNode]
 
@@ -466,12 +435,7 @@ proc callNimCheckFile(
     path = arguments["path"].getStr().absolutePath
     uri = path.pathToUri()
 
-  if uri notin ls.openFiles:
-    await ls.didOpenFile(
-      TextDocumentItem(uri: uri, languageId: "nim", version: 0, text: readFile(path))
-    )
-
-  let nimsuggest = await ls.tryGetNimsuggest(uri)
+  let nimsuggest = await ls.getNimsuggest(uri)
 
   if nimsuggest.isSome:
     # Calling `con` command before `chkFile`;
@@ -522,12 +486,7 @@ proc callNimFindTypeDefinition(
     line = arguments["line"].getInt()
     column = arguments["column"].getInt()
 
-  if uri notin ls.openFiles:
-    await ls.didOpenFile(
-      TextDocumentItem(uri: uri, languageId: "nim", version: 0, text: readFile(path))
-    )
-
-  let nimsuggest = await ls.tryGetNimsuggest(uri)
+  let nimsuggest = await ls.getNimsuggest(uri)
 
   if nimsuggest.isSome:
     let typeDefs = await nimsuggest.get.`type`(path, path, line, column)
