@@ -24,7 +24,7 @@ proc zeta(): int = 2
 echo ze
 """
 
-proc startServer(): (LanguageServer, LspSocketClient) =
+proc startServer(root = "projects/multimodules"): (LanguageServer, LspSocketClient) =
   let cmdParams =
     CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
   let ls = main(cmdParams)
@@ -37,7 +37,7 @@ proc startServer(): (LanguageServer, LspSocketClient) =
   discard waitFor client.initialize(
     LspInitializeParams %* {
       "processId": %getCurrentProcessId(),
-      "rootUri": fixtureUri("projects/multimodules"),
+      "rootUri": fixtureUri(root),
       "capabilities":
         {"window": {"workDoneProgress": true}, "workspace": {"configuration": true}},
     }
@@ -158,6 +158,26 @@ suite "Idle nimsuggest shared by several files":
       .wait(60.seconds)
     check completion.len > 0
     check ls.projectFiles.len == 1
+
+suite "Idle nimsuggest of a nimble package":
+  let (ls, client) = startServer("projects")
+  let vendored = absolutePath("tests" / "projects" / "vendored" / "vendored.nim")
+
+  suiteTeardown:
+    waitFor ls.shutdownNimsuggest()
+
+  test "it is stopped like any other":
+    waitFor ls.didOpenFile(
+      createDidOpenParams("projects/vendored/vendored.nim").textDocument
+    )
+    check (waitFor ls.tryGetNimsuggest("projects/vendored/vendored.nim".fixtureUri)).isSome
+    # The package's own module is one of its entry points, which used to be
+    # kept running however long they were idle.
+    let nimbleFile = absolutePath("tests" / "projects" / "vendored" / "vendored.nimble")
+    check vendored in ls.nimblePackages[nimbleFile].entryPoints
+    check vendored in ls.projectFiles
+    ls.stopAsIdle()
+    check vendored notin ls.projectFiles
 
 suite "Closed file shared with another":
   let (ls, client) = startServer()

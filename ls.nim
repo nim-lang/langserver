@@ -833,10 +833,6 @@ proc createOrRestartNimsuggest*(
 proc isLiveNimsuggestProject(ls: LanguageServer, projectFile: string): bool =
   projectFile in ls.projectFiles or projectFile in ls.nimsuggestCreations
 
-proc entryPoints*(ls: LanguageServer): seq[string] =
-  for package in ls.nimblePackages.values:
-    result.add package.entryPoints
-
 proc liveNimsuggestProjects*(ls: LanguageServer): seq[string] =
   ## Running + starting instances.
   result = ls.projectFiles.keys.toSeq
@@ -1487,8 +1483,7 @@ proc removeIdleNimsuggests*(
   let mappedProjects = ls.mappedProjectFiles(conf)
   var toStop = newSeq[Project]()
   for project in ls.projectFiles.values:
-    if project.file in ls.entryPoints or project.file in mappedProjects:
-      #we only remove non entry point nimsuggests
+    if project.file in mappedProjects:
       continue
     if project.lastCmdDate.isSome:
       let passedTime = now() - project.lastCmdDate.get()

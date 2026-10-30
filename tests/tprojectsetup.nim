@@ -157,7 +157,8 @@ suite "Nimble packages":
     let other = projectsDir / "twonimbles" / "sub" / "other.nim"
     check (waitFor ls.getProjectFile(other)) == sub
     # the entry point is in the package's folder, not in the workspace's
-    check sub in ls.entryPoints
+    check sub in
+      ls.nimblePackages[projectsDir / "twonimbles" / "sub" / "sub.nimble"].entryPoints
 
   test "a package is dumped once":
     let nimbleFile = projectsDir / "vendored" / "vendored.nimble"
