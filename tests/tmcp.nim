@@ -359,3 +359,9 @@ suite "MCP tools":
     check defs.anyIt(
       it["name"].getStr() == "int" or it["type"].getStr().contains("int")
     )
+
+  test "the tools leave no file open":
+    # MCP has no didClose, so a file a tool opened would stay open, and keep
+    # its nimsuggest, for the whole session.
+    check ls.projectFiles.len > 0
+    check ls.openFiles.len == 0

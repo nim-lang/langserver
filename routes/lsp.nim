@@ -766,23 +766,11 @@ proc executeCommand*(
     await ls.createOrRestartNimsuggest(projectFile, projectUri)
   of CHECK_PROJECT_COMMAND:
     debug "Checking project", projectFile = projectFile
-    if projectUri notin ls.openFiles:
-      await ls.didOpenFile(
-        TextDocumentItem(
-          uri: projectUri, languageId: "nim", version: 0, text: readFile(projectFile)
-        )
-      )
     await ls.checkProject(projectUri)
   of RECOMPILE_COMMAND:
     debug "Clean build", projectFile = projectFile
     let project = ls.projectFiles.getOrDefault(projectFile)
     if project != nil and project.ns != nil:
-      if projectUri notin ls.openFiles:
-        await ls.didOpenFile(
-          TextDocumentItem(
-            uri: projectUri, languageId: "nim", version: 0, text: readFile(projectFile)
-          )
-        )
       let token = ls.createProgressToken()
       ls.workDoneProgressCreate(token)
       ls.progress(token, "begin", fmt "Compiling project {projectFile}")

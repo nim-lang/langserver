@@ -239,9 +239,8 @@ suite "Documents closed while a handler is suspended":
     ls.openFiles.del(helloWorldUri)
     check helloWorldUri notin ls.openFiles
 
-    # With the entry gone, checkProject bails out in its own tryGetNimsuggest,
-    # so telling nimsuggest to re-read the file is the only thing left that the
-    # save can still do — and the file really was written to disk.
+    # With the entry gone, the save must still tell nimsuggest to re-read the
+    # file, which really was written to disk.
     ns.successfullCall = false
     fut.complete(helloWorldPath)
     check waitFor saving.withTimeout(30.seconds)

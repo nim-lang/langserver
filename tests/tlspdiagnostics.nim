@@ -173,3 +173,5 @@ suite "LSP project check command":
       )
       .wait(CallTimeout)
     check waitUntil(errmodulePublishes() > published, 30.seconds)
+    # The command checks the project without opening its file.
+    check projectFile.pathToUri notin ls.openFiles
