@@ -913,26 +913,12 @@ proc getNimsuggestInner(
   if not ls.projectFiles.hasKey(nsProject):
     debug "Creating new nimsuggest instance", uri = uri, projectFile = nsProject
     await ls.createOrRestartNimsuggest(nsProject, uri)
-    # Wait a bit to allow nimsuggest to start
-    await sleepAsync(10)
-
-  # Check multiple times with small delays
-  var attempts = 0
-  const maxAttempts = 10
-  while attempts < maxAttempts:
-    let project = ls.projectFiles.getOrDefault(nsProject)
-    if project != nil:
-      ls.lastNimsuggestProject = project.file
-      return project.ns
-
-    inc attempts
-    if attempts < maxAttempts:
-      await sleepAsync(100)
-      debug "Waiting for nimsuggest to initialize",
-        uri = uri, projectFile = nsProject, attempt = attempts
-
-  debug "Failed to get nimsuggest after waiting", uri = uri, projectFile = nsProject
-  return nil
+  let project = ls.projectFiles.getOrDefault(nsProject)
+  if project == nil:
+    debug "Failed to get nimsuggest", uri = uri, projectFile = nsProject
+    return nil
+  ls.lastNimsuggestProject = project.file
+  project.ns
 
 proc tryGetNimsuggest*(
   ls: LanguageServer, uri: string
@@ -1058,28 +1044,14 @@ proc tryGetNimsuggest*(
   if uri notin ls.openFiles:
     return none(Nimsuggest)
 
-  var retryCount = 0
-  const maxRetries = 3
-  while retryCount < maxRetries:
-    let ns = await getNimsuggestInner(ls, uri)
-    if not ns.isNil:
-      if ns.stale and not ns.checkProjectInProgress:
-        ns.stale = false
-        traceAsyncErrors ls.checkNimsuggestProject(uri, ns)
-      return some ns
-
-    let file = ls.openFiles.getOrDefault(uri)
-    if file == nil or file.nimsuggestProject == "":
-      break
-
-    # If nimsuggest is nil, wait a bit and retry
-    inc retryCount
-    if retryCount < maxRetries:
-      debug "Nimsuggest not ready, retrying...", uri = uri, attempt = retryCount
-      await sleepAsync(10000 * retryCount) # Exponential backoff
-
-  debug "Nimsuggest not found after retries", uri = uri
-  return none(Nimsuggest)
+  let ns = await getNimsuggestInner(ls, uri)
+  if ns.isNil:
+    debug "Nimsuggest not found", uri = uri
+    return none(Nimsuggest)
+  if ns.stale and not ns.checkProjectInProgress:
+    ns.stale = false
+    traceAsyncErrors ls.checkNimsuggestProject(uri, ns)
+  some ns
 
 proc checkProject*(
     ls: LanguageServer, uri: string
