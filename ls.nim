@@ -863,11 +863,6 @@ proc reuseLastNimsuggestProject(
       uri = uri, project = project.file
     ""
 
-proc mappedProjectFiles(
-    ls: LanguageServer, conf: NlsConfig
-): seq[string] {.raises: [OSError].} =
-  conf.projectMapping.get(@[]).mapIt(ls.getRootPath() / it.projectFile)
-
 proc getProjectFile*(
   ls: LanguageServer, uri: string
 ): Future[string] {.async: (raises: [CancelledError, OSError, RegexError]).}
@@ -1472,19 +1467,14 @@ proc removeCompletedPendingRequests(
   for id in toRemove:
     ls.pendingRequests.del id
 
-proc removeIdleNimsuggests*(
-    ls: LanguageServer
-) {.async: (raises: [CancelledError, OSError]).} =
+proc removeIdleNimsuggests*(ls: LanguageServer) {.async: (raises: [CancelledError]).} =
   if ls.projectFiles.len == 0:
     return
   const DefaultNimsuggestIdleTimeout = 120000
   let conf = await ls.workspaceConfigurationWait()
   let timeout = conf.nimsuggestIdleTimeout.get(DefaultNimsuggestIdleTimeout)
-  let mappedProjects = ls.mappedProjectFiles(conf)
   var toStop = newSeq[Project]()
   for project in ls.projectFiles.values:
-    if project.file in mappedProjects:
-      continue
     if project.lastCmdDate.isSome:
       let passedTime = now() - project.lastCmdDate.get()
       if passedTime.inMilliseconds > timeout:
@@ -1507,7 +1497,7 @@ proc tick*(ls: LanguageServer): Future[void] {.async: (raises: []).} =
     ls.removeCompletedPendingRequests()
     await ls.removeIdleNimsuggests()
     ls.sendStatusChanged
-  except CancelledError, OSError:
+  except CancelledError:
     let ex = getCurrentException()
     error "Error in tick", msg = ex.msg
     writeStackTrace(ex)

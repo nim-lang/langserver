@@ -179,6 +179,32 @@ suite "Idle nimsuggest of a nimble package":
     ls.stopAsIdle()
     check vendored notin ls.projectFiles
 
+suite "Idle nimsuggest of a mapped project":
+  let (ls, client) = startServer()
+  let rootPath = RootFile.fixtureUri.uriToPath
+
+  suiteTeardown:
+    waitFor ls.shutdownNimsuggest()
+
+  test "it is stopped like any other":
+    ls.setWorkspaceConfiguration(
+      % @[
+        NlsConfig(
+          autoCheckFile: some false,
+          autoCheckProject: some false,
+          projectMapping: some @[
+            NlsNimsuggestConfig(projectFile: "rootmodule.nim", fileRegex: "othermodule")
+          ],
+        )
+      ]
+    )
+    waitFor ls.didOpenFile(createDidOpenParams(OtherFile).textDocument)
+    check (waitFor ls.tryGetNimsuggest(OtherFile.fixtureUri)).isSome
+    # Mapped projects used to be kept running however long they were idle.
+    check ls.openFiles[OtherFile.fixtureUri].nimsuggestProject == rootPath
+    ls.stopAsIdle()
+    check rootPath notin ls.projectFiles
+
 suite "Closed file shared with another":
   let (ls, client) = startServer()
   let otherUri = OtherFile.fixtureUri
