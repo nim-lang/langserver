@@ -207,6 +207,7 @@ suite "Projects with local dependencies":
   test "a dependency in nimbledeps belongs to the project that installed it":
     check (waitFor ls.getProjectFile(dep / "dep.nim")) == localDeps / "localdeps.nim"
 
-  test "a nested package without nimbledeps belongs to the project around it":
+  test "a nested package with nothing installed belongs to the project around it":
+    # Its nimbledeps only has a file in it, like one committed to keep the folder.
     check (waitFor ls.getProjectFile(localDeps / "vendor" / "v" / "v.nim")) ==
       localDeps / "localdeps.nim"
