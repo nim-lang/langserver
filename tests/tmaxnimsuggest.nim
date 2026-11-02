@@ -253,3 +253,39 @@ suite "Files outside the workspace":
     check (waitFor ls.tryGetNimsuggest(rootModuleUri)).isNone
     check ls.openFiles[rootModuleUri].nimsuggestProject == ""
     check ls.projectFiles.len == 1
+
+suite "Files without a workspace root":
+  let cmdParams =
+    CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
+  let ls = main(cmdParams)
+  let client = newClient(cmdParams.port)
+
+  suiteTeardown:
+    waitFor ls.shutdownNimsuggest()
+
+  test "every file is in the workspace when the client sends no root":
+    discard waitFor client.initialize(
+      LspInitializeParams %* {
+        "processId": %getCurrentProcessId(),
+        "rootUri": nil,
+        "capabilities": {"workspace": {"configuration": true}},
+      }
+    )
+    ls.setWorkspaceConfiguration(% @[NlsConfig(maxNimsuggestProcesses: some 0)])
+    waitFor ls.didOpenFile(createDidOpenParams("projects/hw/hw.nim").textDocument)
+    check (waitFor ls.tryGetNimsuggest("projects/hw/hw.nim".fixtureUri)).isSome
+
+    # Without a root the server falls back to its working directory, and this
+    # file is outside of it.
+    let
+      dir = getTempDir() / "nimlangserver-no-root"
+      path = dir / "main.nim"
+      uri = pathToUri(path)
+    createDir(dir)
+    writeFile(path, "proc a*() = discard\n")
+    waitFor ls.didOpenFile(
+      TextDocumentItem(uri: uri, languageId: "nim", version: 0, text: readFile(path))
+    )
+    check (waitFor ls.tryGetNimsuggest(uri)).isSome
+    check ls.openFiles[uri].nimsuggestProject == path
+    check ls.projectFiles.len == 2

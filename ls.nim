@@ -477,6 +477,12 @@ proc getRootPath(ls: LanguageServer): string {.raises: [OSError].} =
   of lsp:
     ls.lspInitializeParams.getRootPath()
 
+proc isInWorkspace(ls: LanguageServer, path: string): bool {.raises: [OSError].} =
+  let ip = ls.lspInitializeParams
+  if ls.serverMode == lsp and ip.rootUri.get("") == "" and ip.rootPath.get("") == "":
+    return true
+  path.isRelTo(ls.getRootPath())
+
 proc packageNimbleFile(ls: LanguageServer, file: string): string {.raises: [OSError].} =
   let rootPath = ls.getRootPath()
   let inRoot = file.isRelTo(rootPath)
@@ -869,7 +875,7 @@ proc getProjectFile*(
 proc nimsuggestProjectFor(
     ls: LanguageServer, uri: string
 ): Future[string] {.async: (raises: [CancelledError, OSError, RegexError]).} =
-  if not uri.uriToPath.isRelTo(ls.getRootPath()):
+  if not ls.isInWorkspace(uri.uriToPath):
     return await ls.reuseLastNimsuggestProject(uri)
   let file = ls.openFiles.getOrDefault(uri)
   let projectFile =
