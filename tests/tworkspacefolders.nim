@@ -131,28 +131,13 @@ suite "No workspace folders":
 
 suite "Packages of workspace folders":
   let
-    tmp = getTempDir() / "nimlangserver-workspace-packages"
-    mono = tmp / "mono"
-    outer = tmp / "outer"
+    mono = projectsDir / "mono"
     depDir = projectsDir / "vendored" / "vendor" / "dep"
-
-  proc writePackage(dir, name: string) =
-    createDir(dir)
-    writeFile(
-      dir / name & ".nimble",
-      "version = \"0.1.0\"\nauthor = \"test\"\ndescription = \"test\"\nlicense = \"MIT\"\n",
-    )
-    writeFile(dir / name & ".nim", "echo 1\n")
-
-  # These live outside the langserver package, which would otherwise be the
-  # outermost package of all of them.
-  writePackage(mono, "mono")
-  createDir(mono / "app")
-  writeFile(mono / "app" / "app.nim", "echo 1\n")
-  writePackage(outer, "outer")
-  writePackage(outer / "vendor" / "dep", "dep")
-  createDir(tmp / "loose")
-  writeFile(tmp / "loose" / "loose.nim", "echo 1\n")
+    localDeps = projectsDir / "localdeps"
+    # Outside the langserver package, so it belongs to no package.
+    loose = getTempDir() / "nimlangserver-workspace-packages" / "loose"
+  createDir(loose)
+  writeFile(loose / "loose.nim", "echo 1\n")
 
   let cmdParams =
     CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
@@ -168,7 +153,7 @@ suite "Packages of workspace folders":
       "workspaceFolders": [
         {"uri": pathToUri(mono / "app"), "name": "app"},
         {"uri": pathToUri(depDir), "name": "dep"},
-        {"uri": pathToUri(tmp / "loose"), "name": "loose"},
+        {"uri": pathToUri(loose), "name": "loose"},
       ],
       "capabilities": {"workspace": {"configuration": true}},
     }
@@ -184,9 +169,44 @@ suite "Packages of workspace folders":
     check depDir / "dep.nimble" in ls.nimblePackageLoads
     check projectsDir / "vendored" / "vendored.nimble" notin ls.nimblePackageLoads
 
-  test "a vendored file outside the folders belongs to the outermost package":
-    let dep = outer / "vendor" / "dep" / "dep.nim"
-    check (waitFor ls.getProjectFile(dep)) == outer / "outer.nim"
+  test "a vendored file outside the folders belongs to the project around it":
+    check (waitFor ls.getProjectFile(localDeps / "vendor" / "v" / "v.nim")) ==
+      localDeps / "localdeps.nim"
 
   test "a file with no package anywhere runs in its folder":
-    check (waitFor ls.getWorkingDir(tmp / "loose" / "loose.nim")) == tmp / "loose"
+    check (waitFor ls.getWorkingDir(loose / "loose.nim")) == loose
+
+suite "Projects with local dependencies":
+  let
+    localDeps = projectsDir / "localdeps"
+    dep =
+      localDeps / "nimbledeps" / "pkgs2" /
+      "dep-0.1.0-0000000000000000000000000000000000000000"
+  let cmdParams =
+    CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
+  let ls = main(cmdParams)
+  let client = newClient(cmdParams.port)
+
+  suiteTeardown:
+    waitFor ls.shutdownNimsuggest()
+
+  discard waitFor client.initialize(
+    LspInitializeParams %* {
+      "processId": %getCurrentProcessId(),
+      "rootUri": pathToUri(localDeps),
+      "capabilities": {"workspace": {"configuration": true}},
+    }
+  )
+  ls.setWorkspaceConfiguration(% @[NlsConfig()])
+
+  test "a nested package with its own nimbledeps is a project of its own":
+    check (waitFor ls.getProjectFile(localDeps / "sub" / "sub.nim")) ==
+      localDeps / "sub" / "sub.nim"
+    check (waitFor ls.getWorkingDir(localDeps / "sub" / "sub.nim")) == localDeps / "sub"
+
+  test "a dependency in nimbledeps belongs to the project that installed it":
+    check (waitFor ls.getProjectFile(dep / "dep.nim")) == localDeps / "localdeps.nim"
+
+  test "a nested package without nimbledeps belongs to the project around it":
+    check (waitFor ls.getProjectFile(localDeps / "vendor" / "v" / "v.nim")) ==
+      localDeps / "localdeps.nim"
