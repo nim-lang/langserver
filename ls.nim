@@ -855,11 +855,10 @@ proc reuseLastNimsuggestProject(
     return ""
   let isKnown = await project.ns.isKnown(uri.uriToPath)
   if isKnown and project.file in ls.projectFiles:
-    debug "Reached the maximum instances of nimsuggest, reusing the last used instance",
-      uri = uri, project = project.file
+    debug "Reusing the last used nimsuggest instance", uri = uri, project = project.file
     project.file
   else:
-    debug "Reached the maximum instances of nimsuggest, the last used instance does not know the file",
+    debug "The last used nimsuggest instance does not know the file",
       uri = uri, project = project.file
     ""
 
@@ -870,6 +869,8 @@ proc getProjectFile*(
 proc nimsuggestProjectFor(
     ls: LanguageServer, uri: string
 ): Future[string] {.async: (raises: [CancelledError, OSError, RegexError]).} =
+  if not uri.uriToPath.isRelTo(ls.getRootPath()):
+    return await ls.reuseLastNimsuggestProject(uri)
   let file = ls.openFiles.getOrDefault(uri)
   let projectFile =
     if file != nil:
