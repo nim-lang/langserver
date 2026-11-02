@@ -628,7 +628,7 @@ type
 
   WorkspaceFoldersServerCapabilities* = ref object of RootObj
     supported*: Option[bool]
-    changeNotifications*: Option[OptionalNode] # string or bool
+    changeNotifications*: OptionalNode # string or bool
 
   # 'file' | 'folder'
   FileOperationPatternKind_str = string
@@ -1293,6 +1293,8 @@ LspJson.useDefaultReaderFor(WillSaveTextDocumentParams)
 LspJson.useDefaultReaderFor(DidSaveTextDocumentParams)
 LspJson.useDefaultReaderFor(DidCloseTextDocumentParams)
 LspJson.useDefaultReaderFor(DidChangeWatchedFilesParams)
+LspJson.useDefaultReaderFor(DidChangeWorkspaceFoldersParams)
+LspJson.useDefaultReaderFor(WorkspaceFoldersChangeEvent)
 LspJson.useDefaultReaderFor(FileEvent)
 LspJson.useDefaultReaderFor(CompletionParams)
 LspJson.useDefaultReaderFor(CompletionContext)
