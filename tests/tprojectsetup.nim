@@ -264,7 +264,7 @@ suite "A project subfolder as the workspace":
     check (waitFor ls.getWorkingDir(mono / "app" / "app.nim")) == mono
 
   test "a file outside the workspace resolves to its own package":
-    # when the file is inside a nimble project (.nimble + nimbledeps/),
+    # when the file is inside a nimble project (.nimble + nimble.paths),
     # then it resolves to it instead of the workspace project (ie: go-to-def file)
     check (waitFor ls.getProjectFile(localDeps / "vendor" / "v" / "v.nim")) ==
       localDeps / "localdeps.nim"
@@ -335,7 +335,7 @@ suite "Projects with local dependencies":
   suiteTeardown:
     waitFor ls.shutdownNimsuggest()
 
-  test "a nested package with its own nimbledeps is a project of its own":
+  test "a nested package that is set up is a project of its own":
     check (waitFor ls.getProjectFile(localDeps / "sub" / "sub.nim")) ==
       localDeps / "sub" / "sub.nim"
     check (waitFor ls.getWorkingDir(localDeps / "sub" / "sub.nim")) == localDeps / "sub"
@@ -344,8 +344,7 @@ suite "Projects with local dependencies":
     check (waitFor ls.getProjectFile(dep / "dep.nim")) == localDeps / "localdeps.nim"
     check (waitFor ls.getWorkingDir(dep / "dep.nim")) == localDeps
 
-  test "a nested package with nothing installed belongs to the project around it":
-    # Its nimbledeps only has a file in it, like one committed to keep the folder.
+  test "a nested package that is not set up belongs to the project around it":
     check (waitFor ls.getProjectFile(localDeps / "vendor" / "v" / "v.nim")) ==
       localDeps / "localdeps.nim"
     check (waitFor ls.getWorkingDir(localDeps / "vendor" / "v" / "v.nim")) == localDeps

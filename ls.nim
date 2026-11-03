@@ -485,7 +485,7 @@ proc packageNimbleFile(ls: LanguageServer, file: string): string {.raises: [OSEr
     let nimbleFiles = walkFiles(dir / "*.nimble").toSeq
     if nimbleFiles.len == 1:
       result = nimbleFiles[0]
-      for _ in walkDirs(dir / "nimbledeps" / "*"):
+      if fileExists(dir / "nimble.paths"):
         return
     elif nimbleFiles.len > 1:
       debug "Ignoring a folder with several nimble files", dir = dir

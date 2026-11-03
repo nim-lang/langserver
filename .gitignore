@@ -25,4 +25,5 @@ tests/nimlangserver_lifecycle*
 !tests/projects/**/nimbledeps/
 tests/projects/**/nimbledeps/*
 !tests/projects/**/nimbledeps/pkgs2/
-!tests/projects/localdeps/vendor/v/nimbledeps/.keep
+!tests/projects/localdeps/nimble.paths
+!tests/projects/localdeps/sub/nimble.paths
