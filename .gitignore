@@ -22,3 +22,8 @@ tests/projects/testrunner/tests/sampletests
 tests/projects/trackproject/.gitignore
 tests/projects/trackproject/config.nims
 tests/nimlangserver_lifecycle*
+!tests/projects/**/nimbledeps/
+tests/projects/**/nimbledeps/*
+!tests/projects/**/nimbledeps/pkgs2/
+!tests/projects/localdeps/nimble.paths
+!tests/projects/localdeps/sub/nimble.paths

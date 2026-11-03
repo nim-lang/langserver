@@ -155,7 +155,8 @@ iterator groupBy*[T, U](
 proc isRelTo*(path, base: string): bool {.raises: [].} =
   ### isRelativeTo version that do not throws
   try:
-    isRelativeTo(path, base)
+    # XXX absolute check because of https://github.com/nim-lang/Nim/pull/26571
+    isRelativeTo(path, base) and not relativePath(path, base).isAbsolute
   except ValueError, OSError:
     debug "isRelTo error", path = path, base = base, err = getCurrentExceptionMsg()
     false

@@ -71,6 +71,14 @@ suite "path and seq helpers":
     check isRelTo("/a/b/c.nim", "/a/b")
     check not isRelTo("/a/b/c.nim", "/x/y")
 
+  test "isRelTo is false for a path on another drive":
+    when defined(windows):
+      check isRelTo(r"C:\a\b\c.nim", r"C:\a\b")
+      check not isRelTo(r"C:\a\b\c.nim", r"D:\a\b")
+      check not isRelTo(r"\\srv\a\b\c.nim", r"D:\a\b")
+    else:
+      skip()
+
   test "isRelTo returns false instead of raising on a malformed path":
     check not isRelTo("", "")
 
