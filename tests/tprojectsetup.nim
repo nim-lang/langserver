@@ -92,23 +92,25 @@ suite "Project Mapping":
     "extension/statusUpdate", "extension/statusUpdate",
     "textDocument/publishDiagnostics", "$/progress",
   )
-  let projectsDir = absolutePath "tests" / "projects"
 
   suiteTeardown:
     waitFor ls.shutdownNimsuggest()
 
   test "should use projectMapping fileRegex to find project file":
+    # Outside the langserver package, so the file belongs to no package.
+    let rootDir = getTempDir() / "nimlangserver-project-mapping"
+    createDir(rootDir)
     let initParams =
       LspInitializeParams %* {
         "processId": %getCurrentProcessId(),
-        "rootUri": fixtureUri("projects"),
+        "rootUri": pathToUri(rootDir),
         "capabilities":
           {"window": {"workDoneProgress": true}, "workspace": {"configuration": true}},
       }
     discard waitFor client.initialize(initParams)
     let configurationParams =
       @[NlsConfig(projectMapping: some @[NlsNimsuggestConfig(fileRegex: "nonimble*")])]
-    let nonimbleProject = projectsDir / "nonimbleproject.nim"
+    let nonimbleProject = rootDir / "nonimbleproject.nim"
     ls.setWorkspaceConfiguration(%configurationParams)
 
     let projectFile = waitFor ls.getProjectFile(nonimbleProject)
@@ -212,9 +214,9 @@ suite "Nimble packages":
     let dep = projectsDir / "vendored" / "vendor" / "dep" / "dep.nim"
     check (waitFor ls.getWorkingDir(dep)) == projectsDir / "vendored"
 
-  test "a file outside of any package runs in the workspace":
+  test "a file of a package without a project file runs in the package folder":
     let hw = projectsDir / "hw" / "hw.nim"
-    check (waitFor ls.getWorkingDir(hw)) == ls.lspInitializeParams.getRootPath
+    check (waitFor ls.getWorkingDir(hw)) == projectsDir / "hw"
 
   test "nim comes from the Nim of the file's package":
     let dep = projectsDir / "vendored" / "vendor" / "dep" / "dep.nim"
@@ -231,3 +233,119 @@ suite "Nimble packages":
     waitFor ls.shutdownNimsuggest()
     discard waitFor ls.getProjectFile(projectsDir / "multimodules" / "rootmodule.nim")
     check nimbleFile notin ls.nimblePackageLoads
+
+suite "A project subfolder as the workspace":
+  let cmdParams =
+    CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
+  let ls = main(cmdParams)
+  let client = newLspSocketClient()
+  waitFor client.connect("localhost", cmdParams.port)
+  client.registerNotification(
+    "window/showMessage", "window/workDoneProgress/create", "workspace/configuration",
+    "extension/statusUpdate", "textDocument/publishDiagnostics", "$/progress",
+  )
+  let projectsDir = absolutePath "tests" / "projects"
+  let mono = projectsDir / "mono"
+  let localDeps = projectsDir / "localdeps"
+  discard waitFor client.initialize(
+    LspInitializeParams %* {
+      "processId": %getCurrentProcessId(),
+      "rootUri": pathToUri(mono / "app"),
+      "capabilities": {"workspace": {"configuration": true}},
+    }
+  )
+  ls.setWorkspaceConfiguration(% @[NlsConfig()])
+
+  suiteTeardown:
+    waitFor ls.shutdownNimsuggest()
+
+  test "subfolder workspace resolves to parent dir nimble project":
+    check (waitFor ls.getProjectFile(mono / "app" / "app.nim")) == mono / "mono.nim"
+    check (waitFor ls.getWorkingDir(mono / "app" / "app.nim")) == mono
+
+  test "a file outside the workspace resolves to its own package":
+    # when the file is inside a nimble project (.nimble + nimbledeps/),
+    # then it resolves to it instead of the workspace project (ie: go-to-def file)
+    check (waitFor ls.getProjectFile(localDeps / "vendor" / "v" / "v.nim")) ==
+      localDeps / "localdeps.nim"
+    check (waitFor ls.getWorkingDir(localDeps / "vendor" / "v" / "v.nim")) == localDeps
+
+  test "a file outside the workspace and of any package is its own project":
+    # ie: a go-to-def file; outside the langserver package, so it has no package
+    let looseDir = getTempDir() / "nimlangserver-no-package"
+    let loose = looseDir / "loose.nim"
+    createDir(looseDir)
+    writeFile(loose, "echo 1\n")
+    check (waitFor ls.getProjectFile(loose)) == loose
+    check (waitFor ls.getWorkingDir(loose)) == looseDir
+
+suite "A sub package as the workspace":
+  let cmdParams =
+    CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
+  let ls = main(cmdParams)
+  let client = newLspSocketClient()
+  waitFor client.connect("localhost", cmdParams.port)
+  client.registerNotification(
+    "window/showMessage", "window/workDoneProgress/create", "workspace/configuration",
+    "extension/statusUpdate", "textDocument/publishDiagnostics", "$/progress",
+  )
+  let projectsDir = absolutePath "tests" / "projects"
+  let depDir = projectsDir / "vendored" / "vendor" / "dep"
+  discard waitFor client.initialize(
+    LspInitializeParams %* {
+      "processId": %getCurrentProcessId(),
+      "rootUri": pathToUri(depDir),
+      "capabilities": {"workspace": {"configuration": true}},
+    }
+  )
+  ls.setWorkspaceConfiguration(% @[NlsConfig()])
+
+  suiteTeardown:
+    waitFor ls.shutdownNimsuggest()
+
+  test "a sub package opened as the workspace is its own package":
+    check (waitFor ls.getProjectFile(depDir / "dep.nim")) == depDir / "dep.nim"
+    check depDir / "dep.nimble" in ls.nimblePackageLoads
+    check projectsDir / "vendored" / "vendored.nimble" notin ls.nimblePackageLoads
+
+suite "Projects with local dependencies":
+  let cmdParams =
+    CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
+  let ls = main(cmdParams)
+  let client = newLspSocketClient()
+  waitFor client.connect("localhost", cmdParams.port)
+  client.registerNotification(
+    "window/showMessage", "window/workDoneProgress/create", "workspace/configuration",
+    "extension/statusUpdate", "textDocument/publishDiagnostics", "$/progress",
+  )
+  let projectsDir = absolutePath "tests" / "projects"
+  let localDeps = projectsDir / "localdeps"
+  let dep =
+    localDeps / "nimbledeps" / "pkgs2" /
+    "dep-0.1.0-0000000000000000000000000000000000000000"
+  discard waitFor client.initialize(
+    LspInitializeParams %* {
+      "processId": %getCurrentProcessId(),
+      "rootUri": pathToUri(localDeps),
+      "capabilities": {"workspace": {"configuration": true}},
+    }
+  )
+  ls.setWorkspaceConfiguration(% @[NlsConfig()])
+
+  suiteTeardown:
+    waitFor ls.shutdownNimsuggest()
+
+  test "a nested package with its own nimbledeps is a project of its own":
+    check (waitFor ls.getProjectFile(localDeps / "sub" / "sub.nim")) ==
+      localDeps / "sub" / "sub.nim"
+    check (waitFor ls.getWorkingDir(localDeps / "sub" / "sub.nim")) == localDeps / "sub"
+
+  test "a dependency in nimbledeps belongs to the project that installed it":
+    check (waitFor ls.getProjectFile(dep / "dep.nim")) == localDeps / "localdeps.nim"
+    check (waitFor ls.getWorkingDir(dep / "dep.nim")) == localDeps
+
+  test "a nested package with nothing installed belongs to the project around it":
+    # Its nimbledeps only has a file in it, like one committed to keep the folder.
+    check (waitFor ls.getProjectFile(localDeps / "vendor" / "v" / "v.nim")) ==
+      localDeps / "localdeps.nim"
+    check (waitFor ls.getWorkingDir(localDeps / "vendor" / "v" / "v.nim")) == localDeps

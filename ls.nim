@@ -480,21 +480,18 @@ proc getRootPath(ls: LanguageServer): string {.raises: [OSError].} =
 proc packageNimbleFile(ls: LanguageServer, file: string): string {.raises: [OSError].} =
   let rootPath = ls.getRootPath()
   let inRoot = file.isRelTo(rootPath)
-  if inRoot:
-    for nimbleFile in ls.nimblePackageLoads.keys:
-      if nimbleFile.isRelTo(rootPath) and file.isRelTo(nimbleFile.parentDir):
-        return nimbleFile
   var dir = file.parentDir
   while true:
     let nimbleFiles = walkFiles(dir / "*.nimble").toSeq
     if nimbleFiles.len == 1:
       result = nimbleFiles[0]
-      if not inRoot:
+      for _ in walkDirs(dir / "nimbledeps" / "*"):
         return
     elif nimbleFiles.len > 1:
       debug "Ignoring a folder with several nimble files", dir = dir
     let parent = dir.parentDir
-    if parent.len == 0 or parent == dir or (inRoot and not parent.isRelTo(rootPath)):
+    if parent.len == 0 or parent == dir or
+        (inRoot and result != "" and not parent.isRelTo(rootPath)):
       return
     dir = parent
 
@@ -667,7 +664,12 @@ proc getWorkingDir*(
       return rootPath / m.directory
 
   let package = await ls.nimblePackage(path)
-  if package.dir.len > 0: package.dir else: rootPath
+  if package.dir.len > 0:
+    package.dir
+  elif path.isRelTo(rootPath):
+    rootPath
+  else:
+    path.parentDir
 
 proc progressSupported(ls: LanguageServer): bool =
   ls.serverMode == lsp and
