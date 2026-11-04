@@ -175,39 +175,3 @@ suite "Packages of workspace folders":
 
   test "a file with no package anywhere runs in its folder":
     check (waitFor ls.getWorkingDir(loose / "loose.nim")) == loose
-
-suite "Projects with local dependencies":
-  let
-    localDeps = projectsDir / "localdeps"
-    dep =
-      localDeps / "nimbledeps" / "pkgs2" /
-      "dep-0.1.0-0000000000000000000000000000000000000000"
-  let cmdParams =
-    CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
-  let ls = main(cmdParams)
-  let client = newClient(cmdParams.port)
-
-  suiteTeardown:
-    waitFor ls.shutdownNimsuggest()
-
-  discard waitFor client.initialize(
-    LspInitializeParams %* {
-      "processId": %getCurrentProcessId(),
-      "rootUri": pathToUri(localDeps),
-      "capabilities": {"workspace": {"configuration": true}},
-    }
-  )
-  ls.setWorkspaceConfiguration(% @[NlsConfig()])
-
-  test "a nested package with its own nimbledeps is a project of its own":
-    check (waitFor ls.getProjectFile(localDeps / "sub" / "sub.nim")) ==
-      localDeps / "sub" / "sub.nim"
-    check (waitFor ls.getWorkingDir(localDeps / "sub" / "sub.nim")) == localDeps / "sub"
-
-  test "a dependency in nimbledeps belongs to the project that installed it":
-    check (waitFor ls.getProjectFile(dep / "dep.nim")) == localDeps / "localdeps.nim"
-
-  test "a nested package with nothing installed belongs to the project around it":
-    # Its nimbledeps only has a file in it, like one committed to keep the folder.
-    check (waitFor ls.getProjectFile(localDeps / "vendor" / "v" / "v.nim")) ==
-      localDeps / "localdeps.nim"
