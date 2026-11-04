@@ -42,7 +42,7 @@ suite "Test Runner":
       getCurrentDir() / "tests" / "projects" / "testrunner" / "tests" / "sampletests.nim"
     let ls = LanguageServer()
     let testProjectResult =
-      waitFor runTests(entryPoint, "nim", none(string), @[], "", ls)
+      waitFor runTests(entryPoint, "nim", none(string), @[], @[], ls)
     check testProjectResult.suites.len == 4
     check testProjectResult.suites[0].name == "Sample Tests"
     check testProjectResult.suites[0].tests == 1

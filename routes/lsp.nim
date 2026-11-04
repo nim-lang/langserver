@@ -34,6 +34,7 @@ proc initialize*(
 ): Future[LspInitializeResult] {.async: (raises: [OSError]).} =
   debug "Initialize received..."
   p.ls.lspInitializeParams = params
+  p.ls.workspaceFolders = params.getWorkspaceFolders()
   p.ls.lspClientCapabilities = params.capabilities
   result = LspInitializeResult(
     capabilities: LspServerCapabilities(
@@ -49,7 +50,11 @@ proc initialize*(
       hoverProvider: some(true),
       workspace: some(
         ServerCapabilities_workspace(
-          workspaceFolders: some(WorkspaceFoldersServerCapabilities())
+          workspaceFolders: some(
+            WorkspaceFoldersServerCapabilities(
+              supported: some(true), changeNotifications: some(%true)
+            )
+          )
         )
       ),
       completionProvider:
@@ -571,8 +576,7 @@ proc prepareRename*(
     if def.len == 0:
       return newJNull()
     # Check if the symbol belongs to the project
-    let projectDir = ls.lspInitializeParams.getRootPath
-    if def[0].filePath.isRelTo(projectDir):
+    if ls.workspaceFolderOf(def[0].filePath) != "":
       return %def[0].toLocation().range
 
     return newJNull()
@@ -597,12 +601,11 @@ proc rename*(
     )
   )
   # Build up list of edits that the client needs to perform for each file
-  let projectDir = ls.lspInitializeParams.getRootPath
   var edits = newJObject()
   for reference in references:
     # Only rename symbols in the project.
     # If client supports prepareRename then an error will already have been thrown
-    if reference.uri.uriToPath().isRelTo(projectDir):
+    if ls.workspaceFolderOf(reference.uri.uriToPath()) != "":
       if reference.uri notin edits:
         edits[reference.uri] = newJArray()
       edits[reference.uri] &= %TextEdit(range: reference.range, newText: params.newName)
@@ -988,7 +991,11 @@ proc startNimbleProcess(
     "nimble",
     arguments = args,
     options = {UsePath},
-    workingDir = ls.lspInitializeParams.getRootPath,
+    workingDir =
+      if ls.workspaceFolders.len > 0:
+        ls.workspaceFolders[0]
+      else:
+        "",
     stdoutHandle = AsyncProcess.Pipe,
     stderrHandle = AsyncProcess.Pipe,
   )
@@ -1002,8 +1009,7 @@ proc tasks*(
     )
 .} =
   ls.checkInitialized()
-  let rootPath: string = ls.lspInitializeParams.getRootPath
-  debug "Received tasks ", rootPath = rootPath
+  debug "Received tasks ", workspaceFolders = ls.workspaceFolders
   delEnv "NIMBLE_DIR"
   let process = await ls.startNimbleProcess(@["tasks"])
   let res =
@@ -1055,9 +1061,8 @@ proc listTests*(
 .} =
   ls.checkInitialized()
   let config = await ls.workspaceConfigurationWait()
-  let workspaceRoot = ls.lspInitializeParams.getRootPath
   let nimPath =
-    await ls.getNimPath(config, getFullPath(params.entryPoint, workspaceRoot))
+    await ls.getNimPath(config, getFullPath(params.entryPoint, ls.workspaceFolders))
   if nimPath.isNone:
     error "Nim path not found when listing tests"
     return ListTestsResult(
@@ -1065,7 +1070,8 @@ proc listTests*(
         entryPoint: params.entryPoint, suites: initTable[string, TestSuiteInfo]()
       )
     )
-  let testProjectInfo = await listTests(params.entryPoint, nimPath.get(), workspaceRoot)
+  let testProjectInfo =
+    await listTests(params.entryPoint, nimPath.get(), ls.workspaceFolders)
   result.projectInfo = testProjectInfo
 
 proc runTests*(
@@ -1080,9 +1086,8 @@ proc runTests*(
 .} =
   ls.checkInitialized()
   let config = await ls.workspaceConfigurationWait()
-  let workspaceRoot = ls.lspInitializeParams.getRootPath
   let nimPath =
-    await ls.getNimPath(config, getFullPath(params.entryPoint, workspaceRoot))
+    await ls.getNimPath(config, getFullPath(params.entryPoint, ls.workspaceFolders))
   if nimPath.isNone:
     error "Nim path not found when running tests"
     return RunTestProjectResult()
@@ -1091,7 +1096,7 @@ proc runTests*(
     nimPath.get(),
     params.suiteName,
     params.testNames.get(@[]),
-    workspaceRoot,
+    ls.workspaceFolders,
     ls,
   )
 
@@ -1251,6 +1256,23 @@ proc didChangeWatchedFiles*(
   if conf.autoCheckProject.get(true) and conf.checkOnSave.get(true) and
       not conf.useNimCheck.get(USE_NIM_CHECK_BY_DEFAULT):
     ls.markNimsuggestsStale()
+
+proc didChangeWorkspaceFolders*(
+    ls: LanguageServer, params: DidChangeWorkspaceFoldersParams
+): Future[void] {.async: (raises: [ApplicationError, CancelledError]).} =
+  ls.checkInitialized()
+  for folder in params.event.removed.get(@[]):
+    let path = folder.uri.uriToPath
+    ls.workspaceFolders.keepItIf(it != path)
+  for folder in params.event.added.get(@[]):
+    let path = folder.uri.uriToPath
+    if path notin ls.workspaceFolders:
+      ls.workspaceFolders.add path
+  debug "Workspace folders changed", workspaceFolders = ls.workspaceFolders
+  for uri, file in ls.openFiles:
+    file.projectFile = ls.getProjectFile(uri.uriToPath)
+    file.nimsuggestProject = ""
+  ls.sendStatusChanged()
 
 proc didChangeConfiguration*(
     ls: LanguageServer, conf: JsonNode

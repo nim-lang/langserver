@@ -522,6 +522,7 @@ proc initialize*(
 ): Future[McpInitializeResult] {.async: (raises: [OSError]).} =
   debug "Initialize received..."
   p.ls.mcpInitializeParams = params
+  p.ls.workspaceFolders = params.getWorkspaceFolders()
   p.ls.mcpClientCapabilities = params.capabilities
   result = McpInitializeResult(
     protocolVersion: McpProtocolVersion,

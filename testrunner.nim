@@ -33,11 +33,12 @@ proc extractTestInfo*(rawOutput: string): TestProjectInfo {.raises: [ValueError]
         # echo "Adding test: ", testInfo.name, " to suite: ", suiteName
         result.suites[suiteName].tests.add(testInfo)
 
-proc getFullPath*(entryPoint: string, workspaceRoot: string): string =
+proc getFullPath*(entryPoint: string, workspaceFolders: seq[string]): string =
   if not fileExists(entryPoint):
-    let absolutePath = joinPath(workspaceRoot, entryPoint)
-    if fileExists(absolutePath):
-      return absolutePath
+    for folder in workspaceFolders:
+      let absolutePath = joinPath(folder, entryPoint)
+      if fileExists(absolutePath):
+        return absolutePath
   return entryPoint
 
 proc parseObject(obj: var object, node: XmlNode) {.raises: [ValueError].} =
@@ -86,13 +87,13 @@ proc parseTestResults*(
       result.suites.add(suite)
 
 proc listTests*(
-    entryPoint: string, nimPath: string, workspaceRoot: string
+    entryPoint: string, nimPath: string, workspaceFolders: seq[string]
 ): Future[TestProjectInfo] {.
     async: (
       raises: [CancelledError, AsyncProcessError, AsyncStreamError, OSError, ValueError]
     )
 .} =
-  var entryPoint = getFullPath(entryPoint, workspaceRoot)
+  var entryPoint = getFullPath(entryPoint, workspaceFolders)
   let executableDir = (getTempDir() / entryPoint.splitFile.name).absolutePath
   debug "Listing tests", entryPoint = entryPoint, exists = fileExists(entryPoint)
   let args =
@@ -128,14 +129,14 @@ proc runTests*(
     nimPath: string,
     suiteName: Option[string],
     testNames: seq[string],
-    workspaceRoot: string,
+    workspaceFolders: seq[string],
     ls: LanguageServer,
 ): Future[RunTestProjectResult] {.
     async: (
       raises: [CancelledError, AsyncProcessError, AsyncStreamError, OSError, ValueError]
     )
 .} =
-  var entryPoint = getFullPath(entryPoint, workspaceRoot)
+  var entryPoint = getFullPath(entryPoint, workspaceFolders)
   if not fileExists(entryPoint):
     error "Entry point does not exist", entryPoint = entryPoint
     return RunTestProjectResult()

@@ -72,6 +72,10 @@ proc registerLspRoutes(srv: RpcServer, ls: LanguageServer) =
   srv.register(
     "workspace/didChangeWatchedFiles", wrapRpc(partial(lsp.didChangeWatchedFiles, ls))
   )
+  srv.register(
+    "workspace/didChangeWorkspaceFolders",
+    wrapRpc(partial(lsp.didChangeWorkspaceFolders, ls)),
+  )
   srv.register("textDocument/didChange", wrapRpc(partial(lsp.didChange, ls)))
   srv.register(
     "textDocument/willSaveWaitUntil", wrapRpc(partial(lsp.willSaveWaitUntil, ls))

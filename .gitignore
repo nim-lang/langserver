@@ -27,3 +27,4 @@ tests/projects/**/nimbledeps/*
 !tests/projects/**/nimbledeps/pkgs2/
 !tests/projects/localdeps/nimble.paths
 !tests/projects/localdeps/sub/nimble.paths
+!tests/projects/mono/nimble.paths
