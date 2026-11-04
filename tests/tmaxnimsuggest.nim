@@ -197,3 +197,95 @@ suite "Last used nimsuggest over the cap":
     check (waitFor ls.tryGetNimsuggest(hwUri)).isNone
     check ls.openFiles[hwUri].nimsuggestProject == ""
     check ls.projectFiles.len == 1
+
+suite "Files outside the workspace":
+  let cmdParams =
+    CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
+  let ls = main(cmdParams)
+  let client = newClient(cmdParams.port)
+  let hwPath = "projects/hw/hw.nim".fixtureUri.uriToPath
+
+  suiteTeardown:
+    waitFor ls.shutdownNimsuggest()
+
+  test "a file outside the workspace only uses the last used nimsuggest":
+    discard waitFor client.initialize(
+      LspInitializeParams %* {
+        "processId": %getCurrentProcessId(),
+        "rootUri": fixtureUri("projects/hw/"),
+        "capabilities": {"workspace": {"configuration": true}},
+      }
+    )
+    ls.setWorkspaceConfiguration(% @[NlsConfig(maxNimsuggestProcesses: some 0)])
+    let hwUri = "projects/hw/hw.nim".fixtureUri
+    waitFor ls.didOpenFile(createDidOpenParams("projects/hw/hw.nim").textDocument)
+
+    # Go to the definition of Option, which is in the stdlib.
+    let locations = to(
+      waitFor client.call("textDocument/definition", %positionParams(hwUri, 8, 5)).wait(
+        60.seconds
+      ),
+      seq[Location],
+    )
+    check locations.len == 1
+    let optionsUri = locations[0].uri
+    check optionsUri.uriToPath.extractFilename == "options.nim"
+    check hwPath in ls.projectFiles
+
+    # hw.nim's nimsuggest knows the stdlib file, so it serves it.
+    waitFor ls.didOpenFile(
+      TextDocumentItem(
+        uri: optionsUri,
+        languageId: "nim",
+        version: 0,
+        text: readFile(optionsUri.uriToPath),
+      )
+    )
+    check (waitFor ls.tryGetNimsuggest(optionsUri)).isSome
+    check ls.openFiles[optionsUri].nimsuggestProject == hwPath
+    check ls.projectFiles.len == 1
+
+    # rootmodule.nim is not known by it, so it gets no nimsuggest even with no cap.
+    let rootModuleUri = "projects/multimodules/rootmodule.nim".fixtureUri
+    waitFor ls.didOpenFile(
+      createDidOpenParams("projects/multimodules/rootmodule.nim").textDocument
+    )
+    check (waitFor ls.tryGetNimsuggest(rootModuleUri)).isNone
+    check ls.openFiles[rootModuleUri].nimsuggestProject == ""
+    check ls.projectFiles.len == 1
+
+suite "Files without a workspace root":
+  let cmdParams =
+    CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
+  let ls = main(cmdParams)
+  let client = newClient(cmdParams.port)
+
+  suiteTeardown:
+    waitFor ls.shutdownNimsuggest()
+
+  test "every file is in the workspace when the client sends no root":
+    discard waitFor client.initialize(
+      LspInitializeParams %* {
+        "processId": %getCurrentProcessId(),
+        "rootUri": nil,
+        "capabilities": {"workspace": {"configuration": true}},
+      }
+    )
+    ls.setWorkspaceConfiguration(% @[NlsConfig(maxNimsuggestProcesses: some 0)])
+    waitFor ls.didOpenFile(createDidOpenParams("projects/hw/hw.nim").textDocument)
+    check (waitFor ls.tryGetNimsuggest("projects/hw/hw.nim".fixtureUri)).isSome
+
+    # Without a root the server falls back to its working directory, and this
+    # file is outside of it.
+    let
+      dir = getTempDir() / "nimlangserver-no-root"
+      path = dir / "main.nim"
+      uri = pathToUri(path)
+    createDir(dir)
+    writeFile(path, "proc a*() = discard\n")
+    waitFor ls.didOpenFile(
+      TextDocumentItem(uri: uri, languageId: "nim", version: 0, text: readFile(path))
+    )
+    check (waitFor ls.tryGetNimsuggest(uri)).isSome
+    check ls.openFiles[uri].nimsuggestProject == path
+    check ls.projectFiles.len == 2

@@ -477,6 +477,12 @@ proc getRootPath(ls: LanguageServer): string {.raises: [OSError].} =
   of lsp:
     ls.lspInitializeParams.getRootPath()
 
+proc isInWorkspace(ls: LanguageServer, path: string): bool {.raises: [OSError].} =
+  let ip = ls.lspInitializeParams
+  if ls.serverMode == lsp and ip.rootUri.get("") == "" and ip.rootPath.get("") == "":
+    return true
+  path.isRelTo(ls.getRootPath())
+
 proc packageNimbleFile(ls: LanguageServer, file: string): string {.raises: [OSError].} =
   let rootPath = ls.getRootPath()
   let inRoot = file.isRelTo(rootPath)
@@ -857,11 +863,10 @@ proc reuseLastNimsuggestProject(
     return ""
   let isKnown = await project.ns.isKnown(uri.uriToPath)
   if isKnown and project.file in ls.projectFiles:
-    debug "Reached the maximum instances of nimsuggest, reusing the last used instance",
-      uri = uri, project = project.file
+    debug "Reusing the last used nimsuggest instance", uri = uri, project = project.file
     project.file
   else:
-    debug "Reached the maximum instances of nimsuggest, the last used instance does not know the file",
+    debug "The last used nimsuggest instance does not know the file",
       uri = uri, project = project.file
     ""
 
@@ -872,6 +877,8 @@ proc getProjectFile*(
 proc nimsuggestProjectFor(
     ls: LanguageServer, uri: string
 ): Future[string] {.async: (raises: [CancelledError, OSError, RegexError]).} =
+  if not ls.isInWorkspace(uri.uriToPath):
+    return await ls.reuseLastNimsuggestProject(uri)
   let file = ls.openFiles.getOrDefault(uri)
   let projectFile =
     if file != nil:
