@@ -476,7 +476,7 @@ proc workspaceFolderOf*(ls: LanguageServer, path: string): string =
     if path.isRelTo(folder) and folder.len > result.len:
       result = folder
 
-proc packageNimbleFile(ls: LanguageServer, file: string): string =
+proc packageNimbleFile(ls: LanguageServer, file: string): string {.raises: [OSError].} =
   let rootPath = ls.workspaceFolderOf(file)
   let inRoot = rootPath != ""
   var dir = file.parentDir
