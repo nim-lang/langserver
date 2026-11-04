@@ -29,7 +29,7 @@ proc folderChange(added, removed: seq[string]): JsonNode =
 
   %*{"event": {"added": folders(added), "removed": folders(removed)}}
 
-suite "Workspace folders":
+suite "Several workspaces":
   let cmdParams =
     CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
   let ls = main(cmdParams)
@@ -51,7 +51,7 @@ suite "Workspace folders":
       "capabilities": {"workspace": {"configuration": true}},
     }
   )
-  # The regex matches the path relative to the file's folder.
+  # The regex matches the path relative to the file's workspace.
   ls.setWorkspaceConfiguration(
     % @[
       NlsConfig(
@@ -62,31 +62,28 @@ suite "Workspace folders":
     ]
   )
 
-  test "the workspace folders take precedence over the root":
+  test "the workspace folders take precedence over the root uri":
     check ls.workspaceFolders == @[hwDir, modulesDir]
     let capability = initResult.capabilities.workspace.get.workspaceFolders.get
     check capability.supported == some(true)
     check capability.changeNotifications == some(%true)
 
-  test "a file belongs to the folder that contains it":
+  test "a file belongs to the workspace that contains it":
     check ls.workspaceFolderOf(hwDir / "hw.nim") == hwDir
     check ls.workspaceFolderOf(otherModule) == modulesDir
     check ls.workspaceFolderOf(projectsDir / "vendored" / "vendored.nim") == ""
 
-  test "a project mapping is relative to the folder of the file":
+  test "a project mapping is relative to the workspace of the file":
     check (waitFor ls.getProjectFile(otherModule)) == rootModule
 
-  test "a file outside of any package runs in its folder":
-    check (waitFor ls.getWorkingDir(hwDir / "hw.nim")) == hwDir
-
-  test "the open files follow the folders the client adds and removes":
+  test "open files resolve again when the client adds and removes workspaces":
     waitFor ls.didOpenFile(
       createDidOpenParams("projects/multimodules/othermodule.nim").textDocument
     )
     let uri = pathToUri(otherModule)
     check (waitFor ls.openFiles[uri].waitProjectFile()) == rootModule
 
-    # Without its folder the mapping no longer applies to the file.
+    # Without its workspace the mapping no longer applies to the file.
     client.notify(
       "workspace/didChangeWorkspaceFolders", folderChange(@[], @[modulesDir])
     )
@@ -99,7 +96,7 @@ suite "Workspace folders":
     check waitUntil(ls.workspaceFolders == @[hwDir, modulesDir])
     check (waitFor ls.openFiles[uri].waitProjectFile()) == rootModule
 
-suite "No workspace folders":
+suite "No workspace":
   let cmdParams =
     CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
   let ls = main(cmdParams)
@@ -118,7 +115,7 @@ suite "No workspace folders":
   )
   ls.setWorkspaceConfiguration(% @[NlsConfig()])
 
-  test "a file outside of any package runs in its own directory":
+  test "a file outside the workspace and of any package runs in its own dir":
     check ls.workspaceFolders.len == 0
     check ls.workspaceFolderOf(hwDir / "hw.nim") == ""
     # The fixtures are inside the langserver package, so this one is not.
@@ -129,11 +126,9 @@ suite "No workspace folders":
     writeFile(path, "echo 1\n")
     check (waitFor ls.getWorkingDir(path)) == dir
 
-suite "Packages of workspace folders":
+suite "Workspaces without a nimble file":
   let
     mono = projectsDir / "mono"
-    depDir = projectsDir / "vendored" / "vendor" / "dep"
-    localDeps = projectsDir / "localdeps"
     # Outside the langserver package, so it belongs to no package.
     loose = getTempDir() / "nimlangserver-workspace-packages" / "loose"
   createDir(loose)
@@ -152,7 +147,7 @@ suite "Packages of workspace folders":
       "processId": %getCurrentProcessId(),
       "workspaceFolders": [
         {"uri": pathToUri(mono / "app"), "name": "app"},
-        {"uri": pathToUri(depDir), "name": "dep"},
+        {"uri": pathToUri(mono / "app2"), "name": "app2"},
         {"uri": pathToUri(loose), "name": "loose"},
       ],
       "capabilities": {"workspace": {"configuration": true}},
@@ -160,18 +155,11 @@ suite "Packages of workspace folders":
   )
   ls.setWorkspaceConfiguration(% @[NlsConfig()])
 
-  test "a folder without a package belongs to the package around it":
+  test "sibling subfolder workspaces resolve to the same parent dir nimble project":
+    check (waitFor ls.getProjectFile(mono / "app2" / "app2.nim")) == mono / "mono.nim"
     check (waitFor ls.getProjectFile(mono / "app" / "app.nim")) == mono / "mono.nim"
     check (waitFor ls.getWorkingDir(mono / "app" / "app.nim")) == mono
+    check (waitFor ls.getWorkingDir(mono / "app2" / "app2.nim")) == mono
 
-  test "a folder that is a package is its own package":
-    check (waitFor ls.getProjectFile(depDir / "dep.nim")) == depDir / "dep.nim"
-    check depDir / "dep.nimble" in ls.nimblePackageLoads
-    check projectsDir / "vendored" / "vendored.nimble" notin ls.nimblePackageLoads
-
-  test "a vendored file outside the folders belongs to the project around it":
-    check (waitFor ls.getProjectFile(localDeps / "vendor" / "v" / "v.nim")) ==
-      localDeps / "localdeps.nim"
-
-  test "a file with no package anywhere runs in its folder":
+  test "a workspace without any package runs in the workspace dir":
     check (waitFor ls.getWorkingDir(loose / "loose.nim")) == loose
