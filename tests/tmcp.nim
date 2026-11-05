@@ -90,7 +90,7 @@ suite "MCP routes":
     # server while serialising the response.
     let
       emptyDir = getTempDir() / "nimlangserver-mcp-no-project"
-      savedDir = getCurrentDir()
+      savedDir = os.getCurrentDir()
     createDir(emptyDir)
     setCurrentDir(emptyDir)
     defer:
@@ -136,7 +136,7 @@ suite "MCP routes":
   test "tools/call is refused until initialize":
     let
       emptyDir = getTempDir() / "nimlangserver-mcp-no-project"
-      savedDir = getCurrentDir()
+      savedDir = os.getCurrentDir()
     createDir(emptyDir)
     setCurrentDir(emptyDir)
     defer:
@@ -183,7 +183,7 @@ suite "MCP routes":
     # does not start a nimsuggest.
     let
       emptyDir = getTempDir() / "nimlangserver-mcp-no-project"
-      savedDir = getCurrentDir()
+      savedDir = os.getCurrentDir()
     createDir(emptyDir)
     setCurrentDir(emptyDir)
     defer:
@@ -244,7 +244,7 @@ suite "MCP routes":
 suite "MCP tools":
   let
     testProjectDir = absolutePath("tests" / "projects" / "mcpproject")
-    savedDir = getCurrentDir()
+    savedDir = os.getCurrentDir()
 
   setCurrentDir(testProjectDir)
 

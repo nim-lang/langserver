@@ -41,23 +41,23 @@ suite "UTF-16 position mapping":
 
 suite "uri and path conversion":
   test "pathToUri and uriToPath round trip an absolute path":
-    let path = getCurrentDir() / "tests" / "projects" / "hw" / "hw.nim"
+    let path = os.getCurrentDir() / "tests" / "projects" / "hw" / "hw.nim"
     check path.pathToUri.uriToPath == path
 
   test "pathToUri keeps the path separators unescaped":
-    let uri = (getCurrentDir() / "project" / "file.nim").pathToUri
+    let uri = (os.getCurrentDir() / "project" / "file.nim").pathToUri
     check uri.string.startsWith("file:///")
     check "/project/file.nim" in uri.string
 
   test "pathToUri escapes characters that are not URI safe":
-    let path = getCurrentDir() / "a b" / "c#d.nim"
+    let path = os.getCurrentDir() / "a b" / "c#d.nim"
     let uri = path.pathToUri
     check "%20" in uri.string
     check "%23" in uri.string
     check uri.uriToPath == path
 
   test "a non ascii path survives the round trip":
-    let path = getCurrentDir() / "프로젝트" / "hw.nim"
+    let path = os.getCurrentDir() / "프로젝트" / "hw.nim"
     check path.pathToUri.uriToPath == path
 
   test "uriToPath rejects a scheme other than file":

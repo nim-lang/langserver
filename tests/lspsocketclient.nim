@@ -7,7 +7,7 @@ import
 
 #Utils
 proc fixtureUri*(path: string): DocumentUri =
-  result = pathToUri(Path(getCurrentDir() / "tests" / path))
+  result = pathToUri(paths.getCurrentDir() / "tests".Path / path.Path)
 
 const CRLF = "\r\n"
 

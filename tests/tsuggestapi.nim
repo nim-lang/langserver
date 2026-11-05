@@ -14,7 +14,7 @@ const inputLineWithEndLine =
 
 suite "Nimsuggest tests":
   let
-    helloWorldFile = getCurrentDir() / "tests/projects/hw/hw.nim"
+    helloWorldFile = os.getCurrentDir() / "tests/projects/hw/hw.nim"
     project = createNimsuggest(helloWorldFile).waitFor
     nimSuggest = project.ns
 
@@ -99,7 +99,7 @@ suite "Nimsuggest error handling":
     # same project twice, concurrently. Suspend the child before issuing a
     # command so the command is in flight when the process is killed and both
     # paths run deterministically.
-    let helloWorldFile = getCurrentDir() / "tests/projects/hw/hw.nim"
+    let helloWorldFile = os.getCurrentDir() / "tests/projects/hw/hw.nim"
     let project = createNimsuggest(helloWorldFile).waitFor
     let ns = project.ns
     var errorCount = 0
@@ -120,7 +120,7 @@ suite "Nimsuggest error handling":
     check not waitUntil(errorCount > 1, timeout = 300.milliseconds)
 
   test "a nimsuggest cancelled during startup is marked failed and stopped":
-    let helloWorldFile = getCurrentDir() / "tests/projects/hw/hw.nim"
+    let helloWorldFile = os.getCurrentDir() / "tests/projects/hw/hw.nim"
     var failed: Project
     # nimsuggest is spawned before createNimsuggest first waits, so it is
     # running and still starting up when cancelled

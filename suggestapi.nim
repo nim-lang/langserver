@@ -357,7 +357,7 @@ proc createNimsuggest*(
     timeout: int,
     timeoutCallback: NimsuggestCallback,
     errorCallback: ProjectCallback,
-    workingDir = getCurrentDir().Path,
+    workingDir = paths.getCurrentDir(),
     enableLog: bool = false,
     enableExceptionInlayHints: bool = false,
     maxMemory: Option[int] = none int,

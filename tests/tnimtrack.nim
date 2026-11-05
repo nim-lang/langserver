@@ -8,7 +8,7 @@ import
 
 suite "Nim track with nim >= 2.4":
   let trackProjectDir = absolutePath("tests" / "projects" / "trackproject")
-  let savedDir = getCurrentDir()
+  let savedDir = os.getCurrentDir()
   setCurrentDir(trackProjectDir)
   let (setupOutput, setupExitCode) = execCmdEx("nimble -yl setup")
   setCurrentDir(savedDir)

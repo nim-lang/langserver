@@ -27,7 +27,7 @@ template waitUntil*(condition: untyped, timeout = 10.seconds): bool =
 template cd*(dir: string, body: untyped) =
   ## Sets the current dir to ``dir``, executes ``body`` and restores the
   ## previous working dir.
-  let lastDir = getCurrentDir()
+  let lastDir = os.getCurrentDir()
   setCurrentDir(dir)
   block:
     defer:
@@ -44,7 +44,7 @@ template cdNewDir*(dir: string, body: untyped) =
     body
 
 let
-  rootDir = getCurrentDir()
+  rootDir = os.getCurrentDir()
   nimblePath* = findExe "nimble"
   installDir* = rootDir / "tests" / "nimbleDir"
 
@@ -57,7 +57,7 @@ proc execNimble*(args: varargs[string]): ProcessOutput =
   quotedArgs.insert(nimblePath)
   quotedArgs = quotedArgs.map((x: string) => x.quoteShell)
 
-  let path {.used.} = getCurrentDir().parentDir() / "src"
+  let path {.used.} = os.getCurrentDir().parentDir() / "src"
 
   var cmd =
     when not defined(windows):
