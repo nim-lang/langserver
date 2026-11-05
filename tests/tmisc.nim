@@ -598,7 +598,7 @@ suite "Nimlangserver project lookup replaced by a configuration change":
     )
     ls.setWorkspaceConfiguration(% @[after])
     waitFor ls.handleConfigurationChanges(before, after).wait(60.seconds)
-    check (waitFor ls.openFiles[hwUri].waitProjectFile().wait(60.seconds)) == hwPath
+    check (waitFor ls.openFiles[hwUri].projectFileWait().wait(60.seconds)) == hwPath
 
     # The old lookup finishes with what the old configuration would have picked
     oldLookup.complete(rootPath)

@@ -109,7 +109,7 @@ suite "Project resolution with a single nimsuggest":
 
     check waitUntil(entryPath in ls.projectFiles, CallTimeout)
     check not waitUntil(ls.projectFiles.len > 1, 8.seconds)
-    check (waitFor ls.openFiles[otherUri].waitProjectFile()) == entryPath
+    check (waitFor ls.openFiles[otherUri].projectFileWait()) == entryPath
     check toSeq(ls.projectFiles.keys) == @[entryPath]
 
 suite "Shutdown during nimsuggest startup":
@@ -134,7 +134,7 @@ suite "Shared project futures":
     let projectFile =
       Future[string].Raising([CancelledError, OSError, RegexError]).init("projectFile")
     let file = NlsFileInfo(projectFile: projectFile)
-    let waiter = file.waitProjectFile()
+    let waiter = file.projectFileWait()
     waiter.cancelSoon()
     waitFor sleepAsync(100.milliseconds)
     check not projectFile.cancelled

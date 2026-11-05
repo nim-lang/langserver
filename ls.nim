@@ -395,36 +395,6 @@ proc sendStatusChanged*(ls: LanguageServer) {.raises: [].} =
     ls.notify("extension/statusUpdate", status)
     ls.lastStatusSent = status
 
-proc waitProjectFile*(
-    file: NlsFileInfo
-): Future[string] {.async: (raises: [CancelledError, OSError, RegexError]).} =
-  ## Wait without allowing a cancelled request to cancel the shared future.
-  ## A configuration change replaces the future, so wait for the current one.
-  while not file.projectFile.finished:
-    await file.projectFile.join()
-  try:
-    file.projectFile.read()
-  except FuturePendingError:
-    raiseAssert "project file future remained pending after join"
-
-proc addProjectFileToPendingRequest*(
-    ls: LanguageServer, id: uint, uri: string
-) {.async: (raises: []).} =
-  try:
-    if id in ls.pendingRequests:
-      var projectFile = uri.uriToPath()
-      if projectFile notin ls.projectFiles:
-        if uri in ls.openFiles:
-          projectFile = await ls.openFiles[uri].waitProjectFile()
-
-      ls.pendingRequests[id].projectFile = some projectFile
-      ls.sendStatusChanged
-  except CancelledError:
-    discard
-  except KeyError, OSError, RegexError:
-    error "addProjectFileToPendingRequest failed",
-      uri = uri, msg = getCurrentExceptionMsg()
-
 proc requiresDynamicRegistrationForDidChangeConfiguration(ls: LanguageServer): bool =
   ls.lspClientCapabilities.workspace.isSome and
     ls.lspClientCapabilities.workspace.get.didChangeConfiguration.isSome and
@@ -649,6 +619,85 @@ proc getProjectFileAutoGuess*(
     path = dir
     inc up
 
+proc getProjectFile*(
+    ls: LanguageServer, uri: string
+): Future[string] {.async: (raises: [CancelledError, OSError, RegexError]).} =
+  let
+    rootPath = ls.workspaceFolderOf(uri)
+    pathRelativeToRoot =
+      if rootPath == "":
+        none(string)
+      else:
+        uri.tryRelativeTo(rootPath)
+    conf = await ls.workspaceConfigurationWait()
+    mappings = conf.projectMapping.get(@[])
+
+  for mapping in mappings:
+    var m: RegexMatch2
+    if pathRelativeToRoot.isSome and
+        find(pathRelativeToRoot.get(), re2(mapping.fileRegex), m):
+      await ls.showMessage(
+        fmt"RegEx matched `{mapping.fileRegex}` for file `{uri}`", MessageType.Info
+      )
+      result = rootPath / mapping.projectFile
+      if fileExists(result):
+        trace "getProjectFile?",
+          project = result, uri = uri, matchedRegex = mapping.fileRegex
+        return result
+    else:
+      trace "getProjectFile does not match", uri = uri, matchedRegex = mapping.fileRegex
+
+  let package = await ls.nimblePackage(uri)
+  if package.projectFile.len > 0:
+    debug "Found nimble project", projectFile = package.projectFile
+    result = package.projectFile
+  else:
+    result = await ls.getProjectFileAutoGuess(uri)
+
+  if result == "":
+    result = uri
+
+  debug "getProjectFile ", project = result, uri = uri
+
+proc projectFileWait*(
+    file: NlsFileInfo
+): Future[string] {.async: (raises: [CancelledError, OSError, RegexError]).} =
+  # Wait without allowing a cancelled request to cancel the shared future.
+  # A configuration change replaces the future, so wait for the current one.
+  while not file.projectFile.finished:
+    await file.projectFile.join()
+  try:
+    file.projectFile.read()
+  except FuturePendingError:
+    raiseAssert "project file future remained pending after join"
+
+proc projectFileWait*(
+    ls: LanguageServer, uri: string
+): Future[string] {.async: (raises: [CancelledError, OSError, RegexError]).} =
+  let file = ls.openFiles.getOrDefault(uri)
+  if file != nil:
+    await file.projectFileWait()
+  else:
+    await ls.getProjectFile(uri.uriToPath)
+
+proc addProjectFileToPendingRequest*(
+    ls: LanguageServer, id: uint, uri: string
+) {.async: (raises: []).} =
+  try:
+    if id in ls.pendingRequests:
+      var projectFile = uri.uriToPath()
+      if projectFile notin ls.projectFiles:
+        if uri in ls.openFiles:
+          projectFile = await ls.openFiles[uri].projectFileWait()
+
+      ls.pendingRequests[id].projectFile = some projectFile
+      ls.sendStatusChanged
+  except CancelledError:
+    discard
+  except KeyError, OSError, RegexError:
+    error "addProjectFileToPendingRequest failed",
+      uri = uri, msg = getCurrentExceptionMsg()
+
 proc getWorkingDir*(
     ls: LanguageServer, path: string
 ): Future[string] {.async: (raises: [CancelledError, OSError]).} =
@@ -868,19 +917,10 @@ proc reuseLastNimsuggestProject(
       uri = uri, project = project.file
     ""
 
-proc getProjectFile*(
-  ls: LanguageServer, uri: string
-): Future[string] {.async: (raises: [CancelledError, OSError, RegexError]).}
-
 proc nimsuggestProjectFor(
     ls: LanguageServer, uri: string
 ): Future[string] {.async: (raises: [CancelledError, OSError, RegexError]).} =
-  let file = ls.openFiles.getOrDefault(uri)
-  let projectFile =
-    if file != nil:
-      await file.waitProjectFile()
-    else:
-      await ls.getProjectFile(uri.uriToPath)
+  let projectFile = await ls.projectFileWait(uri)
   let conf = await ls.workspaceConfigurationWait()
   let nsProject =
     if ls.isLiveNimsuggestProject(projectFile) or ls.canSpawnNimsuggest(conf):
@@ -919,64 +959,6 @@ proc getNimsuggestInner(
     return nil
   ls.lastNimsuggestProject = nsProject
   project.ns
-
-proc tryGetNimsuggest*(
-  ls: LanguageServer, uri: string
-): Future[Option[Nimsuggest]] {.
-  async: (raises: [CancelledError, OSError, IOError, RegexError])
-.}
-
-proc checkFile*(
-  ls: LanguageServer, file: NlsFileInfo
-): Future[void] {.
-  async: (
-    raises: [
-      CancelledError, AsyncProcessError, AsyncStreamError, OSError, IOError, RegexError,
-      NimsuggestError,
-    ]
-  )
-.}
-
-proc didCloseFile*(
-    ls: LanguageServer, uri: string
-): Future[void] {.async: (raises: []).} =
-  debug "Closed the following document:", uri = uri
-
-  let file = ls.openFiles.getOrDefault(uri)
-  ls.openFiles.del uri
-
-  if file != nil and file.changed:
-    # check the file if it is closed but not saved.
-    traceAsyncErrors ls.checkFile(file)
-
-proc didOpenFile*(
-    ls: LanguageServer, textDocument: TextDocumentItem
-): Future[void] {.async: (raises: [CancelledError, OSError, IOError, RegexError]).} =
-  with textDocument:
-    debug "New document opened for URI:", uri = uri
-    let file = open(ls.uriStorageLocation(uri), fmWrite)
-    let projectFileFuture = ls.getProjectFile(uriToPath(uri))
-    let openFile = NlsFileInfo(
-      projectFile: projectFileFuture,
-      changed: false,
-      fingerTable: @[],
-      textDocument: textDocument,
-    )
-    ls.openFiles[uri] = openFile
-
-    try:
-      for line in text.splitLines:
-        openFile.fingerTable.add line.createUTFMapping()
-        file.writeLine line
-    finally:
-      file.close()
-
-    let projectFile = await openFile.waitProjectFile()
-    debug "Document associated with the following projectFile",
-      uri = uri, projectFile = projectFile
-    # start ns on open file for chk diagnostics
-    discard await ls.tryGetNimsuggest(uri)
-    await ls.showMessage(fmt "Opening {uri}", MessageType.Info)
 
 proc checkNimsuggestProject(
     ls: LanguageServer, uri: string, nimsuggest: Nimsuggest
@@ -1054,6 +1036,35 @@ proc tryGetNimsuggest*(
   if uri notin ls.openFiles:
     return none(Nimsuggest)
   await ls.getNimsuggest(uri)
+
+proc didOpenFile*(
+    ls: LanguageServer, textDocument: TextDocumentItem
+): Future[void] {.async: (raises: [CancelledError, OSError, IOError, RegexError]).} =
+  with textDocument:
+    debug "New document opened for URI:", uri = uri
+    let file = open(ls.uriStorageLocation(uri), fmWrite)
+    let projectFileFuture = ls.getProjectFile(uriToPath(uri))
+    let openFile = NlsFileInfo(
+      projectFile: projectFileFuture,
+      changed: false,
+      fingerTable: @[],
+      textDocument: textDocument,
+    )
+    ls.openFiles[uri] = openFile
+
+    try:
+      for line in text.splitLines:
+        openFile.fingerTable.add line.createUTFMapping()
+        file.writeLine line
+    finally:
+      file.close()
+
+    let projectFile = await openFile.projectFileWait()
+    debug "Document associated with the following projectFile",
+      uri = uri, projectFile = projectFile
+    # start ns on open file for chk diagnostics
+    discard await ls.tryGetNimsuggest(uri)
+    await ls.showMessage(fmt "Opening {uri}", MessageType.Info)
 
 proc checkProject*(
     ls: LanguageServer, uri: string
@@ -1373,46 +1384,6 @@ proc shutdownNimsuggest*(ls: LanguageServer) {.async: (raises: []).} =
     ls.nimsuggestShutdown = ls.shutdownNimsuggestImpl()
   await noCancel ls.nimsuggestShutdown
 
-proc getProjectFile*(
-    ls: LanguageServer, uri: string
-): Future[string] {.async: (raises: [CancelledError, OSError, RegexError]).} =
-  let
-    rootPath = ls.workspaceFolderOf(uri)
-    pathRelativeToRoot =
-      if rootPath == "":
-        none(string)
-      else:
-        uri.tryRelativeTo(rootPath)
-    conf = await ls.workspaceConfigurationWait()
-    mappings = conf.projectMapping.get(@[])
-
-  for mapping in mappings:
-    var m: RegexMatch2
-    if pathRelativeToRoot.isSome and
-        find(pathRelativeToRoot.get(), re2(mapping.fileRegex), m):
-      await ls.showMessage(
-        fmt"RegEx matched `{mapping.fileRegex}` for file `{uri}`", MessageType.Info
-      )
-      result = rootPath / mapping.projectFile
-      if fileExists(result):
-        trace "getProjectFile?",
-          project = result, uri = uri, matchedRegex = mapping.fileRegex
-        return result
-    else:
-      trace "getProjectFile does not match", uri = uri, matchedRegex = mapping.fileRegex
-
-  let package = await ls.nimblePackage(uri)
-  if package.projectFile.len > 0:
-    debug "Found nimble project", projectFile = package.projectFile
-    result = package.projectFile
-  else:
-    result = await ls.getProjectFileAutoGuess(uri)
-
-  if result == "":
-    result = uri
-
-  debug "getProjectFile ", project = result, uri = uri
-
 proc checkFile*(
     ls: LanguageServer, file: NlsFileInfo
 ): Future[void] {.
@@ -1462,6 +1433,18 @@ proc checkFile*(
     let diagnostics = await ns.get().chkFile(path, dirtyFile)
     if file.edits == edits:
       ls.sendDiagnostics(diagnostics, path)
+
+proc didCloseFile*(
+    ls: LanguageServer, uri: string
+): Future[void] {.async: (raises: []).} =
+  debug "Closed the following document:", uri = uri
+
+  let file = ls.openFiles.getOrDefault(uri)
+  ls.openFiles.del uri
+
+  if file != nil and file.changed:
+    # check the file if it is closed but not saved.
+    traceAsyncErrors ls.checkFile(file)
 
 proc removeCompletedPendingRequests(
     ls: LanguageServer, maxTimeAfterRequestWasCompleted = initDuration(seconds = 10)
