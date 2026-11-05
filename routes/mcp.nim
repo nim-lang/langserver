@@ -219,7 +219,7 @@ proc callNimFindReferences(
 .} =
   let
     arguments = params.arguments.get()
-    path = arguments["path"].getStr().absolutePath
+    path = arguments["path"].getStr().absolutePath.Path
     uri = path.pathToUri()
     line = arguments["line"].getInt()
     column = arguments["column"].getInt()
@@ -343,7 +343,7 @@ proc callNimListSymbols(
 .} =
   let
     arguments = params.arguments.get()
-    path = arguments["path"].getStr().absolutePath
+    path = arguments["path"].getStr().absolutePath.Path
     uri = path.pathToUri()
 
   let nimsuggest = await ls.getNimsuggest(uri)
@@ -397,7 +397,7 @@ proc callNimCheckProject(
 
     for diagnostic in diagnostics:
       # Diagnostics with path ??? are not related to the project
-      if diagnostic.filePath != "???":
+      if diagnostic.filePath.string != "???":
         diagJson.add %*{
           "path": diagnostic.filePath,
           "line": diagnostic.line,
@@ -432,7 +432,7 @@ proc callNimCheckFile(
 .} =
   let
     arguments = params.arguments.get()
-    path = arguments["path"].getStr().absolutePath
+    path = arguments["path"].getStr().absolutePath.Path
     uri = path.pathToUri()
 
   let nimsuggest = await ls.getNimsuggest(uri)
@@ -481,7 +481,7 @@ proc callNimFindTypeDefinition(
 .} =
   let
     arguments = params.arguments.get()
-    path = arguments["path"].getStr().absolutePath
+    path = arguments["path"].getStr().absolutePath.Path
     uri = path.pathToUri()
     line = arguments["line"].getInt()
     column = arguments["column"].getInt()

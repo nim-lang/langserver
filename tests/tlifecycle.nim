@@ -4,6 +4,7 @@ import
   chronos/[asyncproc, osutils],
   unittest2,
   ../utils,
+  ../protocol/types,
   ./lspsocketclient,
   ./testhelpers
 

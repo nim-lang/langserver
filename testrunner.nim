@@ -1,8 +1,10 @@
 {.push raises: [], gcsafe.}
 
 import
-  std/
-    [os, strscans, tables, enumerate, strutils, xmlparser, xmltree, options, strformat],
+  std/[
+    os, strscans, tables, enumerate, strutils, xmlparser, xmltree, options, strformat,
+    files,
+  ],
   chronos,
   chronos/asyncproc,
   chronicles,
@@ -33,13 +35,13 @@ proc extractTestInfo*(rawOutput: string): TestProjectInfo {.raises: [ValueError]
         # echo "Adding test: ", testInfo.name, " to suite: ", suiteName
         result.suites[suiteName].tests.add(testInfo)
 
-proc getFullPath*(entryPoint: string, workspaceFolders: seq[string]): string =
-  if not fileExists(entryPoint):
+proc getFullPath*(entryPoint: string, workspaceFolders: seq[Path]): Path =
+  result = entryPoint.Path
+  if not fileExists(result):
     for folder in workspaceFolders:
-      let absolutePath = joinPath(folder, entryPoint)
+      let absolutePath = folder / result
       if fileExists(absolutePath):
         return absolutePath
-  return entryPoint
 
 proc parseObject(obj: var object, node: XmlNode) {.raises: [ValueError].} =
   for field, value in obj.fieldPairs:
@@ -87,17 +89,18 @@ proc parseTestResults*(
       result.suites.add(suite)
 
 proc listTests*(
-    entryPoint: string, nimPath: string, workspaceFolders: seq[string]
+    entryPoint: string, nimPath: string, workspaceFolders: seq[Path]
 ): Future[TestProjectInfo] {.
     async: (
       raises: [CancelledError, AsyncProcessError, AsyncStreamError, OSError, ValueError]
     )
 .} =
   var entryPoint = getFullPath(entryPoint, workspaceFolders)
-  let executableDir = (getTempDir() / entryPoint.splitFile.name).absolutePath
+  let executableDir = (getTempDir() / entryPoint.string.splitFile.name).absolutePath
   debug "Listing tests", entryPoint = entryPoint, exists = fileExists(entryPoint)
-  let args =
-    @["c", "--outdir:" & executableDir, "-d:unittest2ListTests", "-r", entryPoint]
+  let args = @[
+    "c", "--outdir:" & executableDir, "-d:unittest2ListTests", "-r", entryPoint.string
+  ]
   let process = await startProcess(
     nimPath,
     arguments = args,
@@ -129,7 +132,7 @@ proc runTests*(
     nimPath: string,
     suiteName: Option[string],
     testNames: seq[string],
-    workspaceFolders: seq[string],
+    workspaceFolders: seq[Path],
     ls: LanguageServer,
 ): Future[RunTestProjectResult] {.
     async: (
@@ -142,9 +145,10 @@ proc runTests*(
     return RunTestProjectResult()
   let resultFile = (getTempDir() / "result.xml").absolutePath
   removeFile(resultFile)
-  let executableDir = (getTempDir() / entryPoint.splitFile.name).absolutePath
-  var args =
-    @["c", "--outdir:" & executableDir, "-r", entryPoint, fmt"--xml:{resultFile}"]
+  let executableDir = (getTempDir() / entryPoint.string.splitFile.name).absolutePath
+  var args = @[
+    "c", "--outdir:" & executableDir, "-r", entryPoint.string, fmt"--xml:{resultFile}"
+  ]
   if suiteName.isSome:
     args.add(fmt"{suiteName.get()}::")
   else:

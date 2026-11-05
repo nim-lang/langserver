@@ -68,7 +68,7 @@ suite "Nimsuggest startup for a slow mapped root":
 
   proc initializedMessages(): int =
     client.calls["window/showMessage"].countIt(
-      it["message"].getStr == "Nimsuggest initialized for " & rootPath
+      it["message"].getStr == "Nimsuggest initialized for " & $rootPath
     )
 
   suiteTeardown:
@@ -132,11 +132,11 @@ suite "Shutdown during nimsuggest startup":
 suite "Shared project futures":
   test "joining project resolution does not cancel the shared future":
     let projectFile =
-      Future[string].Raising([CancelledError, OSError, RegexError]).init("projectFile")
+      Future[Path].Raising([CancelledError, OSError, RegexError]).init("projectFile")
     let file = NlsFileInfo(projectFile: projectFile)
     let waiter = file.projectFileWait()
     waiter.cancelSoon()
     waitFor sleepAsync(100.milliseconds)
     check not projectFile.cancelled
-    projectFile.complete("root.nim")
+    projectFile.complete("root.nim".Path)
     check waiter.cancelled

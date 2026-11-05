@@ -9,7 +9,7 @@ suite "Test Parser":
   test "should be able to list tests from an entry point":
     #A project can have multiple entry points for the tests, they are specified in the test runner.
     #We first need to install the project, as it uses a custom version of unittest2 (until it get merged).
-    let projectDir = getCurrentDir() / "tests" / "projects" / "testrunner"
+    let projectDir = os.getCurrentDir() / "tests" / "projects" / "testrunner"
     cd projectDir:
       let (output, _) = execNimble("install", "-l")
       discard execNimble("setup")
@@ -23,7 +23,7 @@ suite "Test Parser":
       check testProjectInfo.suites["test1.nim"].tests[0].line == 10
 
   test "should be able to list tests and suites":
-    let projectDir = getCurrentDir() / "tests" / "projects" / "testrunner"
+    let projectDir = os.getCurrentDir() / "tests" / "projects" / "testrunner"
     cd projectDir:
       let (listTestsOutput, _) =
         execCmdEx("nim c -d:unittest2ListTests -r ./tests/sampletests.nim")
@@ -39,7 +39,7 @@ suite "Test Parser":
 suite "Test Runner":
   test "should be able to run tests and retrieve results":
     let entryPoint =
-      getCurrentDir() / "tests" / "projects" / "testrunner" / "tests" / "sampletests.nim"
+      os.getCurrentDir() / "tests" / "projects" / "testrunner" / "tests" / "sampletests.nim"
     let ls = LanguageServer()
     let testProjectResult =
       waitFor runTests(entryPoint, "nim", none(string), @[], @[], ls)

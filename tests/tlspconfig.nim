@@ -231,7 +231,7 @@ suite "LSP configuration pulled from the client":
       check "--maxMemory:8000" notin ns.args
 
   test "a project check reports progress to the client":
-    proc checkIdle(ls: LanguageServer, projectFile: string): bool =
+    proc checkIdle(ls: LanguageServer, projectFile: Path): bool =
       if ls.checkInProgress or projectFile notin ls.projectFiles:
         return false
       let ns = ls.projectFiles[projectFile].ns

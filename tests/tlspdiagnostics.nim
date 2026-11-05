@@ -49,7 +49,7 @@ suite "LSP diagnostics":
   test "Opening a file with a type error publishes diagnostics for it":
     proc hasAnyDiagnostic(json: JsonNode): bool {.gcsafe, raises: [CatchableError].} =
       {.cast(gcsafe).}:
-        json{"uri"}.getStr == helloWorldUri and json{"diagnostics"}.len > 0
+        json{"uri"}.getStr == $helloWorldUri and json{"diagnostics"}.len > 0
 
     check waitFor client.waitForNotification(
       "textDocument/publishDiagnostics", hasAnyDiagnostic
@@ -58,7 +58,7 @@ suite "LSP diagnostics":
   test "The published diagnostic carries a uri, a range and a message":
     proc isWellFormed(json: JsonNode): bool {.gcsafe, raises: [CatchableError].} =
       {.cast(gcsafe).}:
-        if json{"uri"}.getStr != helloWorldUri:
+        if json{"uri"}.getStr != $helloWorldUri:
           return false
       for diagnostic in json{"diagnostics"}:
         let
@@ -144,7 +144,7 @@ suite "LSP project check command":
   test "checks a project whose project file is not open":
     let
       projectFile =
-        absolutePath("tests" / "projects" / "mcpproject" / "src" / "mcpproject.nim")
+        absolutePath("tests" / "projects" / "mcpproject" / "src" / "mcpproject.nim").Path
       errmoduleUri = fixtureUri("projects/mcpproject/src/mcpproject/errmodule.nim")
 
     # Only a test file is open. It belongs to the package, so the nimsuggest
@@ -162,7 +162,7 @@ suite "LSP project check command":
     # errmodule.nim has a type error, so a project check publishes for it.
     proc errmodulePublishes(): int =
       for params in client.calls["textDocument/publishDiagnostics"]:
-        if params{"uri"}.getStr == errmoduleUri:
+        if params{"uri"}.getStr == $errmoduleUri:
           inc result
 
     let published = errmodulePublishes()

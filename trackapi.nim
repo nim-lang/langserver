@@ -5,7 +5,8 @@ import
   chronos,
   chronos/asyncproc,
   chronicles,
-  ./[suggestapi, utils]
+  ./[suggestapi, utils],
+  ./protocol/types
 
 type TrackMode* = enum
   tmDef = "def"
@@ -25,17 +26,17 @@ proc parseTrackOutput(raw: string): seq[Suggest] {.raises: [ValueError].} =
       symkind: tokens[1],
       qualifiedPath: parseQualifiedPath(tokens[2]),
       forth: tokens[3],
-      filePath: tokens[4],
+      filePath: tokens[4].Path,
       line: parseInt(tokens[5]),
       column: parseInt(tokens[6]),
     )
 
 proc track*(
-    projectFile, file: string,
+    projectFile, file: Path,
     line, col: int,
     mode: TrackMode,
     nimPath: string,
-    workingDir: string,
+    workingDir: Path,
     timeout = REQUEST_TIMEOUT,
 ): Future[seq[Suggest]] {.async: (raises: [CancelledError, AsyncProcessError]).} =
   let arg = fmt "--{$mode}:{file},{line},{col}"
@@ -44,8 +45,8 @@ proc track*(
 
   let process = await startProcess(
     nimPath,
-    workingDir = workingDir,
-    arguments = @["track", projectFile, arg],
+    workingDir = workingDir.string,
+    arguments = @["track", projectFile.string, arg],
     options = {UsePath},
     stdoutHandle = AsyncProcess.Pipe,
     stderrHandle = AsyncProcess.Pipe,

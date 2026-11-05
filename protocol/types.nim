@@ -1,9 +1,39 @@
 import
-  std/[json, options, tables],
+  std/[hashes, json, options, paths, tables],
+  chronicles,
   json_serialization,
   json_serialization/std/[options as jsoptions, tables as jstables]
 
-export json_serialization, jsoptions, jstables
+export json_serialization, jsoptions, jstables, paths
+
+type
+  Uri* = distinct string
+  DocumentUri* = Uri
+
+proc `$`*(x: Uri): string {.borrow.}
+proc `==`*(a, b: Uri): bool {.borrow.}
+proc hash*(x: Uri): Hash {.borrow.}
+proc `%`*(x: Uri): JsonNode =
+  %x.string
+
+proc `%`*(x: Path): JsonNode =
+  %x.string
+
+chronicles.formatIt(Uri):
+  $it
+chronicles.formatIt(Path):
+  $it
+
+proc len*(x: Path): int =
+  x.string.len
+
+proc writeValue*(w: var JsonWriter, x: Uri) {.raises: [IOError].} =
+  w.writeValue(x.string)
+
+proc readValue*(
+    r: var JsonReader, x: var Uri
+) {.raises: [IOError, SerializationError].} =
+  x = Uri(r.readValue(string))
 
 type
   OptionalSeq*[T] = Option[seq[T]]
@@ -22,7 +52,7 @@ type
     `end`*: Position
 
   Location* = ref object of RootObj
-    uri*: string
+    uri*: DocumentUri
     `range`*: Range
 
   Diagnostic* = ref object of RootObj
@@ -63,7 +93,7 @@ type
     uri*: DocumentUri
 
   TextDocumentItem* = ref object of RootObj
-    uri*: string
+    uri*: DocumentUri
     languageId*: string
     version*: int
     text*: string
@@ -115,8 +145,6 @@ type
   LspInitializeParams_clientInfo* = ref object of RootObj
     name*: string
     version*: Option[string]
-
-  DocumentUri = string
 
   # 'off' | 'messages' | 'verbose'
   TraceValue_str = string
@@ -567,10 +595,8 @@ type
     general*: Option[ClientCapabilities_general]
     experimental*: OptionalNode
 
-  URI = string
-
   WorkspaceFolder* = ref object of RootObj
-    uri*: URI
+    uri*: Uri
     name*: string
 
   McpInitializeParams_serverInfo* = ref object of RootObj
@@ -795,7 +821,7 @@ type
     settings*: OptionalNode
 
   FileEvent* = ref object of RootObj
-    uri*: string
+    uri*: DocumentUri
     `type`*: int
 
   DidChangeWatchedFilesParams* = ref object of RootObj
@@ -855,7 +881,7 @@ type
     textDocument*: TextDocumentIdentifier
 
   PublishDiagnosticsParams* = ref object of RootObj
-    uri*: string
+    uri*: DocumentUri
     diagnostics*: OptionalSeq[Diagnostic]
 
   CompletionParams* = ref object of TextDocumentPositionParams

@@ -40,7 +40,7 @@ suite "Async safety":
     waitFor ls.shutdownNimsuggest()
 
   test "didOpenFile writes the stash file before it suspends":
-    removeFile(ls.uriStorageLocation(helloWorldUri))
+    removeFile(ls.uriStorageLocation(helloWorldUri).string)
     let textDocument = TextDocumentItem(
       uri: helloWorldUri,
       languageId: "nim",
@@ -49,7 +49,7 @@ suite "Async safety":
     )
 
     let opened = ls.didOpenFile(textDocument)
-    check fileExists(ls.uriStorageLocation(helloWorldUri))
+    check fileExists(ls.uriStorageLocation(helloWorldUri).string)
     check ls.openFiles[helloWorldUri].fingerTable.len > 0
 
     check waitFor opened.withTimeout(30.seconds)
@@ -211,7 +211,7 @@ suite "Documents closed while a handler is suspended":
     # notification is the only externally visible trace a save leaves.
     proc isForHelloWorld(json: JsonNode): bool {.gcsafe, raises: [CatchableError].} =
       {.cast(gcsafe).}:
-        json{"uri"}.getStr == helloWorldUri
+        json{"uri"}.getStr == $helloWorldUri
 
     check waitFor client.waitForNotification(Diagnostics, isForHelloWorld)
 
@@ -227,9 +227,9 @@ suite "Documents closed while a handler is suspended":
     # whole of didSave would run synchronously and there would be no window.
     discard settle()
     let fut =
-      Future[string].Raising([CancelledError, OSError, RegexError]).init("closed race")
+      Future[Path].Raising([CancelledError, OSError, RegexError]).init("closed race")
     ls.openFiles[helloWorldUri].projectFile = fut
-    ls.openFiles[helloWorldUri].nimsuggestProject = ""
+    ls.openFiles[helloWorldUri].nimsuggestProject = Path("")
 
     let saving = lspRoutes.didSave(ls, saveParams)
     check not saving.finished

@@ -101,9 +101,9 @@ suite "Nimlangserver pending requests":
     # loop, escapes runForever and hits main's `except Exception: quit(1)`.
     # The spawned task must swallow cancellation instead of failing.
     let ls = LanguageServer(serverMode: lsp)
-    let uri = "file:///tmp/tpending419.nim"
+    let uri = "file:///tmp/tpending419.nim".DocumentUri
     let projectFileFut =
-      Future[string].Raising([CancelledError, OSError, RegexError]).init("projectFile")
+      Future[Path].Raising([CancelledError, OSError, RegexError]).init("projectFile")
     ls.openFiles[uri] = NlsFileInfo(projectFile: projectFileFut)
     ls.pendingRequests[1'u] = PendingRequest(id: 1, name: "textDocument/definition")
 
@@ -140,10 +140,10 @@ suite "Nimlangserver request cancellation":
     discard waitFor client.initialize(initParams)
 
     # A file whose project never resolves, so the handler stays parked on it
-    let uri = "file:///tmp/tcancel.nim"
+    let uri = "file:///tmp/tcancel.nim".DocumentUri
     ls.openFiles[uri] = NlsFileInfo(
       projectFile:
-        Future[string].Raising([CancelledError, OSError, RegexError]).init("never")
+        Future[Path].Raising([CancelledError, OSError, RegexError]).init("never")
     )
 
     let request = client.call("textDocument/definition", %positionParams(uri, 0, 0))
@@ -339,7 +339,7 @@ suite "Nimlangserver idle nimsuggest cleanup":
     )
     ls.openFiles.del(helloWorldFile.fixtureUri())
 
-    proc sweptAway(ls: LanguageServer, projectFile: string): bool =
+    proc sweptAway(ls: LanguageServer, projectFile: Path): bool =
       waitFor ls.removeIdleNimsuggests()
       projectFile notin ls.projectFiles
 
@@ -589,7 +589,7 @@ suite "Nimlangserver project lookup replaced by a configuration change":
     # The lookup made under the old configuration is still running when the
     # configuration changes, and a request is waiting on it
     let oldLookup =
-      Future[string].Raising([CancelledError, OSError, RegexError]).init("oldLookup")
+      Future[Path].Raising([CancelledError, OSError, RegexError]).init("oldLookup")
     ls.openFiles[hwUri] = NlsFileInfo(projectFile: oldLookup)
     let request = ls.tryGetNimsuggest(hwUri)
 
@@ -607,7 +607,7 @@ suite "Nimlangserver project lookup replaced by a configuration change":
 
   test "a request waiting on the replaced lookup waits for the new one too":
     let oldLookup =
-      Future[string].Raising([CancelledError, OSError, RegexError]).init("oldLookup")
+      Future[Path].Raising([CancelledError, OSError, RegexError]).init("oldLookup")
     ls.openFiles[hwUri] = NlsFileInfo(projectFile: oldLookup)
     let request = ls.tryGetNimsuggest(hwUri)
 
@@ -644,14 +644,14 @@ suite "External file edits":
 
   client.registerRequest("client/registerCapability", answerNull)
   let
-    dir = getTempDir() / "nimlangserver-external-edits"
+    dir = getTempDir().Path / "nimlangserver-external-edits"
     path = dir / "main.nim"
     uri = pathToUri(path)
     depPath = dir / "dep.nim"
     depUri = pathToUri(depPath)
-  createDir(dir)
-  writeFile(depPath, "proc x*() = discard\n")
-  writeFile(path, "import dep\nproc a*() = discard\n")
+  createDir(dir.string)
+  writeFile(depPath.string, "proc x*() = discard\n")
+  writeFile(path.string, "import dep\nproc a*() = discard\n")
   discard waitFor client.initialize(
     LspInitializeParams %* {
       "processId": %getCurrentProcessId(),
@@ -676,14 +676,14 @@ suite "External file edits":
     "textDocument/didOpen",
     %*{
       "textDocument":
-        {"uri": uri, "languageId": "nim", "version": 0, "text": readFile(path)}
+        {"uri": uri, "languageId": "nim", "version": 0, "text": readFile(path.string)}
     },
   )
   check waitUntil(uri in ls.openFiles)
   check waitFor client.waitForNotificationMessage(fmt"Opening {uri}")
 
   proc editExternally(text: string) =
-    writeFile(path, text)
+    writeFile(path.string, text)
 
   proc change(text: string) =
     client.notify(
@@ -726,7 +726,7 @@ suite "External file edits":
 
     # dep.nim is not open, so only the watcher tells the server about it
     proc changeDep(text: string) =
-      writeFile(depPath, text)
+      writeFile(depPath.string, text)
       client.notify(
         "workspace/didChangeWatchedFiles",
         %*{"changes": [{"uri": depUri, "type": FileChangeType.Changed.int}]},
@@ -747,7 +747,7 @@ suite "External file edits":
       "textDocument/didOpen",
       %*{
         "textDocument":
-          {"uri": uri, "languageId": "nim", "version": 0, "text": readFile(path)}
+          {"uri": uri, "languageId": "nim", "version": 0, "text": readFile(path.string)}
       },
     )
     hover()
@@ -761,7 +761,7 @@ suite "External file edits":
 
     let text = "import dep\nproc a*() = discard\nproc s*() = discard\n"
     change(text)
-    writeFile(path, text)
+    writeFile(path.string, text)
     client.notify("textDocument/didSave", %*{"textDocument": {"uri": uri}})
     check waitUntil(not ls.openFiles[uri].changed)
     hover()
@@ -782,7 +782,7 @@ suite "External file edits":
     # typing marks the file unsaved
     change("proc a*() = discard\nproc b*() = discard\n")
     check ls.openFiles[uri].changed
-    check ls.uriToStash(uri) != ""
+    check ls.uriToStash(uri).len > 0
 
     # an edit on top of an external edit stays unsaved
     editExternally("proc d*() = discard\n")
@@ -791,7 +791,7 @@ suite "External file edits":
 
     # saving after typing marks it saved
     change("proc d*() = discard\n")
-    writeFile(path, "proc d*() = discard\n")
+    writeFile(path.string, "proc d*() = discard\n")
     client.notify("textDocument/didSave", %*{"textDocument": {"uri": uri}})
     check waitUntil(not ls.openFiles[uri].changed)
 
@@ -801,7 +801,7 @@ suite "External file edits":
     editExternally("proc f*() = discard\n")
     change("proc f*() = discard\n")
     check not ls.openFiles[uri].changed
-    check ls.uriToStash(uri) == ""
+    check ls.uriToStash(uri).len == 0
 
     # typing and undoing it
     change("proc g*() = discard\n")

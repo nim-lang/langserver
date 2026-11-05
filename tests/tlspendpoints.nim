@@ -52,7 +52,7 @@ suite "LSP endpoints":
       seq[Location],
     )
     for location in locations:
-      check location.uri.len > 0
+      check location.uri.string.len > 0
 
   test "textDocument/declaration answers with the declaring location":
     let locations = to(
@@ -376,7 +376,7 @@ suite "LSP endpoints":
       seq[Location],
     )
     check locations.len == 1
-    check locations.len >= 1 and locations[0].uri.contains("hw.nim")
+    check locations.len >= 1 and locations[0].uri.string.contains("hw.nim")
     check locations.len >= 1 and locations[0].range.start.line == 0
 
   test "documentSymbol reports a non ascii symbol at a UTF-16 offset":
@@ -412,7 +412,7 @@ suite "LSP endpoints":
         },
       )
       discard waitUntil(
-        not readFile(ls.uriStorageLocation(helloWorldUri)).contains("addedByDidChange")
+        not readFile(ls.uriStorageLocation(helloWorldUri).string).contains("addedByDidChange")
       )
 
     client.notify(
@@ -424,7 +424,7 @@ suite "LSP endpoints":
       },
     )
     check waitUntil(
-      readFile(ls.uriStorageLocation(helloWorldUri)).contains("addedByDidChange")
+      readFile(ls.uriStorageLocation(helloWorldUri).string).contains("addedByDidChange")
     )
 
     let params = DocumentSymbolParams %* {"textDocument": {"uri": helloWorldUri}}
@@ -440,8 +440,8 @@ suite "LSP endpoints":
     check ls.projectFiles.len == 1
 
     let stash = ls.uriStorageLocation(helloWorldUri)
-    if fileExists(stash):
-      check readFile(stash).normalizeText ==
+    if fileExists(stash.string):
+      check readFile(stash.string).normalizeText ==
         readFile("tests" / helloWorldFile).normalizeText
 
 suite "LSP messages before initialize":
@@ -602,7 +602,7 @@ suite "LSP messages leave unset members out":
   test "Published diagnostics":
     proc hasAnyDiagnostic(json: JsonNode): bool {.gcsafe, raises: [CatchableError].} =
       {.cast(gcsafe).}:
-        json{"uri"}.getStr == helloWorldUri and json{"diagnostics"}.len > 0
+        json{"uri"}.getStr == $helloWorldUri and json{"diagnostics"}.len > 0
 
     check waitFor client.waitForNotification(
       "textDocument/publishDiagnostics", hasAnyDiagnostic

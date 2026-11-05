@@ -1,8 +1,10 @@
 import
-  std/[options, os, strutils],
+  std/[options, strutils],
   chronos,
   unittest2,
-  ../utils
+  ../utils,
+  ../protocol/types,
+  ./testhelpers
 
 suite "UTF-16 position mapping":
   test "an ASCII only line needs no correction":
@@ -39,51 +41,51 @@ suite "UTF-16 position mapping":
 
 suite "uri and path conversion":
   test "pathToUri and uriToPath round trip an absolute path":
-    let path = getCurrentDir() / "tests" / "projects" / "hw" / "hw.nim"
+    let path = paths.getCurrentDir() / "tests" / "projects" / "hw" / "hw.nim"
     check path.pathToUri.uriToPath == path
 
   test "pathToUri keeps the path separators unescaped":
-    let uri = (getCurrentDir() / "project" / "file.nim").pathToUri
-    check uri.startsWith("file:///")
-    check "/project/file.nim" in uri
+    let uri = (paths.getCurrentDir() / "project" / "file.nim").pathToUri
+    check uri.string.startsWith("file:///")
+    check "/project/file.nim" in uri.string
 
   test "pathToUri escapes characters that are not URI safe":
-    let path = getCurrentDir() / "a b" / "c#d.nim"
+    let path = paths.getCurrentDir() / "a b" / "c#d.nim"
     let uri = path.pathToUri
-    check "%20" in uri
-    check "%23" in uri
+    check "%20" in uri.string
+    check "%23" in uri.string
     check uri.uriToPath == path
 
   test "a non ascii path survives the round trip":
-    let path = getCurrentDir() / "프로젝트" / "hw.nim"
+    let path = paths.getCurrentDir() / "프로젝트" / "hw.nim"
     check path.pathToUri.uriToPath == path
 
   test "uriToPath rejects a scheme other than file":
     expect UriParseError:
-      discard uriToPath("http://example.com/hw.nim")
+      discard uriToPath("http://example.com/hw.nim".DocumentUri)
 
   test "uriToPath rejects a uri with a hostname":
     expect UriParseError:
-      discard uriToPath("file://somehost/hw.nim")
+      discard uriToPath("file://somehost/hw.nim".DocumentUri)
 
 suite "path and seq helpers":
   test "isRelTo reports containment without raising":
-    check isRelTo("/a/b/c.nim", "/a/b")
-    check not isRelTo("/a/b/c.nim", "/x/y")
+    check isRelTo("/a/b/c.nim".Path, "/a/b".Path)
+    check not isRelTo("/a/b/c.nim".Path, "/x/y".Path)
 
   test "isRelTo is false for a path on another drive":
     when defined(windows):
-      check isRelTo(r"C:\a\b\c.nim", r"C:\a\b")
-      check not isRelTo(r"C:\a\b\c.nim", r"D:\a\b")
-      check not isRelTo(r"\\srv\a\b\c.nim", r"D:\a\b")
+      check isRelTo(r"C:\a\b\c.nim".Path, r"C:\a\b".Path)
+      check not isRelTo(r"C:\a\b\c.nim".Path, r"D:\a\b".Path)
+      check not isRelTo(r"\\srv\a\b\c.nim".Path, r"D:\a\b".Path)
     else:
       skip()
 
   test "isRelTo returns false instead of raising on a malformed path":
-    check not isRelTo("", "")
+    check not isRelTo("".Path, "".Path)
 
   test "tryRelativeTo returns the relative path when there is one":
-    check tryRelativeTo("/a/b/c.nim", "/a/b") == some("c.nim")
+    check tryRelativeTo("/a/b/c.nim".Path, "/a/b".Path) == some("c.nim")
 
   test "head returns the first element or none":
     check @[1, 2, 3].head == some(1)

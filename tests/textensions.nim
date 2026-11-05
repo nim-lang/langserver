@@ -48,7 +48,7 @@ suite "Nimlangserver extensions":
     )
 
     let prevSuggestPid = ls.projectFiles[hwAbsFile].process.pid
-    let suggestParams = SuggestParams(action: saRestart, projectFile: hwAbsFile)
+    let suggestParams = SuggestParams(action: saRestart, projectFile: $hwAbsFile)
     let suggestRes = client.call("extension/suggest", %suggestParams).waitFor
     let suggestPid = ls.projectFiles[hwAbsFile].process.pid
 
@@ -89,7 +89,7 @@ suite "Nimlangserver extensions":
 
   test "calling extension/listTests should return all existing tests":
     #We first need to initialize the nimble project
-    let projectDir = getCurrentDir() / "tests" / "projects" / "testrunner"
+    let projectDir = os.getCurrentDir() / "tests" / "projects" / "testrunner"
     cd projectDir:
       let (output, _) = execNimble("install", "-l")
       discard execNimble("setup")

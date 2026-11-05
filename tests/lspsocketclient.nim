@@ -6,8 +6,8 @@ import
   ../[ls, utils]
 
 #Utils
-proc fixtureUri*(path: string): string =
-  result = pathToUri(getCurrentDir() / "tests" / path)
+proc fixtureUri*(path: string): DocumentUri =
+  result = pathToUri(paths.getCurrentDir() / "tests".Path / path.Path)
 
 const CRLF = "\r\n"
 
@@ -190,7 +190,7 @@ proc openFile*(client: LspSocketClient, file: string) =
   ## Opens the file and, like an editor does, sends a request for it.
   client.notify("textDocument/didOpen", %createDidOpenParams(file))
 
-proc positionParams*(uri: string, line, character: int): TextDocumentPositionParams =
+proc positionParams*(uri: DocumentUri, line, character: int): TextDocumentPositionParams =
   return
     TextDocumentPositionParams %*
     {"position": {"line": line, "character": character}, "textDocument": {"uri": uri}}
