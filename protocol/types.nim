@@ -5,7 +5,7 @@ import
   json_serialization/std/[options as jsoptions, tables as jstables]
 
 export json_serialization, jsoptions, jstables
-export paths except getCurrentDir
+export paths
 
 type
   Uri* = distinct string
