@@ -4,8 +4,7 @@ import
   json_serialization,
   json_serialization/std/[options as jsoptions, tables as jstables]
 
-export json_serialization, jsoptions, jstables
-export paths
+export json_serialization, jsoptions, jstables, paths
 
 type
   Uri* = distinct string
