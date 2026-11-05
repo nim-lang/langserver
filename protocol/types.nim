@@ -7,18 +7,20 @@ import
 export json_serialization, jsoptions, jstables
 export paths except getCurrentDir
 
-type DocumentUri* = distinct string
+type
+  Uri* = distinct string
+  DocumentUri* = Uri
 
-proc `$`*(x: DocumentUri): string {.borrow.}
-proc `==`*(a, b: DocumentUri): bool {.borrow.}
-proc hash*(x: DocumentUri): Hash {.borrow.}
-proc `%`*(x: DocumentUri): JsonNode =
+proc `$`*(x: Uri): string {.borrow.}
+proc `==`*(a, b: Uri): bool {.borrow.}
+proc hash*(x: Uri): Hash {.borrow.}
+proc `%`*(x: Uri): JsonNode =
   %x.string
 
 proc `%`*(x: Path): JsonNode =
   %x.string
 
-chronicles.formatIt(DocumentUri):
+chronicles.formatIt(Uri):
   $it
 chronicles.formatIt(Path):
   $it
@@ -26,13 +28,13 @@ chronicles.formatIt(Path):
 proc len*(x: Path): int =
   x.string.len
 
-proc writeValue*(w: var JsonWriter, x: DocumentUri) {.raises: [IOError].} =
+proc writeValue*(w: var JsonWriter, x: Uri) {.raises: [IOError].} =
   w.writeValue(x.string)
 
 proc readValue*(
-    r: var JsonReader, x: var DocumentUri
+    r: var JsonReader, x: var Uri
 ) {.raises: [IOError, SerializationError].} =
-  x = DocumentUri(r.readValue(string))
+  x = Uri(r.readValue(string))
 
 type
   OptionalSeq*[T] = Option[seq[T]]
@@ -595,7 +597,7 @@ type
     experimental*: OptionalNode
 
   WorkspaceFolder* = ref object of RootObj
-    uri*: DocumentUri
+    uri*: Uri
     name*: string
 
   McpInitializeParams_serverInfo* = ref object of RootObj

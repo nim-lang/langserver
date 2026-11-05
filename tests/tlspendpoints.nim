@@ -440,7 +440,7 @@ suite "LSP endpoints":
     check ls.projectFiles.len == 1
 
     let stash = ls.uriStorageLocation(helloWorldUri)
-    if fileExists(stash):
+    if fileExists(stash.string):
       check readFile(stash.string).normalizeText ==
         readFile("tests" / helloWorldFile).normalizeText
 

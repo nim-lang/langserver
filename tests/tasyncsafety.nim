@@ -49,7 +49,7 @@ suite "Async safety":
     )
 
     let opened = ls.didOpenFile(textDocument)
-    check fileExists(ls.uriStorageLocation(helloWorldUri))
+    check fileExists(ls.uriStorageLocation(helloWorldUri).string)
     check ls.openFiles[helloWorldUri].fingerTable.len > 0
 
     check waitFor opened.withTimeout(30.seconds)
