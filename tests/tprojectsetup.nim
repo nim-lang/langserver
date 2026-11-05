@@ -279,6 +279,14 @@ suite "A project subfolder as the workspace":
     check (waitFor ls.getProjectFile(loose)) == loose
     check (waitFor ls.getWorkingDir(loose)) == looseDir
 
+  test "a project file path is not url decoded":
+    # outside the langserver package, so the path comes from the auto guess
+    let dir = getTempDir() / "nimlangserver-c++%20dir"
+    let file = dir / "main.nim"
+    createDir(dir)
+    writeFile(file, "echo 1\n")
+    check (waitFor ls.getProjectFile(file)) == file
+
 suite "A sub package as the workspace":
   let cmdParams =
     CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())

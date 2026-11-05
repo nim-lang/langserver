@@ -2,7 +2,7 @@
 
 import
   std/[
-    macros, strformat, os, sugar, hashes, osproc, tables, strutils, sets, uri, json,
+    macros, strformat, os, sugar, hashes, osproc, tables, strutils, sets, json,
     sequtils, setutils, times,
   ],
   with,
@@ -446,10 +446,12 @@ proc workspaceFolderOf*(ls: LanguageServer, path: string): string =
     if path.isRelTo(folder) and folder.len > result.len:
       result = folder
 
-proc packageNimbleFile(ls: LanguageServer, file: string): string {.raises: [OSError].} =
-  let rootPath = ls.workspaceFolderOf(file)
+proc packageNimbleFile(
+    ls: LanguageServer, filePath: string
+): string {.raises: [OSError].} =
+  let rootPath = ls.workspaceFolderOf(filePath)
   let inRoot = rootPath != ""
-  var dir = file.parentDir
+  var dir = filePath.parentDir
   while true:
     let nimbleFiles = walkFiles(dir / "*.nimble").toSeq
     if nimbleFiles.len == 1:
@@ -529,12 +531,12 @@ proc isFailedDumpOutdated(
   package.dumpFailed and getLastModificationTime(nimbleFile) != package.nimbleFileTime
 
 proc nimblePackage(
-    ls: LanguageServer, file: string
+    ls: LanguageServer, filePath: string
 ): Future[NimblePackage] {.async: (raises: [CancelledError, OSError]).} =
   if ls.isShutdownNimsuggest:
-    debug "Not running nimble dump, the server is shutting down", file = file
+    debug "Not running nimble dump, the server is shutting down", filePath = filePath
     return NimblePackage()
-  let nimbleFile = ls.packageNimbleFile(file)
+  let nimbleFile = ls.packageNimbleFile(filePath)
   if nimbleFile.len == 0:
     return NimblePackage()
   if ls.isFailedDumpOutdated(nimbleFile):
@@ -546,12 +548,12 @@ proc nimblePackage(
   ls.nimblePackages.getOrDefault(nimbleFile)
 
 proc getNimsuggestPathAndVersion(
-    ls: LanguageServer, conf: NlsConfig, file: string
+    ls: LanguageServer, conf: NlsConfig, filePath: string
 ): Future[(string, string)] {.async: (raises: [CancelledError, OSError, IOError]).} =
   var nimsuggestPath = expandTilde(conf.nimsuggestPath.get(""))
   var nimVersion = ""
   if nimsuggestPath == "":
-    let package = await ls.nimblePackage(file)
+    let package = await ls.nimblePackage(filePath)
     let nimDir = package.nimDir.get ""
     if nimDir != "" and nimDir.dirExists:
       nimVersion = getNimVersion(nimDir) & " from " & nimDir
@@ -566,12 +568,12 @@ proc getNimsuggestPathAndVersion(
   (nimsuggestPath, nimVersion)
 
 proc getNimPath*(
-    ls: LanguageServer, conf: NlsConfig, file: string
+    ls: LanguageServer, conf: NlsConfig, filePath: string
 ): Future[Option[string]] {.async: (raises: [CancelledError, OSError, IOError]).} =
   if conf.nimsuggestPath.isSome and conf.nimsuggestPath.get().fileExists():
     some(conf.nimsuggestPath.get.parentDir / "nim".addFileExt(ExeExt))
   else:
-    let (nimsuggestPath, _) = await ls.getNimsuggestPathAndVersion(conf, file)
+    let (nimsuggestPath, _) = await ls.getNimsuggestPathAndVersion(conf, filePath)
     let path =
       if nimsuggestPath.fileExists():
         nimsuggestPath.parentDir / "nim".addFileExt(ExeExt)
@@ -585,11 +587,10 @@ proc getNimPath*(
       none(string)
 
 proc getProjectFileAutoGuess*(
-    ls: LanguageServer, fileUri: string
+    ls: LanguageServer, filePath: string
 ): Future[string] {.async: (raises: [CancelledError, OSError]).} =
-  let file = fileUri.decodeUrl
-  debug "Auto-guessing project file for", file = file
-  result = file
+  debug "Auto-guessing project file for", filePath = filePath
+  result = filePath
   let (dir, _, _) = result.splitFile()
   var
     path = dir
@@ -620,15 +621,15 @@ proc getProjectFileAutoGuess*(
     inc up
 
 proc getProjectFile*(
-    ls: LanguageServer, uri: string
+    ls: LanguageServer, filePath: string
 ): Future[string] {.async: (raises: [CancelledError, OSError, RegexError]).} =
   let
-    rootPath = ls.workspaceFolderOf(uri)
+    rootPath = ls.workspaceFolderOf(filePath)
     pathRelativeToRoot =
       if rootPath == "":
         none(string)
       else:
-        uri.tryRelativeTo(rootPath)
+        filePath.tryRelativeTo(rootPath)
     conf = await ls.workspaceConfigurationWait()
     mappings = conf.projectMapping.get(@[])
 
@@ -637,27 +638,28 @@ proc getProjectFile*(
     if pathRelativeToRoot.isSome and
         find(pathRelativeToRoot.get(), re2(mapping.fileRegex), m):
       await ls.showMessage(
-        fmt"RegEx matched `{mapping.fileRegex}` for file `{uri}`", MessageType.Info
+        fmt"RegEx matched `{mapping.fileRegex}` for file `{filePath}`", MessageType.Info
       )
       result = rootPath / mapping.projectFile
       if fileExists(result):
         trace "getProjectFile?",
-          project = result, uri = uri, matchedRegex = mapping.fileRegex
+          project = result, filePath = filePath, matchedRegex = mapping.fileRegex
         return result
     else:
-      trace "getProjectFile does not match", uri = uri, matchedRegex = mapping.fileRegex
+      trace "getProjectFile does not match",
+        filePath = filePath, matchedRegex = mapping.fileRegex
 
-  let package = await ls.nimblePackage(uri)
+  let package = await ls.nimblePackage(filePath)
   if package.projectFile.len > 0:
     debug "Found nimble project", projectFile = package.projectFile
     result = package.projectFile
   else:
-    result = await ls.getProjectFileAutoGuess(uri)
+    result = await ls.getProjectFileAutoGuess(filePath)
 
   if result == "":
-    result = uri
+    result = filePath
 
-  debug "getProjectFile ", project = result, uri = uri
+  debug "getProjectFile ", project = result, filePath = filePath
 
 proc projectFileWait*(
     file: NlsFileInfo
@@ -699,15 +701,15 @@ proc addProjectFileToPendingRequest*(
       uri = uri, msg = getCurrentExceptionMsg()
 
 proc getWorkingDir*(
-    ls: LanguageServer, path: string
+    ls: LanguageServer, filePath: string
 ): Future[string] {.async: (raises: [CancelledError, OSError]).} =
   let
-    rootPath = ls.workspaceFolderOf(path)
+    rootPath = ls.workspaceFolderOf(filePath)
     pathRelativeToRoot =
       if rootPath == "":
         none(string)
       else:
-        path.tryRelativeTo(rootPath)
+        filePath.tryRelativeTo(rootPath)
     conf = await ls.workspaceConfigurationWait()
     mapping = conf.workingDirectoryMapping.get(@[])
 
@@ -715,13 +717,13 @@ proc getWorkingDir*(
     if pathRelativeToRoot.isSome and m.projectFile == pathRelativeToRoot.get():
       return rootPath / m.directory
 
-  let package = await ls.nimblePackage(path)
+  let package = await ls.nimblePackage(filePath)
   if package.dir.len > 0:
     package.dir
   elif rootPath != "":
     rootPath
   else:
-    path.parentDir
+    filePath.parentDir
 
 proc progressSupported(ls: LanguageServer): bool =
   ls.serverMode == lsp and
