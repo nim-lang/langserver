@@ -2,7 +2,8 @@
 
 import
   std/[
-    os, sugar, sequtils, tables, strformat, strscans, times, json, parseutils, strutils
+    os, sugar, sequtils, tables, strformat, strscans, times, json, parseutils, strutils,
+    files,
   ],
   with,
   chronos,

@@ -1,5 +1,6 @@
 import
   std/[hashes, json, options, paths, tables],
+  chronicles,
   json_serialization,
   json_serialization/std/[options as jsoptions, tables as jstables]
 
@@ -16,6 +17,11 @@ proc `%`*(x: DocumentUri): JsonNode =
 
 proc `%`*(x: Path): JsonNode =
   %x.string
+
+chronicles.formatIt(DocumentUri):
+  $it
+chronicles.formatIt(Path):
+  $it
 
 proc len*(x: Path): int =
   x.string.len

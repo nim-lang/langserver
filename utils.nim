@@ -1,23 +1,13 @@
 {.push raises: [], gcsafe.}
 
 import
-  std/[macros, unicode, uri, strformat, os, strutils, options, json, net, files, dirs],
+  std/[macros, unicode, uri, strformat, os, strutils, options, json, net],
   chronos,
   chronicles,
   chronos/asyncproc,
   json_rpc/private/jrpc_sys,
   stew/byteutils,
   ./protocol/types
-
-chronicles.formatIt(DocumentUri):
-  $it
-chronicles.formatIt(Path):
-  $it
-
-export files.fileExists, dirs.dirExists
-
-proc `/`*(head: Path, tail: string): Path =
-  Path(head.string / tail)
 
 type
   FingerTable = seq[tuple[u16pos, offset: int]]

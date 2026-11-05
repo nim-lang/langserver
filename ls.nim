@@ -3,7 +3,7 @@
 import
   std/[
     macros, strformat, os, sugar, hashes, osproc, tables, strutils, sets, json,
-    sequtils, setutils, times,
+    sequtils, setutils, times, files,
   ],
   with,
   chronos,
@@ -451,10 +451,10 @@ proc packageNimbleFile(ls: LanguageServer, filePath: Path): Path {.raises: [OSEr
   let inRoot = rootPath.len > 0
   var dir = filePath.parentDir
   while true:
-    let nimbleFiles = walkFiles((dir / "*.nimble").string).toSeq
+    let nimbleFiles = walkFiles((dir / "*.nimble".Path).string).toSeq
     if nimbleFiles.len == 1:
       result = nimbleFiles[0].Path
-      if fileExists(dir / "nimble.paths"):
+      if fileExists(dir / "nimble.paths".Path):
         return
     elif nimbleFiles.len > 1:
       debug "Ignoring a folder with several nimble files", dir = dir
@@ -513,9 +513,9 @@ proc loadNimblePackage(
   if exitCode != 0:
     warn "nimble dump failed", nimbleFile = nimbleFile, exitCode = exitCode
     package.dumpFailed = true
-  package.sourceDir = packageDir / srcDir
-  package.entryPoints = entryPoints.mapIt(packageDir / it).filterIt(it.fileExists)
-  let projectFile = package.sourceDir / (name & ".nim")
+  package.sourceDir = packageDir / srcDir.Path
+  package.entryPoints = entryPoints.mapIt(packageDir / it.Path).filterIt(it.fileExists)
+  let projectFile = package.sourceDir / Path(name & ".nim")
   if name.len > 0 and fileExists(projectFile):
     package.projectFile = projectFile
     if projectFile notin package.entryPoints:
@@ -639,7 +639,7 @@ proc getProjectFile*(
       await ls.showMessage(
         fmt"RegEx matched `{mapping.fileRegex}` for file `{filePath}`", MessageType.Info
       )
-      result = rootPath / mapping.projectFile
+      result = rootPath / mapping.projectFile.Path
       if fileExists(result):
         trace "getProjectFile?",
           project = result, filePath = filePath, matchedRegex = mapping.fileRegex
@@ -714,7 +714,7 @@ proc getWorkingDir*(
 
   for m in mapping:
     if pathRelativeToRoot.isSome and m.projectFile == pathRelativeToRoot.get():
-      return rootPath / m.directory
+      return rootPath / m.directory.Path
 
   let package = await ls.nimblePackage(filePath)
   if package.dir.len > 0:

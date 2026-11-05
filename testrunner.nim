@@ -1,8 +1,10 @@
 {.push raises: [], gcsafe.}
 
 import
-  std/
-    [os, strscans, tables, enumerate, strutils, xmlparser, xmltree, options, strformat],
+  std/[
+    os, strscans, tables, enumerate, strutils, xmlparser, xmltree, options, strformat,
+    files,
+  ],
   chronos,
   chronos/asyncproc,
   chronicles,
