@@ -377,8 +377,9 @@ proc createNimsuggest*(
     await result.markFailed "Unable to start nimsuggest. Unable to find binary on the $PATH"
     raise newException(ValueError, "Empty nimsuggestPath")
   try:
-    let isNimble = root.string.endsWith(".nimble")
-    let isNimScript = root.string.endsWith(".nims") or isNimble
+    let ext = root.splitFile.ext
+    let isNimble = ext == ".nimble"
+    let isNimScript = ext == ".nims" or isNimble
     var extraArgs = newSeq[string]()
     if isNimScript:
       extraArgs.add("--import: system/nimscript")

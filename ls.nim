@@ -166,7 +166,7 @@ type
     initialized*: bool
       #Set once initialize has run. Until then routes can't rely on its state.
     isShutdown*: bool
-    storageDir*: string
+    storageDir*: Path
     nimblePackages*: Table[Path, NimblePackage] #nimble file to its package
     nimblePackageLoads*: Table[Path, Future[void].Raising([CancelledError])]
     testRunProcess*: Option[AsyncProcessRef]
@@ -234,7 +234,7 @@ proc initLs*(params: CommandLineParams, storageDir: string): LanguageServer =
     serverMode: params.mode.get(),
     transportMode: params.transport.get(stdio),
     openFiles: initTable[DocumentUri, NlsFileInfo](),
-    storageDir: storageDir,
+    storageDir: storageDir.Path,
     extensionCapabilities: LspExtensionCapability.items.toSet,
   )
 
@@ -590,9 +590,8 @@ proc getProjectFileAutoGuess*(
 ): Future[Path] {.async: (raises: [CancelledError, OSError]).} =
   debug "Auto-guessing project file for", file = file
   result = file
-  let (dir, _, _) = file.string.splitFile()
   var
-    path = dir
+    path = file.splitFile.dir
     certainty = Certainty.None
     up = 0
 
@@ -601,18 +600,18 @@ proc getProjectFileAutoGuess*(
   # When using only one nimsuggest process, we should not search for parent projects
   # as this will cause all files to be opened in the same nimsuggest process.
   let maxUp = if maxNimsuggestProcesses == 1: 0 else: 2
-  while path.len > 0 and path != "/" and up < maxUp:
+  while path.len > 0 and path != Path("/") and up < maxUp:
     let
       (dir, fname, ext) = path.splitFile()
-      current = fname & ext
+      current = Path($fname & ext)
     if fileExists(path / current.addFileExt(".nim")) and certainty <= Folder:
-      result = Path(path / current.addFileExt(".nim"))
+      result = path / current.addFileExt(".nim")
       certainty = Folder
     if fileExists(path / current.addFileExt(".nim")) and (
       fileExists(path / current.addFileExt(".nim.cfg")) or
       fileExists(path / current.addFileExt(".nims"))
     ) and certainty <= Cfg:
-      result = Path(path / current.addFileExt(".nim"))
+      result = path / current.addFileExt(".nim")
       certainty = Cfg
     if path == dir:
       break
@@ -750,7 +749,7 @@ proc cancelPendingFileChecks*(ls: LanguageServer, nimsuggest: Nimsuggest) =
       info.fileCheck.cancelSoon()
 
 proc uriStorageLocation*(ls: LanguageServer, uri: DocumentUri): Path =
-  Path(ls.storageDir / (hash(uri).toHex & ".nim"))
+  ls.storageDir / Path(hash(uri).toHex & ".nim")
 
 proc uriToStash*(ls: LanguageServer, uri: DocumentUri): Path =
   let file = ls.openFiles.getOrDefault(uri)

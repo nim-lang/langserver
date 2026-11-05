@@ -15,17 +15,17 @@ proc newClient(port: Port): LspSocketClient =
   )
 
 let
-  projectsDir = absolutePath "tests" / "projects"
+  projectsDir = absolutePath("tests" / "projects").Path
   hwDir = projectsDir / "hw"
   modulesDir = projectsDir / "multimodules"
   otherModule = modulesDir / "othermodule.nim"
   rootModule = modulesDir / "rootmodule.nim"
 
-proc folderChange(added, removed: seq[string]): JsonNode =
-  proc folders(dirs: seq[string]): JsonNode =
+proc folderChange(added, removed: seq[Path]): JsonNode =
+  proc folders(dirs: seq[Path]): JsonNode =
     result = newJArray()
     for dir in dirs:
-      result.add %*{"uri": pathToUri(dir), "name": dir.extractFilename}
+      result.add %*{"uri": pathToUri(dir), "name": $dir.extractFilename}
 
   %*{"event": {"added": folders(added), "removed": folders(removed)}}
 
@@ -71,7 +71,7 @@ suite "Several workspaces":
   test "a file belongs to the workspace that contains it":
     check ls.workspaceFolderOf(hwDir / "hw.nim") == hwDir
     check ls.workspaceFolderOf(otherModule) == modulesDir
-    check ls.workspaceFolderOf(projectsDir / "vendored" / "vendored.nim") == ""
+    check ls.workspaceFolderOf(projectsDir / "vendored" / "vendored.nim").len == 0
 
   test "a project mapping is relative to the workspace of the file":
     check (waitFor ls.getProjectFile(otherModule)) == rootModule
@@ -117,22 +117,22 @@ suite "No workspace":
 
   test "a file outside the workspace and of any package runs in its own dir":
     check ls.workspaceFolders.len == 0
-    check ls.workspaceFolderOf(hwDir / "hw.nim") == ""
+    check ls.workspaceFolderOf(hwDir / "hw.nim").len == 0
     # The fixtures are inside the langserver package, so this one is not.
     let
-      dir = getTempDir() / "nimlangserver-no-folders"
+      dir = getTempDir().Path / "nimlangserver-no-folders"
       path = dir / "main.nim"
-    createDir(dir)
-    writeFile(path, "echo 1\n")
+    createDir(dir.string)
+    writeFile(path.string, "echo 1\n")
     check (waitFor ls.getWorkingDir(path)) == dir
 
 suite "Workspaces without a nimble file":
   let
     mono = projectsDir / "mono"
     # Outside the langserver package, so it belongs to no package.
-    loose = getTempDir() / "nimlangserver-workspace-packages" / "loose"
-  createDir(loose)
-  writeFile(loose / "loose.nim", "echo 1\n")
+    loose = getTempDir().Path / "nimlangserver-workspace-packages" / "loose"
+  createDir(loose.string)
+  writeFile((loose / "loose.nim").string, "echo 1\n")
 
   let cmdParams =
     CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())

@@ -36,12 +36,12 @@ proc extractTestInfo*(rawOutput: string): TestProjectInfo {.raises: [ValueError]
         result.suites[suiteName].tests.add(testInfo)
 
 proc getFullPath*(entryPoint: string, workspaceFolders: seq[Path]): Path =
-  if not fileExists(entryPoint):
+  result = entryPoint.Path
+  if not fileExists(result):
     for folder in workspaceFolders:
-      let absolutePath = joinPath(folder.string, entryPoint)
+      let absolutePath = folder / result
       if fileExists(absolutePath):
-        return absolutePath.Path
-  return entryPoint.Path
+        return absolutePath
 
 proc parseObject(obj: var object, node: XmlNode) {.raises: [ValueError].} =
   for field, value in obj.fieldPairs:

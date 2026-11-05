@@ -84,8 +84,9 @@ proc nimCheck*(
       (raises: [CancelledError, AsyncProcessError, AsyncStreamError, OSError, IOError])
 .} =
   debug "nimCheck", filePath = filePath, nimPath = nimPath
-  let isNimble = filePath.string.endsWith(".nimble")
-  let isNimScript = filePath.string.endsWith(".nims") or isNimble
+  let ext = filePath.splitFile.ext
+  let isNimble = ext == ".nimble"
+  let isNimScript = ext == ".nims" or isNimble
   var extraArgs = newSeq[string]()
   if isNimScript:
     extraArgs.add("--import: system/nimscript")

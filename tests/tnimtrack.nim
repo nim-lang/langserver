@@ -7,7 +7,7 @@ import
   ./lspsocketclient
 
 suite "Nim track with nim >= 2.4":
-  let trackProjectDir = absolutePath("tests" / "projects" / "trackproject")
+  let trackProjectDir = absolutePath("tests" / "projects" / "trackproject").Path
   let savedDir = os.getCurrentDir()
   setCurrentDir(trackProjectDir)
   let (setupOutput, setupExitCode) = execCmdEx("nimble -yl setup")

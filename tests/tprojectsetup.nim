@@ -17,14 +17,14 @@ suite "nimble setup":
     "extension/statusUpdate", "extension/statusUpdate",
     "textDocument/publishDiagnostics", "$/progress",
   )
-  let testProjectDir = absolutePath "tests" / "projects" / "testproject"
+  let testProjectDir = absolutePath("tests" / "projects" / "testproject").Path
 
   suiteTeardown:
     waitFor ls.shutdownNimsuggest()
 
   test "should pick `testproject.nim` as the main file and provide suggestions":
     let entryPoint = testProjectDir / "src" / "testproject.nim"
-    createNimbleProject(testProjectDir)
+    createNimbleProject(testProjectDir.string)
     let initParams =
       LspInitializeParams %* {
         "processId": %getCurrentProcessId(),
@@ -98,8 +98,8 @@ suite "Project Mapping":
 
   test "should use projectMapping fileRegex to find project file":
     # Outside the langserver package, so the file belongs to no package.
-    let rootDir = getTempDir() / "nimlangserver-project-mapping"
-    createDir(rootDir)
+    let rootDir = getTempDir().Path / "nimlangserver-project-mapping"
+    createDir(rootDir.string)
     let initParams =
       LspInitializeParams %* {
         "processId": %getCurrentProcessId(),
@@ -135,7 +135,7 @@ suite "Nimble packages":
     "window/showMessage", "window/workDoneProgress/create", "workspace/configuration",
     "extension/statusUpdate", "textDocument/publishDiagnostics", "$/progress",
   )
-  let projectsDir = absolutePath "tests" / "projects"
+  let projectsDir = absolutePath("tests" / "projects").Path
   discard waitFor client.initialize(
     LspInitializeParams %* {
       "processId": %getCurrentProcessId(),
@@ -174,9 +174,9 @@ suite "Nimble packages":
       packageDir = projectsDir / "brokennimble"
       nimbleFile = packageDir / "broken.nimble"
       mainFile = packageDir / "src" / "broken.nim"
-    createDir(packageDir / "src")
-    writeFile(mainFile, "echo 1\n")
-    writeFile(nimbleFile, "srcDir = \"src\"\nthis is not nim(\n")
+    createDir((packageDir / "src").string)
+    writeFile(mainFile.string, "echo 1\n")
+    writeFile(nimbleFile.string, "srcDir = \"src\"\nthis is not nim(\n")
 
     discard waitFor ls.getProjectFile(mainFile)
     check ls.nimblePackages[nimbleFile].dumpFailed
@@ -187,14 +187,14 @@ suite "Nimble packages":
     check ls.nimblePackageLoads[nimbleFile] == failedLoad
 
     # the mtime moves explicitly so the change is seen on coarse filesystems
-    let brokenTime = getLastModificationTime(nimbleFile)
+    let brokenTime = getLastModificationTime(nimbleFile.string)
     writeFile(
-      nimbleFile,
+      nimbleFile.string,
       "version = \"0.1.0\"\nauthor = \"nimlangserver tests\"\n" &
         "description = \"Fixture: a package whose nimble file gets fixed\"\n" &
         "license = \"MIT\"\nsrcDir = \"src\"\n",
     )
-    setLastModificationTime(nimbleFile, fromUnix(brokenTime.toUnix + 2))
+    setLastModificationTime(nimbleFile.string, fromUnix(brokenTime.toUnix + 2))
 
     check (waitFor ls.getProjectFile(mainFile)) == mainFile
     check not ls.nimblePackages[nimbleFile].dumpFailed
@@ -244,7 +244,7 @@ suite "A project subfolder as the workspace":
     "window/showMessage", "window/workDoneProgress/create", "workspace/configuration",
     "extension/statusUpdate", "textDocument/publishDiagnostics", "$/progress",
   )
-  let projectsDir = absolutePath "tests" / "projects"
+  let projectsDir = absolutePath("tests" / "projects").Path
   let mono = projectsDir / "mono"
   let localDeps = projectsDir / "localdeps"
   discard waitFor client.initialize(
@@ -272,19 +272,19 @@ suite "A project subfolder as the workspace":
 
   test "a file outside the workspace and of any package is its own project":
     # ie: a go-to-def file; outside the langserver package, so it has no package
-    let looseDir = getTempDir() / "nimlangserver-no-package"
+    let looseDir = getTempDir().Path / "nimlangserver-no-package"
     let loose = looseDir / "loose.nim"
-    createDir(looseDir)
-    writeFile(loose, "echo 1\n")
+    createDir(looseDir.string)
+    writeFile(loose.string, "echo 1\n")
     check (waitFor ls.getProjectFile(loose)) == loose
     check (waitFor ls.getWorkingDir(loose)) == looseDir
 
   test "a project file path is not url decoded":
     # outside the langserver package, so the path comes from the auto guess
-    let dir = getTempDir() / "nimlangserver-c++%20dir"
+    let dir = getTempDir().Path / "nimlangserver-c++%20dir"
     let file = dir / "main.nim"
-    createDir(dir)
-    writeFile(file, "echo 1\n")
+    createDir(dir.string)
+    writeFile(file.string, "echo 1\n")
     check (waitFor ls.getProjectFile(file)) == file
 
 suite "A sub package as the workspace":
@@ -297,7 +297,7 @@ suite "A sub package as the workspace":
     "window/showMessage", "window/workDoneProgress/create", "workspace/configuration",
     "extension/statusUpdate", "textDocument/publishDiagnostics", "$/progress",
   )
-  let projectsDir = absolutePath "tests" / "projects"
+  let projectsDir = absolutePath("tests" / "projects").Path
   let depDir = projectsDir / "vendored" / "vendor" / "dep"
   discard waitFor client.initialize(
     LspInitializeParams %* {
@@ -326,7 +326,7 @@ suite "Projects with local dependencies":
     "window/showMessage", "window/workDoneProgress/create", "workspace/configuration",
     "extension/statusUpdate", "textDocument/publishDiagnostics", "$/progress",
   )
-  let projectsDir = absolutePath "tests" / "projects"
+  let projectsDir = absolutePath("tests" / "projects").Path
   let localDeps = projectsDir / "localdeps"
   let dep =
     localDeps / "nimbledeps" / "pkgs2" /

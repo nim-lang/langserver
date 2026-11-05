@@ -73,7 +73,7 @@ proc editRootFile(client: LspSocketClient) =
 
 proc diagnosticsFor(client: LspSocketClient, uri: DocumentUri): int =
   client.calls.getOrDefault("textDocument/publishDiagnostics").countIt(
-    it["uri"].getStr == uri
+    it["uri"].getStr == $uri
   )
 
 proc stopAsIdle(ls: LanguageServer) =
@@ -124,7 +124,7 @@ suite "Idle nimsuggest shared by several files":
 
 suite "Idle nimsuggest of a nimble package":
   let (ls, client) = startServer("projects")
-  let vendored = absolutePath("tests" / "projects" / "vendored" / "vendored.nim")
+  let vendored = absolutePath("tests" / "projects" / "vendored" / "vendored.nim").Path
 
   suiteTeardown:
     waitFor ls.shutdownNimsuggest()
@@ -136,7 +136,7 @@ suite "Idle nimsuggest of a nimble package":
     check (waitFor ls.tryGetNimsuggest("projects/vendored/vendored.nim".fixtureUri)).isSome
     # The package's own module is one of its entry points, which used to be
     # kept running however long they were idle.
-    let nimbleFile = absolutePath("tests" / "projects" / "vendored" / "vendored.nimble")
+    let nimbleFile = absolutePath("tests" / "projects" / "vendored" / "vendored.nimble").Path
     check vendored in ls.nimblePackages[nimbleFile].entryPoints
     check vendored in ls.projectFiles
     waitFor ls.didCloseFile("projects/vendored/vendored.nim".fixtureUri)
@@ -227,7 +227,7 @@ suite "File closed before its nimsuggest was stopped":
 proc lastDiagnosticsFor(client: LspSocketClient, uri: DocumentUri): JsonNode =
   result = newJArray()
   for params in client.calls.getOrDefault("textDocument/publishDiagnostics"):
-    if params["uri"].getStr == uri:
+    if params["uri"].getStr == $uri:
       result = params["diagnostics"]
 
 suite "File closed with unsaved edits":
@@ -340,5 +340,5 @@ suite "Failed nimsuggest while others run":
     ls.failTable[otherUri.uriToPath] = 10
 
     check (waitFor ls.tryGetNimsuggest(otherUri)).isNone
-    check ls.openFiles.getOrDefault(otherUri).nimsuggestProject == ""
+    check ls.openFiles.getOrDefault(otherUri).nimsuggestProject.len == 0
     check ls.projectFiles.len == 4

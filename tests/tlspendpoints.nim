@@ -602,7 +602,7 @@ suite "LSP messages leave unset members out":
   test "Published diagnostics":
     proc hasAnyDiagnostic(json: JsonNode): bool {.gcsafe, raises: [CatchableError].} =
       {.cast(gcsafe).}:
-        json{"uri"}.getStr == helloWorldUri and json{"diagnostics"}.len > 0
+        json{"uri"}.getStr == $helloWorldUri and json{"diagnostics"}.len > 0
 
     check waitFor client.waitForNotification(
       "textDocument/publishDiagnostics", hasAnyDiagnostic

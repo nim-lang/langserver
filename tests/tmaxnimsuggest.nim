@@ -108,7 +108,7 @@ suite "Reusing a nimsuggest instance over the cap":
     CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
   let ls = main(cmdParams)
   let client = newClient(cmdParams.port)
-  let projectsDir = absolutePath "tests" / "projects"
+  let projectsDir = absolutePath("tests" / "projects").Path
 
   suiteTeardown:
     waitFor ls.shutdownNimsuggest()
@@ -131,7 +131,7 @@ suite "Reusing a nimsuggest instance over the cap":
     # can be the first live instance, so the other one is served by its own
     # project only if the reuse prefers it.
     for file in files:
-      ls.openFiles[file.fixtureUri].nimsuggestProject = ""
+      ls.openFiles[file.fixtureUri].nimsuggestProject = Path("")
     for file in files:
       check (waitFor ls.tryGetNimsuggest(file.fixtureUri)).isSome
     check ls.openFiles["projects/hw/hw.nim".fixtureUri].nimsuggestProject ==
@@ -145,7 +145,7 @@ suite "Last used nimsuggest over the cap":
     CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
   let ls = main(cmdParams)
   let client = newClient(cmdParams.port)
-  let projectsDir = absolutePath "tests" / "projects"
+  let projectsDir = absolutePath("tests" / "projects").Path
 
   suiteTeardown:
     waitFor ls.shutdownNimsuggest()
@@ -195,5 +195,5 @@ suite "Last used nimsuggest over the cap":
     # hw.nim is not known by it, so it gets no nimsuggest.
     waitFor ls.didOpenFile(createDidOpenParams("projects/hw/hw.nim").textDocument)
     check (waitFor ls.tryGetNimsuggest(hwUri)).isNone
-    check ls.openFiles[hwUri].nimsuggestProject == ""
+    check ls.openFiles[hwUri].nimsuggestProject.len == 0
     check ls.projectFiles.len == 1

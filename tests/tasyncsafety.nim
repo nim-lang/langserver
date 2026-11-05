@@ -211,7 +211,7 @@ suite "Documents closed while a handler is suspended":
     # notification is the only externally visible trace a save leaves.
     proc isForHelloWorld(json: JsonNode): bool {.gcsafe, raises: [CatchableError].} =
       {.cast(gcsafe).}:
-        json{"uri"}.getStr == helloWorldUri
+        json{"uri"}.getStr == $helloWorldUri
 
     check waitFor client.waitForNotification(Diagnostics, isForHelloWorld)
 
@@ -229,7 +229,7 @@ suite "Documents closed while a handler is suspended":
     let fut =
       Future[Path].Raising([CancelledError, OSError, RegexError]).init("closed race")
     ls.openFiles[helloWorldUri].projectFile = fut
-    ls.openFiles[helloWorldUri].nimsuggestProject = ""
+    ls.openFiles[helloWorldUri].nimsuggestProject = Path("")
 
     let saving = lspRoutes.didSave(ls, saveParams)
     check not saving.finished

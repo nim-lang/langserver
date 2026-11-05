@@ -4,11 +4,8 @@ import
   chronos,
   ../protocol/types
 
-converter toDocumentUri*(x: string): DocumentUri =
-  x.DocumentUri
-
-converter toPath*(x: string): Path =
-  x.Path
+proc `/`*(head: Path, tail: string): Path =
+  head / tail.Path
 
 
 template waitUntil*(condition: untyped, timeout = 10.seconds): bool =

@@ -138,5 +138,5 @@ suite "Shared project futures":
     waiter.cancelSoon()
     waitFor sleepAsync(100.milliseconds)
     check not projectFile.cancelled
-    projectFile.complete("root.nim")
+    projectFile.complete("root.nim".Path)
     check waiter.cancelled
