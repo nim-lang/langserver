@@ -713,7 +713,7 @@ proc codeAction*(
     async: (raises: [ApplicationError, CancelledError, OSError, RegexError])
 .} =
   ls.checkInitialized()
-  let projectUri = await ls.projectFileWait(params.textDocument.uri)
+  let projectFile = await ls.projectFileWait(params.textDocument.uri)
   return
     seq[CodeAction] %* [
       {
@@ -722,7 +722,7 @@ proc codeAction*(
         "command": {
           "title": "Clean build",
           "command": RECOMPILE_COMMAND,
-          "arguments": @[projectUri],
+          "arguments": @[projectFile],
         },
       },
       {
@@ -731,7 +731,7 @@ proc codeAction*(
         "command": {
           "title": "Refresh project errors",
           "command": CHECK_PROJECT_COMMAND,
-          "arguments": @[projectUri],
+          "arguments": @[projectFile],
         },
       },
       {
@@ -740,7 +740,7 @@ proc codeAction*(
         "command": {
           "title": "Restart nimsuggest",
           "command": RESTART_COMMAND,
-          "arguments": @[projectUri],
+          "arguments": @[projectFile],
         },
       },
     ]
