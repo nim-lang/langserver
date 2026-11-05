@@ -439,7 +439,7 @@ proc getWorkspaceFolders*(ip: LspInitializeParams): seq[Path] =
     result.add ip.rootPath.get.Path
 
 proc getWorkspaceFolders*(ip: McpInitializeParams): seq[Path] {.raises: [OSError].} =
-  @[paths.getCurrentDir().pathToUri.uriToPath]
+  @[paths.getCurrentDir()]
 
 proc workspaceFolderOf*(ls: LanguageServer, path: Path): Path =
   for folder in ls.workspaceFolders:
