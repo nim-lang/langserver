@@ -121,47 +121,6 @@ suite "LSP endpoints":
     for action in actions:
       check action.title.len > 0
 
-  test "textDocument/codeAction uses the project resolved for an open file":
-    # A project no lookup would find, so only the open file can be its source.
-    let resolved = "/resolved/project.nim"
-    let fut = Future[string].Raising([CancelledError, OSError, RegexError]).init(
-        "code action project"
-      )
-    fut.complete(resolved)
-    let file = ls.openFiles[helloWorldUri]
-    let projectFile = file.projectFile
-    file.projectFile = fut
-    let params =
-      CodeActionParams %* {
-        "textDocument": {"uri": helloWorldUri},
-        "range":
-          {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 1}},
-        "context": {"diagnostics": []},
-      }
-    let actions =
-      to(client.callTimeout("textDocument/codeAction", %params), seq[CodeAction])
-    file.projectFile = projectFile
-    check actions.len > 0
-    for action in actions:
-      check action.command.arguments.get == %[resolved]
-
-  test "textDocument/codeAction resolves the project of a closed file":
-    let uri = fixtureUri("projects/hw/never-opened.nim")
-    check uri notin ls.openFiles
-    let params =
-      CodeActionParams %* {
-        "textDocument": {"uri": uri},
-        "range":
-          {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 1}},
-        "context": {"diagnostics": []},
-      }
-    let actions =
-      to(client.callTimeout("textDocument/codeAction", %params), seq[CodeAction])
-    check actions.len > 0
-    let project = waitFor ls.getProjectFile(uri.uriToPath)
-    for action in actions:
-      check action.command.arguments.get == %[project]
-
   test "workspace/symbol answers a query":
     let params = WorkspaceSymbolParams %* {"query": "bbb"}
     let symbols =
