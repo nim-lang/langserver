@@ -7,19 +7,20 @@ import
   chronos/asyncproc,
   stew/[byteutils],
   chronicles,
-  ./utils
+  ./utils,
+  ./protocol/types
 
 export RegexError
 
 type
   CheckStacktrace* = object
-    file*: string
+    file*: Path
     line*: int
     column*: int
     msg*: string
 
   CheckResult* = object
-    file*: string
+    file*: Path
     line*: int
     column*: int
     msg*: string
@@ -61,7 +62,7 @@ proc parseCheckResults(lines: seq[string]): seq[CheckResult] =
 
         result.add(
           CheckResult(
-            file: file,
+            file: file.Path,
             line: lineNum,
             column: colNum,
             msg: msg,
@@ -77,14 +78,14 @@ proc parseCheckResults(lines: seq[string]): seq[CheckResult] =
     result[^1].msg &= "\n" & messageText
 
 proc nimCheck*(
-    filePath: string, nimPath: string
+    filePath: Path, nimPath: string
 ): Future[seq[CheckResult]] {.
     async:
       (raises: [CancelledError, AsyncProcessError, AsyncStreamError, OSError, IOError])
 .} =
   debug "nimCheck", filePath = filePath, nimPath = nimPath
-  let isNimble = filePath.endsWith(".nimble")
-  let isNimScript = filePath.endsWith(".nims") or isNimble
+  let isNimble = filePath.string.endsWith(".nimble")
+  let isNimScript = filePath.string.endsWith(".nims") or isNimble
   var extraArgs = newSeq[string]()
   if isNimScript:
     extraArgs.add("--import: system/nimscript")
@@ -92,7 +93,7 @@ proc nimCheck*(
     extraArgs.add("--include: " & getNimScriptAPITemplatePath())
   let process = await startProcess(
     nimPath,
-    arguments = @["check", "--listFullPaths"] & extraArgs & @[filePath],
+    arguments = @["check", "--listFullPaths"] & extraArgs & @[filePath.string],
     options = {UsePath},
     stderrHandle = AsyncProcess.Pipe,
     stdoutHandle = AsyncProcess.Pipe,

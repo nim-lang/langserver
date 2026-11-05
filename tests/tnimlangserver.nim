@@ -226,8 +226,8 @@ suite "LSP features":
       .to(WorkspaceEdit).changes
       .get()
     check changes.len == 1
-    check changes[helloWorldUri].len == 3
-    check changes[helloWorldUri].mapIt(it["newText"].getStr()) ==
+    check changes[helloWorldUri.string].len == 3
+    check changes[helloWorldUri.string].mapIt(it["newText"].getStr()) ==
       @["hello", "hello", "hello"]
 
   test "didChange then sending hover.":

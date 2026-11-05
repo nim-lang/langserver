@@ -1,4 +1,15 @@
-import std/[os, osproc, sequtils, strutils, sugar], unittest2, chronos
+import
+  std/[os, osproc, sequtils, strutils, sugar],
+  unittest2,
+  chronos,
+  ../protocol/types
+
+converter toDocumentUri*(x: string): DocumentUri =
+  x.DocumentUri
+
+converter toPath*(x: string): Path =
+  x.Path
+
 
 template waitUntil*(condition: untyped, timeout = 10.seconds): bool =
   block:

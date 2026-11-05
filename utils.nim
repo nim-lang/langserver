@@ -1,12 +1,23 @@
 {.push raises: [], gcsafe.}
 
 import
-  std/[macros, unicode, uri, strformat, os, strutils, options, json, net, paths],
+  std/[macros, unicode, uri, strformat, os, strutils, options, json, net, files, dirs],
   chronos,
   chronicles,
   chronos/asyncproc,
   json_rpc/private/jrpc_sys,
-  stew/byteutils
+  stew/byteutils,
+  ./protocol/types
+
+chronicles.formatIt(DocumentUri):
+  $it
+chronicles.formatIt(Path):
+  $it
+
+export files.fileExists, dirs.dirExists
+
+proc `/`*(head: Path, tail: string): Path =
+  Path(head.string / tail)
 
 type
   FingerTable = seq[tuple[u16pos, offset: int]]
@@ -81,54 +92,55 @@ proc utf8to16*(fingerTable: FingerTable, utf8pos: int): int =
     else:
       break
 
-proc uriToPath*(uri: string): string =
+proc uriToPath*(uri: DocumentUri): Path =
   ## Convert an RFC 8089 file URI to a native, platform-specific, absolute path.
   #let startIdx = when defined(windows): 8 else: 7
   #normalizedPath(uri[startIdx..^1])
-  let parsed = uri.parseUri
+  let parsed = uri.string.parseUri
   if parsed.scheme != "file":
     var e = newException(
       UriParseError,
       "Invalid scheme in uri \"{uri}\": {parsed.scheme}, only \"file\" is supported".fmt,
     )
-    e.uri = uri
+    e.uri = uri.string
     raise e
   if parsed.hostname != "":
     var e = newException(
       UriParseError,
       "Invalid hostname in uri \"{uri}\": {parsed.hostname}, only empty hostname is supported".fmt,
     )
-    e.uri = uri
+    e.uri = uri.string
     raise e
   return normalizedPath(
     when defined(windows):
       parsed.path[1 ..^ 1]
     else:
       parsed.path
-  ).decodeUrl
+  ).decodeUrl.Path
 
-proc pathToUri*(path: string): string =
+proc pathToUri*(path: Path): DocumentUri =
   # This is a modified copy of encodeUrl in the uri module. This doesn't encode
   # the / character, meaning a full file path can be passed in without breaking
   # it.
-  result = "file://" & newStringOfCap(path.len + path.len shr 2)
+  var uri = "file://" & newStringOfCap(path.string.len + path.string.len shr 2)
     # assume 12% non-alnum-chars
   when defined(windows):
-    add(result, '/')
-  for c in path:
+    add(uri, '/')
+  for c in path.string:
     case c
     # https://tools.ietf.org/html/rfc3986#section-2.3
     of 'a' .. 'z', 'A' .. 'Z', '0' .. '9', '-', '.', '_', '~', '/':
-      add(result, c)
+      add(uri, c)
     of '\\':
       when defined(windows):
-        add(result, '/')
+        add(uri, '/')
       else:
-        add(result, '%')
-        add(result, toHex(ord(c), 2))
+        add(uri, '%')
+        add(uri, toHex(ord(c), 2))
     else:
-      add(result, '%')
-      add(result, toHex(ord(c), 2))
+      add(uri, '%')
+      add(uri, toHex(ord(c), 2))
+  uri.DocumentUri
 
 proc catchOrQuit*(error: Exception) =
   if error of CatchableError:
@@ -152,7 +164,7 @@ iterator groupBy*[T, U](
   for x in t.pairs:
     yield x
 
-proc isRelTo*(path, base: string): bool {.raises: [].} =
+proc isRelTo*(path, base: Path): bool {.raises: [].} =
   ### isRelativeTo version that do not throws
   try:
     # XXX absolute check because of https://github.com/nim-lang/Nim/pull/26571
@@ -161,7 +173,7 @@ proc isRelTo*(path, base: string): bool {.raises: [].} =
     debug "isRelTo error", path = path, base = base, err = getCurrentExceptionMsg()
     false
 
-proc tryRelativeTo*(path, base: string): Option[string] =
+proc tryRelativeTo*(path, base: Path): Option[string] =
   try:
     some $relativePath(path, base)
   except ValueError, OSError:

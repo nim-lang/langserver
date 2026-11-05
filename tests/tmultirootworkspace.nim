@@ -63,7 +63,7 @@ suite "Several workspaces":
   )
 
   test "the workspace folders take precedence over the root uri":
-    check ls.workspaceFolders == @[hwDir, modulesDir]
+    check ls.workspaceFolders == @[hwDir.Path, modulesDir.Path]
     let capability = initResult.capabilities.workspace.get.workspaceFolders.get
     check capability.supported == some(true)
     check capability.changeNotifications == some(%true)
@@ -87,13 +87,13 @@ suite "Several workspaces":
     client.notify(
       "workspace/didChangeWorkspaceFolders", folderChange(@[], @[modulesDir])
     )
-    check waitUntil(ls.workspaceFolders == @[hwDir])
+    check waitUntil(ls.workspaceFolders == @[hwDir.Path])
     check (waitFor ls.openFiles[uri].projectFileWait()) != rootModule
 
     client.notify(
       "workspace/didChangeWorkspaceFolders", folderChange(@[modulesDir], @[])
     )
-    check waitUntil(ls.workspaceFolders == @[hwDir, modulesDir])
+    check waitUntil(ls.workspaceFolders == @[hwDir.Path, modulesDir.Path])
     check (waitFor ls.openFiles[uri].projectFileWait()) == rootModule
 
 suite "No workspace":

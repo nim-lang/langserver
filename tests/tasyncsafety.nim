@@ -40,7 +40,7 @@ suite "Async safety":
     waitFor ls.shutdownNimsuggest()
 
   test "didOpenFile writes the stash file before it suspends":
-    removeFile(ls.uriStorageLocation(helloWorldUri))
+    removeFile(ls.uriStorageLocation(helloWorldUri).string)
     let textDocument = TextDocumentItem(
       uri: helloWorldUri,
       languageId: "nim",
@@ -227,7 +227,7 @@ suite "Documents closed while a handler is suspended":
     # whole of didSave would run synchronously and there would be no window.
     discard settle()
     let fut =
-      Future[string].Raising([CancelledError, OSError, RegexError]).init("closed race")
+      Future[Path].Raising([CancelledError, OSError, RegexError]).init("closed race")
     ls.openFiles[helloWorldUri].projectFile = fut
     ls.openFiles[helloWorldUri].nimsuggestProject = ""
 

@@ -6,7 +6,8 @@ import
   chronos/asyncproc,
   chronicles,
   stew/[byteutils],
-  ./[suggestapi, utils]
+  ./[suggestapi, utils],
+  ./protocol/types
 
 proc extractMacroExpansion*(output: string, targetLine: int): string =
   var start = false
@@ -28,7 +29,7 @@ proc extractMacroExpansion*(output: string, targetLine: int): string =
       result = result.replace("[ExpandMacro]", "")
 
 proc nimExpandMacro*(
-    nimPath: string, suggest: Suggest, filePath: string
+    nimPath: string, suggest: Suggest, filePath: Path
 ): Future[string] {.
     async: (raises: [CancelledError, AsyncProcessError, AsyncStreamError])
 .} =
@@ -39,7 +40,7 @@ proc nimExpandMacro*(
   debug "Executing ", cmd = &"nim c --expandMacro:{macroName} {filePath}"
   let process = await startProcess(
     nimPath,
-    arguments = @["c", "--expandMacro:" & macroName] & @[filePath],
+    arguments = @["c", "--expandMacro:" & macroName] & @[filePath.string],
     options = {UsePath, StdErrToStdOut},
     stdoutHandle = AsyncProcess.Pipe,
   )
@@ -66,7 +67,7 @@ proc extractArcExpansion*(output: string, procName: string): string =
     result = result.replace(cond, "").strip()
 
 proc nimExpandArc*(
-    nimPath: string, suggest: Suggest, filePath: string
+    nimPath: string, suggest: Suggest, filePath: Path
 ): Future[string] {.
     async: (raises: [CancelledError, AsyncProcessError, AsyncStreamError])
 .} =
@@ -74,7 +75,7 @@ proc nimExpandArc*(
   debug "nimExpandArc", procName = procName, filePath = filePath
   let process = await startProcess(
     nimPath,
-    arguments = @["c", &"--expandArc:{procName}", "--compileOnly"] & @[filePath],
+    arguments = @["c", &"--expandArc:{procName}", "--compileOnly"] & @[filePath.string],
     options = {UsePath, StdErrToStdOut},
     stdoutHandle = AsyncProcess.Pipe,
   )

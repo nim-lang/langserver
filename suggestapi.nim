@@ -52,7 +52,7 @@ type
   Suggest* = ref object
     section*: IdeCmd
     qualifiedPath*: seq[string] # part of 'qualifiedPath'
-    filePath*: string
+    filePath*: Path
     line*: int # Starts at 1
     column*: int # Starts at 0
     doc*: string # Not escaped (yet)
@@ -95,7 +95,7 @@ type
     stale*: bool
     successfullCall*: bool
     port*: int
-    root: string
+    root: Path
     requestQueue: Deque[SuggestCall]
     processing: bool
     timeout: int
@@ -111,7 +111,7 @@ type
 
   Project* = ref object
     ns*: Nimsuggest
-    file*: string
+    file*: Path
     process*: AsyncProcessRef
     errorCallback*: Option[ProjectCallback]
     errorMessage*: string
@@ -227,7 +227,7 @@ proc parseSuggestDef*(line: string): Option[Suggest] {.raises: [ValueError].} =
     return none(Suggest)
   var sug = Suggest(
     qualifiedPath: tokens[2].parseQualifiedPath,
-    filePath: tokens[4],
+    filePath: tokens[4].Path,
     line: parseInt(tokens[5]),
     column: parseInt(tokens[6]),
     doc: tokens[7].unescape(),
@@ -296,12 +296,12 @@ proc doWithTimeout*[T](
   return retFuture
 
 proc detectNimsuggestVersion(
-    root: string, nimsuggestPath: string, workingDir: string
+    root: Path, nimsuggestPath: string, workingDir: Path
 ): int {.gcsafe, raises: [OSError, IOError, ValueError].} =
   var process = startProcess(
     command = nimsuggestPath,
-    workingDir = workingDir,
-    args = @[root, "--info:protocolVer"],
+    workingDir = workingDir.string,
+    args = @[root.string, "--info:protocolVer"],
     options = {poUsePath},
   )
   var l: string
@@ -351,13 +351,13 @@ proc watchExit(project: Project) {.async: (raises: []).} =
   await project.markFailed(message)
 
 proc createNimsuggest*(
-    root: string,
+    root: Path,
     nimsuggestPath: string,
     version: string,
     timeout: int,
     timeoutCallback: NimsuggestCallback,
     errorCallback: ProjectCallback,
-    workingDir = getCurrentDir(),
+    workingDir = getCurrentDir().Path,
     enableLog: bool = false,
     enableExceptionInlayHints: bool = false,
     maxMemory: Option[int] = none int,
@@ -377,8 +377,8 @@ proc createNimsuggest*(
     await result.markFailed "Unable to start nimsuggest. Unable to find binary on the $PATH"
     raise newException(ValueError, "Empty nimsuggestPath")
   try:
-    let isNimble = root.endsWith(".nimble")
-    let isNimScript = root.endsWith(".nims") or isNimble
+    let isNimble = root.string.endsWith(".nimble")
+    let isNimScript = root.string.endsWith(".nims") or isNimble
     var extraArgs = newSeq[string]()
     if isNimScript:
       extraArgs.add("--import: system/nimscript")
@@ -402,7 +402,7 @@ proc createNimsuggest*(
     ns.protocolVersion = detectNimsuggestVersion(root, nimsuggestPath, workingDir)
     if ns.protocolVersion > HighestSupportedNimSuggestProtocolVersion:
       ns.protocolVersion = HighestSupportedNimSuggestProtocolVersion
-    var args = @[root, "--v" & $ns.protocolVersion, "--autobind"] & extraArgs
+    var args = @[root.string, "--v" & $ns.protocolVersion, "--autobind"] & extraArgs
     if ns.protocolVersion >= 4:
       args.add("--clientProcessId:" & $getCurrentProcessId())
     if enableLog:
@@ -445,7 +445,7 @@ proc createNimsuggest*(
       await result.markFailed "Unable to start nimsuggest."
       await result.stopWait()
 
-proc createNimsuggest*(root: string): Future[Project] {.gcsafe, raises: [OSError].} =
+proc createNimsuggest*(root: Path): Future[Project] {.gcsafe, raises: [OSError].} =
   result = createNimsuggest(
     root,
     "nimsuggest",
@@ -549,8 +549,8 @@ proc processQueue(self: Nimsuggest): Future[void] {.async: (raises: []).} =
 proc call*(
     self: Nimsuggest,
     command: string,
-    file: string,
-    dirtyFile: string,
+    file: Path,
+    dirtyFile: Path,
     line: int,
     column: int,
     tag = "",
@@ -559,7 +559,7 @@ proc call*(
       "nimsuggest.call"
     )
   let commandString =
-    if dirtyFile != "":
+    if dirtyFile.string != "":
       fmt "{command} \"{file}\";\"{dirtyFile}\":{line}:{column}{tag}"
     else:
       fmt "{command} \"{file}\":{line}:{column}{tag}"
@@ -574,13 +574,13 @@ proc call*(
 
 template createFullCommand(command: untyped) {.dirty.} =
   proc command*(
-      self: Nimsuggest, file: string, dirtyfile = "", line: int, col: int, tag = ""
+      self: Nimsuggest, file: Path, dirtyfile = Path(""), line: int, col: int, tag = ""
   ): Future[seq[Suggest]].Raising([CancelledError, NimsuggestError]) =
     return self.call(astToStr(command), file, dirtyfile, line, col, tag)
 
 template createFileOnlyCommand(command: untyped) {.dirty.} =
   proc command*(
-      self: Nimsuggest, file: string, dirtyfile = ""
+      self: Nimsuggest, file: Path, dirtyfile = Path("")
   ): Future[seq[Suggest]].Raising([CancelledError, NimsuggestError]) =
     return self.call(astToStr(command), file, dirtyfile, 0, 0)
 
@@ -588,13 +588,13 @@ template createGlobalCommand(command: untyped) {.dirty.} =
   proc command*(
       self: Nimsuggest
   ): Future[seq[Suggest]].Raising([CancelledError, NimsuggestError]) =
-    return self.call(astToStr(command), "-", "", 0, 0)
+    return self.call(astToStr(command), Path("-"), Path(""), 0, 0)
 
 template createRangeCommand(command: untyped) {.dirty.} =
   proc command*(
       self: Nimsuggest,
-      file: string,
-      dirtyfile = "",
+      file: Path,
+      dirtyfile = Path(""),
       startLine, startCol, endLine, endCol: int,
       extra: string,
   ): Future[seq[Suggest]].Raising([CancelledError, NimsuggestError]) =
@@ -622,12 +622,16 @@ createFileOnlyCommand(changed)
 createFileOnlyCommand(outline)
 createFileOnlyCommand(outline2)
 createFileOnlyCommand(known)
-createFileOnlyCommand(globalSymbols)
 createGlobalCommand(recompile)
 createRangeCommand(inlayHints)
 
+proc globalSymbols*(
+    self: Nimsuggest, query: string, dirtyfile = Path("")
+): Future[seq[Suggest]].Raising([CancelledError, NimsuggestError]) =
+  self.call("globalSymbols", query.Path, dirtyfile, 0, 0)
+
 proc outlineFile*(
-    self: Nimsuggest, file: string, dirtyfile = ""
+    self: Nimsuggest, file: Path, dirtyfile = Path("")
 ): Future[seq[Suggest]] {.
     async: (raw: true, raises: [CancelledError, NimsuggestError])
 .} =
@@ -637,12 +641,12 @@ proc outlineFile*(
     self.outline(file, dirtyfile)
 
 proc `mod`*(
-    nimsuggest: Nimsuggest, file: string, dirtyfile = ""
+    nimsuggest: Nimsuggest, file: Path, dirtyfile = Path("")
 ): Future[seq[Suggest]].Raising([CancelledError, NimsuggestError]) =
   return nimsuggest.call("ideMod", file, dirtyfile, 0, 0)
 
 proc isKnown*(
-    nimsuggest: Nimsuggest, filePath: string
+    nimsuggest: Nimsuggest, filePath: Path
 ): Future[bool] {.async: (raises: [CancelledError]).} =
   let sug =
     try:

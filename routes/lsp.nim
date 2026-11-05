@@ -291,8 +291,8 @@ proc extensionSuggest*(
 .} =
   ls.checkInitialized()
   debug "[Extension Suggest]", params = params
-  var projectFile = params.projectFile
-  if projectFile != "" and projectFile notin ls.projectFiles:
+  var projectFile = params.projectFile.Path
+  if projectFile.len > 0 and projectFile notin ls.projectFiles:
     #test if just a regular file
     let uri = projectFile.pathToUri
     let info = ls.openFiles.getOrDefault(uri)
@@ -304,7 +304,7 @@ proc extensionSuggest*(
       error "Project file must exists ", params = params
       return SuggestResult()
 
-  template restart(ls: LanguageServer, project: Project, projectFile: string) =
+  template restart(ls: LanguageServer, project: Project, projectFile: Path) =
     await ls.showMessage(fmt "Restarting nimsuggest {projectFile}", MessageType.Info)
     project.errorCallback = none(ProjectCallback)
     project.stop()
@@ -377,7 +377,7 @@ proc documentSymbols*(
     @[]
 
 proc fileCheckDelayImpl(
-    ls: LanguageServer, uri: string
+    ls: LanguageServer, uri: DocumentUri
 ) {.
     async: (
       raises: [
@@ -392,7 +392,7 @@ proc fileCheckDelayImpl(
     await ls.checkFile(info)
 
 proc fileCheckDelay(
-    ls: LanguageServer, uri: string
+    ls: LanguageServer, uri: DocumentUri
 ) {.
     async: (
       raises: [
@@ -576,7 +576,7 @@ proc prepareRename*(
     if def.len == 0:
       return newJNull()
     # Check if the symbol belongs to the project
-    if ls.workspaceFolderOf(def[0].filePath) != "":
+    if ls.workspaceFolderOf(def[0].filePath).len > 0:
       return %def[0].toLocation().range
 
     return newJNull()
@@ -605,10 +605,11 @@ proc rename*(
   for reference in references:
     # Only rename symbols in the project.
     # If client supports prepareRename then an error will already have been thrown
-    if ls.workspaceFolderOf(reference.uri.uriToPath()) != "":
-      if reference.uri notin edits:
-        edits[reference.uri] = newJArray()
-      edits[reference.uri] &= %TextEdit(range: reference.range, newText: params.newName)
+    if ls.workspaceFolderOf(reference.uri.uriToPath()).len > 0:
+      if reference.uri.string notin edits:
+        edits[reference.uri.string] = newJArray()
+      edits[reference.uri.string] &=
+        %TextEdit(range: reference.range, newText: params.newName)
   result = WorkspaceEdit(changes: some edits)
 
 proc convertInlayHintKind(kind: SuggestInlayHintKind): InlayHintKind_int =
@@ -761,7 +762,7 @@ proc executeCommand*(
       code: ErrorCode.InvalidParams.int,
       msg: params.command & " expects the project file as its first argument",
     )
-  let projectFile = params.arguments[0].getStr
+  let projectFile = params.arguments[0].getStr.Path
   let projectUri = projectFile.pathToUri
   case params.command
   of RESTART_COMMAND:
@@ -850,7 +851,7 @@ proc signatureHelp*(
       return none[SignatureHelp]()
 
 proc format*(
-    ls: LanguageServer, nphPath, uri: string
+    ls: LanguageServer, nphPath: string, uri: DocumentUri
 ): Future[Option[TextEdit]] {.
     async:
       (raises: [CancelledError, OSError, IOError, AsyncProcessError, AsyncStreamError])
@@ -863,7 +864,7 @@ proc format*(
   debug "nph starts", nphPath = nphPath, filePath = filePath
   let process = await startProcess(
     nphPath,
-    arguments = @[filePath],
+    arguments = @[filePath.string],
     options = {UsePath},
     stderrHandle = AsyncProcess.Pipe,
   )
@@ -875,13 +876,13 @@ proc format*(
     return none(TextEdit)
 
   #if enough time has passed since last modification, we skip the formatting:   
-  let lastModified = getLastModificationTime(filePath)
+  let lastModified = getLastModificationTime(filePath.string)
   let timeSinceLastModified = getTime() - lastModified
   if timeSinceLastModified >= initDuration(seconds = 2):
     error "Skipping formatting because the file was modifyed long ago"
     return none(TextEdit)
 
-  let formattedText = readFile(filePath)
+  let formattedText = readFile(filePath.string)
   if formattedText.len < 2:
     error "Failed to format document", uri = uri
     return none(TextEdit)
@@ -927,7 +928,7 @@ proc workspaceSymbol*(
   ls.checkInitialized()
   let project = ls.projectFiles.getOrDefault(ls.lastNimsuggestProject)
   if project != nil:
-    let symbols = await project.ns.globalSymbols(params.query, "-")
+    let symbols = await project.ns.globalSymbols(params.query, Path("-"))
     return symbols.map(x => x.toUtf16Pos(ls).toSymbolInformation)
 
 proc toDocumentHighlight(suggest: Suggest): DocumentHighlight =
@@ -993,7 +994,7 @@ proc startNimbleProcess(
     options = {UsePath},
     workingDir =
       if ls.workspaceFolders.len > 0:
-        ls.workspaceFolders[0]
+        ls.workspaceFolders[0].string
       else:
         "",
     stdoutHandle = AsyncProcess.Pipe,
@@ -1164,7 +1165,7 @@ proc didChange*(
       return
     inc info.edits
     info.fingerTable = @[]
-    let file = open(ls.uriStorageLocation(uri), fmWrite)
+    let file = open(ls.uriStorageLocation(uri).string, fmWrite)
     try:
       info.textDocument.text = contentChanges[0].text
       for line in contentChanges[0].text.splitLines:
@@ -1174,7 +1175,7 @@ proc didChange*(
       file.close()
     info.changed =
       try:
-        info.textDocument.text != readFile(uriToPath(uri))
+        info.textDocument.text != readFile(uriToPath(uri).string)
       except IOError:
         true
     await ls.fileCheckDelay(uri)
@@ -1271,7 +1272,7 @@ proc didChangeWorkspaceFolders*(
   debug "Workspace folders changed", workspaceFolders = ls.workspaceFolders
   for uri, file in ls.openFiles:
     file.projectFile = ls.getProjectFile(uri.uriToPath)
-    file.nimsuggestProject = ""
+    file.nimsuggestProject = Path("")
   ls.sendStatusChanged()
 
 proc didChangeConfiguration*(

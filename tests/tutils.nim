@@ -2,7 +2,9 @@ import
   std/[options, os, strutils],
   chronos,
   unittest2,
-  ../utils
+  ../utils,
+  ../protocol/types,
+  ./testhelpers
 
 suite "UTF-16 position mapping":
   test "an ASCII only line needs no correction":
@@ -44,14 +46,14 @@ suite "uri and path conversion":
 
   test "pathToUri keeps the path separators unescaped":
     let uri = (getCurrentDir() / "project" / "file.nim").pathToUri
-    check uri.startsWith("file:///")
-    check "/project/file.nim" in uri
+    check uri.string.startsWith("file:///")
+    check "/project/file.nim" in uri.string
 
   test "pathToUri escapes characters that are not URI safe":
     let path = getCurrentDir() / "a b" / "c#d.nim"
     let uri = path.pathToUri
-    check "%20" in uri
-    check "%23" in uri
+    check "%20" in uri.string
+    check "%23" in uri.string
     check uri.uriToPath == path
 
   test "a non ascii path survives the round trip":

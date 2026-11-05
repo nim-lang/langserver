@@ -71,7 +71,7 @@ proc editRootFile(client: LspSocketClient) =
     },
   )
 
-proc diagnosticsFor(client: LspSocketClient, uri: string): int =
+proc diagnosticsFor(client: LspSocketClient, uri: DocumentUri): int =
   client.calls.getOrDefault("textDocument/publishDiagnostics").countIt(
     it["uri"].getStr == uri
   )
@@ -197,12 +197,12 @@ suite "Closed file shared with another":
       .call("textDocument/completion", %positionParams(otherUri, 4, 7))
       .wait(60.seconds)
     check ls.getLspStatus().nimsuggestInstances.len == 1
-    check otherUri in ls.getLspStatus().nimsuggestInstances[0].openFiles
+    check $otherUri in ls.getLspStatus().nimsuggestInstances[0].openFiles
 
     client.notify("textDocument/didClose", %*{"textDocument": {"uri": otherUri}})
     check waitUntil(otherUri notin ls.openFiles)
-    check otherUri notin ls.getLspStatus().nimsuggestInstances[0].openFiles
-    check RootFile.fixtureUri in ls.getLspStatus().nimsuggestInstances[0].openFiles
+    check $otherUri notin ls.getLspStatus().nimsuggestInstances[0].openFiles
+    check $RootFile.fixtureUri in ls.getLspStatus().nimsuggestInstances[0].openFiles
 
 suite "File closed before its nimsuggest was stopped":
   let (ls, client) = startServer()
@@ -224,7 +224,7 @@ suite "File closed before its nimsuggest was stopped":
     check uri notin ls.openFiles
     check ls.projectFiles.len == 0
 
-proc lastDiagnosticsFor(client: LspSocketClient, uri: string): JsonNode =
+proc lastDiagnosticsFor(client: LspSocketClient, uri: DocumentUri): JsonNode =
   result = newJArray()
   for params in client.calls.getOrDefault("textDocument/publishDiagnostics"):
     if params["uri"].getStr == uri:

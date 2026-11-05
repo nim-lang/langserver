@@ -4,7 +4,7 @@ import
   unittest2,
   ../[nimlangserver, ls, suggestapi, utils],
   ../protocol/[types],
-  ./lspsocketclient
+  ./[lspsocketclient, testhelpers]
 
 from std/times import now, initDuration, `-`
 
@@ -30,7 +30,7 @@ const
   ThirdFile = "projects/multimodules/thirdmodule.nim"
   FourthFile = "projects/multimodules/fourthmodule.nim"
 
-proc completes(client: LspSocketClient, uri: string): bool =
+proc completes(client: LspSocketClient, uri: DocumentUri): bool =
   let completion = waitFor client
     .call("textDocument/completion", %positionParams(uri, 4, 7))
     .wait(60.seconds)

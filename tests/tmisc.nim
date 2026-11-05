@@ -103,7 +103,7 @@ suite "Nimlangserver pending requests":
     let ls = LanguageServer(serverMode: lsp)
     let uri = "file:///tmp/tpending419.nim"
     let projectFileFut =
-      Future[string].Raising([CancelledError, OSError, RegexError]).init("projectFile")
+      Future[Path].Raising([CancelledError, OSError, RegexError]).init("projectFile")
     ls.openFiles[uri] = NlsFileInfo(projectFile: projectFileFut)
     ls.pendingRequests[1'u] = PendingRequest(id: 1, name: "textDocument/definition")
 
@@ -143,7 +143,7 @@ suite "Nimlangserver request cancellation":
     let uri = "file:///tmp/tcancel.nim"
     ls.openFiles[uri] = NlsFileInfo(
       projectFile:
-        Future[string].Raising([CancelledError, OSError, RegexError]).init("never")
+        Future[Path].Raising([CancelledError, OSError, RegexError]).init("never")
     )
 
     let request = client.call("textDocument/definition", %positionParams(uri, 0, 0))
@@ -339,7 +339,7 @@ suite "Nimlangserver idle nimsuggest cleanup":
     )
     ls.openFiles.del(helloWorldFile.fixtureUri())
 
-    proc sweptAway(ls: LanguageServer, projectFile: string): bool =
+    proc sweptAway(ls: LanguageServer, projectFile: Path): bool =
       waitFor ls.removeIdleNimsuggests()
       projectFile notin ls.projectFiles
 
@@ -589,7 +589,7 @@ suite "Nimlangserver project lookup replaced by a configuration change":
     # The lookup made under the old configuration is still running when the
     # configuration changes, and a request is waiting on it
     let oldLookup =
-      Future[string].Raising([CancelledError, OSError, RegexError]).init("oldLookup")
+      Future[Path].Raising([CancelledError, OSError, RegexError]).init("oldLookup")
     ls.openFiles[hwUri] = NlsFileInfo(projectFile: oldLookup)
     let request = ls.tryGetNimsuggest(hwUri)
 
@@ -607,7 +607,7 @@ suite "Nimlangserver project lookup replaced by a configuration change":
 
   test "a request waiting on the replaced lookup waits for the new one too":
     let oldLookup =
-      Future[string].Raising([CancelledError, OSError, RegexError]).init("oldLookup")
+      Future[Path].Raising([CancelledError, OSError, RegexError]).init("oldLookup")
     ls.openFiles[hwUri] = NlsFileInfo(projectFile: oldLookup)
     let request = ls.tryGetNimsuggest(hwUri)
 
