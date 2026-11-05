@@ -187,7 +187,7 @@ suite "Last used nimsuggest over the cap":
     waitFor ls.didOpenFile(
       createDidOpenParams("projects/vendored/vendor/dep/dep.nim").textDocument
     )
-    check (waitFor ls.openFiles[depUri].waitProjectFile()) ==
+    check (waitFor ls.openFiles[depUri].projectFileWait()) ==
       projectsDir / "vendored" / "vendor" / "dep" / "dep.nim"
     check ls.openFiles[depUri].nimsuggestProject == vendored
     check ls.projectFiles.len == 1

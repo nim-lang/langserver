@@ -157,7 +157,7 @@ proc definition*(
       let ch = ls.getCharacter(uri, line, character)
       if ch.isNone:
         return @[]
-      let projectFile = await info.waitProjectFile()
+      let projectFile = await info.projectFileWait()
       let timeout = config.timeout.get(REQUEST_TIMEOUT)
       let workingDir = await ls.getWorkingDir(projectFile)
       let nimPath = await ls.getNimPath(config, projectFile)
@@ -297,7 +297,7 @@ proc extensionSuggest*(
     let uri = projectFile.pathToUri
     let info = ls.openFiles.getOrDefault(uri)
     if info != nil:
-      projectFile = await info.waitProjectFile()
+      projectFile = await info.projectFileWait()
       debug "[ExtensionSuggest] Found project file for ",
         file = params.projectFile, project = projectFile
     else:
@@ -521,7 +521,7 @@ proc references*(
       let ch = ls.getCharacter(uri, line, character)
       if ch.isNone:
         return @[]
-      let projectFile = await info.waitProjectFile()
+      let projectFile = await info.projectFileWait()
       let mode = if includeDeclaration: tmDefUsages else: tmUsages
       let timeout = config.timeout.get(REQUEST_TIMEOUT)
       let workingDir = await ls.getWorkingDir(projectFile)
@@ -713,7 +713,7 @@ proc codeAction*(
     async: (raises: [ApplicationError, CancelledError, OSError, RegexError])
 .} =
   ls.checkInitialized()
-  let projectUri = await ls.getProjectFile(params.textDocument.uri.uriToPath)
+  let projectUri = await ls.projectFileWait(params.textDocument.uri)
   return
     seq[CodeAction] %* [
       {

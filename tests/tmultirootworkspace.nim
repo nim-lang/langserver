@@ -81,20 +81,20 @@ suite "Several workspaces":
       createDidOpenParams("projects/multimodules/othermodule.nim").textDocument
     )
     let uri = pathToUri(otherModule)
-    check (waitFor ls.openFiles[uri].waitProjectFile()) == rootModule
+    check (waitFor ls.openFiles[uri].projectFileWait()) == rootModule
 
     # Without its workspace the mapping no longer applies to the file.
     client.notify(
       "workspace/didChangeWorkspaceFolders", folderChange(@[], @[modulesDir])
     )
     check waitUntil(ls.workspaceFolders == @[hwDir])
-    check (waitFor ls.openFiles[uri].waitProjectFile()) != rootModule
+    check (waitFor ls.openFiles[uri].projectFileWait()) != rootModule
 
     client.notify(
       "workspace/didChangeWorkspaceFolders", folderChange(@[modulesDir], @[])
     )
     check waitUntil(ls.workspaceFolders == @[hwDir, modulesDir])
-    check (waitFor ls.openFiles[uri].waitProjectFile()) == rootModule
+    check (waitFor ls.openFiles[uri].projectFileWait()) == rootModule
 
 suite "No workspace":
   let cmdParams =
