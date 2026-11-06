@@ -200,6 +200,32 @@ suite "LSP endpoints":
       check "-32602" in ex.msg
     check raised
 
+  test "a request with an invalid uri is answered with an error":
+    for uri in ["untitled:Foo", "file://somehost/hw.nim"]:
+      var raised = false
+      try:
+        discard client.callTimeout(
+          "textDocument/hover", %positionParams(uri.DocumentUri, 0, 0)
+        )
+      except JsonRpcError as ex:
+        raised = true
+        check "-32602" in ex.msg
+      check raised
+
+  test "a notification with an invalid uri does not stop the server":
+    let openFiles = ls.openFiles.len
+    let doc = %*{"uri": "untitled:Foo", "languageId": "nim", "version": 1, "text": ""}
+    client.notify("textDocument/didOpen", %*{"textDocument": doc})
+    client.notify(
+      "textDocument/didChange",
+      %*{"textDocument": doc, "contentChanges": [{"text": "echo 1"}]},
+    )
+    client.notify("textDocument/didSave", %*{"textDocument": doc})
+    client.notify("textDocument/didClose", %*{"textDocument": doc})
+
+    discard client.callTimeout("extension/status", newJObject())
+    check ls.openFiles.len == openFiles
+
   test "textDocument/didClose removes the file from the open set":
     let other = "projects/hw/useRoot.nim"
     let otherUri = fixtureUri(other)

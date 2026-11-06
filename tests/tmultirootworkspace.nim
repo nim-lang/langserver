@@ -1,5 +1,5 @@
 import
-  std/[options, json, os, tables],
+  std/[options, json, os, tables, strutils],
   chronos,
   unittest2,
   ../[nimlangserver, ls, utils],
@@ -92,6 +92,40 @@ suite "Several workspaces":
     )
     check waitUntil(ls.workspaceFolders == @[hwDir.Path, modulesDir.Path])
     check (waitFor ls.openFiles[otherModule].projectFileWait()) == rootModule
+
+  test "a workspace change with an invalid uri is not applied":
+    let folders = ls.workspaceFolders
+    check hwDir in folders
+    var change = folderChange(@[], @[hwDir])
+    change["event"]["added"] = %*[{"uri": "untitled:Foo", "name": "foo"}]
+    client.notify("workspace/didChangeWorkspaceFolders", change)
+    discard waitFor client.call("extension/status", newJObject())
+    check ls.workspaceFolders == folders
+
+suite "Invalid workspace":
+  let cmdParams =
+    CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
+  let ls = main(cmdParams)
+  let client = newClient(cmdParams.port)
+
+  suiteTeardown:
+    waitFor ls.shutdownNimsuggest()
+
+  test "initialize with a non file root is answered with an error":
+    var raised = false
+    try:
+      discard waitFor client.initialize(
+        LspInitializeParams %* {
+          "processId": %getCurrentProcessId(),
+          "rootUri": "untitled:Foo",
+          "capabilities": {},
+        }
+      )
+    except CatchableError as ex:
+      raised = true
+      check "-32602" in ex.msg
+    check raised
+    check not ls.initialized
 
 suite "No workspace":
   let cmdParams =

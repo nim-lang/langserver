@@ -27,11 +27,13 @@ proc getNphPath(): Option[string] {.raises: [OSError].} =
   else:
     some path
 
-proc getWorkspaceFolders(ip: LspInitializeParams): seq[Path] =
+proc getWorkspaceFolders(
+    ip: LspInitializeParams
+): seq[Path] {.raises: [UriParseError].} =
   if ip.workspaceFolders.isSome:
     for folder in ip.workspaceFolders.get:
       result.add folder.uri.uriToPath
-  elif ip.rootUri.isSome and ip.rootUri.get.string != "":
+  elif ip.rootUri.isSome:
     result.add ip.rootUri.get.uriToPath
   elif ip.rootPath.get("") != "":
     result.add ip.rootPath.get.Path
@@ -41,7 +43,7 @@ proc getWorkspaceFolders(ip: LspInitializeParams): seq[Path] =
 # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#initialize
 proc initialize*(
     p: tuple[ls: LanguageServer, onExit: OnExitCallback], params: LspInitializeParams
-): Future[LspInitializeResult] {.async: (raises: [OSError]).} =
+): Future[LspInitializeResult] {.async: (raises: [OSError, UriParseError]).} =
   debug "Initialize received..."
   p.ls.lspInitializeParams = params
   p.ls.workspaceFolders = params.getWorkspaceFolders()
@@ -117,7 +119,8 @@ proc completion*(
 ): Future[seq[CompletionItem]] {.
     async: (
       raises: [
-        ApplicationError, CancelledError, OSError, IOError, RegexError, NimsuggestError
+        ApplicationError, CancelledError, OSError, IOError, RegexError, NimsuggestError,
+        UriParseError,
       ]
     )
 .} =
@@ -153,7 +156,7 @@ proc definition*(
     async: (
       raises: [
         ApplicationError, CancelledError, OSError, IOError, RegexError,
-        AsyncProcessError, NimsuggestError,
+        AsyncProcessError, NimsuggestError, UriParseError,
       ]
     )
 .} =
@@ -203,7 +206,8 @@ proc declaration*(
 ): Future[seq[Location]] {.
     async: (
       raises: [
-        ApplicationError, CancelledError, OSError, IOError, RegexError, NimsuggestError
+        ApplicationError, CancelledError, OSError, IOError, RegexError, NimsuggestError,
+        UriParseError,
       ]
     )
 .} =
@@ -224,7 +228,10 @@ proc declaration*(
 proc expandAll*(
     ls: LanguageServer, params: TextDocumentPositionParams
 ): Future[ExpandResult] {.
-    async: (raises: [CancelledError, OSError, IOError, RegexError, NimsuggestError])
+    async: (
+      raises:
+        [CancelledError, OSError, IOError, RegexError, NimsuggestError, UriParseError]
+    )
 .} =
   let path = params.textDocument.uri.uriToPath
   with params.position:
@@ -255,7 +262,8 @@ proc expand*(
 ): Future[ExpandResult] {.
     async: (
       raises: [
-        ApplicationError, CancelledError, OSError, IOError, RegexError, NimsuggestError
+        ApplicationError, CancelledError, OSError, IOError, RegexError, NimsuggestError,
+        UriParseError,
       ]
     )
 .} =
@@ -342,7 +350,8 @@ proc typeDefinition*(
 ): Future[seq[Location]] {.
     async: (
       raises: [
-        ApplicationError, CancelledError, OSError, IOError, RegexError, NimsuggestError
+        ApplicationError, CancelledError, OSError, IOError, RegexError, NimsuggestError,
+        UriParseError,
       ]
     )
 .} =
@@ -373,7 +382,8 @@ proc documentSymbols*(
 ): Future[seq[SymbolInformation]] {.
     async: (
       raises: [
-        ApplicationError, CancelledError, OSError, IOError, RegexError, NimsuggestError
+        ApplicationError, CancelledError, OSError, IOError, RegexError, NimsuggestError,
+        UriParseError,
       ]
     )
 .} =
@@ -454,7 +464,7 @@ proc hover*(
     async: (
       raises: [
         ApplicationError, CancelledError, OSError, IOError, RegexError,
-        AsyncProcessError, AsyncStreamError, NimsuggestError,
+        AsyncProcessError, AsyncStreamError, NimsuggestError, UriParseError,
       ]
     )
 .} =
@@ -517,7 +527,7 @@ proc references*(
     async: (
       raises: [
         ApplicationError, CancelledError, OSError, IOError, RegexError,
-        AsyncProcessError, NimsuggestError,
+        AsyncProcessError, NimsuggestError, UriParseError,
       ]
     )
 .} =
@@ -570,7 +580,8 @@ proc prepareRename*(
 ): Future[JsonNode] {.
     async: (
       raises: [
-        ApplicationError, CancelledError, OSError, IOError, RegexError, NimsuggestError
+        ApplicationError, CancelledError, OSError, IOError, RegexError, NimsuggestError,
+        UriParseError,
       ]
     )
 .} =
@@ -598,7 +609,7 @@ proc rename*(
     async: (
       raises: [
         ApplicationError, CancelledError, KeyError, OSError, IOError, RegexError,
-        AsyncProcessError, NimsuggestError,
+        AsyncProcessError, NimsuggestError, UriParseError,
       ]
     )
 .} =
@@ -679,7 +690,8 @@ proc inlayHint*(
 ): Future[seq[InlayHint]] {.
     async: (
       raises: [
-        ApplicationError, CancelledError, OSError, IOError, RegexError, NimsuggestError
+        ApplicationError, CancelledError, OSError, IOError, RegexError, NimsuggestError,
+        UriParseError,
       ]
     )
 .} =
@@ -723,7 +735,8 @@ proc inlayHint*(
 proc codeAction*(
     ls: LanguageServer, params: CodeActionParams
 ): Future[seq[CodeAction]] {.
-    async: (raises: [ApplicationError, CancelledError, OSError, RegexError])
+    async:
+      (raises: [ApplicationError, CancelledError, OSError, RegexError, UriParseError])
 .} =
   ls.checkInitialized()
   let projectFile = await ls.projectFileWait(params.textDocument.uri.uriToPath)
@@ -822,7 +835,8 @@ proc signatureHelp*(
 ): Future[Option[SignatureHelp]] {.
     async: (
       raises: [
-        ApplicationError, CancelledError, OSError, IOError, RegexError, NimsuggestError
+        ApplicationError, CancelledError, OSError, IOError, RegexError, NimsuggestError,
+        UriParseError,
       ]
     )
 .} =
@@ -912,7 +926,7 @@ proc formatting*(
     async: (
       raises: [
         ApplicationError, CancelledError, OSError, IOError, AsyncProcessError,
-        AsyncStreamError,
+        AsyncStreamError, UriParseError,
       ]
     )
 .} =
@@ -950,7 +964,8 @@ proc documentHighlight*(
 ): Future[seq[DocumentHighlight]] {.
     async: (
       raises: [
-        ApplicationError, CancelledError, OSError, IOError, RegexError, NimsuggestError
+        ApplicationError, CancelledError, OSError, IOError, RegexError, NimsuggestError,
+        UriParseError,
       ]
     )
 .} =
@@ -1162,7 +1177,7 @@ proc didChange*(
     async: (
       raises: [
         ApplicationError, CancelledError, AsyncProcessError, AsyncStreamError, OSError,
-        IOError, RegexError, NimsuggestError,
+        IOError, RegexError, NimsuggestError, UriParseError,
       ]
     )
 .} =
@@ -1197,7 +1212,7 @@ proc willSaveWaitUntil*(
     async: (
       raises: [
         ApplicationError, CancelledError, OSError, IOError, AsyncProcessError,
-        AsyncStreamError,
+        AsyncStreamError, UriParseError,
       ]
     )
 .} =
@@ -1224,7 +1239,10 @@ proc willSaveWaitUntil*(
 proc didSave*(
     ls: LanguageServer, params: DidSaveTextDocumentParams
 ): Future[void] {.
-    async: (raises: [ApplicationError, CancelledError, OSError, IOError, RegexError])
+    async: (
+      raises:
+        [ApplicationError, CancelledError, OSError, IOError, RegexError, UriParseError]
+    )
 .} =
   ls.checkInitialized()
   let
@@ -1247,14 +1265,17 @@ proc didSave*(
 
 proc didClose*(
     ls: LanguageServer, params: DidCloseTextDocumentParams
-): Future[void] {.async: (raises: [ApplicationError]).} =
+): Future[void] {.async: (raises: [ApplicationError, UriParseError]).} =
   ls.checkInitialized()
   await ls.didCloseFile(params.textDocument.uri.uriToPath)
 
 proc didOpen*(
     ls: LanguageServer, params: DidOpenTextDocumentParams
 ): Future[void] {.
-    async: (raises: [ApplicationError, CancelledError, OSError, IOError, RegexError])
+    async: (
+      raises:
+        [ApplicationError, CancelledError, OSError, IOError, RegexError, UriParseError]
+    )
 .} =
   ls.checkInitialized()
   await ls.didOpenFile(params.textDocument.uri.uriToPath, params.textDocument.text)
@@ -1271,7 +1292,7 @@ proc didChangeWatchedFiles*(
 
 proc didChangeWorkspaceFolders*(
     ls: LanguageServer, params: DidChangeWorkspaceFoldersParams
-): Future[void] {.async: (raises: [ApplicationError, CancelledError]).} =
+): Future[void] {.async: (raises: [ApplicationError, CancelledError, UriParseError]).} =
   ls.checkInitialized()
   for folder in params.event.removed.get(@[]):
     let path = folder.uri.uriToPath
