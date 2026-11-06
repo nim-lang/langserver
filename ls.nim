@@ -996,17 +996,18 @@ proc checkNimsuggestProject(
     filesWithDiags = diagnostics.map(s => s.filePath).toHashSet
 
   debug "Found diagnostics", file = filesWithDiags
-  for (path, diags) in groupBy(diagnostics, getFilepath):
-    ls.sendDiagnostics(diags, path)
+  if not nimsuggest.stale and not nimsuggest.needsCheckProject:
+    for (path, diags) in groupBy(diagnostics, getFilepath):
+      ls.sendDiagnostics(diags, path)
 
-  # clean files with no diags
-  for path in ls.filesWithDiags:
-    if not filesWithDiags.contains path:
-      debug "Sending zero diags", path = path
-      let params =
-        PublishDiagnosticsParams %* {"uri": pathToUri(path), "diagnostics": @[]}
-      ls.notify("textDocument/publishDiagnostics", params)
-  ls.filesWithDiags = filesWithDiags
+    # clean files with no diags
+    for path in ls.filesWithDiags:
+      if not filesWithDiags.contains path:
+        debug "Sending zero diags", path = path
+        let params =
+          PublishDiagnosticsParams %* {"uri": pathToUri(path), "diagnostics": @[]}
+        ls.notify("textDocument/publishDiagnostics", params)
+    ls.filesWithDiags = filesWithDiags
 
   if nimsuggest.needsCheckProject:
     nimsuggest.needsCheckProject = false

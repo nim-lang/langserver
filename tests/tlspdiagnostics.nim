@@ -1,5 +1,5 @@
 import
-  std/[options, json, os, strformat],
+  std/[options, json, os, sets, strformat],
   json_rpc/[rpcclient],
   unittest2,
   ../[nimlangserver, ls, suggestapi, utils],
@@ -175,3 +175,30 @@ suite "LSP project check command":
     check waitUntil(errmodulePublishes() > published, 30.seconds)
     # The command checks the project without opening its file.
     check projectFile.pathToUri notin ls.openFiles
+
+  test "a project check that went stale does not publish its results":
+    let
+      projectFile =
+        absolutePath("tests" / "projects" / "mcpproject" / "src" / "mcpproject.nim").Path
+      projectUri = projectFile.pathToUri
+      errmodule = fixtureUri("projects/mcpproject/src/mcpproject/errmodule.nim").uriToPath
+      project = ls.projectFiles[projectFile]
+    check waitUntil(
+      not ls.checkInProgress and not project.ns.checkProjectInProgress, 30.seconds
+    )
+
+    # Publishing records the files with diagnostics, and errmodule.nim has a type
+    # error, so it is back in the set only if the results get published.
+    ls.filesWithDiags.clear()
+    let checking = ls.checkProject(projectUri)
+    # The event loop has not run, so the check is waiting on nimsuggest. The file
+    # is saved while nimsuggest is still checking the previous contents.
+    check project.ns.checkProjectInProgress
+    project.ns.stale = true
+    waitFor checking
+    check errmodule notin ls.filesWithDiags
+
+    # The next request checks the project again, and that check publishes.
+    check project.ns.stale
+    discard waitFor ls.getNimsuggest(projectUri)
+    check waitUntil(errmodule in ls.filesWithDiags, 30.seconds)
