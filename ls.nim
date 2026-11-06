@@ -152,6 +152,7 @@ type
     workspaceFolders*: seq[Path]
     projectFiles*: Table[Path, Project]
     nimsuggestCreations*: Table[Path, Future[void].Raising([CancelledError])]
+    nimsuggestStops*: Table[Path, Future[void].Raising([])]
     openFiles*: Table[Path, NlsFileInfo]
     workspaceConfiguration*: NlsConfig
       #What the client configured us with, or the defaults until it does.
@@ -509,12 +510,12 @@ proc loadNimblePackage(
       package.entryPoints.add projectFile
   ls.nimblePackages[nimbleFile] = package
 
-proc isFailedDumpOutdated(
+proc isNimbleDumpOutdated(
     ls: LanguageServer, nimbleFile: Path
 ): bool {.raises: [OSError].} =
-  let package = ls.nimblePackages.getOrDefault(nimbleFile)
-  package.dumpFailed and
-    getLastModificationTime(nimbleFile.string) != package.nimbleFileTime
+  nimbleFile in ls.nimblePackages and
+    getLastModificationTime(nimbleFile.string) !=
+    ls.nimblePackages.getOrDefault(nimbleFile).nimbleFileTime
 
 proc nimblePackage(
     ls: LanguageServer, file: Path
@@ -525,7 +526,7 @@ proc nimblePackage(
   let nimbleFile = ls.packageNimbleFile(file)
   if nimbleFile.len == 0:
     return NimblePackage()
-  if ls.isFailedDumpOutdated(nimbleFile):
+  if ls.isNimbleDumpOutdated(nimbleFile):
     ls.nimblePackages.del(nimbleFile)
     ls.nimblePackageLoads.del(nimbleFile)
   if nimbleFile notin ls.nimblePackageLoads:
@@ -920,18 +921,50 @@ proc hasServingNimsuggest(ls: LanguageServer, file: NlsFileInfo): bool =
   file.nimsuggestProject.len > 0 and ls.isLiveNimsuggestProject(file.nimsuggestProject) and
     ls.failTable.getOrDefault(file.nimsuggestProject, 0) < MaxNimsuggestFails
 
+proc modificationTime(path: Path): Time =
+  try:
+    getLastModificationTime(path.string)
+  except OSError:
+    Time()
+
+proc stopIfPackageChanged(
+    ls: LanguageServer, projectFile: Path
+): Future[bool] {.async: (raises: []).} =
+  let project = ls.projectFiles.getOrDefault(projectFile)
+  if project == nil or project.nimblePaths.len == 0 or
+      modificationTime(project.nimblePaths) == project.nimblePathsTime:
+    return false
+  debug "nimble.paths changed, stopping nimsuggest", projectFile = projectFile
+  ls.projectFiles.del(projectFile)
+  project.errorCallback = none(ProjectCallback)
+  for path in ls.filesServedBy(projectFile):
+    let file = ls.openFiles.getOrDefault(path)
+    file.projectFile = ls.getProjectFile(path)
+    file.nimsuggestProject = Path("")
+  let stopping = project.stopWait()
+  ls.nimsuggestStops[projectFile] = stopping
+  await stopping
+  ls.nimsuggestStops.del(projectFile)
+  true
+
+proc servingNimsuggestProject(
+    ls: LanguageServer, path: Path
+): Future[Path] {.async: (raises: [CancelledError, OSError, RegexError]).} =
+  let file = ls.openFiles.getOrDefault(path)
+  if file == nil:
+    await ls.nimsuggestProjectFor(path)
+  elif ls.hasServingNimsuggest(file):
+    file.nimsuggestProject
+  else:
+    file.nimsuggestProject = await ls.nimsuggestProjectFor(path)
+    file.nimsuggestProject
+
 proc getNimsuggestInner(
     ls: LanguageServer, path: Path
 ): Future[Nimsuggest] {.async: (raises: [CancelledError, OSError, RegexError]).} =
-  let file = ls.openFiles.getOrDefault(path)
-  let nsProject =
-    if file == nil:
-      await ls.nimsuggestProjectFor(path)
-    elif ls.hasServingNimsuggest(file):
-      file.nimsuggestProject
-    else:
-      file.nimsuggestProject = await ls.nimsuggestProjectFor(path)
-      file.nimsuggestProject
+  var nsProject = await ls.servingNimsuggestProject(path)
+  if await ls.stopIfPackageChanged(nsProject):
+    nsProject = await ls.servingNimsuggestProject(path)
   if nsProject.len == 0:
     return nil
   if nsProject notin ls.projectFiles:
@@ -1141,6 +1174,20 @@ proc onErrorCallback(
 proc createOrRestartNimsuggestImpl(
     ls: LanguageServer, projectFile: Path, path: Path
 ): Future[void] {.async: (raises: [CancelledError]).} =
+  let stopping = ls.nimsuggestStops.getOrDefault(projectFile)
+  if stopping != nil:
+    await stopping.join()
+  let nimbleFile =
+    try:
+      ls.packageNimbleFile(projectFile)
+    except OSError:
+      default(Path)
+  let nimblePaths =
+    if nimbleFile.len > 0:
+      nimbleFile.parentDir / "nimble.paths".Path
+    else:
+      default(Path)
+  let nimblePathsTime = modificationTime(nimblePaths)
   let projectNext =
     try:
       debug "Starting createOrRestartNimsuggest", projectFile = projectFile, path = path
@@ -1197,6 +1244,8 @@ proc createOrRestartNimsuggestImpl(
 
   if projectNext != nil:
     debug "Nimsuggest initialized successfully", projectFile = projectFile
+    projectNext.nimblePaths = nimblePaths
+    projectNext.nimblePathsTime = nimblePathsTime
     let project = ls.projectFiles.getOrDefault(projectFile)
     if project != nil:
       project.stop()
