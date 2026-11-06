@@ -1,10 +1,13 @@
 import
   std/[options, json, os, sequtils, sugar, strformat, times],
+  chronos,
   json_rpc/[rpcclient],
   unittest2,
   ../[nimlangserver, ls, utils],
-  ../protocol/[types],
+  ../protocol/[enums, types],
   ./[lspsocketclient, testhelpers]
+
+import ../routes/lsp as lspRoutes
 
 suite "nimble setup":
   let cmdParams =
@@ -356,3 +359,153 @@ suite "Projects with local dependencies":
     check (waitFor ls.getProjectFile(localDeps / "vendor" / "v" / "v.nim")) ==
       localDeps / "localdeps.nim"
     check (waitFor ls.getWorkingDir(localDeps / "vendor" / "v" / "v.nim")) == localDeps
+
+suite "Nimble package changes":
+  let cmdParams =
+    CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
+  let ls = main(cmdParams)
+  let client = newLspSocketClient()
+  waitFor client.connect("localhost", cmdParams.port)
+  client.registerNotification(
+    "window/showMessage", "window/workDoneProgress/create", "workspace/configuration",
+    "extension/statusUpdate", "textDocument/publishDiagnostics", "$/progress",
+  )
+  let
+    # outside the langserver package, so only the files written here make a package
+    root = getTempDir().Path / "nimlangserver-package-changes"
+    package = root / "changing"
+    nimbleFile = package / "changing.nimble"
+    nimblePaths = package / "nimble.paths"
+    packageProject = package / "changing.nim"
+    srcProject = package / "src" / "changing.nim"
+    libFile = package / "lib.nim"
+    otherFile = root / "other" / "other.nim"
+    nimbleText =
+      "version = \"0.1.0\"\nauthor = \"nimlangserver tests\"\n" &
+      "description = \"Fixture: a package that changes\"\nlicense = \"MIT\"\n"
+  removeDir(root.string)
+  createDir((package / "src").string)
+  createDir(otherFile.parentDir.string)
+  writeFile(srcProject.string, "echo 1\n")
+  writeFile(libFile.string, "proc a*() = discard\n")
+  writeFile(otherFile.string, "proc b*() = discard\n")
+  discard waitFor client.initialize(
+    LspInitializeParams %* {
+      "processId": %getCurrentProcessId(),
+      "rootUri": pathToUri(root),
+      "capabilities": {"workspace": {"configuration": true}},
+    }
+  )
+  ls.setWorkspaceConfiguration(% @[NlsConfig(maxNimsuggestProcesses: some 0)])
+
+  proc open(path: Path) =
+    client.notify(
+      "textDocument/didOpen",
+      %*{
+        "textDocument": {
+          "uri": pathToUri(path),
+          "languageId": "nim",
+          "version": 0,
+          "text": readFile(path.string),
+        }
+      },
+    )
+
+  proc notifyChange(path: Path, kind: FileChangeType) =
+    client.notify(
+      "workspace/didChangeWatchedFiles",
+      %*{"changes": [{"uri": pathToUri(path), "type": kind.int}]},
+    )
+
+  proc projectOf(path: Path): Path =
+    waitFor ls.openFiles[path].projectFileWait()
+
+  open(libFile)
+  open(otherFile)
+
+  suiteTeardown:
+    waitFor ls.shutdownNimsuggest()
+    removeDir(root.string)
+
+  test "without a package a file is its own project":
+    check waitUntil(libFile in ls.projectFiles, chronos.seconds(60))
+    check waitUntil(otherFile in ls.projectFiles, chronos.seconds(60))
+    check projectOf(libFile) == libFile
+
+  test "a new nimble file moves the open files of its folder to the package":
+    let otherProject = ls.projectFiles[otherFile]
+    let otherFuture = ls.openFiles[otherFile].projectFile
+    writeFile(packageProject.string, "echo 1\n")
+    writeFile(nimbleFile.string, nimbleText)
+    notifyChange(nimbleFile, FileChangeType.Created)
+
+    check waitUntil(libFile notin ls.projectFiles)
+    check projectOf(libFile) == packageProject
+    check ls.nimblePackages[nimbleFile].projectFile == packageProject
+    check ls.openFiles[libFile].nimsuggestProject.len == 0
+
+    # nothing changes for a file of another folder
+    check ls.projectFiles[otherFile] == otherProject
+    check ls.openFiles[otherFile].projectFile == otherFuture
+    check ls.openFiles[otherFile].nimsuggestProject == otherFile
+
+  test "the next request starts the nimsuggest of the new project":
+    discard client.call(
+      "textDocument/hover",
+      %*{
+        "textDocument": {"uri": pathToUri(libFile)},
+        "position": {"line": 0, "character": 5},
+      },
+    ).waitFor
+    check packageProject in ls.projectFiles
+    check ls.openFiles[libFile].nimsuggestProject == packageProject
+
+  test "a new nimble.paths restarts the nimsuggest of the package":
+    let project = ls.projectFiles[packageProject]
+    writeFile(nimblePaths.string, "--noNimblePath\n")
+    notifyChange(nimblePaths, FileChangeType.Created)
+    check waitUntil(packageProject notin ls.projectFiles)
+    check projectOf(libFile) == packageProject
+    discard waitFor ls.tryGetNimsuggest(libFile)
+    check ls.projectFiles[packageProject] != project
+
+  test "an edited nimble file is dumped again":
+    let time = getLastModificationTime(nimbleFile.string)
+    writeFile(nimbleFile.string, nimbleText & "srcDir = \"src\"\n")
+    # the mtime moves explicitly so the change is seen on coarse filesystems
+    setLastModificationTime(nimbleFile.string, fromUnix(time.toUnix + 2))
+    notifyChange(nimbleFile, FileChangeType.Changed)
+    check waitUntil(packageProject notin ls.projectFiles)
+    check projectOf(libFile) == srcProject
+
+  test "a deleted nimble file takes the open files out of the package":
+    discard waitFor ls.tryGetNimsuggest(libFile)
+    check srcProject in ls.projectFiles
+    removeFile(nimbleFile.string)
+    notifyChange(nimbleFile, FileChangeType.Deleted)
+    check waitUntil(srcProject notin ls.projectFiles)
+    check projectOf(libFile) == packageProject
+
+  test "a package file does not mark the nimsuggests stale":
+    let project = ls.projectFiles[otherFile]
+    check not project.ns.stale
+    let future = ls.openFiles[otherFile].projectFile
+    let dep = root / "nimbledeps" / "pkgs2" / "dep" / "dep.nimble"
+    createDir(dep.parentDir.string)
+    writeFile(dep.string, nimbleText)
+    proc change(path: Path) =
+      waitFor lspRoutes.didChangeWatchedFiles(
+        ls,
+        DidChangeWatchedFilesParams(
+          changes:
+            some @[FileEvent(uri: pathToUri(path), `type`: FileChangeType.Created.int)]
+        ),
+      )
+
+    change(dep)
+    check not project.ns.stale
+    check ls.projectFiles[otherFile] == project
+    check ls.openFiles[otherFile].projectFile == future
+
+    change(root / "other" / "unrelated.nim")
+    check project.ns.stale
