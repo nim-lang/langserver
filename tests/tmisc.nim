@@ -536,7 +536,7 @@ suite "Nimlangserver nimsuggest timeout restart":
     let original = ls.workspaceConfiguration
     let tight = NlsConfig()
     tight[] = ls.workspaceConfiguration[]
-    tight.timeout = some 1
+    tight.timeout = some 0
     ls.workspaceConfiguration = tight
     let creation = ls.createOrRestartNimsuggest(hwProjectFile, hwProjectFile)
     ls.workspaceConfiguration = original
