@@ -701,14 +701,14 @@ suite "External file edits":
   suiteTeardown:
     waitFor ls.shutdownNimsuggest()
 
-  test "the server watches nim files and nimble packages":
+  test "the server watches nim files":
     var watchers: seq[JsonNode]
     for call in client.calls["client/registerCapability"]:
       for registration in call{"registrations"}:
         if registration{"method"}.getStr == "workspace/didChangeWatchedFiles":
           watchers.add registration{"registerOptions", "watchers"}.getElems
-    check watchers.mapIt(it{"globPattern"}.getStr) ==
-      @["**/*.nim", "**/*.nimble", "**/nimble.paths"]
+    check watchers.len == 1
+    check watchers[0]{"globPattern"}.getStr == "**/*.nim"
     check waitUntil(ls.watchingFiles)
 
   test "a change to a watched file marks the nimsuggests stale until a project check":

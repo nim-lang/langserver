@@ -3,11 +3,9 @@ import
   chronos,
   json_rpc/[rpcclient],
   unittest2,
-  ../[nimlangserver, ls, utils],
-  ../protocol/[enums, types],
+  ../[nimlangserver, ls, suggestapi, utils],
+  ../protocol/[types],
   ./[lspsocketclient, testhelpers]
-
-import ../routes/lsp as lspRoutes
 
 suite "nimble setup":
   let cmdParams =
@@ -386,9 +384,11 @@ suite "Nimble package changes":
   removeDir(root.string)
   createDir((package / "src").string)
   createDir(otherFile.parentDir.string)
+  writeFile(packageProject.string, "echo 1\n")
   writeFile(srcProject.string, "echo 1\n")
   writeFile(libFile.string, "proc a*() = discard\n")
   writeFile(otherFile.string, "proc b*() = discard\n")
+  writeFile(nimbleFile.string, nimbleText)
   discard waitFor client.initialize(
     LspInitializeParams %* {
       "processId": %getCurrentProcessId(),
@@ -411,14 +411,23 @@ suite "Nimble package changes":
       },
     )
 
-  proc notifyChange(path: Path, kind: FileChangeType) =
-    client.notify(
-      "workspace/didChangeWatchedFiles",
-      %*{"changes": [{"uri": pathToUri(path), "type": kind.int}]},
-    )
-
   proc projectOf(path: Path): Path =
     waitFor ls.openFiles[path].projectFileWait()
+
+  proc hover(path: Path) =
+    discard client.call(
+      "textDocument/hover",
+      %*{
+        "textDocument": {"uri": pathToUri(path)},
+        "position": {"line": 0, "character": 5},
+      },
+    ).waitFor
+
+  # the mtime moves explicitly so the change is seen on coarse filesystems
+  proc rewrite(path: Path, text: string) =
+    let time = getLastModificationTime(path.string)
+    writeFile(path.string, text)
+    setLastModificationTime(path.string, fromUnix(time.toUnix + 2))
 
   open(libFile)
   open(otherFile)
@@ -427,85 +436,81 @@ suite "Nimble package changes":
     waitFor ls.shutdownNimsuggest()
     removeDir(root.string)
 
-  test "without a package a file is its own project":
-    check waitUntil(libFile in ls.projectFiles, chronos.seconds(60))
+  test "a request with no package change keeps the nimsuggest":
+    check waitUntil(packageProject in ls.projectFiles, chronos.seconds(60))
     check waitUntil(otherFile in ls.projectFiles, chronos.seconds(60))
-    check projectOf(libFile) == libFile
-
-  test "a new nimble file moves the open files of its folder to the package":
-    let otherProject = ls.projectFiles[otherFile]
-    let otherFuture = ls.openFiles[otherFile].projectFile
-    writeFile(packageProject.string, "echo 1\n")
-    writeFile(nimbleFile.string, nimbleText)
-    notifyChange(nimbleFile, FileChangeType.Created)
-
-    check waitUntil(libFile notin ls.projectFiles)
     check projectOf(libFile) == packageProject
-    check ls.nimblePackages[nimbleFile].projectFile == packageProject
-    check ls.openFiles[libFile].nimsuggestProject.len == 0
-
-    # nothing changes for a file of another folder
-    check ls.projectFiles[otherFile] == otherProject
-    check ls.openFiles[otherFile].projectFile == otherFuture
-    check ls.openFiles[otherFile].nimsuggestProject == otherFile
-
-  test "the next request starts the nimsuggest of the new project":
-    discard client.call(
-      "textDocument/hover",
-      %*{
-        "textDocument": {"uri": pathToUri(libFile)},
-        "position": {"line": 0, "character": 5},
-      },
-    ).waitFor
-    check packageProject in ls.projectFiles
-    check ls.openFiles[libFile].nimsuggestProject == packageProject
+    let project = ls.projectFiles[packageProject]
+    hover(libFile)
+    check ls.projectFiles[packageProject] == project
 
   test "a new nimble.paths restarts the nimsuggest of the package":
     let project = ls.projectFiles[packageProject]
     writeFile(nimblePaths.string, "--noNimblePath\n")
-    notifyChange(nimblePaths, FileChangeType.Created)
-    check waitUntil(packageProject notin ls.projectFiles)
-    check projectOf(libFile) == packageProject
-    discard waitFor ls.tryGetNimsuggest(libFile)
+    hover(libFile)
+    check ls.projectFiles[packageProject] != project
+    check ls.openFiles[libFile].nimsuggestProject == packageProject
+
+  test "an edited nimble.paths restarts the nimsuggest of the package":
+    let project = ls.projectFiles[packageProject]
+    rewrite(nimblePaths, "--noNimblePath\n--path:\"x\"\n")
+    hover(libFile)
     check ls.projectFiles[packageProject] != project
 
-  test "an edited nimble file is dumped again":
-    let time = getLastModificationTime(nimbleFile.string)
-    writeFile(nimbleFile.string, nimbleText & "srcDir = \"src\"\n")
-    # the mtime moves explicitly so the change is seen on coarse filesystems
-    setLastModificationTime(nimbleFile.string, fromUnix(time.toUnix + 2))
-    notifyChange(nimbleFile, FileChangeType.Changed)
-    check waitUntil(packageProject notin ls.projectFiles)
+  test "concurrent requests share the restart of a changed package":
+    let project = ls.projectFiles[packageProject]
+    rewrite(nimblePaths, "--noNimblePath\n--path:\"y\"\n")
+    let
+      first = ls.tryGetNimsuggest(libFile)
+      second = ls.tryGetNimsuggest(libFile)
+    check packageProject in ls.nimsuggestStops
+    check (waitFor first).get == (waitFor second).get
+    check ls.projectFiles[packageProject] != project
+    check packageProject notin ls.nimsuggestStops
+
+  test "a nimsuggest starts only after the old one of its project has stopped":
+    let project = ls.projectFiles[packageProject]
+    ls.projectFiles.del(packageProject)
+    project.errorCallback = none(ProjectCallback)
+    waitFor project.stopWait()
+
+    let stopping =
+      Future[void].Raising([]).init("test stopping", {FutureFlag.OwnCancelSchedule})
+    ls.nimsuggestStops[packageProject] = stopping
+    let starting = ls.createOrRestartNimsuggest(packageProject, packageProject)
+    # a nimsuggest starts in well under this, so without the wait it would be done
+    waitFor sleepAsync(chronos.seconds(2))
+    check not starting.finished
+    check packageProject notin ls.projectFiles
+
+    stopping.complete()
+    ls.nimsuggestStops.del(packageProject)
+    waitFor starting
+    check packageProject in ls.projectFiles
+
+  test "a deleted nimble.paths restarts the nimsuggest of the package":
+    let project = ls.projectFiles[packageProject]
+    removeFile(nimblePaths.string)
+    hover(libFile)
+    check ls.projectFiles[packageProject] != project
+
+  test "an edited nimble file moves the open files to the new project":
+    rewrite(nimbleFile, nimbleText & "srcDir = \"src\"\n")
+    hover(libFile)
+    check packageProject notin ls.projectFiles
     check projectOf(libFile) == srcProject
+    check ls.openFiles[libFile].nimsuggestProject == srcProject
+    check srcProject in ls.projectFiles
 
   test "a deleted nimble file takes the open files out of the package":
-    discard waitFor ls.tryGetNimsuggest(libFile)
-    check srcProject in ls.projectFiles
+    check ls.nimblePackages[nimbleFile].projectFile == srcProject
     removeFile(nimbleFile.string)
-    notifyChange(nimbleFile, FileChangeType.Deleted)
-    check waitUntil(srcProject notin ls.projectFiles)
+    hover(libFile)
+    check srcProject notin ls.projectFiles
     check projectOf(libFile) == packageProject
 
-  test "a package file does not mark the nimsuggests stale":
+  test "a project outside the package is not restarted":
     let project = ls.projectFiles[otherFile]
-    check not project.ns.stale
-    let future = ls.openFiles[otherFile].projectFile
-    let dep = root / "nimbledeps" / "pkgs2" / "dep" / "dep.nimble"
-    createDir(dep.parentDir.string)
-    writeFile(dep.string, nimbleText)
-    proc change(path: Path) =
-      waitFor lspRoutes.didChangeWatchedFiles(
-        ls,
-        DidChangeWatchedFilesParams(
-          changes:
-            some @[FileEvent(uri: pathToUri(path), `type`: FileChangeType.Created.int)]
-        ),
-      )
-
-    change(dep)
-    check not project.ns.stale
+    hover(otherFile)
     check ls.projectFiles[otherFile] == project
-    check ls.openFiles[otherFile].projectFile == future
-
-    change(root / "other" / "unrelated.nim")
-    check project.ns.stale
+    check project.nimbleFile.len == 0
