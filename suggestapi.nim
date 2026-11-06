@@ -659,8 +659,10 @@ proc outlineFile*(
 
 proc `mod`*(
     nimsuggest: Nimsuggest, file: Path, dirtyfile = Path("")
-): Future[seq[Suggest]].Raising([CancelledError, NimsuggestError]) =
-  return nimsuggest.call("ideMod", file, dirtyfile, 0, 0)
+): Future[seq[Suggest]] {.
+    async: (raw: true, raises: [CancelledError, NimsuggestError])
+.} =
+  nimsuggest.call("ideMod", file, dirtyfile, 0, 0)
 
 proc isKnown*(
     nimsuggest: Nimsuggest, filePath: Path
