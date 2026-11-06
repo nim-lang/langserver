@@ -108,13 +108,11 @@ type
 
   Nimsuggest* = ref NimsuggestImpl
 
-  PackageFilesTime* = tuple[nimbleFile, nimblePaths: Time]
-
   Project* = ref object
     ns*: Nimsuggest
     file*: Path
-    nimbleFile*: Path #empty when the project is not in a package
-    packageFilesTime*: PackageFilesTime #when the nimsuggest started
+    nimblePaths*: Path #empty when the project is not in a package
+    nimblePathsTime*: Time #when the nimsuggest started
     process*: AsyncProcessRef
     errorCallback*: Option[ProjectCallback]
     errorMessage*: string

@@ -927,20 +927,14 @@ proc modificationTime(path: Path): Time =
   except OSError:
     Time()
 
-proc packageFilesTime(nimbleFile: Path): PackageFilesTime =
-  (
-    modificationTime(nimbleFile),
-    modificationTime(nimbleFile.parentDir / "nimble.paths".Path),
-  )
-
 proc stopIfPackageChanged(
     ls: LanguageServer, projectFile: Path
 ): Future[bool] {.async: (raises: []).} =
   let project = ls.projectFiles.getOrDefault(projectFile)
-  if project == nil or project.nimbleFile.len == 0 or
-      packageFilesTime(project.nimbleFile) == project.packageFilesTime:
+  if project == nil or project.nimblePaths.len == 0 or
+      modificationTime(project.nimblePaths) == project.nimblePathsTime:
     return false
-  debug "Nimble package changed, stopping nimsuggest", projectFile = projectFile
+  debug "nimble.paths changed, stopping nimsuggest", projectFile = projectFile
   ls.projectFiles.del(projectFile)
   project.errorCallback = none(ProjectCallback)
   for path in ls.filesServedBy(projectFile):
@@ -1188,11 +1182,12 @@ proc createOrRestartNimsuggestImpl(
       ls.packageNimbleFile(projectFile)
     except OSError:
       default(Path)
-  let nimbleFilesTime =
+  let nimblePaths =
     if nimbleFile.len > 0:
-      packageFilesTime(nimbleFile)
+      nimbleFile.parentDir / "nimble.paths".Path
     else:
-      default(PackageFilesTime)
+      default(Path)
+  let nimblePathsTime = modificationTime(nimblePaths)
   let projectNext =
     try:
       debug "Starting createOrRestartNimsuggest", projectFile = projectFile, path = path
@@ -1249,8 +1244,8 @@ proc createOrRestartNimsuggestImpl(
 
   if projectNext != nil:
     debug "Nimsuggest initialized successfully", projectFile = projectFile
-    projectNext.nimbleFile = nimbleFile
-    projectNext.packageFilesTime = nimbleFilesTime
+    projectNext.nimblePaths = nimblePaths
+    projectNext.nimblePathsTime = nimblePathsTime
     let project = ls.projectFiles.getOrDefault(projectFile)
     if project != nil:
       project.stop()
