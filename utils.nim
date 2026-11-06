@@ -83,7 +83,7 @@ proc uriToPath*(uri: DocumentUri): Path {.raises: [UriParseError].} =
   ## Convert an RFC 8089 file URI to a native, platform-specific, absolute path.
   #let startIdx = when defined(windows): 8 else: 7
   #normalizedPath(uri[startIdx..^1])
-  let parsed = parseUri(uri)
+  let parsed = parseFileUri(uri)
   return normalizedPath(
     when defined(windows):
       parsed.path[1 ..^ 1]

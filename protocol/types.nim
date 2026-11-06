@@ -26,7 +26,7 @@ chronicles.formatIt(Path):
 proc len*(x: Path): int =
   x.string.len
 
-proc parseUri*(uri: LspUri): Uri {.raises: [UriParseError].} =
+proc parseFileUri*(uri: LspUri): Uri {.raises: [UriParseError].} =
   result = parseUri(uri.string)
   if result.scheme != "file":
     let msg =
@@ -47,7 +47,7 @@ proc readValue*(
 ) {.raises: [IOError, SerializationError].} =
   let uri = r.readValue(string)
   try:
-    discard parseUri(LspUri(uri))
+    discard parseFileUri(LspUri(uri))
   except UriParseError as exc:
     r.raiseUnexpectedValue(exc.msg)
   x = LspUri(uri)
