@@ -509,12 +509,12 @@ proc loadNimblePackage(
       package.entryPoints.add projectFile
   ls.nimblePackages[nimbleFile] = package
 
-proc isFailedDumpOutdated(
+proc isNimbleDumpOutdated(
     ls: LanguageServer, nimbleFile: Path
 ): bool {.raises: [OSError].} =
-  let package = ls.nimblePackages.getOrDefault(nimbleFile)
-  package.dumpFailed and
-    getLastModificationTime(nimbleFile.string) != package.nimbleFileTime
+  nimbleFile in ls.nimblePackages and
+    getLastModificationTime(nimbleFile.string) !=
+    ls.nimblePackages.getOrDefault(nimbleFile).nimbleFileTime
 
 proc nimblePackage(
     ls: LanguageServer, file: Path
@@ -525,7 +525,7 @@ proc nimblePackage(
   let nimbleFile = ls.packageNimbleFile(file)
   if nimbleFile.len == 0:
     return NimblePackage()
-  if ls.isFailedDumpOutdated(nimbleFile):
+  if ls.isNimbleDumpOutdated(nimbleFile):
     ls.nimblePackages.del(nimbleFile)
     ls.nimblePackageLoads.del(nimbleFile)
   if nimbleFile notin ls.nimblePackageLoads:
@@ -1271,11 +1271,12 @@ proc maybeRegisterCapabilityDidChangeWatchedFiles*(
     ls: LanguageServer
 ) {.async: (raises: [CancelledError]).} =
   if ls.supportsDynamicRegistrationForDidChangeWatchedFiles:
+    let kind =
+      some(WatchKind.Create.int or WatchKind.Change.int or WatchKind.Delete.int)
     let watchers = @[
-      FileSystemWatcher(
-        globPattern: "**/*.nim",
-        kind: some(WatchKind.Create.int or WatchKind.Change.int or WatchKind.Delete.int),
-      )
+      FileSystemWatcher(globPattern: "**/*.nim", kind: kind),
+      FileSystemWatcher(globPattern: "**/*.nimble", kind: kind),
+      FileSystemWatcher(globPattern: "**/nimble.paths", kind: kind),
     ]
     let reg = Registration(
       id: "workspace-did-change-watched-files",
@@ -1314,6 +1315,37 @@ proc handleConfigurationChanges*(
     debug "Sending inlayHint refresh"
     #An empty object means no params at all
     ls.inlayHintsRefreshRequest = ls.call("workspace/inlayHint/refresh", JsonString"{}")
+
+proc isNimblePackageFile*(path: Path): bool =
+  path.splitFile.ext == ".nimble" or path.extractFilename == Path("nimble.paths")
+
+proc stopNimsuggest(ls: LanguageServer, projectFile: Path) {.async: (raises: []).} =
+  let
+    creation = ls.nimsuggestCreations.getOrDefault(projectFile)
+    project = ls.projectFiles.getOrDefault(projectFile)
+  ls.nimsuggestCreations.del(projectFile)
+  ls.projectFiles.del(projectFile)
+  if project != nil:
+    project.errorCallback = none(ProjectCallback)
+  if creation != nil:
+    await creation.cancelAndWait()
+  if project != nil:
+    await project.stopWait()
+
+proc handleNimblePackageChanges*(
+    ls: LanguageServer, packageDirs: seq[Path]
+) {.async: (raises: []).} =
+  var stops: seq[Future[void].Raising([])]
+  for projectFile in ls.liveNimsuggestProjects:
+    if packageDirs.anyIt(projectFile.isRelTo(it)):
+      stops.add ls.stopNimsuggest(projectFile)
+  for path, file in ls.openFiles:
+    if packageDirs.anyIt(path.isRelTo(it)):
+      stops.add ls.stopNimsuggest(file.nimsuggestProject)
+      file.projectFile = ls.getProjectFile(path)
+      file.nimsuggestProject = Path("")
+  ls.sendStatusChanged()
+  await noCancel allFutures(stops)
 
 proc maybeRequestConfigurationFromClient*(
     ls: LanguageServer
