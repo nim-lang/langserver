@@ -928,20 +928,14 @@ proc modificationTime(path: Path): Time =
   except OSError:
     Time()
 
-proc packageFilesTime(nimbleFile: Path): PackageFilesTime =
-  (
-    modificationTime(nimbleFile),
-    modificationTime(nimbleFile.parentDir / "nimble.paths".Path),
-  )
-
 proc stopIfPackageChanged(
     ls: LanguageServer, projectFile: Path
 ): Future[bool] {.async: (raises: []).} =
   let project = ls.projectFiles.getOrDefault(projectFile)
-  if project == nil or project.nimbleFile.len == 0 or
-      packageFilesTime(project.nimbleFile) == project.packageFilesTime:
+  if project == nil or project.nimblePaths.len == 0 or
+      modificationTime(project.nimblePaths) == project.nimblePathsTime:
     return false
-  debug "Nimble package changed, stopping nimsuggest", projectFile = projectFile
+  debug "nimble.paths changed, stopping nimsuggest", projectFile = projectFile
   ls.projectFiles.del(projectFile)
   project.errorCallback = none(ProjectCallback)
   for path in ls.filesServedBy(projectFile):

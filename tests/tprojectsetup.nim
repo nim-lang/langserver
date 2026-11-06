@@ -436,7 +436,7 @@ suite "Nimble package changes":
     waitFor ls.shutdownNimsuggest()
     removeDir(root.string)
 
-  test "a request with no package change keeps the nimsuggest":
+  test "a request with no nimble.paths change keeps the nimsuggest":
     check waitUntil(packageProject in ls.projectFiles, chronos.seconds(60))
     check waitUntil(otherFile in ls.projectFiles, chronos.seconds(60))
     check projectOf(libFile) == packageProject
@@ -457,7 +457,7 @@ suite "Nimble package changes":
     hover(libFile)
     check ls.projectFiles[packageProject] != project
 
-  test "concurrent requests share the restart of a changed package":
+  test "concurrent requests share the restart of a changed nimble.paths":
     let project = ls.projectFiles[packageProject]
     rewrite(nimblePaths, "--noNimblePath\n--path:\"y\"\n")
     let
@@ -494,23 +494,23 @@ suite "Nimble package changes":
     hover(libFile)
     check ls.projectFiles[packageProject] != project
 
-  test "an edited nimble file moves the open files to the new project":
+  test "an edited nimble file alone keeps the nimsuggest":
+    let project = ls.projectFiles[packageProject]
     rewrite(nimbleFile, nimbleText & "srcDir = \"src\"\n")
+    hover(libFile)
+    check ls.projectFiles[packageProject] == project
+    check projectOf(libFile) == packageProject
+
+  test "a changed nimble.paths also picks up the edits of the nimble file":
+    writeFile(nimblePaths.string, "--noNimblePath\n")
     hover(libFile)
     check packageProject notin ls.projectFiles
     check projectOf(libFile) == srcProject
     check ls.openFiles[libFile].nimsuggestProject == srcProject
     check srcProject in ls.projectFiles
 
-  test "a deleted nimble file takes the open files out of the package":
-    check ls.nimblePackages[nimbleFile].projectFile == srcProject
-    removeFile(nimbleFile.string)
-    hover(libFile)
-    check srcProject notin ls.projectFiles
-    check projectOf(libFile) == packageProject
-
   test "a project outside the package is not restarted":
     let project = ls.projectFiles[otherFile]
     hover(otherFile)
     check ls.projectFiles[otherFile] == project
-    check project.nimbleFile.len == 0
+    check project.nimblePaths.len == 0
