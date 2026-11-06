@@ -5,7 +5,6 @@ import
   chronos,
   chronos/asyncproc,
   chronicles,
-  stew/byteutils,
   ./protocol/enums,
   ./utils,
   ./protocol/types
@@ -548,6 +547,21 @@ proc processQueue(self: Nimsuggest): Future[void] {.async: (raises: []).} =
   self.project.lastCmdDate = some(now())
 
 proc call*(
+    self: Nimsuggest, command, commandString: string
+): Future[seq[Suggest]] {.
+    async: (raw: true, raises: [CancelledError, NimsuggestError])
+.} =
+  result = Future[seq[Suggest]].Raising([CancelledError, NimsuggestError]).init(
+      "nimsuggest.call"
+    )
+  self.requestQueue.addLast(
+    SuggestCall(commandString: commandString, future: result, command: command)
+  )
+  if not self.processing:
+    self.processing = true
+    asyncSpawn processQueue(self)
+
+proc call*(
     self: Nimsuggest,
     command: string,
     file: Path,
@@ -555,41 +569,39 @@ proc call*(
     line: int,
     column: int,
     tag = "",
-): Future[seq[Suggest]].Raising([CancelledError, NimsuggestError]) =
-  result = Future[seq[Suggest]].Raising([CancelledError, NimsuggestError]).init(
-      "nimsuggest.call"
-    )
+): Future[seq[Suggest]] {.
+    async: (raw: true, raises: [CancelledError, NimsuggestError])
+.} =
   let commandString =
     if dirtyFile.string != "":
       fmt "{command} \"{file}\";\"{dirtyFile}\":{line}:{column}{tag}"
     else:
       fmt "{command} \"{file}\":{line}:{column}{tag}"
+  call(self, command, commandString)
 
-  self.requestQueue.addLast(
-    SuggestCall(commandString: commandString, future: result, command: command)
-  )
-
-  if not self.processing:
-    self.processing = true
-    asyncSpawn processQueue(self)
-
-template createFullCommand(command: untyped) {.dirty.} =
+template createFullCommand(command: untyped): untyped =
   proc command*(
       self: Nimsuggest, file: Path, dirtyfile = Path(""), line: int, col: int, tag = ""
-  ): Future[seq[Suggest]].Raising([CancelledError, NimsuggestError]) =
-    return self.call(astToStr(command), file, dirtyfile, line, col, tag)
+  ): Future[seq[Suggest]] {.
+      async: (raw: true, raises: [CancelledError, NimsuggestError])
+  .} =
+    self.call(astToStr(command), file, dirtyfile, line, col, tag)
 
-template createFileOnlyCommand(command: untyped) {.dirty.} =
+template createFileOnlyCommand(command: untyped): untyped =
   proc command*(
       self: Nimsuggest, file: Path, dirtyfile = Path("")
-  ): Future[seq[Suggest]].Raising([CancelledError, NimsuggestError]) =
-    return self.call(astToStr(command), file, dirtyfile, 0, 0)
+  ): Future[seq[Suggest]] {.
+      async: (raw: true, raises: [CancelledError, NimsuggestError])
+  .} =
+    self.call(astToStr(command), file, dirtyfile, 0, 0)
 
-template createGlobalCommand(command: untyped) {.dirty.} =
+template createGlobalCommand(command: untyped): untyped =
   proc command*(
       self: Nimsuggest
-  ): Future[seq[Suggest]].Raising([CancelledError, NimsuggestError]) =
-    return self.call(astToStr(command), Path("-"), Path(""), 0, 0)
+  ): Future[seq[Suggest]] {.
+      async: (raw: true, raises: [CancelledError, NimsuggestError])
+  .} =
+    self.call(astToStr(command), Path("-"), Path(""), 0, 0)
 
 template createRangeCommand(command: untyped) {.dirty.} =
   proc command*(
@@ -598,8 +610,10 @@ template createRangeCommand(command: untyped) {.dirty.} =
       dirtyfile = Path(""),
       startLine, startCol, endLine, endCol: int,
       extra: string,
-  ): Future[seq[Suggest]].Raising([CancelledError, NimsuggestError]) =
-    return self.call(
+  ): Future[seq[Suggest]] {.
+      async: (raw: true, raises: [CancelledError, NimsuggestError])
+  .} =
+    self.call(
       astToStr(command),
       file,
       dirtyfile,
@@ -627,9 +641,11 @@ createGlobalCommand(recompile)
 createRangeCommand(inlayHints)
 
 proc globalSymbols*(
-    self: Nimsuggest, query: string, dirtyfile = Path("")
-): Future[seq[Suggest]].Raising([CancelledError, NimsuggestError]) =
-  self.call("globalSymbols", query.Path, dirtyfile, 0, 0)
+    self: Nimsuggest, query: string
+): Future[seq[Suggest]] {.
+    async: (raw: true, raises: [CancelledError, NimsuggestError])
+.} =
+  self.call("globalSymbols", fmt("globalSymbols \"{query}\""))
 
 proc outlineFile*(
     self: Nimsuggest, file: Path, dirtyfile = Path("")
@@ -643,8 +659,10 @@ proc outlineFile*(
 
 proc `mod`*(
     nimsuggest: Nimsuggest, file: Path, dirtyfile = Path("")
-): Future[seq[Suggest]].Raising([CancelledError, NimsuggestError]) =
-  return nimsuggest.call("ideMod", file, dirtyfile, 0, 0)
+): Future[seq[Suggest]] {.
+    async: (raw: true, raises: [CancelledError, NimsuggestError])
+.} =
+  nimsuggest.call("ideMod", file, dirtyfile, 0, 0)
 
 proc isKnown*(
     nimsuggest: Nimsuggest, filePath: Path
