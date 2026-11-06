@@ -104,21 +104,21 @@ suite "Idle nimsuggest shared by several files":
     # The other file is mapped to the root file's project, so both are served
     # by the same nimsuggest.
     client.notify("textDocument/didOpen", %createDidOpenParams(OtherFile))
-    check waitUntil(otherUri in ls.openFiles)
+    check waitUntil(OtherFile.fixturePath in ls.openFiles)
     discard waitFor client
       .call("textDocument/completion", %positionParams(otherUri, 4, 7))
       .wait(60.seconds)
     check ls.projectFiles.len == 1
-    check ls.openFiles[otherUri].nimsuggestProject == RootFile.fixtureUri.uriToPath
+    check ls.openFiles[OtherFile.fixturePath].nimsuggestProject == RootFile.fixturePath
 
     ls.stopAsIdle()
     check ls.projectFiles.len == 1
 
-    waitFor ls.didCloseFile(RootFile.fixtureUri)
+    waitFor ls.didCloseFile(RootFile.fixturePath)
     ls.stopAsIdle()
     check ls.projectFiles.len == 1
 
-    waitFor ls.didCloseFile(otherUri)
+    waitFor ls.didCloseFile(OtherFile.fixturePath)
     ls.stopAsIdle()
     check ls.projectFiles.len == 0
 
@@ -130,22 +130,20 @@ suite "Idle nimsuggest of a nimble package":
     waitFor ls.shutdownNimsuggest()
 
   test "it is stopped like any other":
-    waitFor ls.didOpenFile(
-      createDidOpenParams("projects/vendored/vendored.nim").textDocument
-    )
-    check (waitFor ls.tryGetNimsuggest("projects/vendored/vendored.nim".fixtureUri)).isSome
+    waitFor ls.didOpenFixture("projects/vendored/vendored.nim")
+    check (waitFor ls.tryGetNimsuggest("projects/vendored/vendored.nim".fixturePath)).isSome
     # The package's own module is one of its entry points, which used to be
     # kept running however long they were idle.
     let nimbleFile = absolutePath("tests" / "projects" / "vendored" / "vendored.nimble").Path
     check vendored in ls.nimblePackages[nimbleFile].entryPoints
     check vendored in ls.projectFiles
-    waitFor ls.didCloseFile("projects/vendored/vendored.nim".fixtureUri)
+    waitFor ls.didCloseFile("projects/vendored/vendored.nim".fixturePath)
     ls.stopAsIdle()
     check vendored notin ls.projectFiles
 
 suite "Idle nimsuggest of a mapped project":
   let (ls, client) = startServer()
-  let rootPath = RootFile.fixtureUri.uriToPath
+  let rootPath = RootFile.fixturePath
 
   suiteTeardown:
     waitFor ls.shutdownNimsuggest()
@@ -162,11 +160,11 @@ suite "Idle nimsuggest of a mapped project":
         )
       ]
     )
-    waitFor ls.didOpenFile(createDidOpenParams(OtherFile).textDocument)
-    check (waitFor ls.tryGetNimsuggest(OtherFile.fixtureUri)).isSome
+    waitFor ls.didOpenFixture(OtherFile)
+    check (waitFor ls.tryGetNimsuggest(OtherFile.fixturePath)).isSome
     # Mapped projects used to be kept running however long they were idle.
-    check ls.openFiles[OtherFile.fixtureUri].nimsuggestProject == rootPath
-    waitFor ls.didCloseFile(OtherFile.fixtureUri)
+    check ls.openFiles[OtherFile.fixturePath].nimsuggestProject == rootPath
+    waitFor ls.didCloseFile(OtherFile.fixturePath)
     ls.stopAsIdle()
     check rootPath notin ls.projectFiles
 
@@ -192,7 +190,7 @@ suite "Closed file shared with another":
     )
     client.openRootFile()
     client.notify("textDocument/didOpen", %createDidOpenParams(OtherFile))
-    check waitUntil(otherUri in ls.openFiles)
+    check waitUntil(OtherFile.fixturePath in ls.openFiles)
     discard waitFor client
       .call("textDocument/completion", %positionParams(otherUri, 4, 7))
       .wait(60.seconds)
@@ -200,7 +198,7 @@ suite "Closed file shared with another":
     check $otherUri in ls.getLspStatus().nimsuggestInstances[0].openFiles
 
     client.notify("textDocument/didClose", %*{"textDocument": {"uri": otherUri}})
-    check waitUntil(otherUri notin ls.openFiles)
+    check waitUntil(OtherFile.fixturePath notin ls.openFiles)
     check $otherUri notin ls.getLspStatus().nimsuggestInstances[0].openFiles
     check $RootFile.fixtureUri in ls.getLspStatus().nimsuggestInstances[0].openFiles
 
@@ -214,14 +212,14 @@ suite "File closed before its nimsuggest was stopped":
   test "a nimsuggest is not started for it":
     client.openRootFile()
     client.notify("textDocument/didClose", %*{"textDocument": {"uri": uri}})
-    check waitUntil(uri notin ls.openFiles)
+    check waitUntil(RootFile.fixturePath notin ls.openFiles)
     ls.stopAsIdle()
     check ls.projectFiles.len == 0
 
     # A late request for the closed file must not bring it back or start a
     # nimsuggest for it.
     check client.completionLabels(4, 7).len == 0
-    check uri notin ls.openFiles
+    check RootFile.fixturePath notin ls.openFiles
     check ls.projectFiles.len == 0
 
 proc lastDiagnosticsFor(client: LspSocketClient, uri: DocumentUri): JsonNode =
@@ -270,7 +268,7 @@ suite "File edited while it is checked":
     client.openRootFile()
     let published = client.diagnosticsFor(uri)
 
-    let checking = ls.checkFile(ls.openFiles[uri])
+    let checking = ls.checkFile(ls.openFiles[RootFile.fixturePath])
     # A call, unlike a notification, returns once the edit is applied.
     discard waitFor client
       .call(
@@ -287,14 +285,14 @@ suite "File edited while it is checked":
     check client.completionLabels(4, 7).len > 0
     check client.diagnosticsFor(uri) == published
 
-    waitFor ls.checkFile(ls.openFiles[uri])
+    waitFor ls.checkFile(ls.openFiles[RootFile.fixturePath])
     check client.completionLabels(4, 7).len > 0
     check client.diagnosticsFor(uri) == published + 1
     check client.lastDiagnosticsFor(uri).len > 0
 
 suite "Failed nimsuggest with no other to fall back to":
   let (ls, client) = startServer()
-  let rootProject = RootFile.fixtureUri.uriToPath
+  let rootProject = RootFile.fixturePath
 
   suiteTeardown:
     waitFor ls.shutdownNimsuggest()
@@ -328,7 +326,7 @@ suite "Failed nimsuggest while others run":
     let files = [RootFile, OtherFile, ThirdFile, FourthFile]
     for file in files:
       client.notify("textDocument/didOpen", %createDidOpenParams(file))
-      check waitUntil(file.fixtureUri in ls.openFiles)
+      check waitUntil(file.fixturePath in ls.openFiles)
       discard waitFor client
         .call("textDocument/completion", %positionParams(file.fixtureUri, 4, 7))
         .wait(60.seconds)
@@ -336,9 +334,8 @@ suite "Failed nimsuggest while others run":
 
     # The other file's project failed too many times. The others don't know
     # the file, so none of them can serve it.
-    let otherUri = OtherFile.fixtureUri
-    ls.failTable[otherUri.uriToPath] = 10
+    ls.failTable[OtherFile.fixturePath] = 10
 
-    check (waitFor ls.tryGetNimsuggest(otherUri)).isNone
-    check ls.openFiles.getOrDefault(otherUri).nimsuggestProject.len == 0
+    check (waitFor ls.tryGetNimsuggest(OtherFile.fixturePath)).isNone
+    check ls.openFiles.getOrDefault(OtherFile.fixturePath).nimsuggestProject.len == 0
     check ls.projectFiles.len == 4

@@ -153,7 +153,7 @@ suite "LSP project check command":
     check waitFor client.waitForNotificationMessage(
       fmt"Nimsuggest initialized for {projectFile}"
     )
-    check projectFile.pathToUri notin ls.openFiles
+    check projectFile notin ls.openFiles
     let project = ls.projectFiles[projectFile]
     check waitUntil(
       not ls.checkInProgress and not project.ns.checkProjectInProgress, 30.seconds
@@ -174,13 +174,12 @@ suite "LSP project check command":
       .wait(CallTimeout)
     check waitUntil(errmodulePublishes() > published, 30.seconds)
     # The command checks the project without opening its file.
-    check projectFile.pathToUri notin ls.openFiles
+    check projectFile notin ls.openFiles
 
   test "a project check that went stale does not publish its results":
     let
       projectFile =
         absolutePath("tests" / "projects" / "mcpproject" / "src" / "mcpproject.nim").Path
-      projectUri = projectFile.pathToUri
       errmodule = fixtureUri("projects/mcpproject/src/mcpproject/errmodule.nim").uriToPath
       project = ls.projectFiles[projectFile]
     check waitUntil(
@@ -190,7 +189,7 @@ suite "LSP project check command":
     # Publishing records the files with diagnostics, and errmodule.nim has a type
     # error, so it is back in the set only if the results get published.
     ls.filesWithDiags.clear()
-    let checking = ls.checkProject(projectUri)
+    let checking = ls.checkProject(projectFile)
     # The event loop has not run, so the check is waiting on nimsuggest. The file
     # is saved while nimsuggest is still checking the previous contents.
     check project.ns.checkProjectInProgress
@@ -200,5 +199,5 @@ suite "LSP project check command":
 
     # The next request checks the project again, and that check publishes.
     check project.ns.stale
-    discard waitFor ls.getNimsuggest(projectUri)
+    discard waitFor ls.getNimsuggest(projectFile)
     check waitUntil(errmodule in ls.filesWithDiags, 30.seconds)

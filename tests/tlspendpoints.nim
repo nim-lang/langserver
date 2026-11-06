@@ -204,10 +204,22 @@ suite "LSP endpoints":
     let other = "projects/hw/useRoot.nim"
     let otherUri = fixtureUri(other)
     client.notify("textDocument/didOpen", %createDidOpenParams(other))
-    check waitUntil(otherUri in ls.openFiles)
+    check waitUntil(other.fixturePath in ls.openFiles)
 
     client.notify("textDocument/didClose", %*{"textDocument": {"uri": otherUri}})
-    check waitUntil(otherUri notin ls.openFiles)
+    check waitUntil(other.fixturePath notin ls.openFiles)
+
+  test "another spelling of an open file's uri is the same file":
+    let other = "projects/hw/useRoot.nim"
+    var params = createDidOpenParams(other)
+    params.textDocument.uri = ($fixtureUri(other)).replace(".nim", "%2Enim").DocumentUri
+    client.notify("textDocument/didOpen", %params)
+    check waitUntil(other.fixturePath in ls.openFiles)
+
+    client.notify(
+      "textDocument/didClose", %*{"textDocument": {"uri": fixtureUri(other)}}
+    )
+    check waitUntil(other.fixturePath notin ls.openFiles)
 
   test "A request for a file that was never opened is answered":
     let unopened = fixtureUri("projects/hw/willCrash.nim")
@@ -319,10 +331,10 @@ suite "LSP endpoints":
         plainUri = fixtureUri(plainFile)
       defer:
         client.notify("textDocument/didClose", %*{"textDocument": {"uri": plainUri}})
-        discard waitUntil(plainUri notin ls.openFiles)
+        discard waitUntil(plainFile.fixturePath notin ls.openFiles)
 
       client.notify("textDocument/didOpen", %createDidOpenParams(plainFile))
-      check waitUntil(plainUri in ls.openFiles)
+      check waitUntil(plainFile.fixturePath in ls.openFiles)
       client.notify(
         "textDocument/didChange",
         %*{
@@ -330,7 +342,10 @@ suite "LSP endpoints":
           "contentChanges": [{"text": readFile("tests" / plainFile)}],
         },
       )
-      check waitUntil(plainUri in ls.openFiles and ls.openFiles[plainUri].edits > 0)
+      check waitUntil(
+        plainFile.fixturePath in ls.openFiles and
+          ls.openFiles[plainFile.fixturePath].edits > 0
+      )
 
       let params =
         DocumentFormattingParams %* {
@@ -412,7 +427,7 @@ suite "LSP endpoints":
         },
       )
       discard waitUntil(
-        not readFile(ls.uriStorageLocation(helloWorldUri).string).contains("addedByDidChange")
+        not readFile(ls.pathStorageLocation(helloWorldFile.fixturePath).string).contains("addedByDidChange")
       )
 
     client.notify(
@@ -424,7 +439,7 @@ suite "LSP endpoints":
       },
     )
     check waitUntil(
-      readFile(ls.uriStorageLocation(helloWorldUri).string).contains("addedByDidChange")
+      readFile(ls.pathStorageLocation(helloWorldFile.fixturePath).string).contains("addedByDidChange")
     )
 
     let params = DocumentSymbolParams %* {"textDocument": {"uri": helloWorldUri}}
@@ -436,10 +451,10 @@ suite "LSP endpoints":
 
   test "the suite leaves the server in the state it started in":
     check ls.openFiles.len == 1
-    check helloWorldUri in ls.openFiles
+    check helloWorldFile.fixturePath in ls.openFiles
     check ls.projectFiles.len == 1
 
-    let stash = ls.uriStorageLocation(helloWorldUri)
+    let stash = ls.pathStorageLocation(helloWorldFile.fixturePath)
     if fileExists(stash.string):
       check readFile(stash.string).normalizeText ==
         readFile("tests" / helloWorldFile).normalizeText
@@ -492,7 +507,7 @@ suite "LSP messages before initialize":
     let status =
       to(client.callTimeout("extension/status", newJObject()), NimLangServerStatus)
     check status.version == LSPVersion
-    check helloWorldUri notin ls.openFiles
+    check helloWorldFile.fixturePath notin ls.openFiles
 
 suite "LSP socket transport":
   let cmdParams =

@@ -27,6 +27,15 @@ proc getNphPath(): Option[string] {.raises: [OSError].} =
   else:
     some path
 
+proc getWorkspaceFolders(ip: LspInitializeParams): seq[Path] =
+  if ip.workspaceFolders.isSome:
+    for folder in ip.workspaceFolders.get:
+      result.add folder.uri.uriToPath
+  elif ip.rootUri.isSome and ip.rootUri.get.string != "":
+    result.add ip.rootUri.get.uriToPath
+  elif ip.rootPath.get("") != "":
+    result.add ip.rootPath.get.Path
+
 # Routes
 
 # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#initialize
@@ -113,15 +122,16 @@ proc completion*(
     )
 .} =
   ls.checkInitialized()
-  with (params.position, params.textDocument):
-    let nimsuggest = await ls.tryGetNimsuggest(uri)
+  let path = params.textDocument.uri.uriToPath
+  with params.position:
+    let nimsuggest = await ls.tryGetNimsuggest(path)
     if nimsuggest.isNone():
       return @[]
-    let ch = ls.getCharacter(uri, line, character)
+    let ch = ls.getCharacter(path, line, character)
     if ch.isNone:
       return @[]
     let completions =
-      await nimsuggest.get.sug(uriToPath(uri), ls.uriToStash(uri), line + 1, ch.get)
+      await nimsuggest.get.sug(path, ls.pathToStash(path), line + 1, ch.get)
     result = completions.map(toCompletionItem)
 
     if ls.lspClientCapabilities.supportSignatureHelp() and
@@ -148,14 +158,15 @@ proc definition*(
     )
 .} =
   ls.checkInitialized()
-  with (params.position, params.textDocument):
+  let path = params.textDocument.uri.uriToPath
+  with params.position:
     let config = await ls.workspaceConfigurationWait()
     # `nim track` only works on files as saved on disk; it has no dirty-buffer
     # support. Use it only when the file is open and has no unsaved changes,
     # otherwise fall back to nimsuggest (which supports dirty buffers).
-    let info = ls.openFiles.getOrDefault(uri)
+    let info = ls.openFiles.getOrDefault(path)
     if config.useNimTrack.get(false) and info != nil and not info.changed:
-      let ch = ls.getCharacter(uri, line, character)
+      let ch = ls.getCharacter(path, line, character)
       if ch.isNone:
         return @[]
       let projectFile = await info.projectFileWait()
@@ -167,7 +178,7 @@ proc definition*(
       result = (
         await track(
           projectFile,
-          uriToPath(uri),
+          path,
           line + 1,
           ch.get,
           tmDef,
@@ -177,16 +188,15 @@ proc definition*(
         )
       ).map(x => x.toUtf16Pos(ls).toLocation)
       return
-    let ns = await ls.tryGetNimsuggest(uri)
+    let ns = await ls.tryGetNimsuggest(path)
     if ns.isNone:
       return @[]
-    let ch = ls.getCharacter(uri, line, character)
+    let ch = ls.getCharacter(path, line, character)
     if ch.isNone:
       return @[]
-    result = ns.get
-      .def(uriToPath(uri), ls.uriToStash(uri), line + 1, ch.get)
-      .await()
-      .map(x => x.toUtf16Pos(ls).toLocation)
+    result = ns.get.def(path, ls.pathToStash(path), line + 1, ch.get).await().map(
+        x => x.toUtf16Pos(ls).toLocation
+      )
 
 proc declaration*(
     ls: LanguageServer, params: TextDocumentPositionParams
@@ -198,15 +208,16 @@ proc declaration*(
     )
 .} =
   ls.checkInitialized()
-  with (params.position, params.textDocument):
-    let ns = await ls.tryGetNimsuggest(uri)
+  let path = params.textDocument.uri.uriToPath
+  with params.position:
+    let ns = await ls.tryGetNimsuggest(path)
     if ns.isNone:
       return @[]
-    let ch = ls.getCharacter(uri, line, character)
+    let ch = ls.getCharacter(path, line, character)
     if ch.isNone:
       return @[]
     result = ns.get
-      .declaration(uriToPath(uri), ls.uriToStash(uri), line + 1, ch.get)
+      .declaration(path, ls.pathToStash(path), line + 1, ch.get)
       .await()
       .map(x => x.toUtf16Pos(ls).toLocation)
 
@@ -215,15 +226,15 @@ proc expandAll*(
 ): Future[ExpandResult] {.
     async: (raises: [CancelledError, OSError, IOError, RegexError, NimsuggestError])
 .} =
-  with (params.position, params.textDocument):
-    let ns = await ls.tryGetNimsuggest(uri)
+  let path = params.textDocument.uri.uriToPath
+  with params.position:
+    let ns = await ls.tryGetNimsuggest(path)
     if ns.isNone:
       return ExpandResult() #TODO make it optional
-    let ch = ls.getCharacter(uri, line, character)
+    let ch = ls.getCharacter(path, line, character)
     if ch.isNone:
       return ExpandResult()
-    let expand =
-      ns.get.expand(uriToPath(uri), ls.uriToStash(uri), line + 1, ch.get).await()
+    let expand = ns.get.expand(path, ls.pathToStash(path), line + 1, ch.get).await()
 
 proc createRangeFromSuggest(suggest: Suggest): Range =
   result = range(suggest.line - 1, 0, suggest.endLine - 1, suggest.endCol)
@@ -249,7 +260,8 @@ proc expand*(
     )
 .} =
   ls.checkInitialized()
-  with (params, params.position, params.textDocument):
+  let path = params.textDocument.uri.uriToPath
+  with (params, params.position):
     let
       lvl = level.get(-1)
       tag =
@@ -257,15 +269,14 @@ proc expand*(
           "all"
         else:
           $lvl
-      ns = await ls.tryGetNimsuggest(uri)
+      ns = await ls.tryGetNimsuggest(path)
     if ns.isNone:
       return ExpandResult()
-    let ch = ls.getCharacter(uri, line, character)
+    let ch = ls.getCharacter(path, line, character)
     if ch.isNone:
       return ExpandResult()
-    let expand = ns.get
-      .expand(uriToPath(uri), ls.uriToStash(uri), line + 1, ch.get, fmt "  {tag}")
-      .await()
+    let expand =
+      ns.get.expand(path, ls.pathToStash(path), line + 1, ch.get, fmt "  {tag}").await()
     if expand.len != 0:
       result = ExpandResult(
         content: expand[0].doc.fixIdentation(character),
@@ -295,8 +306,7 @@ proc extensionSuggest*(
   var projectFile = params.projectFile.Path
   if projectFile.len > 0 and projectFile notin ls.projectFiles:
     #test if just a regular file
-    let uri = projectFile.pathToUri
-    let info = ls.openFiles.getOrDefault(uri)
+    let info = ls.openFiles.getOrDefault(projectFile)
     if info != nil:
       projectFile = await info.projectFileWait()
       debug "[ExtensionSuggest] Found project file for ",
@@ -309,7 +319,7 @@ proc extensionSuggest*(
     await ls.showMessage(fmt "Restarting nimsuggest {projectFile}", MessageType.Info)
     project.errorCallback = none(ProjectCallback)
     project.stop()
-    await ls.createOrRestartNimsuggest(projectFile, projectFile.pathToUri)
+    await ls.createOrRestartNimsuggest(projectFile, projectFile)
     ls.sendStatusChanged()
 
   case params.action
@@ -337,17 +347,17 @@ proc typeDefinition*(
     )
 .} =
   ls.checkInitialized()
-  with (params.position, params.textDocument):
-    let ns = await ls.tryGetNimsuggest(uri)
+  let path = params.textDocument.uri.uriToPath
+  with params.position:
+    let ns = await ls.tryGetNimsuggest(path)
     if ns.isNone:
       return @[]
-    let ch = ls.getCharacter(uri, line, character)
+    let ch = ls.getCharacter(path, line, character)
     if ch.isNone:
       return @[]
-    result = ns.get
-      .`type`(uriToPath(uri), ls.uriToStash(uri), line + 1, ch.get)
-      .await()
-      .map(x => x.toUtf16Pos(ls).toLocation)
+    result = ns.get.`type`(path, ls.pathToStash(path), line + 1, ch.get).await().map(
+        x => x.toUtf16Pos(ls).toLocation
+      )
 
 proc toSymbolInformation*(suggest: Suggest): SymbolInformation =
   with suggest:
@@ -368,17 +378,17 @@ proc documentSymbols*(
     )
 .} =
   ls.checkInitialized()
-  let uri = params.textDocument.uri
-  let ns = await ls.tryGetNimsuggest(uri)
+  let path = params.textDocument.uri.uriToPath
+  let ns = await ls.tryGetNimsuggest(path)
   if ns.isSome:
-    ns.get().outlineFile(uriToPath(uri), ls.uriToStash(uri)).await().map(
+    ns.get().outlineFile(path, ls.pathToStash(path)).await().map(
       x => x.toUtf16Pos(ls).toSymbolInformation
     )
   else:
     @[]
 
 proc fileCheckDelayImpl(
-    ls: LanguageServer, uri: DocumentUri
+    ls: LanguageServer, path: Path
 ) {.
     async: (
       raises: [
@@ -387,13 +397,13 @@ proc fileCheckDelayImpl(
       ]
     )
 .} =
-  let info = ls.openFiles.getOrDefault(uri)
+  let info = ls.openFiles.getOrDefault(path)
   await sleepAsync(FILE_CHECK_DELAY)
-  if info == ls.openFiles.getOrDefault(uri):
+  if info == ls.openFiles.getOrDefault(path):
     await ls.checkFile(info)
 
 proc fileCheckDelay(
-    ls: LanguageServer, uri: DocumentUri
+    ls: LanguageServer, path: Path
 ) {.
     async: (
       raises: [
@@ -405,7 +415,7 @@ proc fileCheckDelay(
   let conf = await ls.workspaceConfigurationWait()
   if not conf.autoCheckFile.get(false):
     return
-  let info = ls.openFiles.getOrDefault(uri)
+  let info = ls.openFiles.getOrDefault(path)
   if info == nil:
     return
   let edits = info.edits
@@ -415,8 +425,8 @@ proc fileCheckDelay(
     if edits != info.edits:
       return
   # still open and same file info
-  if info == ls.openFiles.getOrDefault(uri):
-    info.fileCheck = fileCheckDelayImpl(ls, uri)
+  if info == ls.openFiles.getOrDefault(path):
+    info.fileCheck = fileCheckDelayImpl(ls, path)
     await info.fileCheck
 
 proc toMdLinks(s: string): string =
@@ -449,17 +459,17 @@ proc hover*(
     )
 .} =
   ls.checkInitialized()
-  with (params.position, params.textDocument):
+  let path = params.textDocument.uri.uriToPath
+  with params.position:
     let config = await ls.workspaceConfigurationWait()
-    let nimsuggest = await ls.tryGetNimsuggest(uri)
+    let nimsuggest = await ls.tryGetNimsuggest(path)
     if nimsuggest.isNone:
       return none(Hover)
-    let ch = ls.getCharacter(uri, line, character)
+    let ch = ls.getCharacter(path, line, character)
     if ch.isNone:
       return none(Hover)
-    let suggestions = await nimsuggest.get().highlight(
-      uriToPath(uri), ls.uriToStash(uri), line + 1, ch.get
-    )
+    let suggestions =
+      await nimsuggest.get().highlight(path, ls.pathToStash(path), line + 1, ch.get)
     if suggestions.len == 0:
       return none(Hover)
     var suggest = suggestions[0]
@@ -476,23 +486,23 @@ proc hover*(
       if suggest.symkind == "skMacro" and
           config.nimExpandMacro.get(NIM_EXPAND_MACRO_BY_DEFAULT):
         let expanded = await nimsuggest.get.expand(
-          uriToPath(uri), ls.uriToStash(uri), suggest.line, suggest.column
+          path, ls.pathToStash(path), suggest.line, suggest.column
         )
         if expanded.len > 0 and expanded[0].doc != "":
           # debug "Expanded macro", expanded = expanded[0].doc
           content.value.add &"```nim\n{expanded[0].doc}\n```"
         else:
           # debug "Couldnt expand the macro. Trying with nim expand", suggest = suggest[]
-          let nimPath = await ls.getNimPath(config, uriToPath(uri))
+          let nimPath = await ls.getNimPath(config, path)
           if nimPath.isSome:
-            let expanded = await nimExpandMacro(nimPath.get, suggest, uriToPath(uri))
+            let expanded = await nimExpandMacro(nimPath.get, suggest, path)
             content.value.add &"```nim\n{expanded}\n```"
       if suggest.section == ideDef and suggest.symkind in ["skProc"] and
           config.nimExpandArc.get(NIM_EXPAND_ARC_BY_DEFAULT):
         debug "#Expanding arc", suggest = suggest[]
-        let nimPath = await ls.getNimPath(config, uriToPath(uri))
+        let nimPath = await ls.getNimPath(config, path)
         if nimPath.isSome:
-          let expanded = await nimExpandArc(nimPath.get, suggest, uriToPath(uri))
+          let expanded = await nimExpandArc(nimPath.get, suggest, path)
           let arcContent = "#Expanded arc \n" & expanded
           content.value.add &"```nim\n{arcContent}\n```"
       return some(
@@ -512,14 +522,15 @@ proc references*(
     )
 .} =
   ls.checkInitialized()
-  with (params.position, params.textDocument, params.context):
+  let path = params.textDocument.uri.uriToPath
+  with (params.position, params.context):
     let config = await ls.workspaceConfigurationWait()
     # `nim track` only works on files as saved on disk; it has no dirty-buffer
     # support. Use it only when the file is open and has no unsaved changes,
     # otherwise fall back to nimsuggest (which supports dirty buffers).
-    let info = ls.openFiles.getOrDefault(uri)
+    let info = ls.openFiles.getOrDefault(path)
     if config.useNimTrack.get(false) and info != nil and not info.changed:
-      let ch = ls.getCharacter(uri, line, character)
+      let ch = ls.getCharacter(path, line, character)
       if ch.isNone:
         return @[]
       let projectFile = await info.projectFileWait()
@@ -531,7 +542,7 @@ proc references*(
         return @[]
       let refs = await track(
         projectFile,
-        uriToPath(uri),
+        path,
         line + 1,
         ch.get,
         mode,
@@ -543,14 +554,13 @@ proc references*(
         .filter(suggest => suggest.section != ideDef or includeDeclaration)
         .map(x => x.toUtf16Pos(ls).toLocation)
       return
-    let nimsuggest = await ls.tryGetNimsuggest(uri)
+    let nimsuggest = await ls.tryGetNimsuggest(path)
     if nimsuggest.isNone:
       return @[]
-    let ch = ls.getCharacter(uri, line, character)
+    let ch = ls.getCharacter(path, line, character)
     if ch.isNone:
       return @[]
-    let refs =
-      await nimsuggest.get.use(uriToPath(uri), ls.uriToStash(uri), line + 1, ch.get)
+    let refs = await nimsuggest.get.use(path, ls.pathToStash(path), line + 1, ch.get)
     result = refs.filter(suggest => suggest.section != ideDef or includeDeclaration).map(
         x => x.toUtf16Pos(ls).toLocation
       )
@@ -565,15 +575,15 @@ proc prepareRename*(
     )
 .} =
   ls.checkInitialized()
-  with (params.position, params.textDocument):
-    let nimsuggest = await ls.tryGetNimsuggest(uri)
+  let path = params.textDocument.uri.uriToPath
+  with params.position:
+    let nimsuggest = await ls.tryGetNimsuggest(path)
     if nimsuggest.isNone:
       return newJNull()
-    let ch = ls.getCharacter(uri, line, character)
+    let ch = ls.getCharacter(path, line, character)
     if ch.isNone:
       return newJNull()
-    let def =
-      await nimsuggest.get.def(uriToPath(uri), ls.uriToStash(uri), line + 1, ch.get)
+    let def = await nimsuggest.get.def(path, ls.pathToStash(path), line + 1, ch.get)
     if def.len == 0:
       return newJNull()
     # Check if the symbol belongs to the project
@@ -675,20 +685,21 @@ proc inlayHint*(
 .} =
   ls.checkInitialized()
   debug "inlayHint received..."
-  with (params.range, params.textDocument):
+  let path = params.textDocument.uri.uriToPath
+  with params.range:
     let
       configuration = await ls.workspaceConfigurationWait()
-      nimsuggest = await ls.tryGetNimsuggest(uri)
+      nimsuggest = await ls.tryGetNimsuggest(path)
 
     if nimsuggest.isNone or nimsuggest.get.protocolVersion < 4 or
         not configuration.inlayHintsEnabled:
       return @[]
-    let ch = ls.getCharacter(uri, start.line, start.character)
+    let ch = ls.getCharacter(path, start.line, start.character)
     if ch.isNone:
       return @[]
     let suggestions = await nimsuggest.get.inlayHints(
-      uriToPath(uri),
-      ls.uriToStash(uri),
+      path,
+      ls.pathToStash(path),
       start.line + 1,
       ch.get,
       `end`.line + 1,
@@ -706,7 +717,7 @@ proc inlayHint*(
             configuration.parameterHintsEnabled
           )
       )
-      .map(x => x.inlayHintInfo.toUtf16Pos(ls, uri).toInlayHint(configuration))
+      .map(x => x.inlayHintInfo.toUtf16Pos(ls, path).toInlayHint(configuration))
       .filter(x => x.label != "")
 
 proc codeAction*(
@@ -715,7 +726,7 @@ proc codeAction*(
     async: (raises: [ApplicationError, CancelledError, OSError, RegexError])
 .} =
   ls.checkInitialized()
-  let projectFile = await ls.projectFileWait(params.textDocument.uri)
+  let projectFile = await ls.projectFileWait(params.textDocument.uri.uriToPath)
   return
     seq[CodeAction] %* [
       {
@@ -764,14 +775,13 @@ proc executeCommand*(
       msg: params.command & " expects the project file as its first argument",
     )
   let projectFile = params.arguments[0].getStr.Path
-  let projectUri = projectFile.pathToUri
   case params.command
   of RESTART_COMMAND:
     debug "Restarting nimsuggest", projectFile = projectFile
-    await ls.createOrRestartNimsuggest(projectFile, projectUri)
+    await ls.createOrRestartNimsuggest(projectFile, projectFile)
   of CHECK_PROJECT_COMMAND:
     debug "Checking project", projectFile = projectFile
-    await ls.checkProject(projectUri)
+    await ls.checkProject(projectFile)
   of RECOMPILE_COMMAND:
     debug "Clean build", projectFile = projectFile
     let project = ls.projectFiles.getOrDefault(projectFile)
@@ -782,7 +792,7 @@ proc executeCommand*(
       defer:
         ls.progress(token, "end")
       discard await project.ns.recompile()
-      await ls.checkProject(projectUri)
+      await ls.checkProject(projectFile)
 
   result = newJNull()
 
@@ -831,18 +841,19 @@ proc signatureHelp*(
   if not ls.lspClientCapabilities.supportSignatureHelp():
     #Some clients doesnt support signatureHelp
     return none[SignatureHelp]()
-  with (params.position, params.textDocument):
-    let nimsuggest = await ls.tryGetNimsuggest(uri)
+  let path = params.textDocument.uri.uriToPath
+  with params.position:
+    let nimsuggest = await ls.tryGetNimsuggest(path)
     if nimsuggest.isNone:
       return none[SignatureHelp]()
     if nsCon notin nimsuggest.get.capabilities:
       #support signatureHelp only if the current version of Nimsuggest supports it.
       return none[SignatureHelp]()
-    let ch = ls.getCharacter(uri, line, character)
+    let ch = ls.getCharacter(path, line, character)
     if ch.isNone:
       return none[SignatureHelp]()
     let completions =
-      await nimsuggest.get.con(uriToPath(uri), ls.uriToStash(uri), line + 1, ch.get)
+      await nimsuggest.get.con(path, ls.pathToStash(path), line + 1, ch.get)
     let signatures = completions.map(toSignatureInformation)
     if signatures.len() > 0:
       return some SignatureHelp(
@@ -852,14 +863,14 @@ proc signatureHelp*(
       return none[SignatureHelp]()
 
 proc format*(
-    ls: LanguageServer, nphPath: string, uri: DocumentUri
+    ls: LanguageServer, nphPath: string, path: Path
 ): Future[Option[TextEdit]] {.
     async:
       (raises: [CancelledError, OSError, IOError, AsyncProcessError, AsyncStreamError])
 .} =
-  let filePath = ls.uriStorageLocation(uri)
+  let filePath = ls.pathStorageLocation(path)
   if not fileExists(filePath):
-    warn "File doenst exist ", filePath = filePath, uri = uri
+    warn "File doenst exist ", filePath = filePath, path = path
     return none(TextEdit)
 
   debug "nph starts", nphPath = nphPath, filePath = filePath
@@ -873,7 +884,7 @@ proc format*(
   if res != 0:
     let err = string.fromBytes(process.stderrStream.read().await)
     error "There was an error trying to format the document. ", err = err
-    await ls.showMessage(&"Error formating {uri}:{err}", MessageType.Error)
+    await ls.showMessage(&"Error formating {path}:{err}", MessageType.Error)
     return none(TextEdit)
 
   #if enough time has passed since last modification, we skip the formatting:   
@@ -885,14 +896,14 @@ proc format*(
 
   let formattedText = readFile(filePath.string)
   if formattedText.len < 2:
-    error "Failed to format document", uri = uri
+    error "Failed to format document", path = path
     return none(TextEdit)
 
   let fullRange = Range(
     start: Position(line: 0, character: 0),
     `end`: Position(line: uinteger.high, character: uinteger.high),
   )
-  debug "Formatting document", uri = uri, formattedText = formattedText
+  debug "Formatting document", path = path, formattedText = formattedText
   some TextEdit(range: fullRange, newText: formattedText)
 
 proc formatting*(
@@ -916,10 +927,9 @@ proc formatting*(
     )
     return @[]
 
-  with (params.textDocument):
-    let formatTextEdit = await ls.format(nphPath.get(), uri)
-    if formatTextEdit.isSome:
-      return @[formatTextEdit.get]
+  let formatTextEdit = await ls.format(nphPath.get(), params.textDocument.uri.uriToPath)
+  if formatTextEdit.isSome:
+    return @[formatTextEdit.get]
 
 proc workspaceSymbol*(
     ls: LanguageServer, params: WorkspaceSymbolParams
@@ -945,16 +955,16 @@ proc documentHighlight*(
     )
 .} =
   ls.checkInitialized()
-  with (params.position, params.textDocument):
-    let nimsuggest = await ls.tryGetNimsuggest(uri)
+  let path = params.textDocument.uri.uriToPath
+  with params.position:
+    let nimsuggest = await ls.tryGetNimsuggest(path)
     if nimsuggest.isNone:
       return @[]
-    let ch = ls.getCharacter(uri, line, character)
+    let ch = ls.getCharacter(path, line, character)
     if ch.isNone:
       return @[]
-    let suggestLocations = await nimsuggest.get.highlight(
-      uriToPath(uri), ls.uriToStash(uri), line + 1, ch.get
-    )
+    let suggestLocations =
+      await nimsuggest.get.highlight(path, ls.pathToStash(path), line + 1, ch.get)
     result = suggestLocations.map(x => x.toUtf16Pos(ls).toDocumentHighlight)
 
 #proc extractId(id: JsonNode): int {.raises: [ValueError].} =
@@ -1158,28 +1168,28 @@ proc didChange*(
 .} =
   ls.checkInitialized()
   with params:
-    let uri = textDocument.uri
-    let info = ls.openFiles.getOrDefault(uri)
+    let path = textDocument.uri.uriToPath
+    let info = ls.openFiles.getOrDefault(path)
     if info == nil:
       return
     if contentChanges.len == 0:
       return
     inc info.edits
     info.fingerTable = @[]
-    let file = open(ls.uriStorageLocation(uri).string, fmWrite)
+    let text = contentChanges[0].text
+    let file = open(ls.pathStorageLocation(path).string, fmWrite)
     try:
-      info.textDocument.text = contentChanges[0].text
-      for line in contentChanges[0].text.splitLines:
+      for line in text.splitLines:
         info.fingerTable.add line.createUTFMapping()
         file.writeLine line
     finally:
       file.close()
     info.changed =
       try:
-        info.textDocument.text != readFile(uriToPath(uri).string)
+        text != readFile(path.string)
       except IOError:
         true
-    await ls.fileCheckDelay(uri)
+    await ls.fileCheckDelay(path)
 
 proc willSaveWaitUntil*(
     ls: LanguageServer, params: WillSaveTextDocumentParams
@@ -1195,7 +1205,7 @@ proc willSaveWaitUntil*(
   debug "Received willSaveWaitUntil request"
 
   let
-    uri = params.textDocument.uri
+    path = params.textDocument.uri.uriToPath
     config = await ls.workspaceConfigurationWait()
     nphPath = getNphPath()
 
@@ -1204,8 +1214,8 @@ proc willSaveWaitUntil*(
     config.formatOnSave.get(false)
 
   if shouldFormat:
-    debug "Formatting document before save", uri = uri
-    let formatTextEdit = await ls.format(nphPath.get(), uri)
+    debug "Formatting document before save", path = path
+    let formatTextEdit = await ls.format(nphPath.get(), path)
     if formatTextEdit.isSome:
       return @[formatTextEdit.get]
 
@@ -1218,28 +1228,28 @@ proc didSave*(
 .} =
   ls.checkInitialized()
   let
-    uri = params.textDocument.uri
+    path = params.textDocument.uri.uriToPath
     config = await ls.workspaceConfigurationWait()
-  let nimsuggest = await ls.tryGetNimsuggest(uri)
+  let nimsuggest = await ls.tryGetNimsuggest(path)
 
   if nimsuggest.isNone:
     return
 
-  let info = ls.openFiles.getOrDefault(uri)
+  let info = ls.openFiles.getOrDefault(path)
   if info != nil:
     info.changed = false
-  traceAsyncErrors nimsuggest.get.changed(uriToPath(uri))
+  traceAsyncErrors nimsuggest.get.changed(path)
 
   let useNimCheck = config.useNimCheck.get(USE_NIM_CHECK_BY_DEFAULT)
   if config.checkOnSave.get(true) and (useNimCheck or not ls.watchingFiles):
-    debug "Checking project", uri = uri
-    traceAsyncErrors ls.checkProject(uri)
+    debug "Checking project", path = path
+    traceAsyncErrors ls.checkProject(path)
 
 proc didClose*(
     ls: LanguageServer, params: DidCloseTextDocumentParams
 ): Future[void] {.async: (raises: [ApplicationError]).} =
   ls.checkInitialized()
-  await ls.didCloseFile(params.textDocument.uri)
+  await ls.didCloseFile(params.textDocument.uri.uriToPath)
 
 proc didOpen*(
     ls: LanguageServer, params: DidOpenTextDocumentParams
@@ -1247,7 +1257,7 @@ proc didOpen*(
     async: (raises: [ApplicationError, CancelledError, OSError, IOError, RegexError])
 .} =
   ls.checkInitialized()
-  await ls.didOpenFile(params.textDocument)
+  await ls.didOpenFile(params.textDocument.uri.uriToPath, params.textDocument.text)
 
 proc didChangeWatchedFiles*(
     ls: LanguageServer, params: DidChangeWatchedFilesParams
@@ -1271,8 +1281,8 @@ proc didChangeWorkspaceFolders*(
     if path notin ls.workspaceFolders:
       ls.workspaceFolders.add path
   debug "Workspace folders changed", workspaceFolders = ls.workspaceFolders
-  for uri, file in ls.openFiles:
-    file.projectFile = ls.getProjectFile(uri.uriToPath)
+  for path, file in ls.openFiles:
+    file.projectFile = ls.getProjectFile(path)
     file.nimsuggestProject = Path("")
   ls.sendStatusChanged()
 

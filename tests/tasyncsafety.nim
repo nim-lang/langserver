@@ -33,30 +33,23 @@ suite "Async safety":
 
   let
     helloWorldFile = "projects/hw/hw.nim"
-    helloWorldUri = fixtureUri(helloWorldFile)
-    helloWorldPath = uriToPath(helloWorldUri)
+    helloWorldPath = fixturePath(helloWorldFile)
 
   suiteTeardown:
     waitFor ls.shutdownNimsuggest()
 
   test "didOpenFile writes the stash file before it suspends":
-    removeFile(ls.uriStorageLocation(helloWorldUri).string)
-    let textDocument = TextDocumentItem(
-      uri: helloWorldUri,
-      languageId: "nim",
-      version: 0,
-      text: readFile("tests" / helloWorldFile),
-    )
+    removeFile(ls.pathStorageLocation(helloWorldPath).string)
 
-    let opened = ls.didOpenFile(textDocument)
-    check fileExists(ls.uriStorageLocation(helloWorldUri).string)
-    check ls.openFiles[helloWorldUri].fingerTable.len > 0
+    let opened = ls.didOpenFixture(helloWorldFile)
+    check fileExists(ls.pathStorageLocation(helloWorldPath).string)
+    check ls.openFiles[helloWorldPath].fingerTable.len > 0
 
     check waitFor opened.withTimeout(30.seconds)
 
   test "Concurrent creations for the same project are deduplicated":
-    let first = ls.createOrRestartNimsuggest(helloWorldPath, helloWorldUri)
-    let second = ls.createOrRestartNimsuggest(helloWorldPath, helloWorldUri)
+    let first = ls.createOrRestartNimsuggest(helloWorldPath, helloWorldPath)
+    let second = ls.createOrRestartNimsuggest(helloWorldPath, helloWorldPath)
     check ls.nimsuggestCreations.len == 1
 
     waitFor allFutures(first, second).wait(30.seconds)
@@ -66,8 +59,8 @@ suite "Async safety":
 
   test "Cancelling one create leaves the creation for the others":
     let
-      first = ls.createOrRestartNimsuggest(helloWorldPath, helloWorldUri)
-      second = ls.createOrRestartNimsuggest(helloWorldPath, helloWorldUri)
+      first = ls.createOrRestartNimsuggest(helloWorldPath, helloWorldPath)
+      second = ls.createOrRestartNimsuggest(helloWorldPath, helloWorldPath)
     check ls.nimsuggestCreations.len == 1
 
     waitFor first.cancelAndWait()
@@ -111,28 +104,21 @@ suite "Replacing a running nimsuggest":
 
   let
     helloWorldFile = "projects/hw/hw.nim"
-    helloWorldUri = fixtureUri(helloWorldFile)
-    helloWorldPath = uriToPath(helloWorldUri)
+    helloWorldPath = fixturePath(helloWorldFile)
 
   suiteTeardown:
     waitFor ls.shutdownNimsuggest()
 
   test "stopping the replaced instance is not handled as a crash":
-    let textDocument = TextDocumentItem(
-      uri: helloWorldUri,
-      languageId: "nim",
-      version: 0,
-      text: readFile("tests" / helloWorldFile),
-    )
-    check waitFor ls.didOpenFile(textDocument).withTimeout(30.seconds)
-    check (waitFor ls.tryGetNimsuggest(helloWorldUri).wait(30.seconds)).isSome
+    check waitFor ls.didOpenFixture(helloWorldFile).withTimeout(30.seconds)
+    check (waitFor ls.tryGetNimsuggest(helloWorldPath).wait(30.seconds)).isSome
     let old = ls.projectFiles[helloWorldPath]
     let oldNs = old.ns
     # Having served a request is what made the error path auto-restart it.
     check waitUntil(oldNs.successfullCall, timeout = 30.seconds)
 
     check waitFor ls
-      .createOrRestartNimsuggest(helloWorldPath, helloWorldUri)
+      .createOrRestartNimsuggest(helloWorldPath, helloWorldPath)
       .withTimeout(30.seconds)
     let replacement = ls.projectFiles[helloWorldPath]
     check replacement != old
@@ -170,7 +156,7 @@ suite "Documents closed while a handler is suspended":
   let
     helloWorldFile = "projects/hw/hw.nim"
     helloWorldUri = fixtureUri(helloWorldFile)
-    helloWorldPath = uriToPath(helloWorldUri)
+    helloWorldPath = fixturePath(helloWorldFile)
     saveParams = DidSaveTextDocumentParams(
       textDocument: TextDocumentIdentifier(uri: helloWorldUri)
     )
@@ -197,14 +183,8 @@ suite "Documents closed while a handler is suspended":
     count
 
   test "didSave checks the project even if the file closes while it waits":
-    let textDocument = TextDocumentItem(
-      uri: helloWorldUri,
-      languageId: "nim",
-      version: 0,
-      text: readFile("tests" / helloWorldFile),
-    )
-    check waitFor ls.didOpenFile(textDocument).withTimeout(30.seconds)
-    check (waitFor ls.tryGetNimsuggest(helloWorldUri).wait(30.seconds)).isSome
+    check waitFor ls.didOpenFixture(helloWorldFile).withTimeout(30.seconds)
+    check (waitFor ls.tryGetNimsuggest(helloWorldPath).wait(30.seconds)).isSome
     let ns = ls.projectFiles[helloWorldPath].ns
 
     # hw.nim has an error in it, so any project check publishes for it. That
@@ -228,16 +208,16 @@ suite "Documents closed while a handler is suspended":
     discard settle()
     let fut =
       Future[Path].Raising([CancelledError, OSError, RegexError]).init("closed race")
-    ls.openFiles[helloWorldUri].projectFile = fut
-    ls.openFiles[helloWorldUri].nimsuggestProject = Path("")
+    ls.openFiles[helloWorldPath].projectFile = fut
+    ls.openFiles[helloWorldPath].nimsuggestProject = Path("")
 
     let saving = lspRoutes.didSave(ls, saveParams)
     check not saving.finished
 
     # The editor closes the file while the save is still waiting. The save
     # has not looked the file up yet, so it will find it already closed.
-    ls.openFiles.del(helloWorldUri)
-    check helloWorldUri notin ls.openFiles
+    ls.openFiles.del(helloWorldPath)
+    check helloWorldPath notin ls.openFiles
 
     # With the entry gone, the save must still tell nimsuggest to re-read the
     # file, which really was written to disk.
@@ -247,12 +227,12 @@ suite "Documents closed while a handler is suspended":
     check waitUntil(ns.successfullCall, timeout = 30.seconds)
 
   test "didClose for a file that was never open is a no-op":
-    let unknownUri = fixtureUri("projects/hw/never-opened.nim")
-    check unknownUri notin ls.openFiles
+    let unknownPath = fixturePath("projects/hw/never-opened.nim")
+    check unknownPath notin ls.openFiles
     # Reaching the next line is the assertion: reading `changed` off the missing
     # entry used to dereference nil.
-    check waitFor ls.didCloseFile(unknownUri).withTimeout(30.seconds)
-    check unknownUri notin ls.openFiles
+    check waitFor ls.didCloseFile(unknownPath).withTimeout(30.seconds)
+    check unknownPath notin ls.openFiles
 
 suite "Shutting down twice":
   let cmdParams =
@@ -276,19 +256,13 @@ suite "Shutting down twice":
 
   let
     helloWorldFile = "projects/hw/hw.nim"
-    helloWorldUri = fixtureUri(helloWorldFile)
+    helloWorldPath = fixturePath(helloWorldFile)
 
   test "a second shutdown waits for the first one to stop nimsuggest":
     # exit can arrive while shutdown is still stopping nimsuggest. If the
     # second call returned early the server would quit with it still running.
-    let textDocument = TextDocumentItem(
-      uri: helloWorldUri,
-      languageId: "nim",
-      version: 0,
-      text: readFile("tests" / helloWorldFile),
-    )
-    check waitFor ls.didOpenFile(textDocument).withTimeout(30.seconds)
-    check (waitFor ls.tryGetNimsuggest(helloWorldUri).wait(30.seconds)).isSome
+    check waitFor ls.didOpenFixture(helloWorldFile).withTimeout(30.seconds)
+    check (waitFor ls.tryGetNimsuggest(helloWorldPath).wait(30.seconds)).isSome
 
     let first = ls.shutdownNimsuggest()
     let second = ls.shutdownNimsuggest()

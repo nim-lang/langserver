@@ -54,8 +54,8 @@ suite "Single nimsuggest instance under concurrent opens":
     # running. Each file would get its own nimsuggest, but the limit is 1. The
     # modules don't import each other, so only the file that got the slot is
     # served.
-    let opening = files.mapIt(ls.didOpenFile(createDidOpenParams(it).textDocument))
-    let starting = files.mapIt(ls.tryGetNimsuggest(it.fixtureUri))
+    let opening = files.mapIt(ls.didOpenFixture(it))
+    let starting = files.mapIt(ls.tryGetNimsuggest(it.fixturePath))
     for fut in opening:
       waitFor fut
     check starting.countIt((waitFor it).isSome) == 1
@@ -80,11 +80,11 @@ suite "Idle nimsuggest instance under the cap":
 
     # Close the other file and stop its nimsuggest as if it had been idle for
     # too long.
-    let otherUri = OtherFile.fixtureUri
-    let otherProject = ls.openFiles.getOrDefault(otherUri).nimsuggestProject
+    let otherPath = OtherFile.fixturePath
+    let otherProject = ls.openFiles.getOrDefault(otherPath).nimsuggestProject
     let project = ls.projectFiles.getOrDefault(otherProject)
     check project != nil
-    waitFor ls.didCloseFile(otherUri)
+    waitFor ls.didCloseFile(otherPath)
     for live in ls.projectFiles.values:
       live.lastCmdDate = some now()
     project.lastCmdDate = some(now() - initDuration(hours = 1))
@@ -98,8 +98,8 @@ suite "Idle nimsuggest instance under the cap":
 
     # No running nimsuggest knows the other file, so it gets none rather than
     # restarting its own over the limit.
-    waitFor ls.didOpenFile(createDidOpenParams(OtherFile).textDocument)
-    check (waitFor ls.tryGetNimsuggest(otherUri)).isNone
+    waitFor ls.didOpenFixture(OtherFile)
+    check (waitFor ls.tryGetNimsuggest(otherPath)).isNone
     check ls.projectFiles.len == 2
     check otherProject notin ls.projectFiles
 
@@ -124,19 +124,19 @@ suite "Reusing a nimsuggest instance over the cap":
     ls.setWorkspaceConfiguration(% @[NlsConfig(maxNimsuggestProcesses: some 2)])
     let files = ["projects/hw/hw.nim", "projects/vendored/vendored.nim"]
     for file in files:
-      waitFor ls.didOpenFile(createDidOpenParams(file).textDocument)
+      waitFor ls.didOpenFixture(file)
     check ls.projectFiles.len == 2
 
     # The cap is reached, so both files go through the reuse. Only one of them
     # can be the first live instance, so the other one is served by its own
     # project only if the reuse prefers it.
     for file in files:
-      ls.openFiles[file.fixtureUri].nimsuggestProject = Path("")
+      ls.openFiles[file.fixturePath].nimsuggestProject = Path("")
     for file in files:
-      check (waitFor ls.tryGetNimsuggest(file.fixtureUri)).isSome
-    check ls.openFiles["projects/hw/hw.nim".fixtureUri].nimsuggestProject ==
+      check (waitFor ls.tryGetNimsuggest(file.fixturePath)).isSome
+    check ls.openFiles["projects/hw/hw.nim".fixturePath].nimsuggestProject ==
       projectsDir / "hw" / "hw.nim"
-    check ls.openFiles["projects/vendored/vendored.nim".fixtureUri].nimsuggestProject ==
+    check ls.openFiles["projects/vendored/vendored.nim".fixturePath].nimsuggestProject ==
       projectsDir / "vendored" / "vendored.nim"
     check ls.projectFiles.len == 2
 
@@ -176,24 +176,20 @@ suite "Last used nimsuggest over the cap":
     )
     let
       vendored = projectsDir / "vendored" / "vendored.nim"
-      depUri = "projects/vendored/vendor/dep/dep.nim".fixtureUri
-      hwUri = "projects/hw/hw.nim".fixtureUri
-    waitFor ls.didOpenFile(
-      createDidOpenParams("projects/vendored/vendored.nim").textDocument
-    )
+      depPath = "projects/vendored/vendor/dep/dep.nim".fixturePath
+      hwPath = "projects/hw/hw.nim".fixturePath
+    waitFor ls.didOpenFixture("projects/vendored/vendored.nim")
     check vendored in ls.projectFiles
 
     # vendored.nim imports dep.nim, so its nimsuggest serves it.
-    waitFor ls.didOpenFile(
-      createDidOpenParams("projects/vendored/vendor/dep/dep.nim").textDocument
-    )
-    check (waitFor ls.openFiles[depUri].projectFileWait()) ==
+    waitFor ls.didOpenFixture("projects/vendored/vendor/dep/dep.nim")
+    check (waitFor ls.openFiles[depPath].projectFileWait()) ==
       projectsDir / "vendored" / "vendor" / "dep" / "dep.nim"
-    check ls.openFiles[depUri].nimsuggestProject == vendored
+    check ls.openFiles[depPath].nimsuggestProject == vendored
     check ls.projectFiles.len == 1
 
     # hw.nim is not known by it, so it gets no nimsuggest.
-    waitFor ls.didOpenFile(createDidOpenParams("projects/hw/hw.nim").textDocument)
-    check (waitFor ls.tryGetNimsuggest(hwUri)).isNone
-    check ls.openFiles[hwUri].nimsuggestProject.len == 0
+    waitFor ls.didOpenFixture("projects/hw/hw.nim")
+    check (waitFor ls.tryGetNimsuggest(hwPath)).isNone
+    check ls.openFiles[hwPath].nimsuggestProject.len == 0
     check ls.projectFiles.len == 1

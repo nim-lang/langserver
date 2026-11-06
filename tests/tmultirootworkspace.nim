@@ -77,24 +77,21 @@ suite "Several workspaces":
     check (waitFor ls.getProjectFile(otherModule)) == rootModule
 
   test "open files resolve again when the client adds and removes workspaces":
-    waitFor ls.didOpenFile(
-      createDidOpenParams("projects/multimodules/othermodule.nim").textDocument
-    )
-    let uri = pathToUri(otherModule)
-    check (waitFor ls.openFiles[uri].projectFileWait()) == rootModule
+    waitFor ls.didOpenFixture("projects/multimodules/othermodule.nim")
+    check (waitFor ls.openFiles[otherModule].projectFileWait()) == rootModule
 
     # Without its workspace the mapping no longer applies to the file.
     client.notify(
       "workspace/didChangeWorkspaceFolders", folderChange(@[], @[modulesDir])
     )
     check waitUntil(ls.workspaceFolders == @[hwDir.Path])
-    check (waitFor ls.openFiles[uri].projectFileWait()) != rootModule
+    check (waitFor ls.openFiles[otherModule].projectFileWait()) != rootModule
 
     client.notify(
       "workspace/didChangeWorkspaceFolders", folderChange(@[modulesDir], @[])
     )
     check waitUntil(ls.workspaceFolders == @[hwDir.Path, modulesDir.Path])
-    check (waitFor ls.openFiles[uri].projectFileWait()) == rootModule
+    check (waitFor ls.openFiles[otherModule].projectFileWait()) == rootModule
 
 suite "No workspace":
   let cmdParams =

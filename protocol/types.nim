@@ -1,5 +1,5 @@
 import
-  std/[hashes, json, options, paths, tables],
+  std/[json, options, paths, tables],
   chronicles,
   json_serialization,
   json_serialization/std/[options as jsoptions, tables as jstables]
@@ -12,7 +12,6 @@ type
 
 proc `$`*(x: Uri): string {.borrow.}
 proc `==`*(a, b: Uri): bool {.borrow.}
-proc hash*(x: Uri): Hash {.borrow.}
 proc `%`*(x: Uri): JsonNode =
   %x.string
 
