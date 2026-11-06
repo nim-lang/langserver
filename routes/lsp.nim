@@ -929,7 +929,7 @@ proc workspaceSymbol*(
   ls.checkInitialized()
   let project = ls.projectFiles.getOrDefault(ls.lastNimsuggestProject)
   if project != nil:
-    let symbols = await project.ns.globalSymbols(params.query, Path("-"))
+    let symbols = await project.ns.globalSymbols(params.query)
     return symbols.map(x => x.toUtf16Pos(ls).toSymbolInformation)
 
 proc toDocumentHighlight(suggest: Suggest): DocumentHighlight =

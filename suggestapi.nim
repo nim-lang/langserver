@@ -548,6 +548,19 @@ proc processQueue(self: Nimsuggest): Future[void] {.async: (raises: []).} =
   self.project.lastCmdDate = some(now())
 
 proc call*(
+    self: Nimsuggest, command, commandString: string
+): Future[seq[Suggest]].Raising([CancelledError, NimsuggestError]) =
+  result = Future[seq[Suggest]].Raising([CancelledError, NimsuggestError]).init(
+      "nimsuggest.call"
+    )
+  self.requestQueue.addLast(
+    SuggestCall(commandString: commandString, future: result, command: command)
+  )
+  if not self.processing:
+    self.processing = true
+    asyncSpawn processQueue(self)
+
+proc call*(
     self: Nimsuggest,
     command: string,
     file: Path,
@@ -556,22 +569,12 @@ proc call*(
     column: int,
     tag = "",
 ): Future[seq[Suggest]].Raising([CancelledError, NimsuggestError]) =
-  result = Future[seq[Suggest]].Raising([CancelledError, NimsuggestError]).init(
-      "nimsuggest.call"
-    )
   let commandString =
     if dirtyFile.string != "":
       fmt "{command} \"{file}\";\"{dirtyFile}\":{line}:{column}{tag}"
     else:
       fmt "{command} \"{file}\":{line}:{column}{tag}"
-
-  self.requestQueue.addLast(
-    SuggestCall(commandString: commandString, future: result, command: command)
-  )
-
-  if not self.processing:
-    self.processing = true
-    asyncSpawn processQueue(self)
+  call(self, command, commandString)
 
 template createFullCommand(command: untyped) {.dirty.} =
   proc command*(
@@ -627,9 +630,9 @@ createGlobalCommand(recompile)
 createRangeCommand(inlayHints)
 
 proc globalSymbols*(
-    self: Nimsuggest, query: string, dirtyfile = Path("")
+    self: Nimsuggest, query: string
 ): Future[seq[Suggest]].Raising([CancelledError, NimsuggestError]) =
-  self.call("globalSymbols", query.Path, dirtyfile, 0, 0)
+  self.call("globalSymbols", fmt("globalSymbols \"{query}\""))
 
 proc outlineFile*(
     self: Nimsuggest, file: Path, dirtyfile = Path("")
