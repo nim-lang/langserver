@@ -128,9 +128,6 @@ suite "Nimsuggest error handling":
       helloWorldFile,
       "nimsuggest",
       "",
-      REQUEST_TIMEOUT,
-      proc(ns: Nimsuggest) {.async: (raises: [CancelledError]).} =
-        discard,
       proc(pr: Project) {.async: (raises: []).} =
         failed = pr,
     )
