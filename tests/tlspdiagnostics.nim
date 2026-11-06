@@ -1,5 +1,5 @@
 import
-  std/[options, json, os, strformat],
+  std/[options, json, os, sets, strformat],
   json_rpc/[rpcclient],
   unittest2,
   ../[nimlangserver, ls, suggestapi, utils],
@@ -181,30 +181,24 @@ suite "LSP project check command":
       projectFile =
         absolutePath("tests" / "projects" / "mcpproject" / "src" / "mcpproject.nim").Path
       projectUri = projectFile.pathToUri
-      errmoduleUri = fixtureUri("projects/mcpproject/src/mcpproject/errmodule.nim")
+      errmodule = fixtureUri("projects/mcpproject/src/mcpproject/errmodule.nim").uriToPath
       project = ls.projectFiles[projectFile]
     check waitUntil(
       not ls.checkInProgress and not project.ns.checkProjectInProgress, 30.seconds
     )
 
-    proc errmodulePublishes(): int =
-      for params in client.calls["textDocument/publishDiagnostics"]:
-        if params{"uri"}.getStr == $errmoduleUri:
-          inc result
-
-    let published = errmodulePublishes()
+    # Publishing records the files with diagnostics, and errmodule.nim has a type
+    # error, so it is back in the set only if the results get published.
+    ls.filesWithDiags.clear()
     let checking = ls.checkProject(projectUri)
-    # The file is saved while nimsuggest is still checking the previous contents.
-    let deadline = Moment.now() + 30.seconds
-    while not project.ns.checkProjectInProgress and Moment.now() < deadline:
-      poll()
+    # The event loop has not run, so the check is waiting on nimsuggest. The file
+    # is saved while nimsuggest is still checking the previous contents.
     check project.ns.checkProjectInProgress
     project.ns.stale = true
     waitFor checking
-    waitFor sleepAsync(500)
-    check errmodulePublishes() == published
+    check errmodule notin ls.filesWithDiags
 
     # The next request checks the project again, and that check publishes.
     check project.ns.stale
     discard waitFor ls.getNimsuggest(projectUri)
-    check waitUntil(errmodulePublishes() > published, 30.seconds)
+    check waitUntil(errmodule in ls.filesWithDiags, 30.seconds)
