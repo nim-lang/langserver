@@ -284,7 +284,7 @@ suite "LSP configuration pulled from the client":
 
   test "a configuration change stops nimsuggest until the next request and asks for a refresh":
     let projectFile = uriToPath(helloWorldUri)
-    check (waitFor ls.tryGetNimsuggest(helloWorldUri).wait(30.seconds)).isSome
+    check (waitFor ls.tryGetNimsuggest(projectFile).wait(30.seconds)).isSome
     let
       pidBefore = ls.projectFiles[projectFile].process.pid
       refreshesBefore = client.calls["workspace/inlayHint/refresh"].len
@@ -295,5 +295,5 @@ suite "LSP configuration pulled from the client":
     check waitUntil(client.calls["workspace/inlayHint/refresh"].len > refreshesBefore)
     check projectFile notin ls.projectFiles
 
-    check (waitFor ls.tryGetNimsuggest(helloWorldUri).wait(30.seconds)).isSome
+    check (waitFor ls.tryGetNimsuggest(projectFile).wait(30.seconds)).isSome
     check ls.projectFiles[projectFile].process.pid != pidBefore

@@ -13,7 +13,6 @@ let
   rootFile = "projects/slowroot/mappedroot.nim"
   otherFile = "projects/slowroot/other.nim"
   rootPath = uriToPath(fixtureUri(rootFile))
-  otherUri = fixtureUri(otherFile)
 
 proc mappedConfiguration(params: JsonNode): Future[JsonNode] {.async.} =
   return %*[
@@ -94,7 +93,7 @@ suite "Requests during startup":
 
   test "a request behind didOpen waits for the file instead of answering empty":
     client.notify("textDocument/didOpen", %createDidOpenParams(otherFile))
-    check waitUntil(otherUri in ls.openFiles, 1.seconds)
+    check waitUntil(otherFile.fixturePath in ls.openFiles, 1.seconds)
     let symbols = waitFor client.documentSymbols(otherFile).wait(CallTimeout)
     check symbols.getElems.anyIt(it["name"].getStr == "other")
 
@@ -109,7 +108,7 @@ suite "Project resolution with a single nimsuggest":
 
     check waitUntil(entryPath in ls.projectFiles, CallTimeout)
     check not waitUntil(ls.projectFiles.len > 1, 8.seconds)
-    check (waitFor ls.openFiles[otherUri].projectFileWait()) == entryPath
+    check (waitFor ls.openFiles[otherFile.fixturePath].projectFileWait()) == entryPath
     check toSeq(ls.projectFiles.keys) == @[entryPath]
 
 suite "Shutdown during nimsuggest startup":

@@ -101,13 +101,13 @@ suite "Nimlangserver pending requests":
     # loop, escapes runForever and hits main's `except Exception: quit(1)`.
     # The spawned task must swallow cancellation instead of failing.
     let ls = LanguageServer(serverMode: lsp)
-    let uri = "file:///tmp/tpending419.nim".DocumentUri
+    let path = Path("/tmp/tpending419.nim")
     let projectFileFut =
       Future[Path].Raising([CancelledError, OSError, RegexError]).init("projectFile")
-    ls.openFiles[uri] = NlsFileInfo(projectFile: projectFileFut)
+    ls.openFiles[path] = NlsFileInfo(projectFile: projectFileFut)
     ls.pendingRequests[1'u] = PendingRequest(id: 1, name: "textDocument/definition")
 
-    let fut = ls.addProjectFileToPendingRequest(1'u, uri)
+    let fut = ls.addProjectFileToPendingRequest(1'u, path)
     projectFileFut.cancelSoon()
 
     check waitUntil(fut.finished)
@@ -141,7 +141,7 @@ suite "Nimlangserver request cancellation":
 
     # A file whose project never resolves, so the handler stays parked on it
     let uri = "file:///tmp/tcancel.nim".DocumentUri
-    ls.openFiles[uri] = NlsFileInfo(
+    ls.openFiles[uri.uriToPath] = NlsFileInfo(
       projectFile:
         Future[Path].Raising([CancelledError, OSError, RegexError]).init("never")
     )
@@ -200,9 +200,8 @@ suite "Nimlangserver didOpen visibility":
     client.notify("textDocument/didOpen", %createDidOpenParams(file))
     waitFor sleepAsync(200)
 
-    let uri = fixtureUri(file)
-    check uri in ls.openFiles #The entry the readers look for
-    check ls.openFiles[uri].fingerTable.len > 0 #The contents were stashed too
+    check file.fixturePath in ls.openFiles #The entry the readers look for
+    check ls.openFiles[file.fixturePath].fingerTable.len > 0 #The contents were stashed too
 
 suite "Nimlangserver didOpen ordering":
   let cmdParams =
@@ -287,9 +286,9 @@ suite "Nimlangserver request cancelled during startup":
 
     check waitFor cancelled.withTimeout(10.seconds)
     check not ls.workspaceConfigurationReady.cancelled
-    check uri in ls.openFiles
-    if uri in ls.openFiles:
-      check not ls.openFiles[uri].projectFile.cancelled
+    check file.fixturePath in ls.openFiles
+    if file.fixturePath in ls.openFiles:
+      check not ls.openFiles[file.fixturePath].projectFile.cancelled
 
     ls.setWorkspaceConfiguration(% @[NlsConfig()])
     let locations = to(
@@ -337,7 +336,7 @@ suite "Nimlangserver idle nimsuggest cleanup":
     check waitFor client.waitForNotificationMessage(
       fmt"Nimsuggest initialized for {hwAbsFile}"
     )
-    ls.openFiles.del(helloWorldFile.fixtureUri())
+    ls.openFiles.del(helloWorldFile.fixturePath)
 
     proc sweptAway(ls: LanguageServer, projectFile: Path): bool =
       waitFor ls.removeIdleNimsuggests()
@@ -473,15 +472,14 @@ suite "Nimlangserver nimsuggest creation":
   discard waitFor client.initialize(initParams)
   ls.setWorkspaceConfiguration(% @[NlsConfig()])
 
-  let hwProjectFile = uriToPath(fixtureUri("projects/hw/hw.nim"))
-  let hwUri = fixtureUri("projects/hw/hw.nim")
+  let hwProjectFile = fixturePath("projects/hw/hw.nim")
 
   suiteTeardown:
     waitFor ls.shutdownNimsuggest()
 
   test "Concurrent creations for the same project are deduplicated":
-    let first = ls.createOrRestartNimsuggest(hwProjectFile, hwUri)
-    let second = ls.createOrRestartNimsuggest(hwProjectFile, hwUri)
+    let first = ls.createOrRestartNimsuggest(hwProjectFile, hwProjectFile)
+    let second = ls.createOrRestartNimsuggest(hwProjectFile, hwProjectFile)
     check ls.nimsuggestCreations.len == 1
 
     waitFor allFutures(first, second).wait(60.seconds)
@@ -527,8 +525,7 @@ suite "Nimlangserver nimsuggest timeout restart":
   discard waitFor client.initialize(initParams)
   ls.setWorkspaceConfiguration(% @[NlsConfig()])
 
-  let hwProjectFile = uriToPath(fixtureUri("projects/hw/hw.nim"))
-  let hwUri = fixtureUri("projects/hw/hw.nim")
+  let hwProjectFile = fixturePath("projects/hw/hw.nim")
 
   suiteTeardown:
     waitFor ls.shutdownNimsuggest()
@@ -541,7 +538,7 @@ suite "Nimlangserver nimsuggest timeout restart":
     tight[] = ls.workspaceConfiguration[]
     tight.timeout = some 1
     ls.workspaceConfiguration = tight
-    let creation = ls.createOrRestartNimsuggest(hwProjectFile, hwUri)
+    let creation = ls.createOrRestartNimsuggest(hwProjectFile, hwProjectFile)
     ls.workspaceConfiguration = original
     waitFor creation.wait(60.seconds)
 
@@ -578,8 +575,7 @@ suite "Nimlangserver project lookup replaced by a configuration change":
   ls.setWorkspaceConfiguration(% @[before])
 
   let
-    hwUri = fixtureUri("projects/hw/hw.nim")
-    hwPath = uriToPath(hwUri)
+    hwPath = fixturePath("projects/hw/hw.nim")
     rootPath = uriToPath(fixtureUri("projects/hw/root.nim"))
 
   suiteTeardown:
@@ -590,26 +586,26 @@ suite "Nimlangserver project lookup replaced by a configuration change":
     # configuration changes, and a request is waiting on it
     let oldLookup =
       Future[Path].Raising([CancelledError, OSError, RegexError]).init("oldLookup")
-    ls.openFiles[hwUri] = NlsFileInfo(projectFile: oldLookup)
-    let request = ls.tryGetNimsuggest(hwUri)
+    ls.openFiles[hwPath] = NlsFileInfo(projectFile: oldLookup)
+    let request = ls.tryGetNimsuggest(hwPath)
 
     let after = NlsConfig(
       autoCheckFile: some false, autoCheckProject: some false, timeout: some 1234
     )
     ls.setWorkspaceConfiguration(% @[after])
     waitFor ls.handleConfigurationChanges(before, after).wait(60.seconds)
-    check (waitFor ls.openFiles[hwUri].projectFileWait().wait(60.seconds)) == hwPath
+    check (waitFor ls.openFiles[hwPath].projectFileWait().wait(60.seconds)) == hwPath
 
     # The old lookup finishes with what the old configuration would have picked
     oldLookup.complete(rootPath)
     discard waitFor request.wait(60.seconds)
-    check ls.openFiles[hwUri].nimsuggestProject == hwPath
+    check ls.openFiles[hwPath].nimsuggestProject == hwPath
 
   test "a request waiting on the replaced lookup waits for the new one too":
     let oldLookup =
       Future[Path].Raising([CancelledError, OSError, RegexError]).init("oldLookup")
-    ls.openFiles[hwUri] = NlsFileInfo(projectFile: oldLookup)
-    let request = ls.tryGetNimsuggest(hwUri)
+    ls.openFiles[hwPath] = NlsFileInfo(projectFile: oldLookup)
+    let request = ls.tryGetNimsuggest(hwPath)
 
     let changed = NlsConfig(
       autoCheckFile: some false, autoCheckProject: some false, timeout: some 4321
@@ -621,13 +617,13 @@ suite "Nimlangserver project lookup replaced by a configuration change":
     let parked = Future[void].Raising([CancelledError]).init("parked")
     ls.workspaceConfigurationReady = parked
     waitFor ls.handleConfigurationChanges(current, changed).wait(60.seconds)
-    check not ls.openFiles[hwUri].projectFile.finished
+    check not ls.openFiles[hwPath].projectFile.finished
 
     # The request wakes up before the new lookup can, its callback is queued first
     oldLookup.complete(rootPath)
     parked.complete()
     discard waitFor request.wait(60.seconds)
-    check ls.openFiles[hwUri].nimsuggestProject == hwPath
+    check ls.openFiles[hwPath].nimsuggestProject == hwPath
 
 suite "External file edits":
   let cmdParams =
@@ -679,18 +675,19 @@ suite "External file edits":
         {"uri": uri, "languageId": "nim", "version": 0, "text": readFile(path.string)}
     },
   )
-  check waitUntil(uri in ls.openFiles)
-  check waitFor client.waitForNotificationMessage(fmt"Opening {uri}")
+  check waitUntil(path in ls.openFiles)
+  check waitFor client.waitForNotificationMessage(fmt"Opening {path}")
 
   proc editExternally(text: string) =
     writeFile(path.string, text)
 
   proc change(text: string) =
+    let edits = ls.openFiles[path].edits
     client.notify(
       "textDocument/didChange",
       %*{"textDocument": {"uri": uri, "version": 1}, "contentChanges": [{"text": text}]},
     )
-    check waitUntil(ls.openFiles[uri].textDocument.text == text)
+    check waitUntil(ls.openFiles[path].edits > edits)
 
   proc hover() =
     discard client.call(
@@ -720,7 +717,7 @@ suite "External file edits":
       ls.projectFiles.len > 0 and toSeq(ls.projectFiles.values).allIt(it.ns != nil),
       60.seconds,
     )
-    let project = ls.projectFiles[ls.openFiles[uri].nimsuggestProject]
+    let project = ls.projectFiles[ls.openFiles[path].nimsuggestProject]
     check waitUntil(not project.ns.checkProjectInProgress)
     check not project.ns.stale
 
@@ -742,7 +739,7 @@ suite "External file edits":
     check waitUntil(not project.ns.checkProjectInProgress)
     changeDep("proc x*() = discard\nproc z*() = discard\n")
     client.notify("textDocument/didClose", %*{"textDocument": {"uri": uri}})
-    check waitUntil(uri notin ls.openFiles)
+    check waitUntil(path notin ls.openFiles)
     client.notify(
       "textDocument/didOpen",
       %*{
@@ -752,10 +749,10 @@ suite "External file edits":
     )
     hover()
     check not project.ns.stale
-    check ls.projectFiles[ls.openFiles[uri].nimsuggestProject] == project
+    check ls.projectFiles[ls.openFiles[path].nimsuggestProject] == project
 
   test "with the watcher, a save is checked once, through the watched file change":
-    let project = ls.projectFiles[ls.openFiles[uri].nimsuggestProject]
+    let project = ls.projectFiles[ls.openFiles[path].nimsuggestProject]
     check waitUntil(not project.ns.checkProjectInProgress)
     let checksBefore = projectChecks()
 
@@ -763,7 +760,7 @@ suite "External file edits":
     change(text)
     writeFile(path.string, text)
     client.notify("textDocument/didSave", %*{"textDocument": {"uri": uri}})
-    check waitUntil(not ls.openFiles[uri].changed)
+    check waitUntil(not ls.openFiles[path].changed)
     hover()
     check projectChecks() == checksBefore
 
@@ -781,30 +778,30 @@ suite "External file edits":
   test "an externally edited file stays unsaved until the editor saves it":
     # typing marks the file unsaved
     change("proc a*() = discard\nproc b*() = discard\n")
-    check ls.openFiles[uri].changed
-    check ls.uriToStash(uri).len > 0
+    check ls.openFiles[path].changed
+    check ls.pathToStash(path).len > 0
 
     # an edit on top of an external edit stays unsaved
     editExternally("proc d*() = discard\n")
     change("proc e*() = discard\n")
-    check ls.openFiles[uri].changed
+    check ls.openFiles[path].changed
 
     # saving after typing marks it saved
     change("proc d*() = discard\n")
     writeFile(path.string, "proc d*() = discard\n")
     client.notify("textDocument/didSave", %*{"textDocument": {"uri": uri}})
-    check waitUntil(not ls.openFiles[uri].changed)
+    check waitUntil(not ls.openFiles[path].changed)
 
   test "a buffer that matches the disk is not unsaved":
     # the editor reloads an externally edited file it has no unsaved edits for:
     # a change without a save
     editExternally("proc f*() = discard\n")
     change("proc f*() = discard\n")
-    check not ls.openFiles[uri].changed
-    check ls.uriToStash(uri).len == 0
+    check not ls.openFiles[path].changed
+    check ls.pathToStash(path).len == 0
 
     # typing and undoing it
     change("proc g*() = discard\n")
-    check ls.openFiles[uri].changed
+    check ls.openFiles[path].changed
     change("proc f*() = discard\n")
-    check not ls.openFiles[uri].changed
+    check not ls.openFiles[path].changed

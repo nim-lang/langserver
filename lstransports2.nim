@@ -96,7 +96,7 @@ proc trackRequest(
       if np.name == "textDocument":
         try:
           let uri = LspJson.decode(np.value, TextDocumentIdentifier).uri
-          asyncSpawn ls.addProjectFileToPendingRequest(reqId, uri)
+          asyncSpawn ls.addProjectFileToPendingRequest(reqId, uri.uriToPath)
         except CatchableError as ex:
           error "Cannot read the request textDocument", err = ex.msg
         break

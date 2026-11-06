@@ -7,7 +7,7 @@ import
   json_rpc/[errors, server],
   chronicles,
   json_serialization,
-  ../[suggestapi, trackapi, ls, utils],
+  ../[suggestapi, trackapi, ls],
   ../protocol/types
 
 const McpProtocolVersion* = "2025-11-25"
@@ -219,8 +219,7 @@ proc callNimFindReferences(
 .} =
   let
     arguments = params.arguments.get()
-    path = arguments["path"].getStr().absolutePath.Path
-    uri = path.pathToUri()
+    path = arguments["path"].getStr().absolutePath.normalizedPath.Path
     line = arguments["line"].getInt()
     column = arguments["column"].getInt()
 
@@ -261,7 +260,7 @@ proc callNimFindReferences(
       isError: false,
     )
 
-  let nimsuggest = await ls.getNimsuggest(uri)
+  let nimsuggest = await ls.getNimsuggest(path)
 
   if nimsuggest.isSome:
     let references = await nimsuggest.get.use(path, path, line, column)
@@ -343,10 +342,9 @@ proc callNimListSymbols(
 .} =
   let
     arguments = params.arguments.get()
-    path = arguments["path"].getStr().absolutePath.Path
-    uri = path.pathToUri()
+    path = arguments["path"].getStr().absolutePath.normalizedPath.Path
 
-  let nimsuggest = await ls.getNimsuggest(uri)
+  let nimsuggest = await ls.getNimsuggest(path)
 
   if nimsuggest.isSome:
     let symbols = await nimsuggest.get.outlineFile(path)
@@ -432,10 +430,9 @@ proc callNimCheckFile(
 .} =
   let
     arguments = params.arguments.get()
-    path = arguments["path"].getStr().absolutePath.Path
-    uri = path.pathToUri()
+    path = arguments["path"].getStr().absolutePath.normalizedPath.Path
 
-  let nimsuggest = await ls.getNimsuggest(uri)
+  let nimsuggest = await ls.getNimsuggest(path)
 
   if nimsuggest.isSome:
     # Calling `con` command before `chkFile`;
@@ -481,12 +478,11 @@ proc callNimFindTypeDefinition(
 .} =
   let
     arguments = params.arguments.get()
-    path = arguments["path"].getStr().absolutePath.Path
-    uri = path.pathToUri()
+    path = arguments["path"].getStr().absolutePath.normalizedPath.Path
     line = arguments["line"].getInt()
     column = arguments["column"].getInt()
 
-  let nimsuggest = await ls.getNimsuggest(uri)
+  let nimsuggest = await ls.getNimsuggest(path)
 
   if nimsuggest.isSome:
     let typeDefs = await nimsuggest.get.`type`(path, path, line, column)
@@ -522,7 +518,7 @@ proc initialize*(
 ): Future[McpInitializeResult] {.async: (raises: [OSError]).} =
   debug "Initialize received..."
   p.ls.mcpInitializeParams = params
-  p.ls.workspaceFolders = params.getWorkspaceFolders()
+  p.ls.workspaceFolders = @[paths.getCurrentDir()]
   p.ls.mcpClientCapabilities = params.capabilities
   result = McpInitializeResult(
     protocolVersion: McpProtocolVersion,

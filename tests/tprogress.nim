@@ -54,15 +54,14 @@ proc isEnded(client: LspSocketClient, token: string): bool =
 
 suite "Progress of file checks":
   let (ls, client) = startServer()
-  let uri = RootFile.fixtureUri
 
   suiteTeardown:
     waitFor ls.shutdownNimsuggest()
 
   test "overlapping checks of a file report their own progress":
     let created = client.createdTokens().len
-    let first = ls.checkFile(ls.openFiles[uri])
-    let second = ls.checkFile(ls.openFiles[uri])
+    let first = ls.checkFile(ls.openFiles[RootFile.fixturePath])
+    let second = ls.checkFile(ls.openFiles[RootFile.fixturePath])
     waitFor allFutures(first, second)
 
     check waitUntil(client.newTokens(created).len == 2)
@@ -74,10 +73,9 @@ suite "Progress of file checks":
   test "the progress of a check without a nimsuggest is ended":
     # A closed file whose project is gone: nothing checks it.
     let info = NlsFileInfo(
-      textDocument: TextDocumentItem(uri: OtherFile.fixtureUri),
-      nimsuggestProject: OtherFile.fixtureUri.uriToPath,
+      path: OtherFile.fixturePath, nimsuggestProject: OtherFile.fixturePath
     )
-    check OtherFile.fixtureUri notin ls.openFiles
+    check OtherFile.fixturePath notin ls.openFiles
     check info.nimsuggestProject notin ls.projectFiles
 
     let created = client.createdTokens().len
@@ -87,7 +85,6 @@ suite "Progress of file checks":
 
 suite "Progress of project checks":
   let (ls, client) = startServer()
-  let uri = RootFile.fixtureUri
 
   suiteTeardown:
     waitFor ls.shutdownNimsuggest()
@@ -97,8 +94,8 @@ suite "Progress of project checks":
       % @[NlsConfig(autoCheckFile: some false, autoCheckProject: some true)]
     )
     let created = client.createdTokens().len
-    waitFor ls.checkProject(uri)
-    waitFor ls.checkProject(uri)
+    waitFor ls.checkProject(RootFile.fixturePath)
+    waitFor ls.checkProject(RootFile.fixturePath)
 
     check waitUntil(client.newTokens(created).len == 2)
     let tokens = client.newTokens(created)
@@ -114,7 +111,7 @@ suite "Progress of project checks":
     discard waitFor client
       .call(
         "workspace/executeCommand",
-        %*{"command": RECOMPILE_COMMAND, "arguments": [uri.uriToPath]},
+        %*{"command": RECOMPILE_COMMAND, "arguments": [RootFile.fixturePath]},
       )
       .wait(60.seconds)
 

@@ -6,8 +6,11 @@ import
   ../[ls, utils]
 
 #Utils
+proc fixturePath*(path: string): Path =
+  result = paths.getCurrentDir() / "tests".Path / path.Path
+
 proc fixtureUri*(path: string): DocumentUri =
-  result = pathToUri(paths.getCurrentDir() / "tests".Path / path.Path)
+  result = pathToUri(fixturePath(path))
 
 const CRLF = "\r\n"
 
@@ -185,6 +188,9 @@ proc createDidOpenParams*(file: string): DidOpenTextDocumentParams =
         "text": readFile("tests" / file),
       }
     }
+
+proc didOpenFixture*(ls: LanguageServer, file: string): auto =
+  ls.didOpenFile(fixturePath(file), readFile("tests" / file))
 
 proc openFile*(client: LspSocketClient, file: string) =
   ## Opens the file and, like an editor does, sends a request for it.

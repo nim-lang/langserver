@@ -105,7 +105,7 @@ type
       ]
     )
     edits*: uint
-    textDocument*: TextDocumentItem
+    path*: Path
     nimsuggestProject*: Path
 
   CommandLineParams* = object
@@ -152,7 +152,7 @@ type
     workspaceFolders*: seq[Path]
     projectFiles*: Table[Path, Project]
     nimsuggestCreations*: Table[Path, Future[void].Raising([CancelledError])]
-    openFiles*: Table[DocumentUri, NlsFileInfo]
+    openFiles*: Table[Path, NlsFileInfo]
     workspaceConfiguration*: NlsConfig
       #What the client configured us with, or the defaults until it does.
       #Set through setWorkspaceConfiguration, read through workspaceConfigurationWait.
@@ -233,7 +233,7 @@ proc initLs*(params: CommandLineParams, storageDir: string): LanguageServer =
     filesWithDiags: initHashSet[Path](),
     serverMode: params.mode.get(),
     transportMode: params.transport.get(stdio),
-    openFiles: initTable[DocumentUri, NlsFileInfo](),
+    openFiles: initTable[Path, NlsFileInfo](),
     storageDir: storageDir.Path,
     extensionCapabilities: LspExtensionCapability.items.toSet,
   )
@@ -361,10 +361,10 @@ proc checkInitialized*(ls: LanguageServer) {.raises: [ApplicationError].} =
       code: ErrorCode.ServerNotInitialized.int, msg: "Server not initialized"
     )
 
-proc filesServedBy(ls: LanguageServer, projectFile: Path): seq[DocumentUri] =
-  for uri, file in ls.openFiles:
+proc filesServedBy(ls: LanguageServer, projectFile: Path): seq[Path] =
+  for path, file in ls.openFiles:
     if file.nimsuggestProject == projectFile:
-      result.add uri
+      result.add path
 
 proc getLspStatus*(ls: LanguageServer): NimLangServerStatus {.raises: [].} =
   result.lspPath = getAppFilename()
@@ -380,11 +380,10 @@ proc getLspStatus*(ls: LanguageServer): NimLangServerStatus {.raises: [].} =
         path: ns.nimsuggestPath,
         port: ns.port,
       )
-      nsStatus.openFiles = ls.filesServedBy(project.file).mapIt($it)
+      nsStatus.openFiles = ls.filesServedBy(project.file).mapIt($it.pathToUri)
       result.nimsuggestInstances.add nsStatus
-  for openFile in ls.openFiles.keys:
-    let openFilePath = openFile.uriToPath
-    result.openFiles.add $openFilePath
+  for path in ls.openFiles.keys:
+    result.openFiles.add $path
 
   result.pendingRequests = ls.pendingRequests.values.toSeq.map(toPendingRequestStatus)
   result.projectErrors = ls.projectErrors
@@ -428,18 +427,6 @@ proc getNimVersion(nimDir: string): string {.raises: [OSError, IOError].} =
   for line in info.splitLines:
     if line.startsWith(NimCompilerVersion):
       return line
-
-proc getWorkspaceFolders*(ip: LspInitializeParams): seq[Path] =
-  if ip.workspaceFolders.isSome:
-    for folder in ip.workspaceFolders.get:
-      result.add folder.uri.uriToPath
-  elif ip.rootUri.isSome and ip.rootUri.get.string != "":
-    result.add ip.rootUri.get.uriToPath
-  elif ip.rootPath.get("") != "":
-    result.add ip.rootPath.get.Path
-
-proc getWorkspaceFolders*(ip: McpInitializeParams): seq[Path] {.raises: [OSError].} =
-  @[paths.getCurrentDir()]
 
 proc workspaceFolderOf*(ls: LanguageServer, path: Path): Path =
   for folder in ls.workspaceFolders:
@@ -672,23 +659,23 @@ proc projectFileWait*(
     raiseAssert "project file future remained pending after join"
 
 proc projectFileWait*(
-    ls: LanguageServer, uri: DocumentUri
+    ls: LanguageServer, path: Path
 ): Future[Path] {.async: (raises: [CancelledError, OSError, RegexError]).} =
-  let file = ls.openFiles.getOrDefault(uri)
+  let file = ls.openFiles.getOrDefault(path)
   if file != nil:
     await file.projectFileWait()
   else:
-    await ls.getProjectFile(uri.uriToPath)
+    await ls.getProjectFile(path)
 
 proc addProjectFileToPendingRequest*(
-    ls: LanguageServer, id: uint, uri: DocumentUri
+    ls: LanguageServer, id: uint, path: Path
 ) {.async: (raises: []).} =
   try:
     if id in ls.pendingRequests:
-      var projectFile = uri.uriToPath()
+      var projectFile = path
       if projectFile notin ls.projectFiles:
-        if uri in ls.openFiles:
-          projectFile = await ls.openFiles[uri].projectFileWait()
+        if path in ls.openFiles:
+          projectFile = await ls.openFiles[path].projectFileWait()
 
       ls.pendingRequests[id].projectFile = some $projectFile
       ls.sendStatusChanged
@@ -696,7 +683,7 @@ proc addProjectFileToPendingRequest*(
     discard
   except KeyError, OSError, RegexError:
     error "addProjectFileToPendingRequest failed",
-      uri = uri, msg = getCurrentExceptionMsg()
+      path = path, msg = getCurrentExceptionMsg()
 
 proc getWorkingDir*(
     ls: LanguageServer, file: Path
@@ -743,25 +730,23 @@ proc workDoneProgressCreate*(ls: LanguageServer, token: string) =
 proc cancelPendingFileChecks*(ls: LanguageServer, nimsuggest: Nimsuggest) =
   # stop all checks on file level if we are going to run checks on project
   # level.
-  for uri in ls.filesServedBy(nimsuggest.project.file):
-    let info = ls.openFiles.getOrDefault(uri)
+  for path in ls.filesServedBy(nimsuggest.project.file):
+    let info = ls.openFiles.getOrDefault(path)
     if info != nil and info.fileCheck != nil and not info.fileCheck.finished():
       info.fileCheck.cancelSoon()
 
-proc uriStorageLocation*(ls: LanguageServer, uri: DocumentUri): Path =
-  ls.storageDir / Path(hash(uri).toHex & ".nim")
+proc pathStorageLocation*(ls: LanguageServer, path: Path): Path =
+  ls.storageDir / Path(hash(path).toHex & ".nim")
 
-proc uriToStash*(ls: LanguageServer, uri: DocumentUri): Path =
-  let file = ls.openFiles.getOrDefault(uri)
+proc pathToStash*(ls: LanguageServer, path: Path): Path =
+  let file = ls.openFiles.getOrDefault(path)
   if file != nil and file.changed:
-    uriStorageLocation(ls, uri)
+    pathStorageLocation(ls, path)
   else:
     Path("")
 
-proc toUtf16Pos*(
-    ls: LanguageServer, uri: DocumentUri, line: int, utf8Pos: int
-): Option[int] =
-  let file = ls.openFiles.getOrDefault(uri)
+proc toUtf16Pos*(ls: LanguageServer, path: Path, line: int, utf8Pos: int): Option[int] =
+  let file = ls.openFiles.getOrDefault(path)
   if file != nil and line in 0 ..< file.fingerTable.len:
     let utf16Pos = file.fingerTable[line].utf8to16(utf8Pos)
     return some(utf16Pos)
@@ -770,29 +755,28 @@ proc toUtf16Pos*(
 
 proc toUtf16Pos*(suggest: Suggest, ls: LanguageServer): Suggest =
   result = suggest
-  let uri = pathToUri(suggest.filePath)
-  let pos = toUtf16Pos(ls, uri, suggest.line - 1, suggest.column)
+  let pos = toUtf16Pos(ls, suggest.filePath, suggest.line - 1, suggest.column)
   if pos.isSome:
     result.column = pos.get()
 
 proc toUtf16Pos*(
-    suggest: SuggestInlayHint, ls: LanguageServer, uri: DocumentUri
+    suggest: SuggestInlayHint, ls: LanguageServer, path: Path
 ): SuggestInlayHint =
   result = suggest
-  let pos = toUtf16Pos(ls, uri, suggest.line - 1, suggest.column)
+  let pos = toUtf16Pos(ls, path, suggest.line - 1, suggest.column)
   if pos.isSome:
     result.column = pos.get()
 
 proc toUtf16Pos*(checkResult: CheckResult, ls: LanguageServer): CheckResult =
   result = checkResult
-  let uri = pathToUri(checkResult.file)
-  let pos = toUtf16Pos(ls, uri, checkResult.line - 1, checkResult.column)
+  let path = checkResult.file
+  let pos = toUtf16Pos(ls, path, checkResult.line - 1, checkResult.column)
   if pos.isSome:
     result.column = pos.get()
 
   for i in 0 ..< result.stacktrace.len:
     let stPos =
-      toUtf16Pos(ls, uri, result.stacktrace[i].line - 1, result.stacktrace[i].column)
+      toUtf16Pos(ls, path, result.stacktrace[i].line - 1, result.stacktrace[i].column)
     if stPos.isSome:
       result.stacktrace[i].column = stPos.get()
 
@@ -881,7 +865,7 @@ proc sendDiagnostics*(
     ls.filesWithDiags.excl path
 
 proc createOrRestartNimsuggest*(
-  ls: LanguageServer, projectFile: Path, uri = DocumentUri("")
+  ls: LanguageServer, projectFile: Path, path = Path("")
 ): Future[void] {.async: (raw: true, raises: [CancelledError]).}
 
 proc isLiveNimsuggestProject(ls: LanguageServer, projectFile: Path): bool =
@@ -902,33 +886,33 @@ proc canSpawnNimsuggest(ls: LanguageServer, conf: NlsConfig): bool =
     result = result, nsCount = nsCount, maxNimsuggestProcesses = maxNimsuggestProcesses
 
 proc reuseLastNimsuggestProject(
-    ls: LanguageServer, uri: DocumentUri
+    ls: LanguageServer, path: Path
 ): Future[Path] {.async: (raises: [CancelledError]).} =
   let project = ls.projectFiles.getOrDefault(ls.lastNimsuggestProject)
   if project == nil:
     return Path("")
-  let isKnown = await project.ns.isKnown(uri.uriToPath)
+  let isKnown = await project.ns.isKnown(path)
   if isKnown and project.file in ls.projectFiles:
     debug "Reached the maximum instances of nimsuggest, reusing the last used instance",
-      uri = uri, project = project.file
+      path = path, project = project.file
     project.file
   else:
     debug "Reached the maximum instances of nimsuggest, the last used instance does not know the file",
-      uri = uri, project = project.file
+      path = path, project = project.file
     Path("")
 
 proc nimsuggestProjectFor(
-    ls: LanguageServer, uri: DocumentUri
+    ls: LanguageServer, path: Path
 ): Future[Path] {.async: (raises: [CancelledError, OSError, RegexError]).} =
-  let projectFile = await ls.projectFileWait(uri)
+  let projectFile = await ls.projectFileWait(path)
   let conf = await ls.workspaceConfigurationWait()
   let nsProject =
     if ls.isLiveNimsuggestProject(projectFile) or ls.canSpawnNimsuggest(conf):
       projectFile
     else:
-      await ls.reuseLastNimsuggestProject(uri)
+      await ls.reuseLastNimsuggestProject(path)
   if ls.failTable.getOrDefault(nsProject, 0) >= MaxNimsuggestFails:
-    debug "Nimsuggest failed too many times", uri = uri, projectFile = nsProject
+    debug "Nimsuggest failed too many times", path = path, projectFile = nsProject
     return Path("")
   nsProject
 
@@ -937,31 +921,31 @@ proc hasServingNimsuggest(ls: LanguageServer, file: NlsFileInfo): bool =
     ls.failTable.getOrDefault(file.nimsuggestProject, 0) < MaxNimsuggestFails
 
 proc getNimsuggestInner(
-    ls: LanguageServer, uri: DocumentUri
+    ls: LanguageServer, path: Path
 ): Future[Nimsuggest] {.async: (raises: [CancelledError, OSError, RegexError]).} =
-  let file = ls.openFiles.getOrDefault(uri)
+  let file = ls.openFiles.getOrDefault(path)
   let nsProject =
     if file == nil:
-      await ls.nimsuggestProjectFor(uri)
+      await ls.nimsuggestProjectFor(path)
     elif ls.hasServingNimsuggest(file):
       file.nimsuggestProject
     else:
-      file.nimsuggestProject = await ls.nimsuggestProjectFor(uri)
+      file.nimsuggestProject = await ls.nimsuggestProjectFor(path)
       file.nimsuggestProject
   if nsProject.len == 0:
     return nil
   if nsProject notin ls.projectFiles:
-    debug "Creating new nimsuggest instance", uri = uri, projectFile = nsProject
-    await ls.createOrRestartNimsuggest(nsProject, uri)
+    debug "Creating new nimsuggest instance", path = path, projectFile = nsProject
+    await ls.createOrRestartNimsuggest(nsProject, path)
   let project = ls.projectFiles.getOrDefault(nsProject)
   if project == nil:
-    debug "Failed to get nimsuggest", uri = uri, projectFile = nsProject
+    debug "Failed to get nimsuggest", path = path, projectFile = nsProject
     return nil
   ls.lastNimsuggestProject = nsProject
   project.ns
 
 proc checkNimsuggestProject(
-    ls: LanguageServer, uri: DocumentUri, nimsuggest: Nimsuggest
+    ls: LanguageServer, path: Path, nimsuggest: Nimsuggest
 ): Future[void] {.
     async: (
       raises: [
@@ -971,7 +955,7 @@ proc checkNimsuggestProject(
     )
 .} =
   if nimsuggest.checkProjectInProgress:
-    debug "Check project is already running", uri = uri
+    debug "Check project is already running", path = path
     nimsuggest.needsCheckProject = true
     return
 
@@ -979,7 +963,7 @@ proc checkNimsuggestProject(
 
   let token = ls.createProgressToken()
   ls.workDoneProgressCreate(token)
-  ls.progress(token, "begin", fmt "Checking project {uri.uriToPath}")
+  ls.progress(token, "begin", fmt "Checking project {path}")
   nimsuggest.checkProjectInProgress = true
   defer:
     nimsuggest.checkProjectInProgress = false
@@ -990,85 +974,81 @@ proc checkNimsuggestProject(
 
   nimsuggest.stale = false
   let
-    diagnostics = nimsuggest.chk(uriToPath(uri), ls.uriToStash(uri)).await().filter(
+    diagnostics = nimsuggest.chk(path, ls.pathToStash(path)).await().filter(
         sug => sug.filePath.string != "???"
       )
     filesWithDiags = diagnostics.map(s => s.filePath).toHashSet
 
   debug "Found diagnostics", file = filesWithDiags
   if not nimsuggest.stale and not nimsuggest.needsCheckProject:
-    for (path, diags) in groupBy(diagnostics, getFilepath):
-      ls.sendDiagnostics(diags, path)
+    for (file, diags) in groupBy(diagnostics, getFilepath):
+      ls.sendDiagnostics(diags, file)
 
     # clean files with no diags
-    for path in ls.filesWithDiags:
-      if not filesWithDiags.contains path:
-        debug "Sending zero diags", path = path
+    for file in ls.filesWithDiags:
+      if not filesWithDiags.contains file:
+        debug "Sending zero diags", path = file
         let params =
-          PublishDiagnosticsParams %* {"uri": pathToUri(path), "diagnostics": @[]}
+          PublishDiagnosticsParams %* {"uri": pathToUri(file), "diagnostics": @[]}
         ls.notify("textDocument/publishDiagnostics", params)
     ls.filesWithDiags = filesWithDiags
 
   if nimsuggest.needsCheckProject:
     nimsuggest.needsCheckProject = false
     callSoon do(data: pointer) {.gcsafe.}:
-      debug "Running delayed check project...", uri = uri
-      traceAsyncErrors ls.checkNimsuggestProject(uri, nimsuggest)
+      debug "Running delayed check project...", path = path
+      traceAsyncErrors ls.checkNimsuggestProject(path, nimsuggest)
 
 proc getNimsuggest*(
-    ls: LanguageServer, uri: DocumentUri
+    ls: LanguageServer, path: Path
 ): Future[Option[Nimsuggest]] {.
     async: (raises: [CancelledError, OSError, IOError, RegexError])
 .} =
-  let ns = await getNimsuggestInner(ls, uri)
+  let ns = await getNimsuggestInner(ls, path)
   if ns == nil:
-    debug "Nimsuggest not found", uri = uri
+    debug "Nimsuggest not found", path = path
     return none(Nimsuggest)
   if ns.stale and not ns.checkProjectInProgress:
     ns.stale = false
-    traceAsyncErrors ls.checkNimsuggestProject(uri, ns)
+    traceAsyncErrors ls.checkNimsuggestProject(path, ns)
   some ns
 
 proc tryGetNimsuggest*(
-    ls: LanguageServer, uri: DocumentUri
+    ls: LanguageServer, path: Path
 ): Future[Option[Nimsuggest]] {.
     async: (raises: [CancelledError, OSError, IOError, RegexError])
 .} =
-  if uri notin ls.openFiles:
+  if path notin ls.openFiles:
     return none(Nimsuggest)
-  await ls.getNimsuggest(uri)
+  await ls.getNimsuggest(path)
 
 proc didOpenFile*(
-    ls: LanguageServer, textDocument: TextDocumentItem
+    ls: LanguageServer, path: Path, text: string
 ): Future[void] {.async: (raises: [CancelledError, OSError, IOError, RegexError]).} =
-  with textDocument:
-    debug "New document opened for URI:", uri = uri
-    let file = open(ls.uriStorageLocation(uri).string, fmWrite)
-    let projectFileFuture = ls.getProjectFile(uriToPath(uri))
-    let openFile = NlsFileInfo(
-      projectFile: projectFileFuture,
-      changed: false,
-      fingerTable: @[],
-      textDocument: textDocument,
-    )
-    ls.openFiles[uri] = openFile
+  debug "New document opened:", path = path
+  let file = open(ls.pathStorageLocation(path).string, fmWrite)
+  let projectFileFuture = ls.getProjectFile(path)
+  let openFile = NlsFileInfo(
+    projectFile: projectFileFuture, changed: false, fingerTable: @[], path: path
+  )
+  ls.openFiles[path] = openFile
 
-    try:
-      for line in text.splitLines:
-        openFile.fingerTable.add line.createUTFMapping()
-        file.writeLine line
-    finally:
-      file.close()
+  try:
+    for line in text.splitLines:
+      openFile.fingerTable.add line.createUTFMapping()
+      file.writeLine line
+  finally:
+    file.close()
 
-    let projectFile = await openFile.projectFileWait()
-    debug "Document associated with the following projectFile",
-      uri = uri, projectFile = projectFile
-    # start ns on open file for chk diagnostics
-    discard await ls.tryGetNimsuggest(uri)
-    await ls.showMessage(fmt "Opening {uri}", MessageType.Info)
+  let projectFile = await openFile.projectFileWait()
+  debug "Document associated with the following projectFile",
+    path = path, projectFile = projectFile
+  # start ns on open file for chk diagnostics
+  discard await ls.tryGetNimsuggest(path)
+  await ls.showMessage(fmt "Opening {path}", MessageType.Info)
 
 proc checkProject*(
-    ls: LanguageServer, uri: DocumentUri
+    ls: LanguageServer, path: Path
 ): Future[void] {.
     async: (
       raises: [
@@ -1086,12 +1066,12 @@ proc checkProject*(
   let conf = await ls.workspaceConfigurationWait()
   if not conf.autoCheckProject.get(true):
     return
-  if uri.string == "":
-    warn "Checking project with empty uri", uri = uri
+  if path.len == 0:
+    warn "Checking project with empty path"
     return
 
   if conf.useNimCheck.get(USE_NIM_CHECK_BY_DEFAULT):
-    let nimPath = await ls.getNimPath(conf, uriToPath(uri))
+    let nimPath = await ls.getNimPath(conf, path)
     if nimPath.isNone:
       return
 
@@ -1100,38 +1080,38 @@ proc checkProject*(
 
     let token = ls.createProgressToken()
     ls.workDoneProgressCreate(token)
-    ls.progress(token, "begin", fmt "Checking project {uri}")
+    ls.progress(token, "begin", fmt "Checking project {path}")
     defer:
       ls.progress(token, "end")
-    let diagnostics = await nimCheck(uriToPath(uri), nimPath.get)
+    let diagnostics = await nimCheck(path, nimPath.get)
     let filesWithDiags = diagnostics.map(r => r.file).toHashSet
 
     debug "Found diagnostics", file = filesWithDiags
-    for (path, diags) in groupBy(diagnostics, getFilePath):
-      ls.sendDiagnostics(diags, path)
+    for (file, diags) in groupBy(diagnostics, getFilePath):
+      ls.sendDiagnostics(diags, file)
 
     # clean files with no diags
-    for path in ls.filesWithDiags:
-      if not filesWithDiags.contains path:
-        debug "Sending zero diags", path = path
+    for file in ls.filesWithDiags:
+      if not filesWithDiags.contains file:
+        debug "Sending zero diags", path = file
         let params =
-          PublishDiagnosticsParams %* {"uri": pathToUri(path), "diagnostics": @[]}
+          PublishDiagnosticsParams %* {"uri": pathToUri(file), "diagnostics": @[]}
         ls.notify("textDocument/publishDiagnostics", params)
     ls.filesWithDiags = filesWithDiags
     return
 
-  debug "Running diagnostics", uri = uri
-  let ns = await ls.getNimsuggest(uri)
+  debug "Running diagnostics", path = path
+  let ns = await ls.getNimsuggest(path)
   if ns.isNone:
     return
-  await ls.checkNimsuggestProject(uri, ns.get)
+  await ls.checkNimsuggestProject(path, ns.get)
 
 proc onErrorCallback(
-    args: (LanguageServer, DocumentUri), project: Project
+    args: (LanguageServer, Path), project: Project
 ): Future[void] {.async: (raises: []).} =
   let
     ls = args[0]
-    uri = args[1]
+    path = args[1]
   debug "Nimsuggest needed to be restarted due to an error "
   ls.failTable[project.file] = ls.failTable.getOrDefault(project.file, 0) + 1
   debug "Fail count", count = ls.failTable[project.file]
@@ -1140,7 +1120,7 @@ proc onErrorCallback(
     let configuration = await ls.workspaceConfigurationWait()
     if configuration.autoRestart.get(true) and project.ns != nil and
         project.ns.successfullCall:
-      await ls.createOrRestartNimsuggest(project.file, uri)
+      await ls.createOrRestartNimsuggest(project.file, path)
     else:
       await ls.showMessage(
         fmt "Server failed with {project.errorMessage}.", MessageType.Error
@@ -1159,11 +1139,11 @@ proc onErrorCallback(
       ls.sendStatusChanged()
 
 proc createOrRestartNimsuggestImpl(
-    ls: LanguageServer, projectFile: Path, uri: DocumentUri
+    ls: LanguageServer, projectFile: Path, path: Path
 ): Future[void] {.async: (raises: [CancelledError]).} =
   let projectNext =
     try:
-      debug "Starting createOrRestartNimsuggest", projectFile = projectFile, uri = uri
+      debug "Starting createOrRestartNimsuggest", projectFile = projectFile, path = path
       let
         configuration = await ls.workspaceConfigurationWait()
         workingDir = await ls.getWorkingDir(projectFile)
@@ -1179,9 +1159,9 @@ proc createOrRestartNimsuggestImpl(
             fmt "Restarting nimsuggest for file {projectFile} due to timeout.",
             MessageType.Warning,
           )
-          await ls.createOrRestartNimsuggest(projectFile, uri)
+          await ls.createOrRestartNimsuggest(projectFile, path)
           ls.sendStatusChanged()
-        errorCallback = partial(onErrorCallback, (ls, uri))
+        errorCallback = partial(onErrorCallback, (ls, path))
 
       debug "Creating new nimsuggest project", projectFile = projectFile
 
@@ -1222,14 +1202,14 @@ proc createOrRestartNimsuggestImpl(
       project.stop()
     ls.projectFiles[projectFile] = projectNext
     ls.failTable.del(projectFile)
-    traceAsyncErrors ls.checkProject(uri)
+    traceAsyncErrors ls.checkProject(path)
     ls.sendStatusChanged()
     await ls.showMessage(
       fmt "Nimsuggest initialized for {projectFile}", MessageType.Info
     )
 
 proc createOrRestartNimsuggestUnprotected(
-    ls: LanguageServer, projectFile: Path, uri: DocumentUri
+    ls: LanguageServer, projectFile: Path, path: Path
 ): Future[void] {.async: (raises: [CancelledError]).} =
   if ls.isShutdownNimsuggest:
     debug "Not starting nimsuggest, the server is shutting down",
@@ -1239,7 +1219,7 @@ proc createOrRestartNimsuggestUnprotected(
   if not inFlight.isNil and not inFlight.finished:
     await inFlight
   else:
-    let creation = ls.createOrRestartNimsuggestImpl(projectFile, uri)
+    let creation = ls.createOrRestartNimsuggestImpl(projectFile, path)
     ls.nimsuggestCreations[projectFile] = creation
     try:
       await creation
@@ -1248,9 +1228,9 @@ proc createOrRestartNimsuggestUnprotected(
         ls.nimsuggestCreations.del(projectFile)
 
 proc createOrRestartNimsuggest*(
-    ls: LanguageServer, projectFile: Path, uri = DocumentUri("")
+    ls: LanguageServer, projectFile: Path, path = Path("")
 ): Future[void] {.async: (raw: true, raises: [CancelledError]).} =
-  ls.createOrRestartNimsuggestUnprotected(projectFile, uri).join()
+  ls.createOrRestartNimsuggestUnprotected(projectFile, path).join()
 
 proc stopNimsuggests(ls: LanguageServer) {.async: (raises: []).} =
   debug "Stopping all nimsuggest instances"
@@ -1324,8 +1304,8 @@ proc handleConfigurationChanges*(
   let stopping = ls.stopNimsuggests()
   defer:
     await stopping
-  for uri, file in ls.openFiles:
-    file.projectFile = ls.getProjectFile(uri.uriToPath)
+  for path, file in ls.openFiles:
+    file.projectFile = ls.getProjectFile(path)
     file.nimsuggestProject = Path("")
   ls.sendStatusChanged()
   if ls.lspClientCapabilities.workspace.isSome and
@@ -1364,9 +1344,9 @@ proc maybeRequestConfigurationFromClient*(
       ls.setWorkspaceConfiguration(newJArray())
 
 proc getCharacter*(
-    ls: LanguageServer, uri: DocumentUri, line: int, character: int
+    ls: LanguageServer, path: Path, line: int, character: int
 ): Option[int] =
-  let info = ls.openFiles.getOrDefault(uri)
+  let info = ls.openFiles.getOrDefault(path)
   if info != nil and line in 0 ..< info.fingerTable.len:
     some info.fingerTable[line].utf16to8(character)
   else:
@@ -1395,27 +1375,25 @@ proc checkFile*(
       ]
     )
 .} =
-  let uri = file.textDocument.uri
+  let path = file.path
   let edits = file.edits
   let conf = await ls.workspaceConfigurationWait()
   let token = ls.createProgressToken()
   ls.workDoneProgressCreate(token)
-  ls.progress(token, "begin", fmt "Checking {uri.uriToPath}")
+  ls.progress(token, "begin", fmt "Checking {path}")
   defer:
     ls.progress(token, "end")
-
-  let path = uriToPath(uri)
 
   if conf.useNimCheck.get(USE_NIM_CHECK_BY_DEFAULT):
     let nimPath = await ls.getNimPath(conf, path)
     if nimPath.isNone:
       return
-    let checkResults = await nimCheck(uriToPath(uri), nimPath.get)
+    let checkResults = await nimCheck(path, nimPath.get)
     if file.edits == edits:
       ls.sendDiagnostics(checkResults, path)
     return
 
-  let closed = uri notin ls.openFiles
+  let closed = path notin ls.openFiles
   let ns =
     if closed:
       let project = ls.projectFiles.getOrDefault(file.nimsuggestProject)
@@ -1424,24 +1402,24 @@ proc checkFile*(
       else:
         none(Nimsuggest)
     else:
-      await ls.tryGetNimsuggest(uri)
+      await ls.tryGetNimsuggest(path)
   let dirtyFile =
     if closed:
       path
     else:
-      ls.uriToStash(uri)
+      ls.pathToStash(path)
   if ns.isSome:
     let diagnostics = await ns.get().chkFile(path, dirtyFile)
     if file.edits == edits:
       ls.sendDiagnostics(diagnostics, path)
 
 proc didCloseFile*(
-    ls: LanguageServer, uri: DocumentUri
+    ls: LanguageServer, path: Path
 ): Future[void] {.async: (raises: []).} =
-  debug "Closed the following document:", uri = uri
+  debug "Closed the following document:", path = path
 
-  let file = ls.openFiles.getOrDefault(uri)
-  ls.openFiles.del uri
+  let file = ls.openFiles.getOrDefault(path)
+  ls.openFiles.del path
 
   if file != nil and file.changed:
     # check the file if it is closed but not saved.

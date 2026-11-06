@@ -47,7 +47,7 @@ suite "nimble setup":
     check waitFor client.waitForNotification(
       "window/showMessage",
       (json: JsonNode) =>
-        json["message"].to(string) == &"Opening {pathToUri(entryPoint)}",
+        json["message"].to(string) == &"Opening {entryPoint}",
     )
 
     #We need to make two calls (ns issue)
@@ -67,7 +67,7 @@ suite "nimble setup":
 
     check waitFor client.waitForNotification(
       "window/showMessage",
-      (json: JsonNode) => json["message"].to(string) == &"Opening {pathToUri(submodule)}",
+      (json: JsonNode) => json["message"].to(string) == &"Opening {submodule}",
     )
 
     check ls.projectFiles.len == 1
