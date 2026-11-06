@@ -12,7 +12,7 @@ import
 type
   FingerTable = seq[tuple[u16pos, offset: int]]
 
-  UriParseError* = object of Defect
+  UriParseError* = object of CatchableError
     uri: string
 
 const NIM_SCRIPT_API_TEMPLATE* = staticRead("templates/nimscriptapi.nim")
