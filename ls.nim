@@ -150,6 +150,7 @@ type
     workspaceFolders*: seq[Path]
     projectFiles*: Table[Path, Project]
     nimsuggestCreations*: Table[Path, Future[void].Raising([CancelledError])]
+    nimsuggestStops*: Table[Path, Future[void].Raising([])]
     openFiles*: Table[Path, NlsFileInfo]
     workspaceConfiguration*: NlsConfig
       #What the client configured us with, or the defaults until it does.
@@ -921,18 +922,56 @@ proc hasServingNimsuggest(ls: LanguageServer, file: NlsFileInfo): bool =
   file.nimsuggestProject.len > 0 and ls.isLiveNimsuggestProject(file.nimsuggestProject) and
     not ls.isFailedNimsuggest(file.nimsuggestProject)
 
+proc modificationTime(path: Path): Time =
+  try:
+    getLastModificationTime(path.string)
+  except OSError:
+    Time()
+
+proc packageFilesTime(nimbleFile: Path): PackageFilesTime =
+  (
+    modificationTime(nimbleFile),
+    modificationTime(nimbleFile.parentDir / "nimble.paths".Path),
+  )
+
+proc stopIfPackageChanged(
+    ls: LanguageServer, projectFile: Path
+): Future[bool] {.async: (raises: []).} =
+  let project = ls.projectFiles.getOrDefault(projectFile)
+  if project == nil or project.nimbleFile.len == 0 or
+      packageFilesTime(project.nimbleFile) == project.packageFilesTime:
+    return false
+  debug "Nimble package changed, stopping nimsuggest", projectFile = projectFile
+  ls.projectFiles.del(projectFile)
+  project.errorCallback = none(ProjectCallback)
+  for path in ls.filesServedBy(projectFile):
+    let file = ls.openFiles.getOrDefault(path)
+    file.projectFile = ls.getProjectFile(path)
+    file.nimsuggestProject = Path("")
+  let stopping = project.stopWait()
+  ls.nimsuggestStops[projectFile] = stopping
+  await stopping
+  ls.nimsuggestStops.del(projectFile)
+  true
+
+proc servingNimsuggestProject(
+    ls: LanguageServer, path: Path
+): Future[Path] {.async: (raises: [CancelledError, OSError, RegexError]).} =
+  let file = ls.openFiles.getOrDefault(path)
+  if file == nil:
+    await ls.nimsuggestProjectFor(path)
+  elif ls.hasServingNimsuggest(file):
+    file.nimsuggestProject
+  else:
+    file.nimsuggestProject = await ls.nimsuggestProjectFor(path)
+    file.nimsuggestProject
+
 proc getNimsuggestInner(
     ls: LanguageServer, path: Path
 ): Future[Nimsuggest] {.async: (raises: [CancelledError, OSError, RegexError]).} =
-  let file = ls.openFiles.getOrDefault(path)
-  let nsProject =
-    if file == nil:
-      await ls.nimsuggestProjectFor(path)
-    elif ls.hasServingNimsuggest(file):
-      file.nimsuggestProject
-    else:
-      file.nimsuggestProject = await ls.nimsuggestProjectFor(path)
-      file.nimsuggestProject
+  var nsProject = await ls.servingNimsuggestProject(path)
+  if await ls.stopIfPackageChanged(nsProject):
+    nsProject = await ls.servingNimsuggestProject(path)
   if nsProject.len == 0:
     return nil
   if nsProject notin ls.projectFiles:
@@ -1244,12 +1283,11 @@ proc maybeRegisterCapabilityDidChangeWatchedFiles*(
     ls: LanguageServer
 ) {.async: (raises: [CancelledError]).} =
   if ls.supportsDynamicRegistrationForDidChangeWatchedFiles:
-    let kind =
-      some(WatchKind.Create.int or WatchKind.Change.int or WatchKind.Delete.int)
     let watchers = @[
-      FileSystemWatcher(globPattern: "**/*.nim", kind: kind),
-      FileSystemWatcher(globPattern: "**/*.nimble", kind: kind),
-      FileSystemWatcher(globPattern: "**/nimble.paths", kind: kind),
+      FileSystemWatcher(
+        globPattern: "**/*.nim",
+        kind: some(WatchKind.Create.int or WatchKind.Change.int or WatchKind.Delete.int),
+      )
     ]
     let reg = Registration(
       id: "workspace-did-change-watched-files",
@@ -1288,37 +1326,6 @@ proc handleConfigurationChanges*(
     debug "Sending inlayHint refresh"
     #An empty object means no params at all
     ls.inlayHintsRefreshRequest = ls.call("workspace/inlayHint/refresh", JsonString"{}")
-
-proc isNimblePackageFile*(path: Path): bool =
-  path.splitFile.ext == ".nimble" or path.extractFilename == Path("nimble.paths")
-
-proc stopNimsuggest(ls: LanguageServer, projectFile: Path) {.async: (raises: []).} =
-  let
-    creation = ls.nimsuggestCreations.getOrDefault(projectFile)
-    project = ls.projectFiles.getOrDefault(projectFile)
-  ls.nimsuggestCreations.del(projectFile)
-  ls.projectFiles.del(projectFile)
-  if project != nil:
-    project.errorCallback = none(ProjectCallback)
-  if creation != nil:
-    await creation.cancelAndWait()
-  if project != nil:
-    await project.stopWait()
-
-proc handleNimblePackageChanges*(
-    ls: LanguageServer, packageDirs: seq[Path]
-) {.async: (raises: []).} =
-  var stops: seq[Future[void].Raising([])]
-  for projectFile in ls.liveNimsuggestProjects:
-    if packageDirs.anyIt(projectFile.isRelTo(it)):
-      stops.add ls.stopNimsuggest(projectFile)
-  for path, file in ls.openFiles:
-    if packageDirs.anyIt(path.isRelTo(it)):
-      stops.add ls.stopNimsuggest(file.nimsuggestProject)
-      file.projectFile = ls.getProjectFile(path)
-      file.nimsuggestProject = Path("")
-  ls.sendStatusChanged()
-  await noCancel allFutures(stops)
 
 proc maybeRequestConfigurationFromClient*(
     ls: LanguageServer

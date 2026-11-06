@@ -1277,16 +1277,12 @@ proc didOpen*(
 
 proc didChangeWatchedFiles*(
     ls: LanguageServer, params: DidChangeWatchedFilesParams
-): Future[void] {.async: (raises: [ApplicationError, CancelledError, UriParseError]).} =
+): Future[void] {.async: (raises: [ApplicationError, CancelledError]).} =
   ls.checkInitialized()
-  let changes = params.changes.get(@[]).mapIt(it.uri.uriToPath)
-  debug "Watched files changed", changes = changes.len
+  debug "Watched files changed", changes = params.changes.get(@[]).len
   let conf = await ls.workspaceConfigurationWait()
-  let packageDirs = changes.filterIt(it.isNimblePackageFile).mapIt(it.parentDir)
-  if packageDirs.len > 0:
-    await ls.handleNimblePackageChanges(packageDirs)
-  if changes.len > packageDirs.len and conf.autoCheckProject.get(true) and
-      conf.checkOnSave.get(true) and not conf.useNimCheck.get(USE_NIM_CHECK_BY_DEFAULT):
+  if conf.autoCheckProject.get(true) and conf.checkOnSave.get(true) and
+      not conf.useNimCheck.get(USE_NIM_CHECK_BY_DEFAULT):
     ls.markNimsuggestsStale()
 
 proc didChangeWorkspaceFolders*(
