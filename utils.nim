@@ -1,7 +1,7 @@
 {.push raises: [], gcsafe.}
 
 import
-  std/[macros, unicode, uri, strformat, os, strutils, options, json, net],
+  std/[macros, unicode, uri, os, strutils, options, json, net],
   chronos,
   chronicles,
   chronos/asyncproc,
@@ -9,11 +9,7 @@ import
   stew/byteutils,
   ./protocol/types
 
-type
-  FingerTable = seq[tuple[u16pos, offset: int]]
-
-  UriParseError* = object of Defect
-    uri: string
+type FingerTable = seq[tuple[u16pos, offset: int]]
 
 const NIM_SCRIPT_API_TEMPLATE* = staticRead("templates/nimscriptapi.nim")
   #We add this file to nimsuggest and `nim check` to support nimble files
@@ -82,25 +78,11 @@ proc utf8to16*(fingerTable: FingerTable, utf8pos: int): int =
     else:
       break
 
-proc uriToPath*(uri: DocumentUri): Path =
+proc uriToPath*(uri: DocumentUri): Path {.raises: [UriParseError].} =
   ## Convert an RFC 8089 file URI to a native, platform-specific, absolute path.
   #let startIdx = when defined(windows): 8 else: 7
   #normalizedPath(uri[startIdx..^1])
-  let parsed = uri.string.parseUri
-  if parsed.scheme != "file":
-    var e = newException(
-      UriParseError,
-      "Invalid scheme in uri \"{uri}\": {parsed.scheme}, only \"file\" is supported".fmt,
-    )
-    e.uri = uri.string
-    raise e
-  if parsed.hostname != "":
-    var e = newException(
-      UriParseError,
-      "Invalid hostname in uri \"{uri}\": {parsed.hostname}, only empty hostname is supported".fmt,
-    )
-    e.uri = uri.string
-    raise e
+  let parsed = parseFileUri(uri)
   return normalizedPath(
     when defined(windows):
       parsed.path[1 ..^ 1]

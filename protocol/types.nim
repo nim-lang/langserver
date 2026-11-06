@@ -1,24 +1,24 @@
 import
-  std/[json, options, paths, tables],
+  std/[json, options, paths, tables, uri],
   chronicles,
   json_serialization,
   json_serialization/std/[options as jsoptions, tables as jstables]
 
-export json_serialization, jsoptions, jstables, paths
+export json_serialization, jsoptions, jstables, paths, uri
 
 type
-  Uri* = distinct string
-  DocumentUri* = Uri
+  LspUri* = distinct string
+  DocumentUri* = LspUri
 
-proc `$`*(x: Uri): string {.borrow.}
-proc `==`*(a, b: Uri): bool {.borrow.}
-proc `%`*(x: Uri): JsonNode =
+proc `$`*(x: LspUri): string {.borrow.}
+proc `==`*(a, b: LspUri): bool {.borrow.}
+proc `%`*(x: LspUri): JsonNode =
   %x.string
 
 proc `%`*(x: Path): JsonNode =
   %x.string
 
-chronicles.formatIt(Uri):
+chronicles.formatIt(LspUri):
   $it
 chronicles.formatIt(Path):
   $it
@@ -26,13 +26,31 @@ chronicles.formatIt(Path):
 proc len*(x: Path): int =
   x.string.len
 
-proc writeValue*(w: var JsonWriter, x: Uri) {.raises: [IOError].} =
+proc parseFileUri*(uri: LspUri): Uri {.raises: [UriParseError].} =
+  result = parseUri(uri.string)
+  if result.scheme != "file":
+    let msg =
+      "Invalid scheme in uri `" & uri.string & "`: " & result.scheme &
+      ", only `file` is supported"
+    raise (ref UriParseError)(msg: msg)
+  elif result.hostname != "":
+    let msg =
+      "Invalid hostname in uri `" & uri.string & "`: " & result.hostname &
+      ", only empty hostname is supported"
+    raise (ref UriParseError)(msg: msg)
+
+proc writeValue*(w: var JsonWriter, x: LspUri) {.raises: [IOError].} =
   w.writeValue(x.string)
 
 proc readValue*(
-    r: var JsonReader, x: var Uri
+    r: var JsonReader, x: var LspUri
 ) {.raises: [IOError, SerializationError].} =
-  x = Uri(r.readValue(string))
+  let uri = r.readValue(string)
+  try:
+    discard parseFileUri(LspUri(uri))
+  except UriParseError as exc:
+    r.raiseUnexpectedValue(exc.msg)
+  x = LspUri(uri)
 
 type
   OptionalSeq*[T] = Option[seq[T]]
@@ -595,7 +613,7 @@ type
     experimental*: OptionalNode
 
   WorkspaceFolder* = ref object of RootObj
-    uri*: Uri
+    uri*: LspUri
     name*: string
 
   McpInitializeParams_serverInfo* = ref object of RootObj

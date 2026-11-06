@@ -68,6 +68,22 @@ suite "uri and path conversion":
     expect UriParseError:
       discard uriToPath("file://somehost/hw.nim".DocumentUri)
 
+suite "decoding a uri":
+  test "a file uri is accepted":
+    check LspJson.decode("\"file:///a/hw.nim\"", DocumentUri).string == "file:///a/hw.nim"
+
+  test "an empty uri is rejected":
+    expect SerializationError:
+      discard LspJson.decode("\"\"", DocumentUri)
+
+  test "a scheme other than file is rejected":
+    expect SerializationError:
+      discard LspJson.decode("\"untitled:Foo\"", DocumentUri)
+
+  test "a uri with a hostname is rejected":
+    expect SerializationError:
+      discard LspJson.decode("\"file://somehost/hw.nim\"", DocumentUri)
+
 suite "path and seq helpers":
   test "isRelTo reports containment without raising":
     check isRelTo("/a/b/c.nim".Path, "/a/b".Path)
