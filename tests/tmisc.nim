@@ -569,7 +569,7 @@ suite "Nimlangserver nimsuggest creation":
     check ls.nimsuggestCreations.len == 0
     check not ls.inlayHintsRefreshRequest.isNil
 
-suite "Nimlangserver nimsuggest timeout restart":
+suite "Nimlangserver nimsuggest slow commands":
   let cmdParams =
     CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
   let ls = main(cmdParams)
@@ -596,29 +596,19 @@ suite "Nimlangserver nimsuggest timeout restart":
   suiteTeardown:
     waitFor ls.shutdownNimsuggest()
 
-  test "The timeout restart sends the status update after the restart":
-    # The timeout is read when nimsuggest starts, so only the instance started
-    # here gets 1ms; the restart that replaces it gets the usual configuration
-    let original = ls.workspaceConfiguration
+  test "A command slower than the timeout does not replace the nimsuggest":
+    # nimsuggest may be updating the NIF files of a big project, which looks
+    # just like a hang from here
     let tight = NlsConfig()
     tight[] = ls.workspaceConfiguration[]
     tight.timeout = some 0
     ls.workspaceConfiguration = tight
-    let creation = ls.createOrRestartNimsuggest(hwProjectFile, hwProjectFile)
-    ls.workspaceConfiguration = original
-    waitFor creation.wait(60.seconds)
+    waitFor ls.createOrRestartNimsuggest(hwProjectFile, hwProjectFile).wait(60.seconds)
 
-    # A check can't finish within 1ms, so it times out and the instance is
-    # replaced
-    let timedOutPort = ls.projectFiles[hwProjectFile].ns.port
-    discard ls.projectFiles[hwProjectFile].ns.chk(hwProjectFile)
-    check waitUntil(ls.projectFiles[hwProjectFile].ns.port != timedOutPort, 60.seconds)
-    let port = ls.projectFiles[hwProjectFile].ns.port
-    check waitFor client.waitForNotification(
-      "extension/statusUpdate",
-      proc(json: JsonNode): bool =
-        json{"nimsuggestInstances"}.getElems.anyIt(it{"port"}.getInt == port),
-    )
+    let project = ls.projectFiles[hwProjectFile]
+    discard waitFor project.ns.chk(hwProjectFile).wait(60.seconds)
+    check not waitUntil(ls.projectFiles[hwProjectFile] != project, 2.seconds)
+    check not project.failed
 
 suite "Nimlangserver project lookup replaced by a configuration change":
   let cmdParams =

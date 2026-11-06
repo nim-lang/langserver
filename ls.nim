@@ -1139,18 +1139,6 @@ proc createOrRestartNimsuggestImpl(
         workingDir = await ls.getWorkingDir(projectFile)
         (nimsuggestPath, version) =
           await ls.getNimsuggestPathAndVersion(configuration, projectFile)
-        timeout = configuration.timeout.get(REQUEST_TIMEOUT)
-        restartCallback = proc(
-            ns: Nimsuggest
-        ): Future[void] {.async: (raises: [CancelledError]).} =
-          warn "Restarting the server due to requests being to slow",
-            projectFile = projectFile
-          await ls.showMessage(
-            fmt "Restarting nimsuggest for file {projectFile} due to timeout.",
-            MessageType.Warning,
-          )
-          await ls.createOrRestartNimsuggest(projectFile, path)
-          ls.sendStatusChanged()
         errorCallback = partial(onErrorCallback, ls)
 
       debug "Creating new nimsuggest project", projectFile = projectFile
@@ -1159,8 +1147,6 @@ proc createOrRestartNimsuggestImpl(
         projectFile,
         nimsuggestPath,
         version,
-        timeout,
-        restartCallback,
         errorCallback,
         workingDir,
         configuration.logNimsuggest.get(false),
