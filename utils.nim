@@ -9,8 +9,7 @@ import
   stew/byteutils,
   ./protocol/types
 
-type
-  FingerTable = seq[tuple[u16pos, offset: int]]
+type FingerTable = seq[tuple[u16pos, offset: int]]
 
 const NIM_SCRIPT_API_TEMPLATE* = staticRead("templates/nimscriptapi.nim")
   #We add this file to nimsuggest and `nim check` to support nimble files
