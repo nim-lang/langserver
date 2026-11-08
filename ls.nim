@@ -1370,7 +1370,7 @@ proc checkFile*(
   let ns =
     if closed:
       let project = ls.projectFiles.getOrDefault(file.nimsuggestProject)
-      if project != nil:
+      if project != nil and not project.failed:
         some project.ns
       else:
         none(Nimsuggest)
