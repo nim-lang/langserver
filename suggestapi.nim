@@ -429,7 +429,7 @@ proc createNimsuggest*(
     raise exc
   except AsyncTimeoutError:
     error "Nimsuggest startup timed out", root = root
-    failure = "Nimsuggest startup timed out"
+    failure = "Nimsuggest startup timed out; increase nim.nimsuggestTimeout"
   except ValueError, OSError, IOError, AsyncProcessError, AsyncStreamError:
     error "Failed to start nimsuggest", root = root, error = getCurrentExceptionMsg()
     failure = "Unable to start nimsuggest: " & getCurrentExceptionMsg()

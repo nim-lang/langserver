@@ -205,7 +205,8 @@ suite "A nimsuggest whose startup does not finish":
 
     check ls.projectFiles[hwAbsFile].failed
     check ls.projectErrors.len == 1
-    check ls.projectErrors[0].errorMessage == "Nimsuggest startup timed out"
+    check ls.projectErrors[0].errorMessage ==
+      "Nimsuggest startup timed out; increase nim.nimsuggestTimeout"
 
 suite "Nimlangserver pending requests":
   test "cancelled projectFile future does not escape addProjectFileToPendingRequest":
