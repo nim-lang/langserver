@@ -1143,7 +1143,7 @@ proc createOrRestartNimsuggestImpl(
 
       debug "Creating new nimsuggest project", projectFile = projectFile
 
-      let projectFut = createNimsuggest(
+      await createNimsuggest(
         projectFile,
         nimsuggestPath,
         version,
@@ -1152,28 +1152,23 @@ proc createOrRestartNimsuggestImpl(
         configuration.logNimsuggest.get(false),
         configuration.exceptionHintsEnabled,
         configuration.nimsuggestMaxMemory,
+        configuration.nimsuggestTimeout.get(NIMSUGGEST_STARTUP_TIMEOUT),
       )
-      if not await chronos.withTimeout(
-        projectFut,
-        chronos.milliseconds(
-          configuration.nimsuggestTimeout.get(NIMSUGGEST_STARTUP_TIMEOUT)
-        ),
-      ):
-        error "Nimsuggest startup timed out", projectFile = projectFile
-        nil
-      else:
-        await projectFut
     except CancelledError as exc:
       debug "Create/restart nimsuggest cancelled", projectFile = projectFile
       raise exc
-    except ValueError, OSError, IOError, AsyncProcessError, AsyncStreamError:
+    except OSError, IOError:
       error "Failed to create/restart nimsuggest",
         projectFile = projectFile, error = getCurrentExceptionMsg()
-      nil
+      let failed = failedProject(
+        projectFile, "Unable to start nimsuggest: " & getCurrentExceptionMsg()
+      )
+      await ls.onErrorCallback(failed)
+      failed
 
-  if projectNext != nil:
+  let project = ls.projectFiles.getOrDefault(projectFile)
+  if not projectNext.failed:
     debug "Nimsuggest initialized successfully", projectFile = projectFile
-    let project = ls.projectFiles.getOrDefault(projectFile)
     if project != nil:
       project.stop()
     ls.projectFiles[projectFile] = projectNext
@@ -1182,8 +1177,8 @@ proc createOrRestartNimsuggestImpl(
     await ls.showMessage(
       fmt "Nimsuggest initialized for {projectFile}", MessageType.Info
     )
-  elif projectFile notin ls.projectFiles:
-    ls.projectFiles[projectFile] = Project(file: projectFile, failed: true)
+  elif project == nil:
+    ls.projectFiles[projectFile] = projectNext
     ls.sendStatusChanged()
 
 proc createOrRestartNimsuggestUnprotected(
@@ -1375,7 +1370,7 @@ proc checkFile*(
   let ns =
     if closed:
       let project = ls.projectFiles.getOrDefault(file.nimsuggestProject)
-      if project != nil and project.ns != nil:
+      if project != nil:
         some project.ns
       else:
         none(Nimsuggest)

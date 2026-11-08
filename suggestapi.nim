@@ -328,6 +328,21 @@ proc watchExit(project: Project) {.async: (raises: []).} =
   error "Nimsuggest exited", root = project.file, message = message
   await project.markFailed(message)
 
+proc newProject(root: Path, nimsuggestPath, version: string): Project =
+  result = Project(file: root)
+  result.ns = Nimsuggest(
+    requestQueue: Deque[SuggestCall](),
+    root: root,
+    nimsuggestPath: nimsuggestPath,
+    version: version,
+    project: result,
+  )
+
+proc failedProject*(root: Path, errorMessage: string): Project =
+  result = newProject(root, "", "")
+  result.failed = true
+  result.errorMessage = errorMessage
+
 proc createNimsuggest*(
     root: Path,
     nimsuggestPath: string,
@@ -337,21 +352,20 @@ proc createNimsuggest*(
     enableLog: bool = false,
     enableExceptionInlayHints: bool = false,
     maxMemory: Option[int] = none int,
-): Future[Project] {.
-    async: (
-      raises: [
-        CancelledError, AsyncProcessError, AsyncStreamError, OSError, IOError,
-        ValueError,
-      ]
-    )
-.} =
-  result = Project(file: root)
+    startupTimeout = NIMSUGGEST_STARTUP_TIMEOUT,
+): Future[Project] {.async: (raises: [CancelledError]).} =
+  ## A nimsuggest that does not start is returned failed
+  result = newProject(root, nimsuggestPath, version)
   result.errorCallback = some errorCallback
+  let ns = result.ns
   if nimsuggestPath == "":
     error "Unable to start nimsuggest. Unable to find binary on the $PATH",
       root = root, workingDir = workingDir
     await result.markFailed "Unable to start nimsuggest. Unable to find binary on the $PATH"
-    raise newException(ValueError, "Empty nimsuggestPath")
+    return
+  var
+    started = false
+    failure = "Unable to start nimsuggest."
   try:
     let ext = root.splitFile.ext
     let isNimble = ext == ".nimble"
@@ -363,13 +377,6 @@ proc createNimsuggest*(
     if isNimble:
       let nimScriptApiPath = getNimScriptAPITemplatePath()
       extraArgs.add("--include: " & nimScriptApiPath)
-
-    let ns = Nimsuggest()
-    ns.requestQueue = Deque[SuggestCall]()
-    ns.root = root
-    ns.nimsuggestPath = nimsuggestPath
-    ns.version = version
-    ns.project = result
 
     info "Starting nimsuggest",
       root = root, path = nimsuggestPath, workingDir = workingDir
@@ -403,21 +410,32 @@ proc createNimsuggest*(
     )
     debug "Nimsuggest started with args", args = args
     ns.args = args
-    let portLine = await result.process.stdoutStream.readLine(sep = "\n")
+    let timeout = chronos.milliseconds(startupTimeout)
+    let portLine = await result.process.stdoutStream.readLine(sep = "\n").wait(timeout)
     debug "Nimsuggest port", portLine = portLine
     ns.port =
       try:
         parseInt(portLine)
       except ValueError as exc:
         error "Failed to parse nimsuggest port", portLine = portLine
-        let nextLine = await result.process.stdoutStream.readLine(sep = "\n")
+        let nextLine =
+          await result.process.stdoutStream.readLine(sep = "\n").wait(timeout)
         error "Nimsuggest nextLine", nextLine = nextLine
         raise exc
-    result.ns = ns
+    started = true
     asyncSpawn watchExit(result)
+  except CancelledError as exc:
+    result.errorCallback = none(ProjectCallback)
+    raise exc
+  except AsyncTimeoutError:
+    error "Nimsuggest startup timed out", root = root
+    failure = "Nimsuggest startup timed out"
+  except ValueError, OSError, IOError, AsyncProcessError, AsyncStreamError:
+    error "Failed to start nimsuggest", root = root, error = getCurrentExceptionMsg()
+    failure = "Unable to start nimsuggest: " & getCurrentExceptionMsg()
   finally:
-    if result.ns.isNil:
-      await result.markFailed "Unable to start nimsuggest."
+    if not started:
+      await result.markFailed failure
       await result.stopWait()
 
 proc createNimsuggest*(root: Path): Future[Project] {.gcsafe, raises: [OSError].} =
