@@ -301,17 +301,15 @@ suite "Failed nimsuggest with no other to fall back to":
     client.openRootFile()
     check ls.projectFiles.len == 1
 
-    # Failed too many times and is gone, like after restarts that did not
-    # succeed.
-    ls.projectFiles[rootProject].stop()
-    ls.projectFiles.del(rootProject)
-    ls.failTable[rootProject] = 10
+    let project = ls.projectFiles[rootProject]
+    project.stop()
+    project.failed = true
 
     # There is nothing to wait for, so the request must not be retried.
     let requested = Moment.now()
     check client.completionLabels(4, 7).len == 0
     check Moment.now() - requested < 5.seconds
-    check ls.projectFiles.len == 0
+    check ls.projectFiles[rootProject] == project
 
 suite "Failed nimsuggest while others run":
   let (ls, client) = startServer()
@@ -332,9 +330,9 @@ suite "Failed nimsuggest while others run":
         .wait(60.seconds)
     check ls.projectFiles.len == 4
 
-    # The other file's project failed too many times. The others don't know
-    # the file, so none of them can serve it.
-    ls.failTable[OtherFile.fixturePath] = 10
+    # The other file's project failed. The others don't know the file, so none
+    # of them can serve it.
+    ls.projectFiles[OtherFile.fixturePath].failed = true
 
     check (waitFor ls.tryGetNimsuggest(OtherFile.fixturePath)).isNone
     check ls.openFiles.getOrDefault(OtherFile.fixturePath).nimsuggestProject.len == 0

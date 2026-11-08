@@ -113,9 +113,7 @@ suite "Replacing a running nimsuggest":
     check waitFor ls.didOpenFixture(helloWorldFile).withTimeout(30.seconds)
     check (waitFor ls.tryGetNimsuggest(helloWorldPath).wait(30.seconds)).isSome
     let old = ls.projectFiles[helloWorldPath]
-    let oldNs = old.ns
-    # Having served a request is what made the error path auto-restart it.
-    check waitUntil(oldNs.successfullCall, timeout = 30.seconds)
+    let errors = ls.projectErrors.len
 
     check waitFor ls
       .createOrRestartNimsuggest(helloWorldPath, helloWorldPath)
@@ -128,7 +126,7 @@ suite "Replacing a running nimsuggest":
     check waitUntil(old.failed, timeout = 30.seconds)
     waitFor sleepAsync(2.seconds)
 
-    check ls.failTable.getOrDefault(helloWorldPath, 0) == 0
+    check ls.projectErrors.len == errors
     check ls.nimsuggestCreations.len == 0
     check ls.projectFiles[helloWorldPath] == replacement
     check not replacement.failed

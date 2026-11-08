@@ -952,7 +952,7 @@ proc workspaceSymbol*(
 .} =
   ls.checkInitialized()
   let project = ls.projectFiles.getOrDefault(ls.lastNimsuggestProject)
-  if project != nil:
+  if project != nil and not project.failed:
     let symbols = await project.ns.globalSymbols(params.query)
     return symbols.map(x => x.toUtf16Pos(ls).toSymbolInformation)
 

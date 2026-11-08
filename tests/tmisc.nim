@@ -53,7 +53,7 @@ suite "Nimlangserver misc":
       fmt"Nimsuggest for {hwAbsFile} was stopped because it was idle for too long"
     )
 
-suite "Nimlangserver fail count":
+suite "A nimsuggest that fails":
   let cmdParams =
     CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
   let ls = main(cmdParams)
@@ -63,35 +63,150 @@ suite "Nimlangserver fail count":
     "window/showMessage", "window/workDoneProgress/create", "workspace/configuration",
     "extension/statusUpdate", "textDocument/publishDiagnostics", "$/progress",
   )
+  let
+    helloWorldFile = "projects/hw/hw.nim"
+    hwAbsFile = helloWorldFile.fixturePath
+  discard waitFor client.initialize(
+    LspInitializeParams %* {
+      "processId": %getCurrentProcessId(),
+      "rootUri": fixtureUri("projects/hw/"),
+      "capabilities":
+        {"window": {"workDoneProgress": true}, "workspace": {"configuration": true}},
+    }
+  )
+  ls.setWorkspaceConfiguration(% @[NlsConfig()])
+  client.openFile(helloWorldFile)
+  check waitFor client.waitForNotificationMessage(
+    fmt"Nimsuggest initialized for {hwAbsFile}"
+  )
 
   suiteTeardown:
     waitFor ls.shutdownNimsuggest()
 
-  test "fail count is reset when a nimsuggest starts successfully":
-    # ls.failTable only ever increments, so a project that crashes and
-    # recovers keeps ratcheting toward MaxFails in getNimsuggest, after which
-    # its requests are silently rerouted or dropped for the rest of the
-    # session. A successful start must clear the count.
-    let initParams =
-      LspInitializeParams %* {
-        "processId": %getCurrentProcessId(),
-        "rootUri": fixtureUri("projects/hw/"),
-        "capabilities":
-          {"window": {"workDoneProgress": true}, "workspace": {"configuration": true}},
-      }
-    discard waitFor client.initialize(initParams)
+  test "is not restarted after it crashes":
+    let project = ls.projectFiles[hwAbsFile]
+    discard project.process.kill()
+    check waitUntil(project.failed)
+    check not waitUntil(ls.projectFiles[hwAbsFile] != project, 2.seconds)
+
+    check (waitFor ls.tryGetNimsuggest(hwAbsFile)).isNone
+    check ls.projectFiles[hwAbsFile] == project
+    check ls.openFiles[hwAbsFile].nimsuggestProject.len == 0
+    check ls.projectErrors.anyIt(it.projectFile == $hwAbsFile)
+
+  test "does not count against the nimsuggest limit":
+    check ls.projectFiles[hwAbsFile].failed
+    check ls.liveNimsuggestProjects.len == 0
+
+  test "serves requests again after a restart":
+    let params = SuggestParams(action: saRestart, projectFile: $hwAbsFile)
+    discard client.call("extension/suggest", %params).waitFor
+
+    check not ls.projectFiles[hwAbsFile].failed
+    check (waitFor ls.tryGetNimsuggest(hwAbsFile)).isSome
+    check ls.openFiles[hwAbsFile].nimsuggestProject == hwAbsFile
+
+suite "A nimsuggest that fails to start":
+  let cmdParams =
+    CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
+  let ls = main(cmdParams)
+  let client = newLspSocketClient()
+  waitFor client.connect("localhost", cmdParams.port)
+  client.registerNotification(
+    "window/showMessage", "window/workDoneProgress/create", "workspace/configuration",
+    "extension/statusUpdate", "textDocument/publishDiagnostics", "$/progress",
+  )
+  let
+    helloWorldFile = "projects/hw/hw.nim"
+    hwAbsFile = helloWorldFile.fixturePath
+    # it runs, but it does not answer like a nimsuggest
+    notNimsuggest = NlsConfig(nimsuggestPath: some findExe("nim"))
+  discard waitFor client.initialize(
+    LspInitializeParams %* {
+      "processId": %getCurrentProcessId(),
+      "rootUri": fixtureUri("projects/hw/"),
+      "capabilities":
+        {"window": {"workDoneProgress": true}, "workspace": {"configuration": true}},
+    }
+  )
+  ls.setWorkspaceConfiguration(% @[notNimsuggest])
+  client.openFile(helloWorldFile)
+
+  suiteTeardown:
+    waitFor ls.shutdownNimsuggest()
+
+  test "is not started again":
+    check waitUntil(hwAbsFile in ls.projectFiles)
+    let project = ls.projectFiles[hwAbsFile]
+    check project.failed
+    check project.ns != nil
+    check project.errorMessage.startsWith("Unable to start nimsuggest: ")
+    let errors = ls.projectErrors.len
+
+    check (waitFor ls.tryGetNimsuggest(hwAbsFile)).isNone
+    check ls.projectFiles[hwAbsFile] == project
+    check ls.projectErrors.len == errors
+
+  test "workspace symbols are answered by a failed nimsuggest":
+    ls.lastNimsuggestProject = hwAbsFile
+    let symbols = client.call(
+      "workspace/symbol", %WorkspaceSymbolParams(query: "x")
+    ).waitFor
+    check symbols.kind in {JNull, JArray}
+
+  test "is started again after a configuration change":
     ls.setWorkspaceConfiguration(% @[NlsConfig()])
+    waitFor ls.handleConfigurationChanges(notNimsuggest, NlsConfig())
 
-    let helloWorldFile = "projects/hw/hw.nim"
-    let hwAbsFile = uriToPath(helloWorldFile.fixtureUri())
-    ls.failTable[hwAbsFile] = 5
+    check (waitFor ls.tryGetNimsuggest(hwAbsFile)).isSome
+    check not ls.projectFiles[hwAbsFile].failed
 
-    client.openFile(helloWorldFile)
-    check waitFor client.waitForNotificationMessage(
-      fmt"Nimsuggest initialized for {hwAbsFile}"
+suite "A nimsuggest whose startup does not finish":
+  let cmdParams =
+    CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
+  let ls = main(cmdParams)
+  let client = newLspSocketClient()
+  waitFor client.connect("localhost", cmdParams.port)
+  client.registerNotification(
+    "window/showMessage", "window/workDoneProgress/create", "workspace/configuration",
+    "extension/statusUpdate", "textDocument/publishDiagnostics", "$/progress",
+  )
+  let hwAbsFile = "projects/hw/hw.nim".fixturePath
+  discard waitFor client.initialize(
+    LspInitializeParams %* {
+      "processId": %getCurrentProcessId(),
+      "rootUri": fixtureUri("projects/hw/"),
+      "capabilities":
+        {"window": {"workDoneProgress": true}, "workspace": {"configuration": true}},
+    }
+  )
+  ls.setWorkspaceConfiguration(% @[NlsConfig()])
+
+  suiteTeardown:
+    waitFor ls.shutdownNimsuggest()
+
+  test "is not reported when it is cancelled":
+    # with the package already dumped, nothing waits before nimsuggest is spawned,
+    # so it is running and still starting up when cancelled
+    discard waitFor ls.getWorkingDir(hwAbsFile)
+    let starting = ls.createOrRestartNimsuggest(hwAbsFile, hwAbsFile)
+    check hwAbsFile in ls.nimsuggestCreations
+    waitFor ls.handleConfigurationChanges(
+      NlsConfig(), NlsConfig(logNimsuggest: some true)
     )
+    waitFor starting
 
-    check hwAbsFile notin ls.failTable
+    check ls.projectErrors.len == 0
+    check hwAbsFile notin ls.projectFiles
+
+  test "is reported when it times out":
+    ls.setWorkspaceConfiguration(% @[NlsConfig(nimsuggestTimeout: some 1)])
+    waitFor ls.createOrRestartNimsuggest(hwAbsFile, hwAbsFile)
+
+    check ls.projectFiles[hwAbsFile].failed
+    check ls.projectErrors.len == 1
+    check ls.projectErrors[0].errorMessage ==
+      "Nimsuggest startup timed out; increase nim.nimsuggestTimeout"
 
 suite "Nimlangserver pending requests":
   test "cancelled projectFile future does not escape addProjectFileToPendingRequest":
@@ -503,7 +618,7 @@ suite "Nimlangserver nimsuggest creation":
     check ls.nimsuggestCreations.len == 0
     check not ls.inlayHintsRefreshRequest.isNil
 
-suite "Nimlangserver nimsuggest timeout restart":
+suite "Nimlangserver nimsuggest slow commands":
   let cmdParams =
     CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
   let ls = main(cmdParams)
@@ -530,29 +645,19 @@ suite "Nimlangserver nimsuggest timeout restart":
   suiteTeardown:
     waitFor ls.shutdownNimsuggest()
 
-  test "The timeout restart sends the status update after the restart":
-    # The timeout is read when nimsuggest starts, so only the instance started
-    # here gets 1ms; the restart that replaces it gets the usual configuration
-    let original = ls.workspaceConfiguration
+  test "A command slower than the timeout does not replace the nimsuggest":
+    # nimsuggest may be updating the NIF files of a big project, which looks
+    # just like a hang from here
     let tight = NlsConfig()
     tight[] = ls.workspaceConfiguration[]
     tight.timeout = some 0
     ls.workspaceConfiguration = tight
-    let creation = ls.createOrRestartNimsuggest(hwProjectFile, hwProjectFile)
-    ls.workspaceConfiguration = original
-    waitFor creation.wait(60.seconds)
+    waitFor ls.createOrRestartNimsuggest(hwProjectFile, hwProjectFile).wait(60.seconds)
 
-    # A check can't finish within 1ms, so it times out and the instance is
-    # replaced
-    let timedOutPort = ls.projectFiles[hwProjectFile].ns.port
-    discard ls.projectFiles[hwProjectFile].ns.chk(hwProjectFile)
-    check waitUntil(ls.projectFiles[hwProjectFile].ns.port != timedOutPort, 60.seconds)
-    let port = ls.projectFiles[hwProjectFile].ns.port
-    check waitFor client.waitForNotification(
-      "extension/statusUpdate",
-      proc(json: JsonNode): bool =
-        json{"nimsuggestInstances"}.getElems.anyIt(it{"port"}.getInt == port),
-    )
+    let project = ls.projectFiles[hwProjectFile]
+    discard waitFor project.ns.chk(hwProjectFile).wait(60.seconds)
+    check not waitUntil(ls.projectFiles[hwProjectFile] != project, 2.seconds)
+    check not project.failed
 
 suite "Nimlangserver project lookup replaced by a configuration change":
   let cmdParams =

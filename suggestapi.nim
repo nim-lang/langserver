@@ -44,8 +44,6 @@ type
     ## A nimsuggest request failed: the connection dropped, nimsuggest crashed,
     ## or its output could not be parsed.
 
-  NimsuggestCallback* =
-    proc(self: Nimsuggest): Future[void] {.async: (raises: [CancelledError]).}
   ProjectCallback* = proc(self: Project): Future[void] {.async: (raises: []).}
 
   Suggest* = ref object
@@ -97,8 +95,6 @@ type
     root: Path
     requestQueue: Deque[SuggestCall]
     processing: bool
-    timeout: int
-    timeoutCallback: NimsuggestCallback
     protocolVersion*: int
     capabilities*: set[NimsuggestCapability]
     nimsuggestPath*: string
@@ -277,23 +273,6 @@ proc stopWait*(self: Project) {.async: (raises: []).} =
 proc stop*(self: Project) =
   asyncSpawn self.stopWait()
 
-# XXX remove
-proc doWithTimeout*[T](
-    fut: Future[T], timeout: int, s: string
-): Future[bool].Raising([CancelledError]) =
-  var retFuture =
-    Future[bool].Raising([CancelledError]).init("asyncdispatch.`doWithTimeout`")
-  var timeoutFuture = sleepAsync(timeout)
-  fut.addCallback do(data: pointer):
-    if not retFuture.finished:
-      retFuture.complete(true)
-
-  timeoutFuture.addCallback do(data: pointer):
-    if not retFuture.finished:
-      retFuture.complete(false)
-
-  return retFuture
-
 proc detectNimsuggestVersion(
     root: Path, nimsuggestPath: string, workingDir: Path
 ): int {.gcsafe, raises: [OSError, IOError, ValueError].} =
@@ -349,32 +328,44 @@ proc watchExit(project: Project) {.async: (raises: []).} =
   error "Nimsuggest exited", root = project.file, message = message
   await project.markFailed(message)
 
+proc newProject(root: Path, nimsuggestPath, version: string): Project =
+  result = Project(file: root)
+  result.ns = Nimsuggest(
+    requestQueue: Deque[SuggestCall](),
+    root: root,
+    nimsuggestPath: nimsuggestPath,
+    version: version,
+    project: result,
+  )
+
+proc failedProject*(root: Path, errorMessage: string): Project =
+  result = newProject(root, "", "")
+  result.failed = true
+  result.errorMessage = errorMessage
+
 proc createNimsuggest*(
     root: Path,
     nimsuggestPath: string,
     version: string,
-    timeout: int,
-    timeoutCallback: NimsuggestCallback,
     errorCallback: ProjectCallback,
     workingDir = paths.getCurrentDir(),
     enableLog: bool = false,
     enableExceptionInlayHints: bool = false,
     maxMemory: Option[int] = none int,
-): Future[Project] {.
-    async: (
-      raises: [
-        CancelledError, AsyncProcessError, AsyncStreamError, OSError, IOError,
-        ValueError,
-      ]
-    )
-.} =
-  result = Project(file: root)
+    startupTimeout = NIMSUGGEST_STARTUP_TIMEOUT,
+): Future[Project] {.async: (raises: [CancelledError]).} =
+  ## A nimsuggest that does not start is returned failed
+  result = newProject(root, nimsuggestPath, version)
   result.errorCallback = some errorCallback
+  let ns = result.ns
   if nimsuggestPath == "":
     error "Unable to start nimsuggest. Unable to find binary on the $PATH",
       root = root, workingDir = workingDir
     await result.markFailed "Unable to start nimsuggest. Unable to find binary on the $PATH"
-    raise newException(ValueError, "Empty nimsuggestPath")
+    return
+  var
+    started = false
+    failure = "Unable to start nimsuggest."
   try:
     let ext = root.splitFile.ext
     let isNimble = ext == ".nimble"
@@ -387,17 +378,8 @@ proc createNimsuggest*(
       let nimScriptApiPath = getNimScriptAPITemplatePath()
       extraArgs.add("--include: " & nimScriptApiPath)
 
-    let ns = Nimsuggest()
-    ns.requestQueue = Deque[SuggestCall]()
-    ns.root = root
-    ns.timeout = timeout
-    ns.timeoutCallback = timeoutCallback
-    ns.nimsuggestPath = nimsuggestPath
-    ns.version = version
-    ns.project = result
-
     info "Starting nimsuggest",
-      root = root, timeout = timeout, path = nimsuggestPath, workingDir = workingDir
+      root = root, path = nimsuggestPath, workingDir = workingDir
 
     ns.protocolVersion = detectNimsuggestVersion(root, nimsuggestPath, workingDir)
     if ns.protocolVersion > HighestSupportedNimSuggestProtocolVersion:
@@ -428,21 +410,32 @@ proc createNimsuggest*(
     )
     debug "Nimsuggest started with args", args = args
     ns.args = args
-    let portLine = await result.process.stdoutStream.readLine(sep = "\n")
+    let timeout = chronos.milliseconds(startupTimeout)
+    let portLine = await result.process.stdoutStream.readLine(sep = "\n").wait(timeout)
     debug "Nimsuggest port", portLine = portLine
     ns.port =
       try:
         parseInt(portLine)
       except ValueError as exc:
         error "Failed to parse nimsuggest port", portLine = portLine
-        let nextLine = await result.process.stdoutStream.readLine(sep = "\n")
+        let nextLine =
+          await result.process.stdoutStream.readLine(sep = "\n").wait(timeout)
         error "Nimsuggest nextLine", nextLine = nextLine
         raise exc
-    result.ns = ns
+    started = true
     asyncSpawn watchExit(result)
+  except CancelledError as exc:
+    result.errorCallback = none(ProjectCallback)
+    raise exc
+  except AsyncTimeoutError:
+    error "Nimsuggest startup timed out", root = root
+    failure = "Nimsuggest startup timed out; increase nim.nimsuggestTimeout"
+  except ValueError, OSError, IOError, AsyncProcessError, AsyncStreamError:
+    error "Failed to start nimsuggest", root = root, error = getCurrentExceptionMsg()
+    failure = "Unable to start nimsuggest: " & getCurrentExceptionMsg()
   finally:
-    if result.ns.isNil:
-      await result.markFailed "Unable to start nimsuggest."
+    if not started:
+      await result.markFailed failure
       await result.stopWait()
 
 proc createNimsuggest*(root: Path): Future[Project] {.gcsafe, raises: [OSError].} =
@@ -450,24 +443,9 @@ proc createNimsuggest*(root: Path): Future[Project] {.gcsafe, raises: [OSError].
     root,
     "nimsuggest",
     "",
-    REQUEST_TIMEOUT,
-    proc(ns: Nimsuggest) {.async: (raises: [CancelledError]).} =
-      discard,
     proc(pr: Project) {.async: (raises: []).} =
       discard,
   )
-
-proc watchRequestTimeout(
-    self: Nimsuggest, req: SuggestCall
-): Future[void] {.async: (raises: []).} =
-  try:
-    let inTime =
-      await doWithTimeout(req.future, self.timeout, fmt "running {req.commandString}")
-    if not inTime:
-      debug "Calling restart"
-      await self.timeoutCallback(self)
-  except CancelledError:
-    return
 
 proc toString*(bytes: openArray[byte]): string =
   result = newString(bytes.len)
@@ -491,9 +469,6 @@ proc processQueue(self: Nimsuggest): Future[void] {.async: (raises: []).} =
       benchmark req.commandString:
         var res: seq[Suggest] = @[]
 
-        if not self.timeoutCallback.isNil:
-          debug "timeoutCallback is set", timeout = self.timeout
-          asyncSpawn self.watchRequestTimeout(req)
         var transport: StreamTransport
         try:
           let ta = initTAddress(&"127.0.0.1:{self.port}")

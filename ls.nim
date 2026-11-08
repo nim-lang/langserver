@@ -36,7 +36,6 @@ const
   NIM_EXPAND_ARC_BY_DEFAULT* = false
   NIM_EXPAND_MACRO_BY_DEFAULT* = false
   NIM_MAX_NS_PROCESSES* = 1
-  MaxNimsuggestFails = 10
 
 type
   NlsNimsuggestConfig* = ref object of RootObj
@@ -75,7 +74,6 @@ type
     checkOnSave*: Option[bool]
     nimsuggestPath*: Option[string]
     timeout*: Option[int]
-    autoRestart*: Option[bool]
     autoCheckFile*: Option[bool]
     autoCheckProject*: Option[bool]
     logNimsuggest*: Option[bool]
@@ -178,9 +176,6 @@ type
     served*: Future[void]
     projectErrors*: seq[ProjectError]
     lastStatusSent: JsonString
-    failTable*: Table[Path, int]
-      #Project file to fail count
-      #List of errors (crashes) nimsuggest has had since the lsp session started
     checkInProgress*: bool
     token: uint
 
@@ -873,7 +868,9 @@ proc isLiveNimsuggestProject(ls: LanguageServer, projectFile: Path): bool =
 
 proc liveNimsuggestProjects*(ls: LanguageServer): seq[Path] =
   ## Running + starting instances.
-  result = ls.projectFiles.keys.toSeq
+  for projectFile, project in ls.projectFiles:
+    if not project.failed:
+      result.add projectFile
   for projectFile in ls.nimsuggestCreations.keys:
     if projectFile notin result:
       result.add projectFile
@@ -889,7 +886,7 @@ proc reuseLastNimsuggestProject(
     ls: LanguageServer, path: Path
 ): Future[Path] {.async: (raises: [CancelledError]).} =
   let project = ls.projectFiles.getOrDefault(ls.lastNimsuggestProject)
-  if project == nil:
+  if project == nil or project.failed:
     return Path("")
   let isKnown = await project.ns.isKnown(path)
   if isKnown and project.file in ls.projectFiles:
@@ -901,6 +898,10 @@ proc reuseLastNimsuggestProject(
       path = path, project = project.file
     Path("")
 
+proc isFailedNimsuggest(ls: LanguageServer, projectFile: Path): bool =
+  let project = ls.projectFiles.getOrDefault(projectFile)
+  project != nil and project.failed
+
 proc nimsuggestProjectFor(
     ls: LanguageServer, path: Path
 ): Future[Path] {.async: (raises: [CancelledError, OSError, RegexError]).} =
@@ -911,14 +912,14 @@ proc nimsuggestProjectFor(
       projectFile
     else:
       await ls.reuseLastNimsuggestProject(path)
-  if ls.failTable.getOrDefault(nsProject, 0) >= MaxNimsuggestFails:
-    debug "Nimsuggest failed too many times", path = path, projectFile = nsProject
+  if ls.isFailedNimsuggest(nsProject):
+    debug "Nimsuggest failed", path = path, projectFile = nsProject
     return Path("")
   nsProject
 
 proc hasServingNimsuggest(ls: LanguageServer, file: NlsFileInfo): bool =
   file.nimsuggestProject.len > 0 and ls.isLiveNimsuggestProject(file.nimsuggestProject) and
-    ls.failTable.getOrDefault(file.nimsuggestProject, 0) < MaxNimsuggestFails
+    not ls.isFailedNimsuggest(file.nimsuggestProject)
 
 proc getNimsuggestInner(
     ls: LanguageServer, path: Path
@@ -938,7 +939,7 @@ proc getNimsuggestInner(
     debug "Creating new nimsuggest instance", path = path, projectFile = nsProject
     await ls.createOrRestartNimsuggest(nsProject, path)
   let project = ls.projectFiles.getOrDefault(nsProject)
-  if project == nil:
+  if project == nil or project.failed:
     debug "Failed to get nimsuggest", path = path, projectFile = nsProject
     return nil
   ls.lastNimsuggestProject = nsProject
@@ -1107,24 +1108,13 @@ proc checkProject*(
   await ls.checkNimsuggestProject(path, ns.get)
 
 proc onErrorCallback(
-    args: (LanguageServer, Path), project: Project
+    ls: LanguageServer, project: Project
 ): Future[void] {.async: (raises: []).} =
-  let
-    ls = args[0]
-    path = args[1]
-  debug "Nimsuggest needed to be restarted due to an error "
-  ls.failTable[project.file] = ls.failTable.getOrDefault(project.file, 0) + 1
-  debug "Fail count", count = ls.failTable[project.file]
   warn "Server stopped.", projectFile = project.file
   try:
-    let configuration = await ls.workspaceConfigurationWait()
-    if configuration.autoRestart.get(true) and project.ns != nil and
-        project.ns.successfullCall:
-      await ls.createOrRestartNimsuggest(project.file, path)
-    else:
-      await ls.showMessage(
-        fmt "Server failed with {project.errorMessage}.", MessageType.Error
-      )
+    await ls.showMessage(
+      fmt "Server failed with {project.errorMessage}.", MessageType.Error
+    )
   except CancelledError:
     let ex = getCurrentException()
     error "An error has ocurred while handling nimsuggest err", msg = ex.msg
@@ -1149,64 +1139,47 @@ proc createOrRestartNimsuggestImpl(
         workingDir = await ls.getWorkingDir(projectFile)
         (nimsuggestPath, version) =
           await ls.getNimsuggestPathAndVersion(configuration, projectFile)
-        timeout = configuration.timeout.get(REQUEST_TIMEOUT)
-        restartCallback = proc(
-            ns: Nimsuggest
-        ): Future[void] {.async: (raises: [CancelledError]).} =
-          warn "Restarting the server due to requests being to slow",
-            projectFile = projectFile
-          await ls.showMessage(
-            fmt "Restarting nimsuggest for file {projectFile} due to timeout.",
-            MessageType.Warning,
-          )
-          await ls.createOrRestartNimsuggest(projectFile, path)
-          ls.sendStatusChanged()
-        errorCallback = partial(onErrorCallback, (ls, path))
+        errorCallback = partial(onErrorCallback, ls)
 
       debug "Creating new nimsuggest project", projectFile = projectFile
 
-      let projectFut = createNimsuggest(
+      await createNimsuggest(
         projectFile,
         nimsuggestPath,
         version,
-        timeout,
-        restartCallback,
         errorCallback,
         workingDir,
         configuration.logNimsuggest.get(false),
         configuration.exceptionHintsEnabled,
         configuration.nimsuggestMaxMemory,
+        configuration.nimsuggestTimeout.get(NIMSUGGEST_STARTUP_TIMEOUT),
       )
-      if not await chronos.withTimeout(
-        projectFut,
-        chronos.milliseconds(
-          configuration.nimsuggestTimeout.get(NIMSUGGEST_STARTUP_TIMEOUT)
-        ),
-      ):
-        error "Nimsuggest startup timed out", projectFile = projectFile
-        nil
-      else:
-        await projectFut
     except CancelledError as exc:
       debug "Create/restart nimsuggest cancelled", projectFile = projectFile
       raise exc
-    except ValueError, OSError, IOError, AsyncProcessError, AsyncStreamError:
+    except OSError, IOError:
       error "Failed to create/restart nimsuggest",
         projectFile = projectFile, error = getCurrentExceptionMsg()
-      nil
+      let failed = failedProject(
+        projectFile, "Unable to start nimsuggest: " & getCurrentExceptionMsg()
+      )
+      await ls.onErrorCallback(failed)
+      failed
 
-  if projectNext != nil:
+  let project = ls.projectFiles.getOrDefault(projectFile)
+  if not projectNext.failed:
     debug "Nimsuggest initialized successfully", projectFile = projectFile
-    let project = ls.projectFiles.getOrDefault(projectFile)
     if project != nil:
       project.stop()
     ls.projectFiles[projectFile] = projectNext
-    ls.failTable.del(projectFile)
     traceAsyncErrors ls.checkProject(path)
     ls.sendStatusChanged()
     await ls.showMessage(
       fmt "Nimsuggest initialized for {projectFile}", MessageType.Info
     )
+  elif project == nil:
+    ls.projectFiles[projectFile] = projectNext
+    ls.sendStatusChanged()
 
 proc createOrRestartNimsuggestUnprotected(
     ls: LanguageServer, projectFile: Path, path: Path
@@ -1397,7 +1370,7 @@ proc checkFile*(
   let ns =
     if closed:
       let project = ls.projectFiles.getOrDefault(file.nimsuggestProject)
-      if project != nil:
+      if project != nil and not project.failed:
         some project.ns
       else:
         none(Nimsuggest)
@@ -1446,7 +1419,7 @@ proc removeIdleNimsuggests*(ls: LanguageServer) {.async: (raises: [CancelledErro
   let timeout = conf.nimsuggestIdleTimeout.get(DefaultNimsuggestIdleTimeout)
   var toStop = newSeq[Project]()
   for project in ls.projectFiles.values:
-    if ls.filesServedBy(project.file).len > 0:
+    if project.failed or ls.filesServedBy(project.file).len > 0:
       continue
     if project.lastCmdDate.isSome:
       let passedTime = now() - project.lastCmdDate.get()

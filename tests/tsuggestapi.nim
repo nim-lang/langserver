@@ -119,26 +119,20 @@ suite "Nimsuggest error handling":
     check waitUntil(errorCount >= 1)
     check not waitUntil(errorCount > 1, timeout = 300.milliseconds)
 
-  test "a nimsuggest cancelled during startup is marked failed and stopped":
+  test "a nimsuggest cancelled during startup is not reported":
     let helloWorldFile = paths.getCurrentDir() / "tests/projects/hw/hw.nim"
-    var failed: Project
+    var errorCount = 0
     # nimsuggest is spawned before createNimsuggest first waits, so it is
     # running and still starting up when cancelled
     let projectFut = createNimsuggest(
       helloWorldFile,
       "nimsuggest",
       "",
-      REQUEST_TIMEOUT,
-      proc(ns: Nimsuggest) {.async: (raises: [CancelledError]).} =
-        discard,
       proc(pr: Project) {.async: (raises: []).} =
-        failed = pr,
+        inc(errorCount),
     )
 
     check not projectFut.finished
     waitFor projectFut.cancelAndWait()
     check projectFut.cancelled
-    check not failed.isNil
-    check not failed.process.isNil
-    check failed.process.running() == AsyncProcessResult[bool].ok(false)
-    waitFor failed.process.closeWait()
+    check errorCount == 0
