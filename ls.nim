@@ -1131,6 +1131,11 @@ proc onErrorCallback(
 proc createOrRestartNimsuggestImpl(
     ls: LanguageServer, projectFile: Path, path: Path
 ): Future[void] {.async: (raises: [CancelledError]).} =
+  let running = ls.projectFiles.getOrDefault(projectFile)
+  if running != nil:
+    ls.projectFiles.del(projectFile)
+    running.errorCallback = none(ProjectCallback)
+    await running.stopWait()
   let projectNext =
     try:
       debug "Starting createOrRestartNimsuggest", projectFile = projectFile, path = path
@@ -1166,20 +1171,14 @@ proc createOrRestartNimsuggestImpl(
       await ls.onErrorCallback(failed)
       failed
 
-  let project = ls.projectFiles.getOrDefault(projectFile)
+  ls.projectFiles[projectFile] = projectNext
+  ls.sendStatusChanged()
   if not projectNext.failed:
     debug "Nimsuggest initialized successfully", projectFile = projectFile
-    if project != nil:
-      project.stop()
-    ls.projectFiles[projectFile] = projectNext
     traceAsyncErrors ls.checkProject(path)
-    ls.sendStatusChanged()
     await ls.showMessage(
       fmt "Nimsuggest initialized for {projectFile}", MessageType.Info
     )
-  elif project == nil:
-    ls.projectFiles[projectFile] = projectNext
-    ls.sendStatusChanged()
 
 proc createOrRestartNimsuggestUnprotected(
     ls: LanguageServer, projectFile: Path, path: Path
@@ -1210,8 +1209,6 @@ proc stopNimsuggests(ls: LanguageServer) {.async: (raises: []).} =
   let
     creations = toSeq(ls.nimsuggestCreations.values)
     projects = toSeq(ls.projectFiles.values)
-  ls.nimsuggestCreations.clear()
-  ls.projectFiles.clear()
   var stops: seq[Future[void].Raising([])]
   for creation in creations:
     stops.add creation.cancelAndWait()
@@ -1219,6 +1216,9 @@ proc stopNimsuggests(ls: LanguageServer) {.async: (raises: []).} =
     project.errorCallback = none(ProjectCallback)
     stops.add project.stopWait()
   await noCancel allFutures(stops)
+  for project in projects:
+    if ls.projectFiles.getOrDefault(project.file) == project:
+      ls.projectFiles.del(project.file)
 
 proc maybeRegisterCapabilityDidChangeConfiguration*(
     ls: LanguageServer
@@ -1429,8 +1429,9 @@ proc removeIdleNimsuggests*(ls: LanguageServer) {.async: (raises: [CancelledErro
   for project in toStop:
     debug "Removing idle nimsuggest", project = project.file
     project.errorCallback = none(ProjectCallback)
-    project.stop()
-    ls.projectFiles.del(project.file)
+    await project.stopWait()
+    if ls.projectFiles.getOrDefault(project.file) == project:
+      ls.projectFiles.del(project.file)
 
     await ls.showMessage(
       fmt"Nimsuggest for {project.file} was stopped because it was idle for too long",

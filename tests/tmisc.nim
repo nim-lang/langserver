@@ -602,6 +602,18 @@ suite "Nimlangserver nimsuggest creation":
     check ls.projectFiles.len == 1
     check not ls.projectFiles[hwProjectFile].process.isNil
 
+  test "A restart stops the running nimsuggest before starting the new one":
+    let old = ls.projectFiles[hwProjectFile]
+    let restarting = ls.createOrRestartNimsuggest(hwProjectFile, hwProjectFile)
+    check hwProjectFile notin ls.projectFiles
+    # a creation while the old one is stopping waits for the restart
+    let creating = ls.createOrRestartNimsuggest(hwProjectFile, hwProjectFile)
+    check ls.nimsuggestCreations.len == 1
+    waitFor allFutures(restarting, creating).wait(60.seconds)
+
+    check ls.projectFiles[hwProjectFile] != old
+    check old.process.running() == AsyncProcessResult[bool].ok(false)
+
   test "handleConfigurationChanges leaves nimsuggest alone when nothing changed":
     let previousPid = ls.projectFiles[hwProjectFile].process.pid
     waitFor ls.handleConfigurationChanges(NlsConfig(), NlsConfig()).wait(60.seconds)
