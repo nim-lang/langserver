@@ -323,23 +323,18 @@ proc extensionSuggest*(
       error "Project file must exists ", params = params
       return SuggestResult()
 
-  template restart(ls: LanguageServer, project: Project, projectFile: Path) =
+  template restart(ls: LanguageServer, projectFile: Path) =
     await ls.showMessage(fmt "Restarting nimsuggest {projectFile}", MessageType.Info)
-    project.errorCallback = none(ProjectCallback)
-    project.stop()
     await ls.createOrRestartNimsuggest(projectFile, projectFile)
-    ls.sendStatusChanged()
 
   case params.action
   of saRestart:
-    let project = ls.projectFiles[projectFile]
-    ls.restart(project, projectFile)
+    ls.restart(projectFile)
     SuggestResult(actionPerformed: saRestart)
   of saRestartAll:
     let projectFiles = ls.projectFiles.keys.toSeq()
     for projectFile in projectFiles:
-      let project = ls.projectFiles[projectFile]
-      ls.restart(project, projectFile)
+      ls.restart(projectFile)
     SuggestResult(actionPerformed: saRestartAll)
   of saNone:
     error "An action must be specified", params = params

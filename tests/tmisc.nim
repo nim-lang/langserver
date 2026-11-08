@@ -602,6 +602,18 @@ suite "Nimlangserver nimsuggest creation":
     check ls.projectFiles.len == 1
     check not ls.projectFiles[hwProjectFile].process.isNil
 
+  test "A restart stops the running nimsuggest before starting the new one":
+    let old = ls.projectFiles[hwProjectFile]
+    let restarting = ls.createOrRestartNimsuggest(hwProjectFile, hwProjectFile)
+    check hwProjectFile notin ls.projectFiles
+    # a creation while the old one is stopping waits for the restart
+    let creating = ls.createOrRestartNimsuggest(hwProjectFile, hwProjectFile)
+    check ls.nimsuggestCreations.len == 1
+    waitFor allFutures(restarting, creating).wait(60.seconds)
+
+    check ls.projectFiles[hwProjectFile] != old
+    check old.process.running() == AsyncProcessResult[bool].ok(false)
+
   test "handleConfigurationChanges leaves nimsuggest alone when nothing changed":
     let previousPid = ls.projectFiles[hwProjectFile].process.pid
     waitFor ls.handleConfigurationChanges(NlsConfig(), NlsConfig()).wait(60.seconds)
@@ -617,6 +629,44 @@ suite "Nimlangserver nimsuggest creation":
     check ls.projectFiles.len == 0
     check ls.nimsuggestCreations.len == 0
     check not ls.inlayHintsRefreshRequest.isNil
+
+  test "Concurrent configuration changes both wait for nimsuggest to stop":
+    waitFor ls.createOrRestartNimsuggest(hwProjectFile, hwProjectFile).wait(60.seconds)
+    let old = ls.projectFiles[hwProjectFile]
+    let errors = ls.projectErrors.len
+
+    let
+      first = ls.handleConfigurationChanges(
+        NlsConfig(timeout: some 1), NlsConfig(timeout: some 2)
+      )
+      second = ls.handleConfigurationChanges(
+        NlsConfig(timeout: some 2), NlsConfig(timeout: some 3)
+      )
+    waitFor first.wait(60.seconds)
+    check old.process.running() == AsyncProcessResult[bool].ok(false)
+    waitFor second.wait(60.seconds)
+
+    check ls.projectFiles.len == 0
+    check ls.nimsuggestCreations.len == 0
+    check ls.projectErrors.len == errors
+
+  test "A restart during a configuration change leaves one nimsuggest running":
+    waitFor ls.createOrRestartNimsuggest(hwProjectFile, hwProjectFile).wait(60.seconds)
+    let old = ls.projectFiles[hwProjectFile]
+    let errors = ls.projectErrors.len
+
+    # both stop the same nimsuggest
+    let changing = ls.handleConfigurationChanges(
+      NlsConfig(timeout: some 1), NlsConfig(timeout: some 2)
+    )
+    let restarting = ls.createOrRestartNimsuggest(hwProjectFile, hwProjectFile)
+    waitFor allFutures(changing, restarting).wait(60.seconds)
+
+    check old.process.running() == AsyncProcessResult[bool].ok(false)
+    let project = ls.projectFiles.getOrDefault(hwProjectFile)
+    check project != nil and project != old
+    check project != nil and project.process.running() == AsyncProcessResult[bool].ok(true)
+    check ls.projectErrors.len == errors
 
 suite "Nimlangserver nimsuggest slow commands":
   let cmdParams =
