@@ -1129,8 +1129,11 @@ proc cancelTest*(
   debug "Cancelling test"
   if ls.testRunProcess.isSome:
     #No need to cancel the runTests request. The client should handle it.
-    await shutdownChildProcess(ls.testRunProcess.get)
+    let process = ls.testRunProcess.get
     ls.testRunProcess = none(AsyncProcessRef)
+    let res = process.terminate()
+    if res.isErr:
+      warn "Failed to stop the test run", error = $res.error
     CancelTestResult(cancelled: true)
   else:
     CancelTestResult(cancelled: false)

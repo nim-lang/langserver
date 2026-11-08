@@ -265,7 +265,7 @@ proc markFailed(
   if self.errorCallback.isSome:
     await self.errorCallback.get()(self)
 
-proc shutdown(self: Project) {.async: (raises: []).} =
+proc shutdownImpl(self: Project) {.async: (raises: []).} =
   debug "Stopping nimsuggest for ", root = self.file
   if not self.process.isNil:
     await shutdownChildProcess(self.process)
@@ -273,7 +273,7 @@ proc shutdown(self: Project) {.async: (raises: []).} =
 proc stopWait*(self: Project): Future[void].Raising([]) =
   self.errorCallback = none(ProjectCallback)
   if self.stopping.isNil:
-    self.stopping = self.shutdown()
+    self.stopping = self.shutdownImpl()
   self.stopping
 
 proc stop*(self: Project) =

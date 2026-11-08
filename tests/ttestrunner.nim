@@ -1,9 +1,12 @@
 import
-  std/[os, osproc, tables, options],
+  std/[json, os, osproc, tables, options],
   chronos,
+  chronos/asyncproc,
   unittest2,
   ../[ls, testrunner],
   ./testhelpers
+
+import ../routes/lsp as lspRoutes
 
 suite "Test Parser":
   test "should be able to list tests from an entry point":
@@ -37,6 +40,20 @@ suite "Test Parser":
       check testProjectInfo.suites["sampletests.nim"].tests.len == 3
 
 suite "Test Runner":
+  test "cancelling a running test stops it":
+    let entryPoint =
+      os.getCurrentDir() / "tests" / "projects" / "testrunner" / "tests" / "sampletests.nim"
+    let ls = LanguageServer(initialized: true)
+    let running = runTests(entryPoint, "nim", none(string), @[], @[], ls)
+    check waitUntil(ls.testRunProcess.isSome)
+    let process = ls.testRunProcess.get
+
+    # the run is waiting for the process when it is cancelled
+    check (waitFor lspRoutes.cancelTest(ls, newJObject())).cancelled
+    check waitFor running.withTimeout(60.seconds)
+    check process.running() == AsyncProcessResult[bool].ok(false)
+    check ls.testRunProcess.isNone
+
   test "should be able to run tests and retrieve results":
     let entryPoint =
       os.getCurrentDir() / "tests" / "projects" / "testrunner" / "tests" / "sampletests.nim"
