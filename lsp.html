@@ -264,11 +264,10 @@ EOF
 <p>LSP configuration is supplied by the client/editor via <code>nim.*</code> settings.</p>
 <div class="table-wrapper"><table><thead><tr><th>Setting</th><th>Description</th></tr></thead><tbody>
 <tr><td><code>nim.projectMapping</code></td><td>Map file path patterns to <code>nimsuggest</code> project roots.</td></tr>
-<tr><td><code>nim.timeout</code></td><td>Request timeout in ms before <code>nimlangserver</code> restarts. Default: 2 minutes.</td></tr>
+<tr><td><code>nim.timeout</code></td><td>Timeout in ms for <code>nim.useNimTrack</code> requests. Default: 2 minutes.</td></tr>
 <tr><td><code>nim.nimsuggestPath</code></td><td>Path to <code>nimsuggest</code>. Default: <code>"nimsuggest"</code>.</td></tr>
 <tr><td><code>nim.autoCheckFile</code></td><td>Check the file on the fly. Default: <code>false</code>.</td></tr>
 <tr><td><code>nim.autoCheckProject</code></td><td>Enable project checks. Default: <code>true</code>.</td></tr>
-<tr><td><code>nim.autoRestart</code></td><td>Auto-restart <code>nimsuggest</code> once after a crash. The server won't restart if there were no successful calls since the last restart.</td></tr>
 <tr><td><code>nim.workingDirectoryMapping</code></td><td>Configure the working directory for specific projects.</td></tr>
 <tr><td><code>nim.checkOnSave</code></td><td>Check the project on save (requires <code>nim.autoCheckProject</code>). Default: <code>true</code>.</td></tr>
 <tr><td><code>nim.logNimsuggest</code></td><td>Enable <code>nimsuggest</code> logging.</td></tr>
