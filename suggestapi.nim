@@ -113,6 +113,7 @@ type
     failed*: bool
     lastCmd*: string
     lastCmdDate*: Option[DateTime]
+    stopping: Future[void].Raising([])
 
 template benchmark(benchmarkName: string, code: untyped) =
   block:
@@ -264,11 +265,16 @@ proc markFailed(
   if self.errorCallback.isSome:
     await self.errorCallback.get()(self)
 
-proc stopWait*(self: Project) {.async: (raises: []).} =
+proc shutdown(self: Project) {.async: (raises: []).} =
   debug "Stopping nimsuggest for ", root = self.file
-  self.errorCallback = none(ProjectCallback)
   if not self.process.isNil:
     await shutdownChildProcess(self.process)
+
+proc stopWait*(self: Project): Future[void].Raising([]) =
+  self.errorCallback = none(ProjectCallback)
+  if self.stopping.isNil:
+    self.stopping = self.shutdown()
+  self.stopping
 
 proc stop*(self: Project) =
   asyncSpawn self.stopWait()
