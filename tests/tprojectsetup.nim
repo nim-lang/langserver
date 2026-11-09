@@ -470,6 +470,22 @@ suite "Nimble package changes":
     client.hover(libFile)
     check ls.projectFiles[packageProject] != project
 
+  test "a nimble.paths rewritten with the same contents keeps the nimsuggest":
+    # nimble test and nimble tasks rewrite it on every run
+    writeFile(nimblePaths.string, "--noNimblePath\n")
+    client.open(libFile)
+    check ls.started(packageProject)
+    let project = ls.projectFiles[packageProject]
+
+    rewrite(nimblePaths, "--noNimblePath\n")
+    client.hover(libFile)
+    check ls.projectFiles[packageProject] == project
+
+    # a later change of the contents still restarts it
+    rewrite(nimblePaths, "--noNimblePath\n--path:\"x\"\n")
+    client.hover(libFile)
+    check ls.projectFiles[packageProject] != project
+
   test "a deleted nimble.paths restarts the nimsuggest of the package":
     writeFile(nimblePaths.string, "--noNimblePath\n")
     client.open(libFile)

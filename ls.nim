@@ -924,12 +924,23 @@ proc modificationTime(path: Path): Time =
   except OSError:
     Time()
 
+proc readNimblePaths(path: Path): string =
+  try:
+    readFile(path.string)
+  except IOError:
+    ""
+
 proc stopIfPackageChanged(
     ls: LanguageServer, projectFile: Path
 ): Future[bool] {.async: (raises: []).} =
   let project = ls.projectFiles.getOrDefault(projectFile)
-  if project == nil or project.nimblePaths.len == 0 or
-      modificationTime(project.nimblePaths) == project.nimblePathsTime:
+  if project == nil or project.nimblePaths.len == 0:
+    return false
+  let time = modificationTime(project.nimblePaths)
+  if time == project.nimblePathsTime:
+    return false
+  if readNimblePaths(project.nimblePaths) == project.nimblePathsContent:
+    project.nimblePathsTime = time
     return false
   debug "nimble.paths changed, stopping nimsuggest", projectFile = projectFile
   for path in ls.filesServedBy(projectFile):
@@ -1173,6 +1184,11 @@ proc createOrRestartNimsuggestImpl(
     else:
       default(Path)
   let nimblePathsTime = modificationTime(nimblePaths)
+  let nimblePathsContent =
+    if nimblePaths.len > 0:
+      readNimblePaths(nimblePaths)
+    else:
+      ""
   let projectNext =
     try:
       debug "Starting createOrRestartNimsuggest", projectFile = projectFile, path = path
@@ -1210,6 +1226,7 @@ proc createOrRestartNimsuggestImpl(
 
   projectNext.nimblePaths = nimblePaths
   projectNext.nimblePathsTime = nimblePathsTime
+  projectNext.nimblePathsContent = nimblePathsContent
   ls.projectFiles[projectFile] = projectNext
   ls.sendStatusChanged()
   if not projectNext.failed:
