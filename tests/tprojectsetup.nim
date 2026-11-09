@@ -1,6 +1,7 @@
 import
   std/[options, json, os, sequtils, sugar, strformat, times],
   chronos,
+  chronos/asyncproc,
   json_rpc/[rpcclient],
   unittest2,
   ../[nimlangserver, ls, suggestapi, utils],
@@ -463,30 +464,13 @@ suite "Nimble package changes":
     let
       first = ls.tryGetNimsuggest(libFile)
       second = ls.tryGetNimsuggest(libFile)
-    check packageProject in ls.nimsuggestStops
+    # the old nimsuggest stays until it has exited, so nothing starts meanwhile
+    check ls.projectFiles[packageProject] == project
+    check packageProject notin ls.nimsuggestCreations
+
     check (waitFor first).get == (waitFor second).get
     check ls.projectFiles[packageProject] != project
-    check packageProject notin ls.nimsuggestStops
-
-  test "a nimsuggest starts only after the old one of its project has stopped":
-    let project = ls.projectFiles[packageProject]
-    ls.projectFiles.del(packageProject)
-    project.errorCallback = none(ProjectCallback)
-    waitFor project.stopWait()
-
-    let stopping =
-      Future[void].Raising([]).init("test stopping", {FutureFlag.OwnCancelSchedule})
-    ls.nimsuggestStops[packageProject] = stopping
-    let starting = ls.createOrRestartNimsuggest(packageProject, packageProject)
-    # a nimsuggest starts in well under this, so without the wait it would be done
-    waitFor sleepAsync(chronos.seconds(2))
-    check not starting.finished
-    check packageProject notin ls.projectFiles
-
-    stopping.complete()
-    ls.nimsuggestStops.del(packageProject)
-    waitFor starting
-    check packageProject in ls.projectFiles
+    check project.process.running() == AsyncProcessResult[bool].ok(false)
 
   test "a deleted nimble.paths restarts the nimsuggest of the package":
     let project = ls.projectFiles[packageProject]

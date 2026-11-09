@@ -150,7 +150,6 @@ type
     workspaceFolders*: seq[Path]
     projectFiles*: Table[Path, Project]
     nimsuggestCreations*: Table[Path, Future[void].Raising([CancelledError])]
-    nimsuggestStops*: Table[Path, Future[void].Raising([])]
     openFiles*: Table[Path, NlsFileInfo]
     workspaceConfiguration*: NlsConfig
       #What the client configured us with, or the defaults until it does.
@@ -936,16 +935,13 @@ proc stopIfPackageChanged(
       modificationTime(project.nimblePaths) == project.nimblePathsTime:
     return false
   debug "nimble.paths changed, stopping nimsuggest", projectFile = projectFile
-  ls.projectFiles.del(projectFile)
-  project.errorCallback = none(ProjectCallback)
   for path in ls.filesServedBy(projectFile):
     let file = ls.openFiles.getOrDefault(path)
     file.projectFile = ls.getProjectFile(path)
     file.nimsuggestProject = Path("")
-  let stopping = project.stopWait()
-  ls.nimsuggestStops[projectFile] = stopping
-  await stopping
-  ls.nimsuggestStops.del(projectFile)
+  await project.stopWait()
+  if ls.projectFiles.getOrDefault(projectFile) == project:
+    ls.projectFiles.del(projectFile)
   true
 
 proc servingNimsuggestProject(
@@ -1169,6 +1165,17 @@ proc createOrRestartNimsuggestImpl(
     ls.projectFiles.del(projectFile)
     running.errorCallback = none(ProjectCallback)
     await running.stopWait()
+  let nimbleFile =
+    try:
+      ls.packageNimbleFile(projectFile)
+    except OSError:
+      default(Path)
+  let nimblePaths =
+    if nimbleFile.len > 0:
+      nimbleFile.parentDir / "nimble.paths".Path
+    else:
+      default(Path)
+  let nimblePathsTime = modificationTime(nimblePaths)
   let projectNext =
     try:
       debug "Starting createOrRestartNimsuggest", projectFile = projectFile, path = path
@@ -1208,6 +1215,8 @@ proc createOrRestartNimsuggestImpl(
   ls.sendStatusChanged()
   if not projectNext.failed:
     debug "Nimsuggest initialized successfully", projectFile = projectFile
+    projectNext.nimblePaths = nimblePaths
+    projectNext.nimblePathsTime = nimblePathsTime
     traceAsyncErrors ls.checkProject(path)
     await ls.showMessage(
       fmt "Nimsuggest initialized for {projectFile}", MessageType.Info
