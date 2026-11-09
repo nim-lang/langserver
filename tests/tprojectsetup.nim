@@ -360,15 +360,6 @@ suite "Projects with local dependencies":
     check (waitFor ls.getWorkingDir(localDeps / "vendor" / "v" / "v.nim")) == localDeps
 
 suite "Nimble package changes":
-  let cmdParams =
-    CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
-  let ls = main(cmdParams)
-  let client = newLspSocketClient()
-  waitFor client.connect("localhost", cmdParams.port)
-  client.registerNotification(
-    "window/showMessage", "window/workDoneProgress/create", "workspace/configuration",
-    "extension/statusUpdate", "textDocument/publishDiagnostics", "$/progress",
-  )
   let
     # outside the langserver package, so only the files written here make a package
     root = getTempDir().Path / "nimlangserver-package-changes"
@@ -382,24 +373,8 @@ suite "Nimble package changes":
     nimbleText =
       "version = \"0.1.0\"\nauthor = \"nimlangserver tests\"\n" &
       "description = \"Fixture: a package that changes\"\nlicense = \"MIT\"\n"
-  removeDir(root.string)
-  createDir((package / "src").string)
-  createDir(otherFile.parentDir.string)
-  writeFile(packageProject.string, "echo 1\n")
-  writeFile(srcProject.string, "echo 1\n")
-  writeFile(libFile.string, "proc a*() = discard\n")
-  writeFile(otherFile.string, "proc b*() = discard\n")
-  writeFile(nimbleFile.string, nimbleText)
-  discard waitFor client.initialize(
-    LspInitializeParams %* {
-      "processId": %getCurrentProcessId(),
-      "rootUri": pathToUri(root),
-      "capabilities": {"workspace": {"configuration": true}},
-    }
-  )
-  ls.setWorkspaceConfiguration(% @[NlsConfig(maxNimsuggestProcesses: some 0)])
 
-  proc open(path: Path) =
+  proc open(client: LspSocketClient, path: Path) =
     client.notify(
       "textDocument/didOpen",
       %*{
@@ -412,10 +387,7 @@ suite "Nimble package changes":
       },
     )
 
-  proc projectOf(path: Path): Path =
-    waitFor ls.openFiles[path].projectFileWait()
-
-  proc hover(path: Path) =
+  proc hover(client: LspSocketClient, path: Path) =
     discard client.call(
       "textDocument/hover",
       %*{
@@ -424,43 +396,96 @@ suite "Nimble package changes":
       },
     ).waitFor
 
+  proc projectOf(ls: LanguageServer, path: Path): Path =
+    waitFor ls.openFiles[path].projectFileWait()
+
+  proc started(ls: LanguageServer, projectFile: Path): bool =
+    waitUntil(projectFile in ls.projectFiles, chronos.seconds(60))
+
   # the mtime moves explicitly so the change is seen on coarse filesystems
   proc rewrite(path: Path, text: string) =
     let time = getLastModificationTime(path.string)
     writeFile(path.string, text)
     setLastModificationTime(path.string, fromUnix(time.toUnix + 2))
 
-  open(libFile)
-  open(otherFile)
+  setup:
+    removeDir(root.string)
+    createDir((package / "src").string)
+    createDir(otherFile.parentDir.string)
+    writeFile(packageProject.string, "echo 1\n")
+    writeFile(srcProject.string, "echo 1\n")
+    writeFile(libFile.string, "proc a*() = discard\n")
+    writeFile(otherFile.string, "proc b*() = discard\n")
+    writeFile(nimbleFile.string, nimbleText)
 
-  suiteTeardown:
+    let cmdParams =
+      CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
+    let ls = main(cmdParams)
+    let client = newLspSocketClient()
+    waitFor client.connect("localhost", cmdParams.port)
+    client.registerNotification(
+      "window/showMessage", "window/workDoneProgress/create", "workspace/configuration",
+      "extension/statusUpdate", "textDocument/publishDiagnostics", "$/progress",
+    )
+    discard waitFor client.initialize(
+      LspInitializeParams %* {
+        "processId": %getCurrentProcessId(),
+        "rootUri": pathToUri(root),
+        "capabilities": {"workspace": {"configuration": true}},
+      }
+    )
+    ls.setWorkspaceConfiguration(% @[NlsConfig(maxNimsuggestProcesses: some 0)])
+
+  teardown:
     waitFor ls.shutdownNimsuggest()
+    waitFor ls.onExit()
     removeDir(root.string)
 
   test "a request with no nimble.paths change keeps the nimsuggest":
-    check waitUntil(packageProject in ls.projectFiles, chronos.seconds(60))
-    check waitUntil(otherFile in ls.projectFiles, chronos.seconds(60))
-    check projectOf(libFile) == packageProject
+    client.open(libFile)
+    check ls.started(packageProject)
+    check ls.projectOf(libFile) == packageProject
     let project = ls.projectFiles[packageProject]
-    hover(libFile)
+
+    client.hover(libFile)
     check ls.projectFiles[packageProject] == project
 
   test "a new nimble.paths restarts the nimsuggest of the package":
+    client.open(libFile)
+    check ls.started(packageProject)
     let project = ls.projectFiles[packageProject]
+
     writeFile(nimblePaths.string, "--noNimblePath\n")
-    hover(libFile)
+    client.hover(libFile)
     check ls.projectFiles[packageProject] != project
     check ls.openFiles[libFile].nimsuggestProject == packageProject
 
   test "an edited nimble.paths restarts the nimsuggest of the package":
+    writeFile(nimblePaths.string, "--noNimblePath\n")
+    client.open(libFile)
+    check ls.started(packageProject)
     let project = ls.projectFiles[packageProject]
+
     rewrite(nimblePaths, "--noNimblePath\n--path:\"x\"\n")
-    hover(libFile)
+    client.hover(libFile)
+    check ls.projectFiles[packageProject] != project
+
+  test "a deleted nimble.paths restarts the nimsuggest of the package":
+    writeFile(nimblePaths.string, "--noNimblePath\n")
+    client.open(libFile)
+    check ls.started(packageProject)
+    let project = ls.projectFiles[packageProject]
+
+    removeFile(nimblePaths.string)
+    client.hover(libFile)
     check ls.projectFiles[packageProject] != project
 
   test "concurrent requests share the restart of a changed nimble.paths":
+    client.open(libFile)
+    check ls.started(packageProject)
     let project = ls.projectFiles[packageProject]
-    rewrite(nimblePaths, "--noNimblePath\n--path:\"y\"\n")
+
+    writeFile(nimblePaths.string, "--noNimblePath\n")
     let
       first = ls.tryGetNimsuggest(libFile)
       second = ls.tryGetNimsuggest(libFile)
@@ -472,13 +497,37 @@ suite "Nimble package changes":
     check ls.projectFiles[packageProject] != project
     check project.process.running() == AsyncProcessResult[bool].ok(false)
 
-  test "a deleted nimble.paths restarts the nimsuggest of the package":
-    let project = ls.projectFiles[packageProject]
-    removeFile(nimblePaths.string)
-    hover(libFile)
-    check ls.projectFiles[packageProject] != project
+  test "a nimble.paths change during startup restarts the nimsuggest once":
+    writeFile(nimblePaths.string, "--noNimblePath\n")
+    client.open(libFile)
+    check ls.started(packageProject)
+    let old = ls.projectFiles[packageProject]
+    ls.projectFiles.del(packageProject)
+    waitFor old.stopWait()
+
+    # with nothing to stop first, the stamp is taken before the startup waits
+    let starting = ls.createOrRestartNimsuggest(packageProject, packageProject)
+    check packageProject in ls.nimsuggestCreations
+    rewrite(nimblePaths, "--noNimblePath\n--path:\"z\"\n")
+
+    # a request during the startup waits for it instead of stopping it
+    let first = waitFor ls.tryGetNimsuggest(libFile)
+    check starting.finished
+    let startedProject = ls.projectFiles[packageProject]
+    check first.get == startedProject.ns
+
+    # the next one restarts it, since it may have missed the change
+    check (waitFor ls.tryGetNimsuggest(libFile)).isSome
+    let restarted = ls.projectFiles[packageProject]
+    check restarted != startedProject
+    check not restarted.failed
+
+    check (waitFor ls.tryGetNimsuggest(libFile)).isSome
+    check ls.projectFiles[packageProject] == restarted
 
   test "a nimble.paths change retries a failed nimsuggest":
+    client.open(libFile)
+    check ls.started(packageProject)
     let project = ls.projectFiles[packageProject]
     discard project.process.kill()
     check waitUntil(project.failed)
@@ -492,22 +541,35 @@ suite "Nimble package changes":
     check not ls.projectFiles[packageProject].failed
 
   test "an edited nimble file alone keeps the nimsuggest":
+    client.open(libFile)
+    check ls.started(packageProject)
     let project = ls.projectFiles[packageProject]
+
     rewrite(nimbleFile, nimbleText & "srcDir = \"src\"\n")
-    hover(libFile)
+    client.hover(libFile)
     check ls.projectFiles[packageProject] == project
-    check projectOf(libFile) == packageProject
+    check ls.projectOf(libFile) == packageProject
 
   test "a changed nimble.paths also picks up the edits of the nimble file":
+    client.open(libFile)
+    check ls.started(packageProject)
+
+    rewrite(nimbleFile, nimbleText & "srcDir = \"src\"\n")
     writeFile(nimblePaths.string, "--noNimblePath\n")
-    hover(libFile)
+    client.hover(libFile)
     check packageProject notin ls.projectFiles
-    check projectOf(libFile) == srcProject
+    check ls.projectOf(libFile) == srcProject
     check ls.openFiles[libFile].nimsuggestProject == srcProject
     check srcProject in ls.projectFiles
 
   test "a project outside the package is not restarted":
+    client.open(libFile)
+    client.open(otherFile)
+    check ls.started(packageProject)
+    check ls.started(otherFile)
     let project = ls.projectFiles[otherFile]
-    hover(otherFile)
+
+    writeFile(nimblePaths.string, "--noNimblePath\n")
+    client.hover(otherFile)
     check ls.projectFiles[otherFile] == project
     check project.nimblePaths.len == 0
