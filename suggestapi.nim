@@ -107,6 +107,9 @@ type
   Project* = ref object
     ns*: Nimsuggest
     file*: Path
+    nimblePaths*: Path #empty when the project is not in a package
+    nimblePathsTime*: Time #when the nimsuggest started
+    nimblePathsContent*: string #empty when there was no nimble.paths
     process*: AsyncProcessRef
     errorCallback*: Option[ProjectCallback]
     errorMessage*: string

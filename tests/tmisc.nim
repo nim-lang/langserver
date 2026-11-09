@@ -91,7 +91,7 @@ suite "A nimsuggest that fails":
 
     check (waitFor ls.tryGetNimsuggest(hwAbsFile)).isNone
     check ls.projectFiles[hwAbsFile] == project
-    check ls.openFiles[hwAbsFile].nimsuggestProject.len == 0
+    check ls.openFiles[hwAbsFile].nimsuggestProject == hwAbsFile
     check ls.projectErrors.anyIt(it.projectFile == $hwAbsFile)
 
   test "does not count against the nimsuggest limit":

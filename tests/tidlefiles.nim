@@ -335,5 +335,6 @@ suite "Failed nimsuggest while others run":
     ls.projectFiles[OtherFile.fixturePath].failed = true
 
     check (waitFor ls.tryGetNimsuggest(OtherFile.fixturePath)).isNone
-    check ls.openFiles.getOrDefault(OtherFile.fixturePath).nimsuggestProject.len == 0
+    check ls.openFiles.getOrDefault(OtherFile.fixturePath).nimsuggestProject ==
+      OtherFile.fixturePath
     check ls.projectFiles.len == 4
