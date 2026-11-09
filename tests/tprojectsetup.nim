@@ -478,6 +478,19 @@ suite "Nimble package changes":
     hover(libFile)
     check ls.projectFiles[packageProject] != project
 
+  test "a nimble.paths change retries a failed nimsuggest":
+    let project = ls.projectFiles[packageProject]
+    discard project.process.kill()
+    check waitUntil(project.failed)
+    check (waitFor ls.tryGetNimsuggest(libFile)).isNone
+    check ls.projectFiles[packageProject] == project
+
+    # nimble setup may install what it was missing
+    writeFile(nimblePaths.string, "--noNimblePath\n")
+    check (waitFor ls.tryGetNimsuggest(libFile)).isSome
+    check ls.projectFiles[packageProject] != project
+    check not ls.projectFiles[packageProject].failed
+
   test "an edited nimble file alone keeps the nimsuggest":
     let project = ls.projectFiles[packageProject]
     rewrite(nimbleFile, nimbleText & "srcDir = \"src\"\n")

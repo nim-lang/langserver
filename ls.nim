@@ -912,9 +912,6 @@ proc nimsuggestProjectFor(
       projectFile
     else:
       await ls.reuseLastNimsuggestProject(path)
-  if ls.isFailedNimsuggest(nsProject):
-    debug "Nimsuggest failed", path = path, projectFile = nsProject
-    return Path("")
   nsProject
 
 proc hasServingNimsuggest(ls: LanguageServer, file: NlsFileInfo): bool =
@@ -1211,12 +1208,12 @@ proc createOrRestartNimsuggestImpl(
       await ls.onErrorCallback(failed)
       failed
 
+  projectNext.nimblePaths = nimblePaths
+  projectNext.nimblePathsTime = nimblePathsTime
   ls.projectFiles[projectFile] = projectNext
   ls.sendStatusChanged()
   if not projectNext.failed:
     debug "Nimsuggest initialized successfully", projectFile = projectFile
-    projectNext.nimblePaths = nimblePaths
-    projectNext.nimblePathsTime = nimblePathsTime
     traceAsyncErrors ls.checkProject(path)
     await ls.showMessage(
       fmt "Nimsuggest initialized for {projectFile}", MessageType.Info
