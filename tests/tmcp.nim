@@ -138,7 +138,7 @@ suite "MCP routes":
     check fileExists(nimbleFile)
     let nimbleProject = waitFor rpcClient.callRpc(
       "tools/call",
-      %*{"name": "nimCheckProject", "arguments": {"uri": nimbleFile.pathToUri}},
+      %*{"name": "nimCheckProject", "arguments": {"uri": nimbleFile.Path.pathToUri}},
     )
     check nimbleProject{"isError"}.getBool(false)
     check nimbleProject{"content"}[0]{"text"}.getStr ==
@@ -146,18 +146,16 @@ suite "MCP routes":
 
     let missingFile = savedDir / "doesnotexist.nim"
     check not fileExists(missingFile)
-    try:
-      discard waitFor rpcClient.callRpc(
-        "tools/call",
-        %*{
-          "name": "nimFindSymbols",
-          "arguments": {"uri": missingFile.pathToUri, "query": "add"},
-        },
-      )
-      checkpoint "tools/call on a missing file was answered without an error"
-      fail()
-    except JsonRpcError as err:
-      check "doesnotexist.nim" in err.msg
+    let missingSymbols = waitFor rpcClient.callRpc(
+      "tools/call",
+      %*{
+        "name": "nimFindSymbols",
+        "arguments": {"uri": missingFile.Path.pathToUri, "query": "add"},
+      },
+    )
+    check missingSymbols{"isError"}.getBool(false)
+    check missingSymbols{"content"}[0]{"text"}.getStr ==
+      "Argument uri must be an existing .nim file"
 
     let unknown = waitFor rpcClient.callRpc(
       "tools/call", %*{"name": "thisToolDoesNotExist", "arguments": {}}
@@ -303,7 +301,7 @@ suite "MCP tools":
       freshLs,
       McpCallToolParams(
         name: "nimFindSymbols",
-        arguments: some %*{"uri": errFile.pathToUri, "query": "add"},
+        arguments: some %*{"uri": errFile.Path.pathToUri, "query": "add"},
       ),
     )
     checkToolResult(symbols)
@@ -314,7 +312,7 @@ suite "MCP tools":
     let diags = waitFor mcp.callTool(
       freshLs,
       McpCallToolParams(
-        name: "nimCheckProject", arguments: some %*{"uri": entryPoint.pathToUri}
+        name: "nimCheckProject", arguments: some %*{"uri": entryPoint.Path.pathToUri}
       ),
     )
     checkToolResult(diags)
@@ -342,7 +340,7 @@ suite "MCP tools":
       ls,
       McpCallToolParams(
         name: "nimFindSymbols",
-        arguments: some %*{"uri": entryPoint.pathToUri, "query": "add"},
+        arguments: some %*{"uri": entryPoint.Path.pathToUri, "query": "add"},
       ),
     )
 
@@ -374,7 +372,7 @@ suite "MCP tools":
     let res = waitFor mcp.callTool(
       ls,
       McpCallToolParams(
-        name: "nimCheckProject", arguments: some %*{"uri": errFile.pathToUri}
+        name: "nimCheckProject", arguments: some %*{"uri": errFile.Path.pathToUri}
       ),
     )
 

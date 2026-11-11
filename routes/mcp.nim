@@ -7,7 +7,7 @@ import
   json_rpc/[errors, server],
   chronicles,
   json_serialization,
-  ../[suggestapi, trackapi, ls],
+  ../[suggestapi, trackapi, ls, utils],
   ../protocol/types
 
 const McpProtocolVersion* = "2025-11-25"
@@ -212,12 +212,12 @@ proc nimFindTypeDefinition(): McpTool =
 
 # Tool calls
 
-proc fileUriArgument(params: McpCallToolParams): Option[string] =
+proc fileUriArgument(params: McpCallToolParams): Option[Path] =
   let uri = params.arguments.get(newJObject()){"uri"}.getStr()
-  if uri.isFileUri:
-    some uri.uriToPath
-  else:
-    none string
+  try:
+    some DocumentUri(uri).uriToPath
+  except UriParseError:
+    none Path
 
 proc toolErrorResult(text: string): McpCallToolResult =
   McpCallToolResult(
@@ -315,9 +315,11 @@ proc callNimFindSymbols(
     return toolErrorResult("Argument uri must be a file URI")
   if path.get.splitFile.ext != ".nim":
     return toolErrorResult("Argument uri must be a .nim file")
+  if not fileExists(path.get.string):
+    return toolErrorResult("Argument uri must be an existing .nim file")
 
   let query = params.arguments.get(newJObject()){"query"}.getStr()
-  let nimsuggest = await ls.tryGetNimsuggest(path.get.Path)
+  let nimsuggest = await ls.getNimsuggest(path.get)
 
   if nimsuggest.isSome:
     let symbols = await nimsuggest.get.globalSymbols(query)
@@ -398,10 +400,11 @@ proc callNimCheckProject(
     return toolErrorResult("Argument uri must be a file URI")
   if path.get.splitFile.ext != ".nim":
     return toolErrorResult("Argument uri must be a .nim file")
+  if not fileExists(path.get.string):
+    return toolErrorResult("Argument uri must be an existing .nim file")
 
-  let uri = path.get.Path.pathToUri()
-  let projectFile = await ls.openFiles[uri].waitProjectFile()
-  let nimsuggest = await ls.tryGetNimsuggest(path.get.Path)
+  let projectFile = await ls.getProjectFile(path.get)
+  let nimsuggest = await ls.getNimsuggest(path.get)
 
   if nimsuggest.isSome:
     let diagnostics = await nimsuggest.get.chk(projectFile, projectFile)
