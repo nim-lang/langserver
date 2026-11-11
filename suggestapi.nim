@@ -261,7 +261,7 @@ proc name*(sug: Suggest): string =
 proc markFailed(
     self: Project, errMessage: string
 ): Future[void] {.async: (raises: []).} =
-  if self.failed:
+  if self.failed or not self.stopping.isNil:
     return
   self.failed = true
   self.errorMessage = errMessage
@@ -278,6 +278,9 @@ proc stopWait*(self: Project): Future[void].Raising([]) =
   if self.stopping.isNil:
     self.stopping = self.shutdownImpl()
   self.stopping
+
+func isStopping*(self: Project): bool =
+  not self.stopping.isNil
 
 proc stop*(self: Project) =
   asyncSpawn self.stopWait()

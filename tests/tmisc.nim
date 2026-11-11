@@ -668,6 +668,22 @@ suite "Nimlangserver nimsuggest creation":
     check project != nil and project.process.running() == AsyncProcessResult[bool].ok(true)
     check ls.projectErrors.len == errors
 
+  test "A request during a configuration change gets a new nimsuggest":
+    waitFor ls.createOrRestartNimsuggest(hwProjectFile, hwProjectFile).wait(60.seconds)
+    let old = ls.projectFiles[hwProjectFile]
+
+    let changing = ls.handleConfigurationChanges(
+      NlsConfig(timeout: some 1), NlsConfig(timeout: some 2)
+    )
+    check old.isStopping
+    let ns = waitFor ls.getNimsuggest(hwProjectFile).wait(60.seconds)
+    waitFor changing.wait(60.seconds)
+
+    check ns.isSome and ns.get != old.ns
+    let project = ls.projectFiles.getOrDefault(hwProjectFile)
+    check project != nil and project != old
+    check project != nil and project.process.running() == AsyncProcessResult[bool].ok(true)
+
 suite "Nimlangserver nimsuggest slow commands":
   let cmdParams =
     CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
