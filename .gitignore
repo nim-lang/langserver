@@ -28,3 +28,4 @@ tests/projects/**/nimbledeps/*
 !tests/projects/localdeps/nimble.paths
 !tests/projects/localdeps/sub/nimble.paths
 !tests/projects/mono/nimble.paths
+!tests/projects/mcpproject/nimble.paths
