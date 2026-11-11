@@ -12,7 +12,7 @@ type McpSocketClient = ref object
   nextId: int
 
 proc initMcpServer(
-    mainFile: string
+    mainFile: string, notifications = new seq[string]
 ): Future[(LanguageServer, McpInitializeResult)] {.async: (raises: [CatchableError]).} =
   let
     cmdParams = CommandLineParams(mode: some ServerMode.mcp)
@@ -25,7 +25,7 @@ proc initMcpServer(
     ls = initLs(cmdParams, ensureStorageDir())
 
   ls.notifyAction = proc(name: string, params: JsonString) {.async: (raises: []).} =
-    discard
+    notifications[].add name
   ls.callAction = proc(
       name: string, params: JsonString
   ): Future[JsonNode] {.async: (raises: [CancelledError, JsonRpcError]).} =
@@ -252,7 +252,8 @@ suite "MCP tools":
     entryPoint = absolutePath("src" / "mcpproject.nim")
     errFile = absolutePath("src" / "mcpproject" / "errmodule.nim")
     testFile = absolutePath("tests" / "test1.nim")
-    (ls, _) = waitFor initMcpServer(entryPoint)
+    notifications = new seq[string]
+    (ls, _) = waitFor initMcpServer(entryPoint, notifications)
 
   suiteTeardown:
     waitFor ls.shutdownNimsuggest()
@@ -365,3 +366,9 @@ suite "MCP tools":
     # its nimsuggest, for the whole session.
     check ls.projectFiles.len > 0
     check ls.openFiles.len == 0
+
+  test "the tools send no LSP notifications":
+    # The MCP client only understands MCP, so window/showMessage,
+    # extension/statusUpdate and publishDiagnostics must not reach it.
+    check ls.projectFiles.len > 0
+    check notifications[].len == 0
