@@ -88,13 +88,19 @@ Interpret user wording semantically, not literally. For example:
 - **Debugging Type Mismatches**: When a diagnostic reveals a type mismatch, use `nimFindTypeDefinition` on both sides to understand what types are expected vs provided.
 - **Code Generation / Refactoring**: Before generating code that interacts with a type, find its definition to understand its structure and field layout.
 
+## Choosing the Project URI
+
+`nimFindSymbols` and `nimCheckProject` work on one Nim project, chosen by their required `uri` argument: an absolute `file://` URI of an existing `.nim` file in that project, such as `file:///home/user/myproject/src/myproject.nim`. Any `.nim` file of the project selects it; prefer the file the user is working on, or else the project's main file. The other tools take a plain file `path` instead.
+
+If a tool returns an error result such as `Argument uri must be a file URI`, `Argument uri must be a .nim file`, or `Argument uri must be an existing .nim file`, fix the `uri` and call it again instead of falling back to grep.
+
 ## Workflows
 
 ### 1. Find All References or Usages of a Symbol Name
 
 Do NOT grep for the name.
 
-1. Call `nimFindSymbols(query: "SymbolName")` to get exact `path`, `line`, and `column`.
+1. Call `nimFindSymbols(uri: "file:///path/to/project/file.nim", query: "SymbolName")` to get exact `path`, `line`, and `column`.
 2. For each relevant result, call `nimFindReferences(path, line, column)`.
 3. Aggregate the results.
 
@@ -110,7 +116,7 @@ Do NOT read the whole file to find definitions.
 
 ### 3. Find Definitions
 
-1. Call `nimFindSymbols(query: "query")`.
+1. Call `nimFindSymbols(uri: "file:///path/to/project/file.nim", query: "query")`.
 
 ### 4. Resolve Type / Determine Origin of a Symbol
 
@@ -133,7 +139,7 @@ Use this when fixing a diagnostic that involves a type mismatch.
 
 Use this when asked to describe or document a type's shape.
 
-1. Call `nimFindSymbols(query: "TypeName")` to locate the type definition.
+1. Call `nimFindSymbols(uri: "file:///path/to/project/file.nim", query: "TypeName")` to locate the type definition.
 2. Call `nimFindTypeDefinition(path, line, column)` on the type name to confirm the definition location.
 3. Read the source at the definition location to enumerate all fields (including private ones) and their types.
 4. Optionally, call `nimFindTypeDefinition` on each field type to recursively resolve nested types.
@@ -153,8 +159,8 @@ Use this workflow for requests phrased as checking a specific file, source file,
 
 Do NOT approximate project diagnostics by grepping build logs or manually scanning files.
 
-1. Call `nimCheckProject()`.
-2. Use the returned diagnostics to report errors, warnings, and hints for the current Nim project context.
+1. Call `nimCheckProject(uri: "file:///path/to/project/file.nim")` with a `.nim` file of the project to check.
+2. Use the returned diagnostics to report errors, warnings, and hints for that project.
 3. If the user asked for only a subset (for example, only errors or only warnings), filter the returned diagnostics by severity before presenting them.
 
 Use this workflow for requests phrased as checking the current project, workspace, repository, repo, package, codebase, checkout, or module tree for Nim issues.
@@ -173,9 +179,9 @@ Use this when asked to fix casing, follow a style guide, or rename symbols to th
 
 Use this when asked to "fix issues", "fix project", or "fix the repo".
 
-1. Call `nimCheckProject()` to find all diagnostics in the project.
+1. Call `nimCheckProject(uri: "file:///path/to/project/file.nim")` to find all diagnostics in the project.
 2. Analyze the diagnostics and resolve the identified issues.
-3. Repeat steps 1 and 2 until `nimCheckProject()` returns no more issues.
+3. Repeat steps 1 and 2 until `nimCheckProject` returns no more issues.
 4. **Limit**: If issues remain after 3 iterations, you MUST stop and prompt the user, asking if they would like you to continue.
 5. **Post-Fix Step**: Once all issues are resolved (or the user stops the process), ask the user if they would like you to check for naming consistency.
 6. **Consistency Check**: If the user agrees, use `nimFindSymbols` and `nimFindReferences` to find all variations of symbol usage in the project.
@@ -206,12 +212,12 @@ When falling back:
 
 ## Anti-Patterns
 
-- Calling `nimFindSymbols("Foo")` and then running `rg "Foo"` anyway.
+- Calling `nimFindSymbols(uri, "Foo")` and then running `rg "Foo"` anyway.
 - Using `rg` for "find all usages" when `nimFindReferences` is available.
 - Reading multiple Nim files to manually enumerate definitions that `nimListSymbols` can return directly.
 - Reading a Nim file to manually search for a type definition when `nimFindTypeDefinition` can resolve it precisely from the symbol's cursor position.
 - Grepping for `type Foo* =` to find where a type is defined instead of using `nimFindTypeDefinition` or `nimFindSymbols`.
 - Manually scanning imports and cross-referencing to determine which module a symbol comes from, when `nimFindTypeDefinition` can give the exact module path.
-- Running `nimCheckProject()` when the user asked to check one specific Nim file and `nimCheckFile` is available.
+- Running `nimCheckProject` when the user asked to check one specific Nim file and `nimCheckFile` is available.
 - Manually reading or building a single Nim file first when `nimCheckFile` can return structured diagnostics for it.
 - Running a manual project build or grep-based log scan first when the user asked for project/workspace/repository/package diagnostics and `nimCheckProject` is available.

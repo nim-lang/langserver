@@ -84,10 +84,9 @@ suite "MCP routes":
     check initRes.serverInfo.version == LSPVersion
 
   test "tools/call error results do not crash the server":
-    # Started from a directory with no nimble project, as an agent might. The
-    # listed nimCheckProject then takes its "only in Nimble projects" error path,
-    # whose result used to carry a nil structuredContent that segfaulted the
-    # server while serialising the response.
+    # nimCheckProject without a uri takes its error path, whose result used to
+    # carry a nil structuredContent that segfaulted the server while serialising
+    # the response.
     let
       emptyDir = getTempDir() / "nimlangserver-mcp-no-project"
       savedDir = os.getCurrentDir()
@@ -122,9 +121,41 @@ suite "MCP routes":
       "tools/call", %*{"name": "nimCheckProject", "arguments": {}}
     )
     check checkProject{"isError"}.getBool(false)
-    check checkProject{"content"}[0]{"text"}.getStr ==
-      "Tool works only in Nimble projects"
+    check checkProject{"content"}[0]{"text"}.getStr == "Argument uri must be a file URI"
     check "structuredContent" notin checkProject
+
+    let httpSymbols = waitFor rpcClient.callRpc(
+      "tools/call",
+      %*{
+        "name": "nimFindSymbols",
+        "arguments": {"uri": "https://example.com/a.nim", "query": "add"},
+      },
+    )
+    check httpSymbols{"isError"}.getBool(false)
+    check httpSymbols{"content"}[0]{"text"}.getStr == "Argument uri must be a file URI"
+
+    let nimbleFile = savedDir / "nimlangserver.nimble"
+    check fileExists(nimbleFile)
+    let nimbleProject = waitFor rpcClient.callRpc(
+      "tools/call",
+      %*{"name": "nimCheckProject", "arguments": {"uri": nimbleFile.Path.pathToUri}},
+    )
+    check nimbleProject{"isError"}.getBool(false)
+    check nimbleProject{"content"}[0]{"text"}.getStr ==
+      "Argument uri must be a .nim file"
+
+    let missingFile = savedDir / "doesnotexist.nim"
+    check not fileExists(missingFile)
+    let missingSymbols = waitFor rpcClient.callRpc(
+      "tools/call",
+      %*{
+        "name": "nimFindSymbols",
+        "arguments": {"uri": missingFile.Path.pathToUri, "query": "add"},
+      },
+    )
+    check missingSymbols{"isError"}.getBool(false)
+    check missingSymbols{"content"}[0]{"text"}.getStr ==
+      "Argument uri must be an existing .nim file"
 
     let unknown = waitFor rpcClient.callRpc(
       "tools/call", %*{"name": "thisToolDoesNotExist", "arguments": {}}
@@ -175,8 +206,7 @@ suite "MCP routes":
     let checkProject = waitFor rpcClient.callRpc(
       "tools/call", %*{"name": "nimCheckProject", "arguments": {}}
     )
-    check checkProject{"content"}[0]{"text"}.getStr ==
-      "Tool works only in Nimble projects"
+    check checkProject{"content"}[0]{"text"}.getStr == "Argument uri must be a file URI"
 
   test "listTools returns all MCP tools":
     # initialize is required first; from a directory with no nimble project it
@@ -230,11 +260,11 @@ suite "MCP routes":
 
     check findReferences.inputSchema.required == @["path", "line", "column"]
     check findReferences.outputSchema.required == @["refs"]
-    check findSymbols.inputSchema.required == @["query"]
+    check findSymbols.inputSchema.required == @["uri", "query"]
     check findSymbols.outputSchema.required == @["syms"]
     check listSymbols.inputSchema.required == @["path"]
     check listSymbols.outputSchema.required == @["syms"]
-    check checkProject.inputSchema.required.len == 0
+    check checkProject.inputSchema.required == @["uri"]
     check checkProject.outputSchema.required == @["diags"]
     check checkFile.inputSchema.required == @["path"]
     check checkFile.outputSchema.required == @["diags"]
@@ -259,6 +289,37 @@ suite "MCP tools":
     waitFor ls.shutdownNimsuggest()
     setCurrentDir(savedDir)
 
+  test "project tools work in a fresh session with no open file":
+    # MCP initialize starts no nimsuggest, so the uri alone must resolve the
+    # project.
+    let (freshLs, _) = waitFor initMcpServer(entryPoint)
+    defer:
+      waitFor freshLs.shutdownNimsuggest()
+
+    check freshLs.projectFiles.len == 0
+    let symbols = waitFor mcp.callTool(
+      freshLs,
+      McpCallToolParams(
+        name: "nimFindSymbols",
+        arguments: some %*{"uri": errFile.Path.pathToUri, "query": "add"},
+      ),
+    )
+    checkToolResult(symbols)
+    check symbols.structuredContent.get["syms"].getElems().anyIt(
+      it["path"].getStr() == entryPoint and it["kind"].getStr() == "Proc"
+    )
+
+    let diags = waitFor mcp.callTool(
+      freshLs,
+      McpCallToolParams(
+        name: "nimCheckProject", arguments: some %*{"uri": entryPoint.Path.pathToUri}
+      ),
+    )
+    checkToolResult(diags)
+    check diags.structuredContent.get["diags"].getElems().anyIt(
+      it["path"].getStr() == errFile and it["severity"].getStr() == "Error"
+    )
+
   test "callTool nimFindReferences returns structured references":
     let res = waitFor mcp.callTool(
       ls,
@@ -276,7 +337,11 @@ suite "MCP tools":
 
   test "callTool nimFindSymbols returns matching workspace symbols":
     let res = waitFor mcp.callTool(
-      ls, McpCallToolParams(name: "nimFindSymbols", arguments: some %*{"query": "add"})
+      ls,
+      McpCallToolParams(
+        name: "nimFindSymbols",
+        arguments: some %*{"uri": entryPoint.Path.pathToUri, "query": "add"},
+      ),
     )
 
     checkToolResult(res)
@@ -304,7 +369,12 @@ suite "MCP tools":
       %*{"name": "add", "path": entryPoint, "line": 3, "column": 5, "kind": "Proc"}
 
   test "callTool nimCheckProject returns workspace diagnostics":
-    let res = waitFor mcp.callTool(ls, McpCallToolParams(name: "nimCheckProject"))
+    let res = waitFor mcp.callTool(
+      ls,
+      McpCallToolParams(
+        name: "nimCheckProject", arguments: some %*{"uri": errFile.Path.pathToUri}
+      ),
+    )
 
     checkToolResult(res)
 
