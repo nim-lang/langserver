@@ -214,6 +214,8 @@ macro `%*`*(t: untyped, inputStream: untyped): untyped =
       raiseAssert getCurrentExceptionMsg()
 
 proc notify*[T](ls: LanguageServer, name: string, params: T) =
+  if ls.serverMode != lsp:
+    return
   asyncSpawn ls.notifyAction(name, JsonString LspJson.encode(params))
 
 proc call*[T](
