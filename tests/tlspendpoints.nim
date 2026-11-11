@@ -1,5 +1,6 @@
 import
   std/[options, json, os, sequtils, strutils, strformat],
+  chronos/asyncproc,
   json_rpc/[rpcclient],
   unittest2,
   ../[nimlangserver, ls, utils],
@@ -304,6 +305,20 @@ suite "LSP endpoints":
     let res =
       to(client.callTimeout("extension/cancelTest", newJObject()), CancelTestResult)
     check res.cancelled == false
+
+  test "extension/cancelTest stops a running test":
+    let entryPoint =
+      absolutePath("tests" / "projects" / "testrunner" / "tests" / "sampletests.nim")
+    let running = client.call("extension/runTests", %RunTestParams(entryPoint: entryPoint))
+    check waitUntil(ls.testRunProcess.isSome, CallTimeout)
+    let process = ls.testRunProcess.get
+
+    let res =
+      to(client.callTimeout("extension/cancelTest", newJObject()), CancelTestResult)
+    check res.cancelled
+    discard waitFor running.wait(CallTimeout)
+    check process.running() == AsyncProcessResult[bool].ok(false)
+    check ls.testRunProcess.isNone
 
   test "A request whose handler throws is answered with a JSON-RPC error":
     var raised = false
