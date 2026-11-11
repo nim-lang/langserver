@@ -1262,7 +1262,7 @@ proc createOrRestartNimsuggest*(
 ): Future[void] {.async: (raw: true, raises: [CancelledError]).} =
   ls.createOrRestartNimsuggestUnprotected(projectFile, path).join()
 
-proc stopNimsuggests(ls: LanguageServer) {.async: (raises: []).} =
+proc stopNimsuggests*(ls: LanguageServer) {.async: (raises: []).} =
   debug "Stopping all nimsuggest instances"
   let
     creations = toSeq(ls.nimsuggestCreations.values)

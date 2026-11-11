@@ -1305,6 +1305,9 @@ proc didChangeWorkspaceFolders*(
     file.projectFile = ls.getProjectFile(path)
     file.nimsuggestProject = Path("")
   ls.sendStatusChanged()
+  let conf = await ls.workspaceConfigurationWait()
+  if conf.maxNimsuggestProcesses.get(NIM_MAX_NS_PROCESSES) != 0:
+    await ls.stopNimsuggests()
 
 proc didChangeConfiguration*(
     ls: LanguageServer, conf: JsonNode
