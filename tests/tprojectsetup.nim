@@ -514,6 +514,10 @@ suite "Nimble package changes":
     check project.process.running() == AsyncProcessResult[bool].ok(false)
 
   test "a nimble.paths change during startup restarts the nimsuggest once":
+    # the project check that follows a startup is a request too
+    ls.setWorkspaceConfiguration(% @[NlsConfig(autoCheckProject: some false)])
+    defer:
+      ls.setWorkspaceConfiguration(% @[NlsConfig()])
     writeFile(nimblePaths.string, "--noNimblePath\n")
     client.open(libFile)
     check ls.started(packageProject)
