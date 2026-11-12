@@ -1,6 +1,7 @@
 import
   std/[options, os, tables, json],
   chronos,
+  chronos/asyncproc,
   unittest2,
   ../[nimlangserver, ls, lstransports2, utils],
   ../suggestapi,
@@ -120,12 +121,8 @@ suite "Replacing a running nimsuggest":
       .withTimeout(30.seconds)
     let replacement = ls.projectFiles[helloWorldPath]
     check replacement != old
-
-    # Wait for the old process to be gone and its stdout closing handled, then
-    # give anything that triggers time to run.
-    check waitUntil(old.failed, timeout = 30.seconds)
-    waitFor sleepAsync(2.seconds)
-
+    check old.process.running() == AsyncProcessResult[bool].ok(false)
+    check not old.failed
     check ls.projectErrors.len == errors
     check ls.nimsuggestCreations.len == 0
     check ls.projectFiles[helloWorldPath] == replacement
