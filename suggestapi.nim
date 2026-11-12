@@ -258,10 +258,13 @@ proc parseSuggestInlayHint*(line: string): SuggestInlayHint {.raises: [ValueErro
 proc name*(sug: Suggest): string =
   return sug.qualifiedPath[^1]
 
+func isStopping*(self: Project): bool =
+  self.stopping != nil
+
 proc markFailed(
     self: Project, errMessage: string
 ): Future[void] {.async: (raises: []).} =
-  if self.failed or not self.stopping.isNil:
+  if self.failed or self.isStopping():
     return
   self.failed = true
   self.errorMessage = errMessage
@@ -270,17 +273,14 @@ proc markFailed(
 
 proc shutdownImpl(self: Project) {.async: (raises: []).} =
   debug "Stopping nimsuggest for ", root = self.file
-  if not self.process.isNil:
+  if self.process != nil:
     await shutdownChildProcess(self.process)
 
 proc stopWait*(self: Project): Future[void].Raising([]) =
   self.errorCallback = none(ProjectCallback)
-  if self.stopping.isNil:
+  if self.stopping == nil:
     self.stopping = self.shutdownImpl()
   self.stopping
-
-func isStopping*(self: Project): bool =
-  not self.stopping.isNil
 
 proc stop*(self: Project) =
   asyncSpawn self.stopWait()
@@ -526,7 +526,7 @@ proc processQueue(self: Nimsuggest): Future[void] {.async: (raises: []).} =
           # Fail this request and keep draining the queue: letting the error
           # escape would leave `req.future` pending and `processing` stuck.
           error "Nimsuggest call failed", command = req.command, err = exc.msg
-          if not transport.isNil:
+          if transport != nil:
             transport.close()
           if not req.future.finished:
             req.future.fail (ref NimsuggestError)(msg: exc.msg, parent: exc)
