@@ -974,7 +974,8 @@ proc getNimsuggestInner(
     nsProject = await ls.servingNimsuggestProject(path)
   if nsProject.len == 0:
     return nil
-  if nsProject notin ls.projectFiles:
+  let running = ls.projectFiles.getOrDefault(nsProject)
+  if running == nil or (running.isStopping and not running.failed):
     debug "Creating new nimsuggest instance", path = path, projectFile = nsProject
     await ls.createOrRestartNimsuggest(nsProject, path)
   let project = ls.projectFiles.getOrDefault(nsProject)
