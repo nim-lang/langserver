@@ -102,6 +102,31 @@ suite "Several workspaces":
     discard waitFor client.call("extension/status", newJObject())
     check ls.workspaceFolders == folders
 
+  test "a workspace change stops the nimsuggests when they are capped":
+    let hwFile = hwDir / "hw.nim"
+    ls.setWorkspaceConfiguration(% @[NlsConfig(maxNimsuggestProcesses: some 2)])
+    waitFor ls.didOpenFixture("projects/hw/hw.nim")
+    check (waitFor ls.tryGetNimsuggest(hwFile)).isSome
+    client.notify(
+      "workspace/didChangeWorkspaceFolders",
+      folderChange(@[projectsDir / "vendored"], @[]),
+    )
+    check waitUntil(ls.projectFiles.len == 0)
+
+  test "a workspace change keeps the nimsuggests when they are not capped":
+    let hwFile = hwDir / "hw.nim"
+    ls.setWorkspaceConfiguration(% @[NlsConfig(maxNimsuggestProcesses: some 0)])
+    check (waitFor ls.tryGetNimsuggest(hwFile)).isSome
+    let project = ls.projectFiles.getOrDefault(ls.openFiles[hwFile].nimsuggestProject)
+    check project != nil
+    client.notify(
+      "workspace/didChangeWorkspaceFolders",
+      folderChange(@[], @[projectsDir / "vendored"]),
+    )
+    check waitUntil(projectsDir / "vendored" notin ls.workspaceFolders)
+    discard waitFor client.call("extension/status", newJObject())
+    check ls.projectFiles.getOrDefault(project.file) == project
+
 suite "Invalid workspace":
   let cmdParams =
     CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
