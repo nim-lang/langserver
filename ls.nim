@@ -2,8 +2,8 @@
 
 import
   std/[
-    macros, strformat, os, sugar, hashes, osproc, tables, strutils, sets, json,
-    sequtils, setutils, times, files,
+    macros, strformat, os, sugar, hashes, tables, strutils, sets, json, sequtils,
+    setutils, times, files,
   ],
   with,
   chronos,
@@ -413,13 +413,16 @@ proc usePullConfigurationModel*(ls: LanguageServer): bool =
   ls.requiresDynamicRegistrationForDidChangeConfiguration and
     ls.supportsConfigurationRequest
 
-proc getNimVersion(nimDir: string): string {.raises: [OSError, IOError].} =
-  let cmd =
-    if nimDir == "":
-      "nim --version"
-    else:
-      nimDir / "nim --version"
-  let info = execProcess(cmd)
+proc getNimVersion(
+    nimDir: string
+): Future[string] {.async: (raises: [CancelledError]).} =
+  let nim = nimDir / "nim".addFileExt(ExeExt)
+  let info =
+    try:
+      (await runProcess(nim, @["--version"])).output
+    except AsyncProcessError, AsyncStreamError:
+      error "Failed to get the nim version", nim = nim, error = getCurrentExceptionMsg()
+      ""
   const NimCompilerVersion = "Nim Compiler Version "
   for line in info.splitLines:
     if line.startsWith(NimCompilerVersion):
@@ -539,13 +542,13 @@ proc getNimsuggestPathAndVersion(
     let package = await ls.nimblePackage(file)
     let nimDir = package.nimDir.get ""
     if nimDir != "" and nimDir.dirExists:
-      nimVersion = getNimVersion(nimDir) & " from " & nimDir
+      nimVersion = (await getNimVersion(nimDir)) & " from " & nimDir
       nimsuggestPath = nimDir / "nimsuggest".addFileExt(ExeExt)
     else:
-      nimVersion = getNimVersion("")
+      nimVersion = await getNimVersion("")
       nimsuggestPath = findExe "nimsuggest"
   else:
-    nimVersion = getNimVersion(nimsuggestPath.parentDir)
+    nimVersion = await getNimVersion(nimsuggestPath.parentDir)
   # await ls.showMessage(fmt "Using {nimVersion}", MessageType.Info)
   debug "Using {nimVersion}", nimVersion = nimVersion
   (nimsuggestPath, nimVersion)

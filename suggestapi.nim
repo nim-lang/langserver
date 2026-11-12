@@ -1,7 +1,7 @@
 {.push raises: [], gcsafe.}
 
 import
-  std/[osproc, strutils, strformat, times, deques, sets, os, sequtils, streams, options],
+  std/[strutils, strformat, times, deques, sets, os, sequtils, options],
   chronos,
   chronos/asyncproc,
   chronicles,
@@ -272,6 +272,7 @@ proc markFailed(
     await self.errorCallback.get()(self)
 
 proc shutdownImpl(self: Project) {.async: (raises: []).} =
+  # do not call concurrently; concurrent `waitForExit` crash
   debug "Stopping nimsuggest for ", root = self.file
   if self.process != nil:
     await shutdownChildProcess(self.process)
@@ -287,27 +288,25 @@ proc stop*(self: Project) =
 
 proc detectNimsuggestVersion(
     root: Path, nimsuggestPath: string, workingDir: Path
-): int {.gcsafe, raises: [OSError, IOError, ValueError].} =
-  var process = startProcess(
-    command = nimsuggestPath,
-    workingDir = workingDir.string,
-    args = @[root.string, "--info:protocolVer"],
-    options = {poUsePath},
+): Future[int] {.
+    async: (raises: [CancelledError, AsyncProcessError, AsyncStreamError, ValueError])
+.} =
+  let (output, exitCode) = await runProcess(
+    nimsuggestPath, @[root.string, "--info:protocolVer"], workingDir.string
   )
-  var l: string
-  if not process.outputStream.readLine(l):
-    l = ""
-  var exitCode = process.waitForExit()
-  if exitCode != 0 or l == "":
+  let line = output.splitLines()[0]
+  if exitCode != 0 or line == "":
     # older versions of NimSuggest don't support the --info:protocolVer option
     # use protocol version 3 with them
-    return 3
+    3
   else:
-    return parseInt(l)
+    parseInt(line)
 
 proc getNimsuggestCapabilities*(
     nimsuggestPath: string
-): set[NimsuggestCapability] {.gcsafe, raises: [OSError, IOError, ValueError].} =
+): Future[set[NimsuggestCapability]] {.
+    async: (raises: [CancelledError, AsyncProcessError, AsyncStreamError])
+.} =
   proc parseCapability(c: string): Option[NimsuggestCapability] =
     debug "Parsing nimsuggest capability", capability = c
     try:
@@ -316,16 +315,10 @@ proc getNimsuggestCapabilities*(
       debug "Capability not supported. Ignoring.", capability = c
       result = none(NimsuggestCapability)
 
-  var process = startProcess(
-    command = nimsuggestPath, args = @["--info:capabilities"], options = {poUsePath}
-  )
-  var l: string
-  if not process.outputStream.readLine(l):
-    l = ""
-  var exitCode = process.waitForExit()
+  let (output, exitCode) = await runProcess(nimsuggestPath, @["--info:capabilities"])
   if exitCode == 0:
     # older versions of NimSuggest don't support the --info:capabilities option
-    for cap in l.split(" ").mapIt(parseCapability(it)):
+    for cap in output.splitLines()[0].split(" ").mapIt(parseCapability(it)):
       if cap.isSome:
         result.incl(cap.get)
 
@@ -393,7 +386,7 @@ proc createNimsuggest*(
     info "Starting nimsuggest",
       root = root, path = nimsuggestPath, workingDir = workingDir
 
-    ns.protocolVersion = detectNimsuggestVersion(root, nimsuggestPath, workingDir)
+    ns.protocolVersion = await detectNimsuggestVersion(root, nimsuggestPath, workingDir)
     if ns.protocolVersion > HighestSupportedNimSuggestProtocolVersion:
       ns.protocolVersion = HighestSupportedNimSuggestProtocolVersion
     var args = @[root.string, "--v" & $ns.protocolVersion, "--autobind"] & extraArgs
@@ -401,7 +394,7 @@ proc createNimsuggest*(
       args.add("--clientProcessId:" & $getCurrentProcessId())
     if enableLog:
       args.add("--log")
-    ns.capabilities = getNimsuggestCapabilities(nimsuggestPath)
+    ns.capabilities = await getNimsuggestCapabilities(nimsuggestPath)
     debug "Nimsuggest Capabilities", capabilities = ns.capabilities
     if maxMemory.isSome:
       if nsMaxMemory in ns.capabilities:
