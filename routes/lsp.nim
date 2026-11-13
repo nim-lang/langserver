@@ -163,7 +163,7 @@ proc definition*(
   ls.checkInitialized()
   let path = params.textDocument.uri.uriToPath
   with params.position:
-    let config = await ls.workspaceConfigurationWait()
+    let config = await ls.workspaceConfigurationWait(path)
     # `nim track` only works on files as saved on disk; it has no dirty-buffer
     # support. Use it only when the file is open and has no unsaved changes,
     # otherwise fall back to nimsuggest (which supports dirty buffers).
@@ -417,7 +417,7 @@ proc fileCheckDelay(
       ]
     )
 .} =
-  let conf = await ls.workspaceConfigurationWait()
+  let conf = await ls.workspaceConfigurationWait(path)
   if not conf.autoCheckFile.get(false):
     return
   let info = ls.openFiles.getOrDefault(path)
@@ -466,7 +466,7 @@ proc hover*(
   ls.checkInitialized()
   let path = params.textDocument.uri.uriToPath
   with params.position:
-    let config = await ls.workspaceConfigurationWait()
+    let config = await ls.workspaceConfigurationWait(path)
     let nimsuggest = await ls.tryGetNimsuggest(path)
     if nimsuggest.isNone:
       return none(Hover)
@@ -529,7 +529,7 @@ proc references*(
   ls.checkInitialized()
   let path = params.textDocument.uri.uriToPath
   with (params.position, params.context):
-    let config = await ls.workspaceConfigurationWait()
+    let config = await ls.workspaceConfigurationWait(path)
     # `nim track` only works on files as saved on disk; it has no dirty-buffer
     # support. Use it only when the file is open and has no unsaved changes,
     # otherwise fall back to nimsuggest (which supports dirty buffers).
@@ -695,7 +695,7 @@ proc inlayHint*(
   let path = params.textDocument.uri.uriToPath
   with params.range:
     let
-      configuration = await ls.workspaceConfigurationWait()
+      configuration = await ls.workspaceConfigurationWait(path)
       nimsuggest = await ls.tryGetNimsuggest(path)
 
     if nimsuggest.isNone or nimsuggest.get.protocolVersion < 4 or
@@ -1082,9 +1082,9 @@ proc listTests*(
     )
 .} =
   ls.checkInitialized()
-  let config = await ls.workspaceConfigurationWait()
-  let nimPath =
-    await ls.getNimPath(config, getFullPath(params.entryPoint, ls.workspaceFolders))
+  let entryPoint = getFullPath(params.entryPoint, ls.workspaceFolders)
+  let config = await ls.workspaceConfigurationWait(entryPoint)
+  let nimPath = await ls.getNimPath(config, entryPoint)
   if nimPath.isNone:
     error "Nim path not found when listing tests"
     return ListTestsResult(
@@ -1107,9 +1107,9 @@ proc runTests*(
     )
 .} =
   ls.checkInitialized()
-  let config = await ls.workspaceConfigurationWait()
-  let nimPath =
-    await ls.getNimPath(config, getFullPath(params.entryPoint, ls.workspaceFolders))
+  let entryPoint = getFullPath(params.entryPoint, ls.workspaceFolders)
+  let config = await ls.workspaceConfigurationWait(entryPoint)
+  let nimPath = await ls.getNimPath(config, entryPoint)
   if nimPath.isNone:
     error "Nim path not found when running tests"
     return RunTestProjectResult()
@@ -1220,7 +1220,7 @@ proc willSaveWaitUntil*(
 
   let
     path = params.textDocument.uri.uriToPath
-    config = await ls.workspaceConfigurationWait()
+    config = await ls.workspaceConfigurationWait(path)
     nphPath = getNphPath()
 
   let shouldFormat =
@@ -1246,7 +1246,7 @@ proc didSave*(
   ls.checkInitialized()
   let
     path = params.textDocument.uri.uriToPath
-    config = await ls.workspaceConfigurationWait()
+    config = await ls.workspaceConfigurationWait(path)
   let nimsuggest = await ls.tryGetNimsuggest(path)
 
   if nimsuggest.isNone:
@@ -1301,6 +1301,7 @@ proc didChangeWorkspaceFolders*(
     if path notin ls.workspaceFolders:
       ls.workspaceFolders.add path
   debug "Workspace folders changed", workspaceFolders = ls.workspaceFolders
+  await ls.maybeRequestConfigurationFromClient()
   for path, file in ls.openFiles:
     file.projectFile = ls.getProjectFile(path)
     file.nimsuggestProject = Path("")

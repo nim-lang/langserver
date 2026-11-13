@@ -156,6 +156,7 @@ type
       #Set through setWorkspaceConfiguration, read through workspaceConfigurationWait.
     workspaceConfigurationReady*: Future[void].Raising([CancelledError])
       #Completed the first time a configuration is known, and never replaced.
+    folderConfigurations*: Table[Path, NlsConfig]
     inlayHintsRefreshRequest*: Future[JsonNode].Raising([CancelledError, JsonRpcError])
     watchingFiles*: bool
     filesWithDiags*: HashSet[Path]
@@ -433,6 +434,12 @@ proc workspaceFolderOf*(ls: LanguageServer, path: Path): Path =
     if path.isRelTo(folder) and folder.len > result.len:
       result = folder
 
+proc workspaceConfigurationWait*(
+    ls: LanguageServer, file: Path
+): Future[NlsConfig] {.async: (raises: [CancelledError]).} =
+  let conf = await ls.workspaceConfigurationWait()
+  ls.folderConfigurations.getOrDefault(ls.workspaceFolderOf(file), conf)
+
 proc packageNimbleFile(ls: LanguageServer, file: Path): Path {.raises: [OSError].} =
   let rootPath = ls.workspaceFolderOf(file)
   let inRoot = rootPath.len > 0
@@ -615,7 +622,7 @@ proc getProjectFile*(
         none(string)
       else:
         file.tryRelativeTo(rootPath)
-    conf = await ls.workspaceConfigurationWait()
+    conf = await ls.workspaceConfigurationWait(file)
     mappings = conf.projectMapping.get(@[])
 
   for mapping in mappings:
@@ -695,7 +702,7 @@ proc getWorkingDir*(
         none(string)
       else:
         file.tryRelativeTo(rootPath)
-    conf = await ls.workspaceConfigurationWait()
+    conf = await ls.workspaceConfigurationWait(file)
     mapping = conf.workingDirectoryMapping.get(@[])
 
   for m in mapping:
@@ -1107,7 +1114,7 @@ proc checkProject*(
   defer:
     ls.checkInProgress = false
 
-  let conf = await ls.workspaceConfigurationWait()
+  let conf = await ls.workspaceConfigurationWait(path)
   if not conf.autoCheckProject.get(true):
     return
   if path.len == 0:
@@ -1199,7 +1206,7 @@ proc createOrRestartNimsuggestImpl(
     try:
       debug "Starting createOrRestartNimsuggest", projectFile = projectFile, path = path
       let
-        configuration = await ls.workspaceConfigurationWait()
+        configuration = await ls.workspaceConfigurationWait(projectFile)
         workingDir = await ls.getWorkingDir(projectFile)
         (nimsuggestPath, version) =
           await ls.getNimsuggestPathAndVersion(configuration, projectFile)
@@ -1331,11 +1338,20 @@ proc markNimsuggestsStale*(ls: LanguageServer) =
     if project.ns != nil:
       project.ns.stale = true
 
-proc handleConfigurationChanges*(
-    ls: LanguageServer, oldConfiguration, newConfiguration: NlsConfig
+func sameConfiguration(a, b: NlsConfig): bool =
+  $(%a) == $(%b)
+
+proc folderConfigurationsChanged(
+    ls: LanguageServer, oldConfigurations: Table[Path, NlsConfig]
+): bool =
+  for folder, conf in oldConfigurations:
+    if folder in ls.folderConfigurations and
+        not sameConfiguration(conf, ls.folderConfigurations.getOrDefault(folder)):
+      return true
+
+proc applyConfigurationChanges(
+    ls: LanguageServer
 ): Future[void] {.async: (raises: [CancelledError]).} =
-  if $(%oldConfiguration) == $(%newConfiguration):
-    return
   let stopping = ls.stopNimsuggests()
   defer:
     await stopping
@@ -1350,22 +1366,47 @@ proc handleConfigurationChanges*(
     #An empty object means no params at all
     ls.inlayHintsRefreshRequest = ls.call("workspace/inlayHint/refresh", JsonString"{}")
 
+proc handleConfigurationChanges*(
+    ls: LanguageServer, oldConfiguration, newConfiguration: NlsConfig
+): Future[void] {.async: (raises: [CancelledError]).} =
+  if not sameConfiguration(oldConfiguration, newConfiguration):
+    await ls.applyConfigurationChanges()
+
+proc setFolderConfigurations(ls: LanguageServer, conf: JsonNode, folders: seq[Path]) =
+  ls.folderConfigurations.clear()
+  if conf.kind != JArray:
+    return
+  for i, folder in folders:
+    if i + 1 < conf.len:
+      ls.folderConfigurations[folder] = parseWorkspaceConfiguration(%[conf[i + 1]])
+
 proc maybeRequestConfigurationFromClient*(
     ls: LanguageServer
 ): Future[void] {.async: (raises: []).} =
   if ls.supportsConfigurationRequest:
     debug "Requesting configuration from the client"
     try:
-      let configurationParams = ConfigurationParams %* {"items": [{"section": "nim"}]}
-      let configuration = await ls.call("workspace/configuration", configurationParams)
+      let folders = ls.workspaceFolders
+      var items = @[ConfigurationItem(section: some "nim")]
+      for folder in folders:
+        items.add ConfigurationItem(
+          section: some "nim", scopeUri: some $pathToUri(folder)
+        )
+      let configuration =
+        await ls.call("workspace/configuration", ConfigurationParams(items: items))
       debug "Received the following configuration", configuration = $configuration
       #the first configuration is not a change, so there is nothing to handle
       let
         hadConfiguration = ls.workspaceConfigurationReady.finished
         oldConfiguration = ls.workspaceConfiguration
+        oldFolderConfigurations = ls.folderConfigurations
+      ls.setFolderConfigurations(configuration, folders)
       ls.setWorkspaceConfiguration(configuration)
-      if hadConfiguration:
-        await ls.handleConfigurationChanges(oldConfiguration, ls.workspaceConfiguration)
+      if hadConfiguration and (
+        not sameConfiguration(oldConfiguration, ls.workspaceConfiguration) or
+        ls.folderConfigurationsChanged(oldFolderConfigurations)
+      ):
+        await ls.applyConfigurationChanges()
     except CancelledError:
       error "Failed to handle the client configuration",
         error = getCurrentExceptionMsg()
@@ -1412,7 +1453,7 @@ proc checkFile*(
 .} =
   let path = file.path
   let edits = file.edits
-  let conf = await ls.workspaceConfigurationWait()
+  let conf = await ls.workspaceConfigurationWait(path)
   let token = ls.createProgressToken()
   ls.workDoneProgressCreate(token)
   ls.progress(token, "begin", fmt "Checking {path}")
