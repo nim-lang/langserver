@@ -247,6 +247,26 @@ proc shutdownChildProcess*(p: AsyncProcessRef): Future[void] {.async: (raises: [
       debug "Could not kill process in time either!"
       writeStackTrace()
 
+proc runProcess*(
+    command: string, arguments: seq[string], workingDir = ""
+): Future[tuple[output: string, exitCode: int]] {.
+    async: (raises: [CancelledError, AsyncProcessError, AsyncStreamError])
+.} =
+  let process = await startProcess(
+    command,
+    workingDir = workingDir,
+    arguments = arguments,
+    options = {UsePath},
+    stdoutHandle = AsyncProcess.Pipe,
+    stderrHandle = ProcessStreamHandle(),
+  )
+  try:
+    let output = string.fromBytes(await process.stdoutStream.read())
+    (output, await process.waitForExit())
+  finally:
+    await shutdownChildProcess(process)
+    await process.closeWait()
+
 macro getField*(obj: object, fld: string): untyped =
   result = newDotExpr(obj, newIdentNode(fld.strVal))
 

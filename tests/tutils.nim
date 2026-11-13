@@ -1,6 +1,7 @@
 import
-  std/[options, strutils],
+  std/[options, os, strutils],
   chronos,
+  chronos/asyncproc,
   unittest2,
   ../utils,
   ../protocol/types,
@@ -129,3 +130,27 @@ suite "async helpers":
     let second = getNextFreePort()
     check first != Port(0)
     check second != Port(0)
+
+suite "Running a process":
+  test "runProcess returns the output and the exit code":
+    let (output, exitCode) = waitFor runProcess("nim", @["--version"])
+    check exitCode == 0
+    check output.startsWith("Nim Compiler Version ")
+
+  test "runProcess returns the exit code of a failing process":
+    let (_, exitCode) = waitFor runProcess("nim", @["--notAnOption"])
+    check exitCode != 0
+
+  test "runProcess runs in the working dir":
+    let dir = getTempDir() / "nimlangserver-run-process"
+    createDir(dir)
+    writeFile(dir / "script.nims", "echo \"ok\"\n")
+    # the script is relative, so it is only found from the working dir
+    let (output, exitCode) =
+      waitFor runProcess("nim", @["e", "--hints:off", "script.nims"], dir)
+    check exitCode == 0
+    check output.strip == "ok"
+
+  test "runProcess raises when the command does not exist":
+    expect AsyncProcessError:
+      discard waitFor runProcess("nimlangserver-no-such-command", @[])
