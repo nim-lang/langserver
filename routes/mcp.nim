@@ -240,7 +240,7 @@ proc callNimFindReferences(
     line = arguments["line"].getInt()
     column = arguments["column"].getInt()
 
-  let config = await ls.workspaceConfigurationWait()
+  let config = await ls.workspaceConfigurationWait(path)
 
   if config.useNimTrack.get(false):
     let projectFile = await ls.getProjectFile(path)

@@ -48,7 +48,8 @@ suite "Several workspaces":
         {"uri": pathToUri(hwDir), "name": "hw"},
         {"uri": pathToUri(modulesDir), "name": "multimodules"},
       ],
-      "capabilities": {"workspace": {"configuration": true}},
+      # The tests set the configuration themselves, so the server must not pull it.
+      "capabilities": {},
     }
   )
   # The regex matches the path relative to the file's workspace.
@@ -126,6 +127,63 @@ suite "Several workspaces":
     check waitUntil(projectsDir / "vendored" notin ls.workspaceFolders)
     discard waitFor client.call("extension/status", newJObject())
     check ls.projectFiles.getOrDefault(project.file) == project
+
+suite "Configuration per workspace":
+  let cmdParams =
+    CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
+  let ls = main(cmdParams)
+  let client = newLspSocketClient()
+  waitFor client.connect("localhost", cmdParams.port)
+  client.registerNotification(
+    "window/showMessage", "window/workDoneProgress/create", "extension/statusUpdate",
+    "textDocument/publishDiagnostics", "$/progress",
+  )
+
+  # Only the multimodules folder maps othermodule to rootmodule.
+  proc answerConfiguration(params: JsonNode): Future[JsonNode] {.async.} =
+    {.cast(gcsafe).}:
+      result = newJArray()
+      for item in params["items"]:
+        if item{"scopeUri"}.getStr == $pathToUri(modulesDir):
+          result.add %*{
+            "projectMapping":
+              [{"projectFile": "rootmodule.nim", "fileRegex": "othermodule"}]
+          }
+        else:
+          result.add newJObject()
+
+  client.registerRequest("workspace/configuration", answerConfiguration)
+
+  suiteTeardown:
+    waitFor ls.shutdownNimsuggest()
+
+  discard waitFor client.initialize(
+    LspInitializeParams %* {
+      "processId": %getCurrentProcessId(),
+      "workspaceFolders": [
+        {"uri": pathToUri(hwDir), "name": "hw"},
+        {"uri": pathToUri(modulesDir), "name": "multimodules"},
+      ],
+      "capabilities": {"workspace": {"configuration": true}},
+    }
+  )
+  client.notify("initialized", newJObject())
+  check waitUntil(ls.workspaceConfigurationReady.finished)
+
+  test "a folder's configuration applies to the files in it":
+    check ls.workspaceConfiguration.projectMapping.get(@[]).len == 0
+    check (waitFor ls.getProjectFile(otherModule)) == rootModule
+
+  test "a folder added later is asked for its configuration":
+    client.notify(
+      "workspace/didChangeWorkspaceFolders", folderChange(@[], @[modulesDir])
+    )
+    check waitUntil(modulesDir notin ls.folderConfigurations)
+    client.notify(
+      "workspace/didChangeWorkspaceFolders", folderChange(@[modulesDir], @[])
+    )
+    check waitUntil(modulesDir in ls.folderConfigurations)
+    check (waitFor ls.getProjectFile(otherModule)) == rootModule
 
 suite "Invalid workspace":
   let cmdParams =
