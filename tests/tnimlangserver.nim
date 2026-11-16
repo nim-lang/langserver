@@ -22,7 +22,7 @@ suite "Nimlangserver":
 
   test "initialize from the client should call initialized on the server":
     let initParams =
-      LspInitializeParams %* {
+      %*{
         "processId": %getCurrentProcessId(),
         "rootUri": fixtureUri("projects/hw/"),
         "capabilities":
@@ -47,7 +47,7 @@ suite "Suggest API selection":
 
   waitFor client.connect("localhost", cmdParams.port)
   let initParams =
-    LspInitializeParams %* {
+    %*{
       "processId": %getCurrentProcessId(),
       "rootUri": fixtureUri("projects/hw/"),
       "capabilities":
@@ -91,7 +91,7 @@ suite "LSP features":
   waitFor client.connect("localhost", cmdParams.port)
 
   let initParams =
-    LspInitializeParams %* {
+    %*{
       "processId": %getCurrentProcessId(),
       "rootUri": fixtureUri("projects/hw/"),
       "capabilities":
@@ -142,19 +142,12 @@ suite "LSP features":
       locations = to(
         waitFor client.call("textDocument/definition", %positionParams), seq[Location]
       )
-      expected =
-        seq[Location] %* [
-          {
-            "uri": helloWorldUri,
-            "range":
-              {"start": {"line": 0, "character": 5}, "end": {"line": 0, "character": 8}},
-          }
-        ]
+      expected = @[Location(uri: helloWorldUri, `range`: range(0, 5, 0, 8))]
     check %locations == %expected
 
   test "References.":
     let referenceParams =
-      ReferenceParams %* {
+      %*{
         "context": {"includeDeclaration": true},
         "position": {"line": 1, "character": 6},
         "textDocument": {"uri": helloWorldUri},
@@ -162,24 +155,15 @@ suite "LSP features":
     let locations = to(
       waitFor client.call("textDocument/references", %referenceParams), seq[Location]
     )
-    let expected =
-      seq[Location] %* [
-        {
-          "uri": helloWorldUri,
-          "range":
-            {"start": {"line": 0, "character": 5}, "end": {"line": 0, "character": 8}},
-        },
-        {
-          "uri": helloWorldUri,
-          "range":
-            {"start": {"line": 1, "character": 6}, "end": {"line": 1, "character": 9}},
-        },
-      ]
+    let expected = @[
+      Location(uri: helloWorldUri, `range`: range(0, 5, 0, 8)),
+      Location(uri: helloWorldUri, `range`: range(1, 6, 1, 9)),
+    ]
     check %locations == %expected
 
   test "References(exclude def)":
     let referenceParams =
-      ReferenceParams %* {
+      %*{
         "context": {"includeDeclaration": false},
         "position": {"line": 1, "character": 7},
         "textDocument": {"uri": helloWorldUri},
@@ -187,14 +171,7 @@ suite "LSP features":
     let locations = to(
       waitFor client.call("textDocument/references", %referenceParams), seq[Location]
     )
-    let expected =
-      seq[Location] %* [
-        {
-          "uri": helloWorldUri,
-          "range":
-            {"start": {"line": 1, "character": 6}, "end": {"line": 1, "character": 9}},
-        }
-      ]
+    let expected = @[Location(uri: helloWorldUri, `range`: range(1, 6, 1, 9))]
     check %locations == %expected
 
   test "Prepare rename":
@@ -232,7 +209,7 @@ suite "LSP features":
 
   test "didChange then sending hover.":
     let didChangeParams =
-      DidChangeTextDocumentParams %* {
+      %*{
         "textDocument": {"uri": helloWorldUri, "version": 1},
         "contentChanges": [{"text": "\nproc a() = discard\na()\n"}],
       }
@@ -245,7 +222,7 @@ suite "LSP features":
 
   test "Completion":
     let completionParams =
-      CompletionParams %* {
+      %*{
         "position": {"line": 3, "character": 2},
         "textDocument": {"uri": fixtureUri("projects/hw/hw.nim")},
       }
@@ -283,7 +260,7 @@ suite "Null configuration:":
   waitFor client.connect("localhost", cmdParams.port)
 
   let initParams =
-    LspInitializeParams %* {
+    %*{
       "processId": %getCurrentProcessId(),
       "rootUri": fixtureUri("projects/hw/"),
       "capabilities": {

@@ -20,7 +20,7 @@ suite "LSP diagnostics":
   waitFor client.connect("localhost", cmdParams.port)
 
   let initParams =
-    LspInitializeParams %* {
+    %*{
       "processId": %getCurrentProcessId(),
       "rootUri": fixtureUri("projects/hw/"),
       "capabilities": {"window": {"workDoneProgress": false}},
@@ -130,7 +130,7 @@ suite "LSP project check command":
   )
   waitFor client.connect("localhost", cmdParams.port)
   discard waitFor client.initialize(
-    LspInitializeParams %* {
+    %*{
       "processId": %getCurrentProcessId(),
       "rootUri": fixtureUri("projects/mcpproject/"),
       "capabilities": {"window": {"workDoneProgress": false}},

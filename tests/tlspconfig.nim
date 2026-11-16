@@ -102,7 +102,7 @@ suite "LSP configuration pushed by the client":
   waitFor client.connect("localhost", cmdParams.port)
 
   discard waitFor client.initialize(
-    LspInitializeParams %* {
+    %*{
       "processId": %getCurrentProcessId(),
       "rootUri": fixtureUri("projects/hw/"),
       "capabilities": {"window": {"workDoneProgress": false}},
@@ -157,7 +157,7 @@ suite "LSP configuration pulled from the client":
   waitFor client.connect("localhost", cmdParams.port)
 
   let initParams =
-    LspInitializeParams %* {
+    %*{
       "processId": %getCurrentProcessId(),
       "rootUri": fixtureUri("projects/hw/"),
       "capabilities": {

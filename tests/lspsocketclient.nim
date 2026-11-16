@@ -172,22 +172,21 @@ proc register*(client: LspSocketClient, name: string, rpc: Rpc) =
 
 #Calls
 proc initialize*(
-    client: LspSocketClient, initParams: LspInitializeParams
+    client: LspSocketClient, initParams: JsonNode
 ): Future[LspInitializeResult] {.async.} =
-  client.call("initialize", %initParams).await.jsonTo(
+  client.call("initialize", initParams).await.jsonTo(
     LspInitializeResult, Joptions(allowMissingKeys: true)
   )
 
 proc createDidOpenParams*(file: string): DidOpenTextDocumentParams =
-  return
-    DidOpenTextDocumentParams %* {
-      "textDocument": {
-        "uri": fixtureUri(file),
-        "languageId": "nim",
-        "version": 0,
-        "text": readFile("tests" / file),
-      }
-    }
+  DidOpenTextDocumentParams(
+    textDocument: TextDocumentItem(
+      uri: fixtureUri(file),
+      languageId: "nim",
+      version: 0,
+      text: readFile("tests" / file),
+    )
+  )
 
 proc didOpenFixture*(ls: LanguageServer, file: string): auto =
   ls.didOpenFile(fixturePath(file), readFile("tests" / file))
@@ -197,9 +196,10 @@ proc openFile*(client: LspSocketClient, file: string) =
   client.notify("textDocument/didOpen", %createDidOpenParams(file))
 
 proc positionParams*(uri: DocumentUri, line, character: int): TextDocumentPositionParams =
-  return
-    TextDocumentPositionParams %*
-    {"position": {"line": line, "character": character}, "textDocument": {"uri": uri}}
+  TextDocumentPositionParams(
+    position: Position(line: line, character: character),
+    textDocument: TextDocumentIdentifier(uri: uri),
+  )
 
 #Helper to hook notifications so we can check against them in the tests
 proc notificationHandle*(
