@@ -732,36 +732,35 @@ proc codeAction*(
 .} =
   ls.checkInitialized()
   let projectFile = await ls.projectFileWait(params.textDocument.uri.uriToPath)
-  return
-    seq[CodeAction] %* [
-      {
-        "title": "Clean build",
-        "kind": "source",
-        "command": {
-          "title": "Clean build",
-          "command": RECOMPILE_COMMAND,
-          "arguments": @[projectFile],
-        },
-      },
-      {
-        "title": "Refresh project errors",
-        "kind": "source",
-        "command": {
-          "title": "Refresh project errors",
-          "command": CHECK_PROJECT_COMMAND,
-          "arguments": @[projectFile],
-        },
-      },
-      {
-        "title": "Restart nimsuggest",
-        "kind": "source",
-        "command": {
-          "title": "Restart nimsuggest",
-          "command": RESTART_COMMAND,
-          "arguments": @[projectFile],
-        },
-      },
-    ]
+  return @[
+    CodeAction(
+      title: "Clean build",
+      kind: "source",
+      command: Command(
+        title: "Clean build",
+        command: RECOMPILE_COMMAND,
+        arguments: some %*[projectFile],
+      ),
+    ),
+    CodeAction(
+      title: "Refresh project errors",
+      kind: "source",
+      command: Command(
+        title: "Refresh project errors",
+        command: CHECK_PROJECT_COMMAND,
+        arguments: some %*[projectFile],
+      ),
+    ),
+    CodeAction(
+      title: "Restart nimsuggest",
+      kind: "source",
+      command: Command(
+        title: "Restart nimsuggest",
+        command: RESTART_COMMAND,
+        arguments: some %*[projectFile],
+      ),
+    ),
+  ]
 
 proc executeCommand*(
     ls: LanguageServer, params: ExecuteCommandParams

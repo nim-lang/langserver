@@ -2,8 +2,8 @@
 
 import
   std/[
-    macros, strformat, os, sugar, hashes, tables, strutils, sets, json, sequtils,
-    setutils, times, files,
+    strformat, os, sugar, hashes, tables, strutils, sets, json, sequtils, setutils,
+    times, files,
   ],
   with,
   chronos,
@@ -201,17 +201,6 @@ type
   CallAction* = proc(name: string, params: JsonString): Future[JsonNode] {.
     async: (raises: [CancelledError, JsonRpcError])
   .} #Send a request to the client
-
-macro `%*`*(t: untyped, inputStream: untyped): untyped =
-  ## Typed JSON literal: `T %* {...}`. The literal is written in code, so a
-  ## failing conversion is a programming error, not something to handle.
-  let conv =
-    newCall(bindSym("to", brOpen), newCall(bindSym("%*", brOpen), inputStream), t)
-  result = quote:
-    try:
-      `conv`
-    except ValueError:
-      raiseAssert getCurrentExceptionMsg()
 
 proc notify*[T](ls: LanguageServer, name: string, params: T) =
   if ls.serverMode != lsp:
