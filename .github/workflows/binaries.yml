@@ -165,7 +165,7 @@ jobs:
   create-macos-universal-binary:
     name: Create a Universal macOS binary
     needs: [build]
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - name: Download artifacts
         uses: actions/download-artifact@v8
