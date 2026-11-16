@@ -781,15 +781,14 @@ proc toUtf16Pos*(checkResult: CheckResult, ls: LanguageServer): CheckResult =
       result.stacktrace[i].column = stPos.get()
 
 proc range*(startLine, startCharacter, endLine, endCharacter: int): Range =
-  return
-    Range %* {
-      "start": {"line": startLine, "character": startCharacter},
-      "end": {"line": endLine, "character": endCharacter},
-    }
+  Range(
+    start: Position(line: startLine, character: startCharacter),
+    `end`: Position(line: endLine, character: endCharacter),
+  )
 
 proc toLabelRange*(suggest: Suggest): Range =
   with suggest:
-    return range(line - 1, column, line - 1, column + utf16Len(qualifiedPath[^1]))
+    range(line - 1, column, line - 1, column + utf16Len(qualifiedPath[^1]))
 
 proc toDiagnostic(suggest: Suggest): Diagnostic =
   with suggest:
@@ -802,21 +801,19 @@ proc toDiagnostic(suggest: Suggest): Diagnostic =
         else:
           column + 1
 
-    return
-      Diagnostic %* {
-        "uri": pathToUri(filePath),
-        "range": range(line - 1, column, line - 1, endColumn),
-        "severity":
-          case forth
-          of "Error": DiagnosticSeverity.Error.int
-          of "Hint": DiagnosticSeverity.Hint.int
-          of "Warning": DiagnosticSeverity.Warning.int
-          else: DiagnosticSeverity.Error.int
-        ,
-        "message": doc,
-        "source": "nim",
-        "code": "nimsuggest chk",
-      }
+    Diagnostic(
+      `range`: range(line - 1, column, line - 1, endColumn),
+      severity: some(
+        case forth
+        of "Error": DiagnosticSeverity.Error.int
+        of "Hint": DiagnosticSeverity.Hint.int
+        of "Warning": DiagnosticSeverity.Warning.int
+        else: DiagnosticSeverity.Error.int
+      ),
+      message: doc,
+      source: some "nim",
+      code: some %"nimsuggest chk",
+    )
 
 proc toDiagnostic(checkResult: CheckResult): Diagnostic =
   let
@@ -828,36 +825,33 @@ proc toDiagnostic(checkResult: CheckResult): Diagnostic =
       else:
         checkResult.column + 1
 
-  return
-    Diagnostic %* {
-      "uri": pathToUri(checkResult.file),
-      "range": range(
-        checkResult.line - 1,
-        max(0, checkResult.column),
-        checkResult.line - 1,
-        max(0, endColumn),
-      ),
-      "severity":
-        case checkResult.severity
-        of "Error": DiagnosticSeverity.Error.int
-        of "Hint": DiagnosticSeverity.Hint.int
-        of "Warning": DiagnosticSeverity.Warning.int
-        else: DiagnosticSeverity.Error.int
-      ,
-      "message": checkResult.msg,
-      "source": "nim",
-      "code": "nim check",
-    }
+  Diagnostic(
+    `range`: range(
+      checkResult.line - 1,
+      max(0, checkResult.column),
+      checkResult.line - 1,
+      max(0, endColumn),
+    ),
+    severity: some(
+      case checkResult.severity
+      of "Error": DiagnosticSeverity.Error.int
+      of "Hint": DiagnosticSeverity.Hint.int
+      of "Warning": DiagnosticSeverity.Warning.int
+      else: DiagnosticSeverity.Error.int
+    ),
+    message: checkResult.msg,
+    source: some "nim",
+    code: some %"nim check",
+  )
 
 proc sendDiagnostics*(
     ls: LanguageServer, diagnostics: seq[Suggest] | seq[CheckResult], path: Path
 ) =
   trace "Sending diagnostics", count = diagnostics.len, path = path
-  let params =
-    PublishDiagnosticsParams %* {
-      "uri": pathToUri(path),
-      "diagnostics": diagnostics.map(x => x.toUtf16Pos(ls).toDiagnostic),
-    }
+  let params = PublishDiagnosticsParams(
+    uri: pathToUri(path),
+    diagnostics: some diagnostics.map(x => x.toUtf16Pos(ls).toDiagnostic),
+  )
   ls.notify("textDocument/publishDiagnostics", params)
   if diagnostics.len != 0:
     ls.filesWithDiags.incl path
@@ -1032,8 +1026,9 @@ proc checkNimsuggestProject(
     for file in ls.filesWithDiags:
       if not filesWithDiags.contains file:
         debug "Sending zero diags", path = file
-        let params =
-          PublishDiagnosticsParams %* {"uri": pathToUri(file), "diagnostics": @[]}
+        let params = PublishDiagnosticsParams(
+          uri: pathToUri(file), diagnostics: some newSeq[Diagnostic]()
+        )
         ls.notify("textDocument/publishDiagnostics", params)
     ls.filesWithDiags = filesWithDiags
 
@@ -1138,8 +1133,9 @@ proc checkProject*(
     for file in ls.filesWithDiags:
       if not filesWithDiags.contains file:
         debug "Sending zero diags", path = file
-        let params =
-          PublishDiagnosticsParams %* {"uri": pathToUri(file), "diagnostics": @[]}
+        let params = PublishDiagnosticsParams(
+          uri: pathToUri(file), diagnostics: some newSeq[Diagnostic]()
+        )
         ls.notify("textDocument/publishDiagnostics", params)
     ls.filesWithDiags = filesWithDiags
     return
@@ -1356,7 +1352,8 @@ proc maybeRequestConfigurationFromClient*(
   if ls.supportsConfigurationRequest:
     debug "Requesting configuration from the client"
     try:
-      let configurationParams = ConfigurationParams %* {"items": [{"section": "nim"}]}
+      let configurationParams =
+        ConfigurationParams(items: @[ConfigurationItem(section: some "nim")])
       let configuration = await ls.call("workspace/configuration", configurationParams)
       debug "Received the following configuration", configuration = $configuration
       #the first configuration is not a change, so there is nothing to handle

@@ -106,13 +106,12 @@ proc initialize*(
 
 proc toCompletionItem(suggest: Suggest): CompletionItem =
   with suggest:
-    return
-      CompletionItem %* {
-        "label": qualifiedPath[^1].strip(chars = {'`'}),
-        "kind": nimSymToLSPKind(suggest).int,
-        "documentation": doc,
-        "detail": nimSymDetails(suggest),
-      }
+    CompletionItem(
+      label: qualifiedPath[^1].strip(chars = {'`'}),
+      kind: some nimSymToLSPKind(suggest).int,
+      documentation: some %doc,
+      detail: some nimSymDetails(suggest),
+    )
 
 proc completion*(
     ls: LanguageServer, params: CompletionParams
@@ -147,8 +146,7 @@ proc completion*(
       result = unique.values.toSeq
 
 proc toLocation*(suggest: Suggest): Location =
-  return
-    Location %* {"uri": pathToUri(suggest.filePath), "range": toLabelRange(suggest)}
+  return Location(uri: pathToUri(suggest.filePath), `range`: toLabelRange(suggest))
 
 proc definition*(
     ls: LanguageServer, params: TextDocumentPositionParams
@@ -365,12 +363,11 @@ proc typeDefinition*(
 
 proc toSymbolInformation*(suggest: Suggest): SymbolInformation =
   with suggest:
-    return
-      SymbolInformation %* {
-        "location": toLocation(suggest),
-        "kind": nimSymToLSPSymbolKind(suggest.symkind).int,
-        "name": suggest.name,
-      }
+    SymbolInformation(
+      location: toLocation(suggest),
+      kind: nimSymToLSPSymbolKind(suggest.symkind).int,
+      name: suggest.name,
+    )
 
 proc documentSymbols*(
     ls: LanguageServer, params: DocumentSymbolParams
@@ -818,12 +815,9 @@ proc toSignatureInformation(suggest: Suggest): SignatureInformation =
   var label = name
   if detail.len > 1:
     label = &"{fnKind} {name}({strParams})"
-  return
-    SignatureInformation %* {
-      "label": label,
-      "documentation": suggest.doc,
-      "parameters": newSeq[ParameterInformation](), #notice params is not used
-    }
+  SignatureInformation(
+    label: label, parameters: newSeq[ParameterInformation]() #notice params is not used
+  )
 
 proc signatureHelp*(
     ls: LanguageServer, params: SignatureHelpParams
@@ -952,7 +946,7 @@ proc workspaceSymbol*(
     return symbols.map(x => x.toUtf16Pos(ls).toSymbolInformation)
 
 proc toDocumentHighlight(suggest: Suggest): DocumentHighlight =
-  return DocumentHighlight %* {"range": toLabelRange(suggest)}
+  DocumentHighlight(`range`: toLabelRange(suggest))
 
 proc documentHighlight*(
     ls: LanguageServer, params: TextDocumentPositionParams
