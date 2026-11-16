@@ -29,3 +29,5 @@ tests/projects/**/nimbledeps/*
 !tests/projects/localdeps/sub/nimble.paths
 !tests/projects/mono/nimble.paths
 !tests/projects/mcpproject/nimble.paths
+tests/projects/localdeps/nimbledeps/pkgs2/*
+!tests/projects/localdeps/nimbledeps/pkgs2/dep-0.1.0-*/

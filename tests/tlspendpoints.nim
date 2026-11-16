@@ -24,7 +24,7 @@ suite "LSP endpoints":
   waitFor client.connect("localhost", cmdParams.port)
 
   let initParams =
-    LspInitializeParams %* {
+    %*{
       "processId": %getCurrentProcessId(),
       "rootUri": fixtureUri("projects/hw/"),
       "capabilities":
@@ -67,7 +67,7 @@ suite "LSP endpoints":
     check locations.len >= 1 and locations[0].range.start.line == 0
 
   test "textDocument/documentSymbol lists the symbols of the file":
-    let params = DocumentSymbolParams %* {"textDocument": {"uri": helloWorldUri}}
+    let params = %*{"textDocument": {"uri": helloWorldUri}}
     let symbols = to(
       client.callTimeout("textDocument/documentSymbol", %params), seq[SymbolInformation]
     )
@@ -89,7 +89,7 @@ suite "LSP endpoints":
 
   test "textDocument/signatureHelp answers inside a call":
     let params =
-      SignatureHelpParams %* {
+      %*{
         "textDocument": {"uri": helloWorldUri},
         "position": {"line": 1, "character": 11},
         "context": {"triggerKind": 1, "isRetrigger": false},
@@ -99,7 +99,7 @@ suite "LSP endpoints":
 
   test "textDocument/inlayHint answers for a range":
     let params =
-      InlayHintParams %* {
+      %*{
         "textDocument": {"uri": helloWorldUri},
         "range":
           {"start": {"line": 0, "character": 0}, "end": {"line": 10, "character": 0}},
@@ -111,7 +111,7 @@ suite "LSP endpoints":
 
   test "textDocument/codeAction answers for a range":
     let params =
-      CodeActionParams %* {
+      %*{
         "textDocument": {"uri": helloWorldUri},
         "range":
           {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 1}},
@@ -123,7 +123,7 @@ suite "LSP endpoints":
       check action.title.len > 0
 
   test "workspace/symbol answers a query":
-    let params = WorkspaceSymbolParams %* {"query": "bbb"}
+    let params = %*{"query": "bbb"}
     let symbols =
       to(client.callTimeout("workspace/symbol", %params), seq[SymbolInformation])
     for symbol in symbols:
@@ -165,7 +165,7 @@ suite "LSP endpoints":
 
   test "textDocument/willSaveWaitUntil answers with edits":
     let params =
-      WillSaveTextDocumentParams %* {
+      %*{
         "textDocument": {"uri": helloWorldUri}, "reason": 1
       }
     let edits =
@@ -175,8 +175,7 @@ suite "LSP endpoints":
 
   test "workspace/executeCommand runs a project check":
     let params =
-      ExecuteCommandParams %*
-      {"command": CHECK_PROJECT_COMMAND, "arguments": [%uriToPath(helloWorldUri)]}
+      %*{"command": CHECK_PROJECT_COMMAND, "arguments": [%uriToPath(helloWorldUri)]}
     discard client.callTimeout("workspace/executeCommand", %params)
     let status =
       to(client.callTimeout("extension/status", newJObject()), NimLangServerStatus)
@@ -184,15 +183,14 @@ suite "LSP endpoints":
 
   test "workspace/executeCommand recompiles a project it doesn't know":
     let params =
-      ExecuteCommandParams %*
-      {"command": RECOMPILE_COMMAND, "arguments": [%"/tmp/not-a-project.nim"]}
+      %*{"command": RECOMPILE_COMMAND, "arguments": [%"/tmp/not-a-project.nim"]}
     discard client.callTimeout("workspace/executeCommand", %params)
     let status =
       to(client.callTimeout("extension/status", newJObject()), NimLangServerStatus)
     check status.version == LSPVersion
 
   test "workspace/executeCommand without arguments is answered with an error":
-    let params = ExecuteCommandParams %* {"command": RECOMPILE_COMMAND, "arguments": []}
+    let params = %*{"command": RECOMPILE_COMMAND, "arguments": []}
     var raised = false
     try:
       discard client.callTimeout("workspace/executeCommand", %params)
@@ -281,8 +279,7 @@ suite "LSP endpoints":
 
   test "extension/macroExpand expands a macro application":
     let params =
-      ExpandTextDocumentPositionParams %*
-      {"textDocument": {"uri": helloWorldUri}, "position": {"line": 21, "character": 0}}
+      %*{"textDocument": {"uri": helloWorldUri}, "position": {"line": 21, "character": 0}}
     let expanded =
       to(client.callTimeout("extension/macroExpand", %params), ExpandResult)
     check expanded.content.contains("helloProc")
@@ -389,7 +386,7 @@ suite "LSP endpoints":
       )
 
       let params =
-        DocumentFormattingParams %* {
+        %*{
           "textDocument": {"uri": plainUri},
           "options": {"tabSize": 2, "insertSpaces": true},
         }
@@ -413,7 +410,7 @@ suite "LSP endpoints":
     check findExe("nph") == ""
 
     let params =
-      DocumentFormattingParams %* {
+      %*{
         "textDocument": {"uri": helloWorldUri},
         "options": {"tabSize": 2, "insertSpaces": true},
       }
@@ -436,7 +433,7 @@ suite "LSP endpoints":
     check locations.len >= 1 and locations[0].range.start.line == 0
 
   test "documentSymbol reports a non ascii symbol at a UTF-16 offset":
-    let params = DocumentSymbolParams %* {"textDocument": {"uri": helloWorldUri}}
+    let params = %*{"textDocument": {"uri": helloWorldUri}}
     let symbols = to(
       client.callTimeout("textDocument/documentSymbol", %params), seq[SymbolInformation]
     )
@@ -483,7 +480,7 @@ suite "LSP endpoints":
       readFile(ls.pathStorageLocation(helloWorldFile.fixturePath).string).contains("addedByDidChange")
     )
 
-    let params = DocumentSymbolParams %* {"textDocument": {"uri": helloWorldUri}}
+    let params = %*{"textDocument": {"uri": helloWorldUri}}
     let symbols = to(
       client.callTimeout("textDocument/documentSymbol", %params), seq[SymbolInformation]
     )
@@ -538,7 +535,7 @@ suite "LSP messages before initialize":
       check "-32002" in err.msg
 
     discard waitFor client.initialize(
-      LspInitializeParams %* {
+      %*{
         "processId": %getCurrentProcessId(),
         "rootUri": fixtureUri("projects/hw/"),
         "capabilities": {"window": {"workDoneProgress": false}},
@@ -562,7 +559,7 @@ suite "LSP socket transport":
   )
   waitFor clientA.connect("localhost", cmdParams.port)
   discard waitFor clientA.initialize(
-    LspInitializeParams %* {
+    %*{
       "processId": %getCurrentProcessId(),
       "rootUri": fixtureUri("projects/hw/"),
       "capabilities": {"window": {"workDoneProgress": false}},
@@ -611,7 +608,7 @@ suite "LSP messages leave unset members out":
   let initializeResult = client.callTimeout(
     "initialize",
     %(
-      LspInitializeParams %* {
+      %*{
         "processId": %getCurrentProcessId(),
         "rootUri": fixtureUri("projects/hw/"),
         "capabilities": {"window": {"workDoneProgress": false}},

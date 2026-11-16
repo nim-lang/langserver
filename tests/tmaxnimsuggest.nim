@@ -16,8 +16,8 @@ proc newClient(port: Port): LspSocketClient =
     "extension/statusUpdate", "textDocument/publishDiagnostics", "$/progress",
   )
 
-proc initParams(): LspInitializeParams =
-  LspInitializeParams %* {
+proc initParams(): JsonNode =
+  %*{
     "processId": %getCurrentProcessId(),
     "rootUri": fixtureUri("projects/multimodules"),
     "capabilities":
@@ -115,7 +115,7 @@ suite "Reusing a nimsuggest instance over the cap":
 
   test "a file over the cap is served by its own project when it is live":
     discard waitFor client.initialize(
-      LspInitializeParams %* {
+      %*{
         "processId": %getCurrentProcessId(),
         "rootUri": fixtureUri("projects"),
         "capabilities": {"workspace": {"configuration": true}},
@@ -152,7 +152,7 @@ suite "Last used nimsuggest over the cap":
 
   test "a file over the cap is served by the last used nimsuggest only if it knows it":
     discard waitFor client.initialize(
-      LspInitializeParams %* {
+      %*{
         "processId": %getCurrentProcessId(),
         "rootUri": fixtureUri("projects"),
         "capabilities": {"workspace": {"configuration": true}},

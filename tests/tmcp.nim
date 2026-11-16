@@ -16,12 +16,11 @@ proc initMcpServer(
 ): Future[(LanguageServer, McpInitializeResult)] {.async: (raises: [CatchableError]).} =
   let
     cmdParams = CommandLineParams(mode: some ServerMode.mcp)
-    initParams =
-      McpInitializeParams %* {
-        "protocolVersion": McpProtocolVersion,
-        "capabilities": {},
-        "clientInfo": {"name": "nimble test", "version": "1"},
-      }
+    initParams = McpInitializeParams(
+      protocolVersion: McpProtocolVersion,
+      capabilities: McpClientCapabilities(),
+      clientInfo: McpInitializeParams_clientInfo(name: "nimble test", version: "1"),
+    )
     ls = initLs(cmdParams, ensureStorageDir())
 
   ls.notifyAction = proc(name: string, params: JsonString) {.async: (raises: []).} =

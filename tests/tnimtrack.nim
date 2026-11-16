@@ -31,7 +31,7 @@ suite "Nim track with nim >= 2.4":
   ls.setWorkspaceConfiguration(% @[conf])
 
   let initParams =
-    LspInitializeParams %* {
+    %*{
       "processId": %getCurrentProcessId(),
       "rootUri": fixtureUri("projects/trackproject/"),
       "capabilities": {"window": {"workDoneProgress": false}},
@@ -71,7 +71,7 @@ suite "Nim track with nim >= 2.4":
       fmt"Nimsuggest initialized for {trackAbsFile}"
     )
     let referenceParams =
-      ReferenceParams %* {
+      %*{
         "context": {"includeDeclaration": false},
         "position": {"line": 4, "character": 6},
         "textDocument": {"uri": trackUri},
@@ -96,7 +96,7 @@ suite "Nim track unavailable with nim < 2.4":
   ls.setWorkspaceConfiguration(% @[conf])
 
   let initParams =
-    LspInitializeParams %* {
+    %*{
       "processId": %getCurrentProcessId(),
       "rootUri": fixtureUri("projects/hw/"),
       "capabilities": {"window": {"workDoneProgress": false}},
@@ -126,7 +126,7 @@ suite "Nim track unavailable with nim < 2.4":
 
   test "References returns empty":
     let referenceParams =
-      ReferenceParams %* {
+      %*{
         "context": {"includeDeclaration": false},
         "position": {"line": 1, "character": 6},
         "textDocument": {"uri": hwUri},

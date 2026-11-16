@@ -28,7 +28,7 @@ suite "nimble setup":
     let entryPoint = testProjectDir / "src" / "testproject.nim"
     createNimbleProject(testProjectDir.string)
     let initParams =
-      LspInitializeParams %* {
+      %*{
         "processId": %getCurrentProcessId(),
         "rootUri": fixtureUri("projects/testproject"),
         "capabilities":
@@ -38,7 +38,7 @@ suite "nimble setup":
     ls.setWorkspaceConfiguration(% @[NlsConfig()])
 
     let completionParams =
-      CompletionParams %* {
+      %*{
         "position": {"line": 7, "character": 0},
         "textDocument": {"uri": pathToUri(entryPoint)},
       }
@@ -103,7 +103,7 @@ suite "Project Mapping":
     let rootDir = getTempDir().Path / "nimlangserver-project-mapping"
     createDir(rootDir.string)
     let initParams =
-      LspInitializeParams %* {
+      %*{
         "processId": %getCurrentProcessId(),
         "rootUri": pathToUri(rootDir),
         "capabilities":
@@ -139,7 +139,7 @@ suite "Nimble packages":
   )
   let projectsDir = absolutePath("tests" / "projects").Path
   discard waitFor client.initialize(
-    LspInitializeParams %* {
+    %*{
       "processId": %getCurrentProcessId(),
       "rootUri": fixtureUri("projects"),
       "capabilities": {"workspace": {"configuration": true}},
@@ -250,7 +250,7 @@ suite "A project subfolder as the workspace":
   let mono = projectsDir / "mono"
   let localDeps = projectsDir / "localdeps"
   discard waitFor client.initialize(
-    LspInitializeParams %* {
+    %*{
       "processId": %getCurrentProcessId(),
       "rootUri": pathToUri(mono / "app"),
       "capabilities": {"workspace": {"configuration": true}},
@@ -302,7 +302,7 @@ suite "A sub package as the workspace":
   let projectsDir = absolutePath("tests" / "projects").Path
   let depDir = projectsDir / "vendored" / "vendor" / "dep"
   discard waitFor client.initialize(
-    LspInitializeParams %* {
+    %*{
       "processId": %getCurrentProcessId(),
       "rootUri": pathToUri(depDir),
       "capabilities": {"workspace": {"configuration": true}},
@@ -334,7 +334,7 @@ suite "Projects with local dependencies":
     localDeps / "nimbledeps" / "pkgs2" /
     "dep-0.1.0-0000000000000000000000000000000000000000"
   discard waitFor client.initialize(
-    LspInitializeParams %* {
+    %*{
       "processId": %getCurrentProcessId(),
       "rootUri": pathToUri(localDeps),
       "capabilities": {"workspace": {"configuration": true}},
@@ -428,7 +428,7 @@ suite "Nimble package changes":
       "extension/statusUpdate", "textDocument/publishDiagnostics", "$/progress",
     )
     discard waitFor client.initialize(
-      LspInitializeParams %* {
+      %*{
         "processId": %getCurrentProcessId(),
         "rootUri": pathToUri(root),
         "capabilities": {"workspace": {"configuration": true}},

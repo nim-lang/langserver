@@ -21,7 +21,7 @@ proc startServer(): (LanguageServer, LspSocketClient) =
     "extension/statusUpdate", "textDocument/publishDiagnostics", "$/progress",
   )
   discard waitFor client.initialize(
-    LspInitializeParams %* {
+    %*{
       "processId": %getCurrentProcessId(),
       "rootUri": fixtureUri("projects/multimodules"),
       "capabilities":

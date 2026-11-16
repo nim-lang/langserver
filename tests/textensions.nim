@@ -23,7 +23,7 @@ suite "Nimlangserver extensions":
 
   test "calling extension/suggest with restart in the project uri should restart nimsuggest":
     let initParams =
-      LspInitializeParams %* {
+      %*{
         "processId": %getCurrentProcessId(),
         "rootUri": fixtureUri("projects/hw/"),
         "capabilities":
@@ -56,7 +56,7 @@ suite "Nimlangserver extensions":
 
   test "calling extension/tasks should return all existing tasks":
     let initParams =
-      LspInitializeParams %* {
+      %*{
         "processId": %getCurrentProcessId(),
         "rootUri": fixtureUri("projects/tasks/"),
         "capabilities":
@@ -95,7 +95,7 @@ suite "Nimlangserver extensions":
       discard execNimble("setup")
 
     let initParams =
-      LspInitializeParams %* {
+      %*{
         "processId": %getCurrentProcessId(),
         "rootUri": fixtureUri("projects/testrunner/"),
         "capabilities":
@@ -120,7 +120,7 @@ suite "Nimlangserver extensions":
 
   test "calling extension/runTests should run the tests and return the results":
     let initParams =
-      LspInitializeParams %* {
+      %*{
         "processId": %getCurrentProcessId(),
         "rootUri": fixtureUri("projects/testrunner/"),
         "capabilities":
@@ -146,7 +146,7 @@ suite "Nimlangserver extensions":
 
   test "calling extension/runTest with a suite name should run the tests in the suite":
     let initParams =
-      LspInitializeParams %* {
+      %*{
         "processId": %getCurrentProcessId(),
         "rootUri": fixtureUri("projects/testrunner/"),
         "capabilities":
@@ -170,7 +170,7 @@ suite "Nimlangserver extensions":
 
   test "calling extension/runTest with a test name should run the tests in the suite":
     let initParams =
-      LspInitializeParams %* {
+      %*{
         "processId": %getCurrentProcessId(),
         "rootUri": fixtureUri("projects/testrunner/"),
         "capabilities":
@@ -196,7 +196,7 @@ suite "Nimlangserver extensions":
 
     test "calling extension/runTest with multiple test names should run the tests in the suite":
       let initParams =
-        LspInitializeParams %* {
+        %*{
           "processId": %getCurrentProcessId(),
           "rootUri": fixtureUri("projects/testrunner/"),
           "capabilities":
@@ -220,7 +220,7 @@ suite "Nimlangserver extensions":
 
   test "calling extension/runTest with a failing test should return the failure":
     let initParams =
-      LspInitializeParams %* {
+      %*{
         "processId": %getCurrentProcessId(),
         "rootUri": fixtureUri("projects/testrunner/"),
         "capabilities":

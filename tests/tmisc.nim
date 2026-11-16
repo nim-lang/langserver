@@ -23,7 +23,7 @@ suite "Nimlangserver misc":
 
   test "after a period of inactivity, nimsuggest should be stopped":
     let initParams =
-      LspInitializeParams %* {
+      %*{
         "processId": %getCurrentProcessId(),
         "rootUri": fixtureUri("projects/hw/"),
         "capabilities":
@@ -67,7 +67,7 @@ suite "A nimsuggest that fails":
     helloWorldFile = "projects/hw/hw.nim"
     hwAbsFile = helloWorldFile.fixturePath
   discard waitFor client.initialize(
-    LspInitializeParams %* {
+    %*{
       "processId": %getCurrentProcessId(),
       "rootUri": fixtureUri("projects/hw/"),
       "capabilities":
@@ -122,7 +122,7 @@ suite "A nimsuggest that fails to start":
     # it runs, but it does not answer like a nimsuggest
     notNimsuggest = NlsConfig(nimsuggestPath: some findExe("nim"))
   discard waitFor client.initialize(
-    LspInitializeParams %* {
+    %*{
       "processId": %getCurrentProcessId(),
       "rootUri": fixtureUri("projects/hw/"),
       "capabilities":
@@ -173,7 +173,7 @@ suite "A nimsuggest whose startup does not finish":
   )
   let hwAbsFile = "projects/hw/hw.nim".fixturePath
   discard waitFor client.initialize(
-    LspInitializeParams %* {
+    %*{
       "processId": %getCurrentProcessId(),
       "rootUri": fixtureUri("projects/hw/"),
       "capabilities":
@@ -247,7 +247,7 @@ suite "Nimlangserver request cancellation":
     # running: the cancellation can only be acted on if the in-flight request
     # is not holding up the connection.
     let initParams =
-      LspInitializeParams %* {
+      %*{
         "processId": %getCurrentProcessId(),
         "rootUri": fixtureUri("projects/hw/"),
         "capabilities": {"window": {"workDoneProgress": true}},
@@ -303,7 +303,7 @@ suite "Nimlangserver didOpen visibility":
 
   test "didOpen makes the file visible before it yields":
     let initParams =
-      LspInitializeParams %* {
+      %*{
         "processId": %getCurrentProcessId(),
         "rootUri": fixtureUri("projects/hw/"),
         "capabilities": {"window": {"workDoneProgress": true}},
@@ -339,7 +339,7 @@ suite "Nimlangserver didOpen ordering":
     # that, `tryGetNimsuggest` does not know the uri and the request is answered
     # with an empty result.
     let initParams =
-      LspInitializeParams %* {
+      %*{
         "processId": %getCurrentProcessId(),
         "rootUri": fixtureUri("projects/hw/"),
         "capabilities": {"window": {"workDoneProgress": true}},
@@ -383,7 +383,7 @@ suite "Nimlangserver request cancelled during startup":
     # them along with it, so `didOpen` failed and every later request for the
     # file was answered with "Request cancelled".
     let initParams =
-      LspInitializeParams %* {
+      %*{
         "processId": %getCurrentProcessId(),
         "rootUri": fixtureUri("projects/hw/"),
         "capabilities": {"window": {"workDoneProgress": true}},
@@ -435,7 +435,7 @@ suite "Nimlangserver idle nimsuggest cleanup":
     # skipping project.stop()/projectFiles.del so the project was re-selected
     # for removal on every tick.
     let initParams =
-      LspInitializeParams %* {
+      %*{
         "processId": %getCurrentProcessId(),
         "rootUri": fixtureUri("projects/hw/"),
         "capabilities":
@@ -575,7 +575,7 @@ suite "Nimlangserver nimsuggest creation":
   )
 
   let initParams =
-    LspInitializeParams %* {
+    %*{
       "processId": %getCurrentProcessId(),
       "rootUri": fixtureUri("projects/hw/"),
       "capabilities": {
@@ -696,7 +696,7 @@ suite "Nimlangserver nimsuggest slow commands":
   )
 
   let initParams =
-    LspInitializeParams %* {
+    %*{
       "processId": %getCurrentProcessId(),
       "rootUri": fixtureUri("projects/hw/"),
       "capabilities": {
@@ -736,7 +736,7 @@ suite "Nimlangserver project lookup replaced by a configuration change":
     "extension/statusUpdate", "textDocument/publishDiagnostics", "$/progress",
   )
   discard waitFor client.initialize(
-    LspInitializeParams %* {
+    %*{
       "processId": %getCurrentProcessId(),
       "rootUri": fixtureUri("projects/hw/"),
       "capabilities": {"window": {"workDoneProgress": true}},
@@ -820,7 +820,7 @@ suite "External file edits":
   writeFile(depPath.string, "proc x*() = discard\n")
   writeFile(path.string, "import dep\nproc a*() = discard\n")
   discard waitFor client.initialize(
-    LspInitializeParams %* {
+    %*{
       "processId": %getCurrentProcessId(),
       "rootUri": pathToUri(dir),
       "capabilities": {

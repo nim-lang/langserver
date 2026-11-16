@@ -23,7 +23,7 @@ suite "Async safety":
   )
 
   let initParams =
-    LspInitializeParams %* {
+    %*{
       "processId": %getCurrentProcessId(),
       "rootUri": fixtureUri("projects/hw/"),
       "capabilities":
@@ -94,7 +94,7 @@ suite "Replacing a running nimsuggest":
     "extension/statusUpdate", "textDocument/publishDiagnostics", "$/progress",
   )
   discard waitFor client.initialize(
-    LspInitializeParams %* {
+    %*{
       "processId": %getCurrentProcessId(),
       "rootUri": fixtureUri("projects/hw/"),
       "capabilities":
@@ -139,7 +139,7 @@ suite "Documents closed while a handler is suspended":
     "extension/statusUpdate", "textDocument/publishDiagnostics", "$/progress",
   )
   discard waitFor client.initialize(
-    LspInitializeParams %* {
+    %*{
       "processId": %getCurrentProcessId(),
       "rootUri": fixtureUri("projects/hw/"),
       "capabilities":
@@ -240,7 +240,7 @@ suite "Shutting down twice":
     "extension/statusUpdate", "textDocument/publishDiagnostics", "$/progress",
   )
   discard waitFor client.initialize(
-    LspInitializeParams %* {
+    %*{
       "processId": %getCurrentProcessId(),
       "rootUri": fixtureUri("projects/hw/"),
       "capabilities":

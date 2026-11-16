@@ -41,7 +41,7 @@ suite "Several workspaces":
   # The deprecated rootUri points somewhere else, so only the folders can
   # explain what the server ends up with.
   let initResult = waitFor client.initialize(
-    LspInitializeParams %* {
+    %*{
       "processId": %getCurrentProcessId(),
       "rootUri": fixtureUri("projects/vendored"),
       "workspaceFolders": [
@@ -140,7 +140,7 @@ suite "Invalid workspace":
     var raised = false
     try:
       discard waitFor client.initialize(
-        LspInitializeParams %* {
+        %*{
           "processId": %getCurrentProcessId(),
           "rootUri": "untitled:Foo",
           "capabilities": {},
@@ -162,7 +162,7 @@ suite "No workspace":
     waitFor ls.shutdownNimsuggest()
 
   discard waitFor client.initialize(
-    LspInitializeParams %* {
+    %*{
       "processId": %getCurrentProcessId(),
       "rootUri": nil,
       "workspaceFolders": nil,
@@ -199,7 +199,7 @@ suite "Workspaces without a nimble file":
     waitFor ls.shutdownNimsuggest()
 
   discard waitFor client.initialize(
-    LspInitializeParams %* {
+    %*{
       "processId": %getCurrentProcessId(),
       "workspaceFolders": [
         {"uri": pathToUri(mono / "app"), "name": "app"},
