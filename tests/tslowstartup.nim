@@ -46,7 +46,7 @@ proc startSlowRootServer(configuration: Rpc): (LanguageServer, LspSocketClient) 
 
   waitFor client.connect("localhost", cmdParams.port)
   discard waitFor client.initialize(
-    LspInitializeParams %* {
+    %*{
       "processId": %getCurrentProcessId(),
       "rootUri": fixtureUri("projects/slowroot/"),
       "capabilities":
