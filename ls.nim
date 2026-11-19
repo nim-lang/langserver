@@ -489,6 +489,10 @@ proc loadNimblePackage(
   if exitCode != 0:
     warn "nimble dump failed", nimbleFile = nimbleFile, exitCode = exitCode
     package.dumpFailed = true
+    await ls.showMessage(
+      fmt"nimble dump failed for {nimbleFile} (exit code {exitCode})",
+      MessageType.Warning,
+    )
   package.sourceDir = packageDir / srcDir.Path
   package.entryPoints = entryPoints.mapIt(packageDir / it.Path).filterIt(it.fileExists)
   let projectFile = package.sourceDir / Path(name & ".nim")
