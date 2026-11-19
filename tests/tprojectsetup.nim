@@ -171,6 +171,30 @@ suite "Nimble packages":
     discard waitFor ls.getProjectFile(projectsDir / "vendored" / "vendored.nim")
     check ls.nimblePackageLoads.getOrDefault(nimbleFile) == load
 
+  test "without its main file every file of a package shares its first entry point":
+    # nomainfile has no nomainfile.nim, only the entry points tool/cli.nim and
+    # app/main.nim; they are not named after their folders, so guessing from the
+    # folder finds nothing. They are declared (and dumped) as "tool/cli.nim,
+    # app/main.nim", so the first one is by path.
+    let dir = projectsDir / "nomainfile"
+    let main = dir / "app" / "main.nim"
+    for file in [
+      dir / "app" / "helper.nim",
+      dir / "tool" / "util.nim",
+      dir / "tool" / "cli.nim",
+      dir / "other" / "loose.nim",
+    ]:
+      check (waitFor ls.getProjectFile(file)) == main
+    check ls.nimblePackages[dir / "nomainfile.nimble"].projectFile == main
+
+  test "without its main file a package prefers an entry point in its source dir":
+    # srcentries has no src/srcentries.nim; examples/demo.nim sorts before
+    # src/zcli.nim, but only the latter is inside srcDir
+    let dir = projectsDir / "srcentries"
+    let main = dir / "src" / "zcli.nim"
+    check (waitFor ls.getProjectFile(dir / "examples" / "demo.nim")) == main
+    check (waitFor ls.getProjectFile(main)) == main
+
   test "a failed nimble dump is retried once the nimble file changes":
     let
       packageDir = projectsDir / "brokennimble"

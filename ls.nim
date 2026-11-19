@@ -3,7 +3,7 @@
 import
   std/[
     strformat, os, sugar, hashes, tables, strutils, sets, json, sequtils, setutils,
-    times, files,
+    times, files, algorithm,
   ],
   with,
   chronos,
@@ -500,6 +500,9 @@ proc loadNimblePackage(
     package.projectFile = projectFile
     if projectFile notin package.entryPoints:
       package.entryPoints.add projectFile
+  elif package.entryPoints.len > 0:
+    package.projectFile =
+      package.entryPoints.sortedByIt((not it.isRelTo(package.sourceDir), it.string))[0]
   ls.nimblePackages[nimbleFile] = package
 
 proc isNimbleDumpOutdated(
