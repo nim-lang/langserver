@@ -186,6 +186,14 @@ suite "Nimble packages":
       check (waitFor ls.getProjectFile(file)) == main
     check ls.nimblePackages[dir / "binsonly.nimble"].projectFile == main
 
+  test "without its main file a package prefers an entry point in its source dir":
+    # srcentries has no src/srcentries.nim; examples/demo.nim sorts before
+    # src/zcli.nim, but only the latter is inside srcDir
+    let dir = projectsDir / "srcentries"
+    let main = dir / "src" / "zcli.nim"
+    check (waitFor ls.getProjectFile(dir / "examples" / "demo.nim")) == main
+    check (waitFor ls.getProjectFile(main)) == main
+
   test "a failed nimble dump is retried once the nimble file changes":
     let
       packageDir = projectsDir / "brokennimble"

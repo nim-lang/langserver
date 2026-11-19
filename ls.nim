@@ -501,7 +501,8 @@ proc loadNimblePackage(
     if projectFile notin package.entryPoints:
       package.entryPoints.add projectFile
   elif package.entryPoints.len > 0:
-    package.projectFile = package.entryPoints.sortedByIt(it.string)[0]
+    package.projectFile =
+      package.entryPoints.sortedByIt(it.string)[0] # TEMP
   ls.nimblePackages[nimbleFile] = package
 
 proc isNimbleDumpOutdated(
