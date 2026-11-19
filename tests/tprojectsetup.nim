@@ -1,5 +1,5 @@
 import
-  std/[options, json, os, sequtils, sugar, strformat, times],
+  std/[options, json, os, sequtils, sugar, strformat, strutils, times],
   chronos,
   chronos/asyncproc,
   json_rpc/[rpcclient],
@@ -182,6 +182,11 @@ suite "Nimble packages":
 
     discard waitFor ls.getProjectFile(mainFile)
     check ls.nimblePackages[nimbleFile].dumpFailed
+    check waitFor client.waitForNotification(
+      "window/showMessage",
+      (json: JsonNode) =>
+        json["message"].to(string).startsWith(&"nimble dump failed for {nimbleFile}"),
+    )
     check (waitFor ls.getWorkingDir(mainFile)) == packageDir
 
     let failedLoad = ls.nimblePackageLoads[nimbleFile]
