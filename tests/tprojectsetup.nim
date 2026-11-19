@@ -171,6 +171,21 @@ suite "Nimble packages":
     discard waitFor ls.getProjectFile(projectsDir / "vendored" / "vendored.nim")
     check ls.nimblePackageLoads.getOrDefault(nimbleFile) == load
 
+  test "without its main file every file of a package shares its first entry point":
+    # binsonly has no binsonly.nim, only the bins app/main and tool/cli; they are
+    # not named after their folders, so guessing from the folder finds nothing.
+    # nimble dumps them as "tool/cli, app/main", so the first one is by path.
+    let dir = projectsDir / "binsonly"
+    let main = dir / "app" / "main.nim"
+    for file in [
+      dir / "app" / "helper.nim",
+      dir / "tool" / "util.nim",
+      dir / "tool" / "cli.nim",
+      dir / "other" / "loose.nim",
+    ]:
+      check (waitFor ls.getProjectFile(file)) == main
+    check ls.nimblePackages[dir / "binsonly.nimble"].projectFile == main
+
   test "a failed nimble dump is retried once the nimble file changes":
     let
       packageDir = projectsDir / "brokennimble"

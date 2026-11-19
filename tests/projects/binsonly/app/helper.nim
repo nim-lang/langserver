@@ -1,0 +1,1 @@
+proc greet*(): string = "hi"
