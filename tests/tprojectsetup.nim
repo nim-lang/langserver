@@ -172,10 +172,11 @@ suite "Nimble packages":
     check ls.nimblePackageLoads.getOrDefault(nimbleFile) == load
 
   test "without its main file every file of a package shares its first entry point":
-    # binsonly has no binsonly.nim, only the bins app/main and tool/cli; they are
-    # not named after their folders, so guessing from the folder finds nothing.
-    # nimble dumps them as "tool/cli, app/main", so the first one is by path.
-    let dir = projectsDir / "binsonly"
+    # nomainfile has no nomainfile.nim, only the entry points tool/cli.nim and
+    # app/main.nim; they are not named after their folders, so guessing from the
+    # folder finds nothing. They are declared (and dumped) as "tool/cli.nim,
+    # app/main.nim", so the first one is by path.
+    let dir = projectsDir / "nomainfile"
     let main = dir / "app" / "main.nim"
     for file in [
       dir / "app" / "helper.nim",
@@ -184,7 +185,7 @@ suite "Nimble packages":
       dir / "other" / "loose.nim",
     ]:
       check (waitFor ls.getProjectFile(file)) == main
-    check ls.nimblePackages[dir / "binsonly.nimble"].projectFile == main
+    check ls.nimblePackages[dir / "nomainfile.nimble"].projectFile == main
 
   test "without its main file a package prefers an entry point in its source dir":
     # srcentries has no src/srcentries.nim; examples/demo.nim sorts before
