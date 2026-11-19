@@ -1,5 +1,9 @@
 # ignore all executable files
 
+*
+!*/
+!*.*
+
 nimcache/
 
 *.log
