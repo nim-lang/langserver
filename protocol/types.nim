@@ -493,7 +493,8 @@ type
   CallHierarchyClientCapabilities* = ref object of RootObj
     dynamicRegistration*: Option[bool]
 
-  SemanticTokensClientCapabilities_requests* = ref object of RootObj
+  # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#clientSemanticTokensRequestOptions
+  ClientSemanticTokensRequestOptions* = ref object of RootObj
     range*: OptionalNode # boolean | { }
     full*: OptionalNode # boolean | { delta?: boolean; }
 
@@ -502,7 +503,7 @@ type
 
   SemanticTokensClientCapabilities* = ref object of RootObj
     dynamicRegistration*: Option[bool]
-    requests*: SemanticTokensClientCapabilities_requests
+    requests*: ClientSemanticTokensRequestOptions
     tokenTypes*: seq[string]
     tokenModifiers*: seq[string]
     formats*: seq[TokenFormat_str]
@@ -1375,7 +1376,7 @@ LspJson.useDefaultReaderFor(FoldingRangeClientCapabilities)
 LspJson.useDefaultReaderFor(SelectionRangeClientCapabilities)
 LspJson.useDefaultReaderFor(LinkedEditingRangeClientCapabilities)
 LspJson.useDefaultReaderFor(CallHierarchyClientCapabilities)
-LspJson.useDefaultReaderFor(SemanticTokensClientCapabilities_requests)
+LspJson.useDefaultReaderFor(ClientSemanticTokensRequestOptions)
 LspJson.useDefaultReaderFor(SemanticTokensClientCapabilities)
 LspJson.useDefaultReaderFor(MonikerClientCapabilities)
 LspJson.useDefaultReaderFor(TypeHierarchyClientCapabilities)
