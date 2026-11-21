@@ -1,0 +1,119 @@
+import
+  std/[options, strutils],
+  unittest2,
+  json_serialization,
+  json_serialization/std/options as jsoptions,
+  ../protocol/oneof
+
+createJsonFlavor TestJson,
+  automaticObjectSerialization = false,
+  requireAllFields = true,
+  omitOptionalFields = true,
+  allowUnknownFields = true,
+  skipNullFields = true
+
+type
+  Options = ref object of RootObj
+    delta: Option[bool]
+
+  NumStrBoolKind = enum
+    nsbNum
+    nsbStr
+    nsbBool
+
+  NumStrBool = object
+    case kind: NumStrBoolKind
+    of nsbNum: num: int
+    of nsbStr: str: string
+    of nsbBool: boolean: bool
+
+  BoolOrKind = enum
+    boBool
+    boValue
+
+  BoolOr[T] = object
+    case kind: BoolOrKind
+    of boBool: boolean: bool
+    of boValue: value: T
+
+  Holder = object
+    first: NumStrBool
+    second: Option[BoolOr[Options]]
+
+  ObjectA = object
+    a: int
+
+  ObjectB = object
+    b: int
+
+  TwoObjectsKind = enum
+    toA
+    toB
+
+  TwoObjects = object
+    case kind: TwoObjectsKind
+    of toA: a: ObjectA
+    of toB: b: ObjectB
+
+TestJson.useDefaultSerializationFor(Options)
+TestJson.useDefaultSerializationFor(ObjectA)
+TestJson.useDefaultSerializationFor(ObjectB)
+TestJson.useOneOfSerializationFor(NumStrBool)
+
+proc readValue[T](
+    r: var JsonReader[TestJson], x: var BoolOr[T]
+) {.raises: [IOError, SerializationError].} =
+  readOneOf(r, x)
+
+proc writeValue[T](w: var JsonWriter[TestJson], x: BoolOr[T]) {.raises: [IOError].} =
+  writeOneOf(w, x)
+
+TestJson.useDefaultSerializationFor(Holder)
+
+suite "oneOf":
+  test "the member is picked by the kind of the JSON value":
+    let num = TestJson.decode("5", NumStrBool)
+    check num.kind == nsbNum and num.num == 5
+    let str = TestJson.decode("\"x\"", NumStrBool)
+    check str.kind == nsbStr and str.str == "x"
+    let boolean = TestJson.decode("true", NumStrBool)
+    check boolean.kind == nsbBool and boolean.boolean
+
+  test "the member that is set is written without a tag":
+    check TestJson.encode(NumStrBool(kind: nsbNum, num: 5)) == "5"
+    check TestJson.encode(NumStrBool(kind: nsbStr, str: "x")) == "\"x\""
+    check TestJson.encode(NumStrBool(kind: nsbBool, boolean: false)) == "false"
+
+  test "a union inside an object is written as its member, with no kind":
+    let holder = Holder(
+      first: NumStrBool(kind: nsbStr, str: "x"),
+      second: some BoolOr[Options](kind: boValue, value: Options(delta: some true)),
+    )
+    let json = TestJson.encode(holder)
+    check json == """{"first":"x","second":{"delta":true}}"""
+    check "kind" notin json
+
+  test "a JSON kind no member is read from is rejected":
+    expect SerializationError:
+      discard TestJson.decode("[1]", NumStrBool)
+    expect SerializationError:
+      discard TestJson.decode("{}", NumStrBool)
+
+  test "a generic union reads its object member, in any field order":
+    let holder =
+      TestJson.decode("""{"second": {"delta": true}, "first": 1}""", Holder)
+    check holder.first.num == 1
+    check holder.second.get.kind == boValue
+    check holder.second.get.value.delta == some true
+
+  test "a generic union reads its boolean member":
+    let holder = TestJson.decode("""{"first": "a", "second": false}""", Holder)
+    check holder.second.get.kind == boBool and not holder.second.get.boolean
+
+  test "two members read from the same JSON kind do not compile":
+    check not compiles(
+      block:
+        var r: JsonReader[TestJson]
+        var x: TwoObjects
+        readOneOf(r, x)
+    )

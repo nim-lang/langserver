@@ -15,20 +15,20 @@ suite "decoding cancel params":
 
 suite "diagnostic code":
   test "a number code is decoded as a number":
-    let code = LspJson.decode("5", NumOrStr)
-    check code.kind == nosNum and code.num == 5
+    let code = LspJson.decode("5", DiagnosticCode)
+    check code.kind == dgcNum and code.num == 5
 
   test "a string code is decoded as a string":
-    let code = LspJson.decode("\"UnusedImport\"", NumOrStr)
-    check code.kind == nosStr and code.str == "UnusedImport"
+    let code = LspJson.decode("\"UnusedImport\"", DiagnosticCode)
+    check code.kind == dgcStr and code.str == "UnusedImport"
 
   test "a code that is neither is rejected":
     expect SerializationError:
-      discard LspJson.decode("true", NumOrStr)
+      discard LspJson.decode("true", DiagnosticCode)
 
   test "a code is encoded as a number or a string":
-    check LspJson.encode(NumOrStr(kind: nosNum, num: 5)) == "5"
-    check LspJson.encode(NumOrStr(kind: nosStr, str: "UnusedImport")) == "\"UnusedImport\""
+    check LspJson.encode(DiagnosticCode(kind: dgcNum, num: 5)) == "5"
+    check LspJson.encode(DiagnosticCode(kind: dgcStr, str: "UnusedImport")) == "\"UnusedImport\""
 
 suite "decoding a uinteger":
   test "0 and 2^31 - 1 are accepted":
@@ -124,15 +124,15 @@ suite "semantic tokens request options":
     let options = LspJson.decode(
       """{"range": true, "full": {"delta": true}}""", ClientSemanticTokensRequestOptions
     )
-    check options.range.get.kind == boBool and options.range.get.boolean
-    check options.full.get.kind == boValue and options.full.get.value.delta == some true
+    check options.range.get.kind == cstrBool and options.range.get.boolean
+    check options.full.get.kind == cstfDelta and options.full.get.delta.delta == some true
 
   test "the empty object of range is accepted":
     let options = LspJson.decode(
       """{"range": {}, "full": false}""", ClientSemanticTokensRequestOptions
     )
-    check options.range.get.kind == boValue
-    check options.full.get.kind == boBool and not options.full.get.boolean
+    check options.range.get.kind == cstrEmpty
+    check options.full.get.kind == cstfBool and not options.full.get.boolean
 
   test "neither is required":
     let options = LspJson.decode("{}", ClientSemanticTokensRequestOptions)
@@ -143,8 +143,11 @@ suite "semantic tokens request options":
       discard LspJson.decode("""{"full": "yes"}""", ClientSemanticTokensRequestOptions)
 
   test "a boolean or an object is encoded as is":
-    check LspJson.encode(BoolOr[EmptyObject](kind: boBool, boolean: true)) == "true"
-    check LspJson.encode(BoolOr[EmptyObject](kind: boValue, value: EmptyObject())) ==
+    check LspJson.encode(ClientSemanticTokensRequestRange(kind: cstrBool, boolean: true)) ==
+      "true"
+    check LspJson.encode(
+      ClientSemanticTokensRequestRange(kind: cstrEmpty, empty: EmptyObject())
+    ) ==
       "{}"
 
 suite "client capabilities":
@@ -157,16 +160,18 @@ suite "client capabilities":
 suite "workspace folders server capabilities":
   test "change notifications can be a boolean":
     let capability = WorkspaceFoldersServerCapabilities(
-      changeNotifications: some BoolOr[string](kind: boBool, boolean: true)
+      changeNotifications:
+        some WorkspaceFoldersChangeNotifications(kind: wfcnBool, boolean: true)
     )
     check LspJson.encode(capability) == """{"changeNotifications":true}"""
 
   test "change notifications can be a registration id":
     let capability = WorkspaceFoldersServerCapabilities(
-      changeNotifications: some BoolOr[string](kind: boValue, value: "folders")
+      changeNotifications:
+        some WorkspaceFoldersChangeNotifications(kind: wfcnStr, str: "folders")
     )
     check LspJson.encode(capability) == """{"changeNotifications":"folders"}"""
 
   test "a string is read as a string":
-    let value = LspJson.decode("\"folders\"", BoolOr[string])
-    check value.kind == boValue and value.value == "folders"
+    let value = LspJson.decode("\"folders\"", WorkspaceFoldersChangeNotifications)
+    check value.kind == wfcnStr and value.str == "folders"

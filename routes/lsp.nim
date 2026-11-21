@@ -65,7 +65,8 @@ proc initialize*(
           workspaceFolders: some(
             WorkspaceFoldersServerCapabilities(
               supported: some(true),
-              changeNotifications: some BoolOr[string](kind: boBool, boolean: true),
+              changeNotifications:
+                some WorkspaceFoldersChangeNotifications(kind: wfcnBool, boolean: true),
             )
           )
         )

@@ -3,7 +3,8 @@ import
   chronicles,
   json_rpc/router,
   json_serialization,
-  json_serialization/std/[options as jsoptions, tables as jstables]
+  json_serialization/std/[options as jsoptions, tables as jstables],
+  ./oneof
 
 export json_serialization, jsoptions, jstables, paths, uri, RequestId, RequestIdKind
 
@@ -37,28 +38,6 @@ proc `%`*(x: uinteger): JsonNode =
   %x.int
 
 type
-  NumOrStrKind* = enum
-    nosNum
-    nosStr
-
-  NumOrStr* = object
-    case kind*: NumOrStrKind
-    of nosNum:
-      num*: int
-    of nosStr:
-      str*: string
-
-  BoolOrKind* = enum
-    boBool
-    boValue
-
-  BoolOr*[T] = object
-    case kind*: BoolOrKind
-    of boBool:
-      boolean*: bool
-    of boValue:
-      value*: T
-
   OptionalSeq*[T] = Option[seq[T]]
   OptionalNode* = Option[JsonNode]
   LspAny* = JsonString
@@ -78,11 +57,22 @@ type
     uri*: DocumentUri
     `range`*: Range
 
+  DiagnosticCodeKind* = enum
+    dgcNum
+    dgcStr
+
+  DiagnosticCode* = object
+    case kind*: DiagnosticCodeKind
+    of dgcNum:
+      num*: int
+    of dgcStr:
+      str*: string
+
   # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#diagnostic
   Diagnostic* = ref object of RootObj
     `range`*: Range
     severity*: Option[int]
-    code*: Option[NumOrStr]
+    code*: Option[DiagnosticCode]
     source*: Option[string]
     message*: string
     relatedInformation*: OptionalSeq[DiagnosticRelatedInformation]
@@ -506,10 +496,32 @@ type
 
   EmptyObject* = ref object of RootObj
 
+  ClientSemanticTokensRequestRangeKind* = enum
+    cstrBool
+    cstrEmpty
+
+  ClientSemanticTokensRequestRange* = object
+    case kind*: ClientSemanticTokensRequestRangeKind
+    of cstrBool:
+      boolean*: bool
+    of cstrEmpty:
+      empty*: EmptyObject
+
+  ClientSemanticTokensRequestFullKind* = enum
+    cstfBool
+    cstfDelta
+
+  ClientSemanticTokensRequestFull* = object
+    case kind*: ClientSemanticTokensRequestFullKind
+    of cstfBool:
+      boolean*: bool
+    of cstfDelta:
+      delta*: ClientSemanticTokensRequestFullDelta
+
   # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#clientSemanticTokensRequestOptions
   ClientSemanticTokensRequestOptions* = ref object of RootObj
-    range*: Option[BoolOr[EmptyObject]]
-    full*: Option[BoolOr[ClientSemanticTokensRequestFullDelta]]
+    range*: Option[ClientSemanticTokensRequestRange]
+    full*: Option[ClientSemanticTokensRequestFull]
 
   # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#clientSemanticTokensRequestFullDelta
   ClientSemanticTokensRequestFullDelta* = ref object of RootObj
@@ -692,9 +704,20 @@ type
   StaticRegistrationOptions* = ref object of RootObj
     id*: Option[string]
 
+  WorkspaceFoldersChangeNotificationsKind* = enum
+    wfcnStr
+    wfcnBool
+
+  WorkspaceFoldersChangeNotifications* = object
+    case kind*: WorkspaceFoldersChangeNotificationsKind
+    of wfcnStr:
+      str*: string
+    of wfcnBool:
+      boolean*: bool
+
   WorkspaceFoldersServerCapabilities* = ref object of RootObj
     supported*: Option[bool]
-    changeNotifications*: Option[BoolOr[string]]
+    changeNotifications*: Option[WorkspaceFoldersChangeNotifications]
 
   # 'file' | 'folder'
   FileOperationPatternKind_str = string
@@ -1293,38 +1316,8 @@ proc readValue*(
     r.raiseUnexpectedValue("uinteger out of range: " & $n)
   x = uinteger(n)
 
-proc writeValue*(w: var JsonWriter[LspJson], x: NumOrStr) {.raises: [IOError].} =
-  case x.kind
-  of nosNum:
-    w.writeValue(x.num)
-  of nosStr:
-    w.writeValue(x.str)
-
-proc readValue*(
-    r: var JsonReader[LspJson], x: var NumOrStr
-) {.raises: [IOError, SerializationError].} =
-  case r.tokKind
-  of JsonValueKind.Number:
-    x = NumOrStr(kind: nosNum, num: r.readValue(int))
-  of JsonValueKind.String:
-    x = NumOrStr(kind: nosStr, str: r.readValue(string))
-  else:
-    r.raiseUnexpectedValue("expected an integer or a string")
-
-proc writeValue*[T](w: var JsonWriter[LspJson], x: BoolOr[T]) {.raises: [IOError].} =
-  case x.kind
-  of boBool:
-    w.writeValue(x.boolean)
-  of boValue:
-    w.writeValue(x.value)
-
-proc readValue*[T](
-    r: var JsonReader[LspJson], x: var BoolOr[T]
-) {.raises: [IOError, SerializationError].} =
-  if r.tokKind == JsonValueKind.Bool:
-    x = BoolOr[T](kind: boBool, boolean: r.readValue(bool))
-  else:
-    x = BoolOr[T](kind: boValue, value: r.readValue(T))
+LspJson.useOneOfSerializationFor(DiagnosticCode)
+LspJson.useOneOfSerializationFor(WorkspaceFoldersChangeNotifications)
 
 LspJson.useDefaultSerializationFor(Position)
 LspJson.useDefaultSerializationFor(Range)
@@ -1410,7 +1403,9 @@ LspJson.useDefaultReaderFor(SelectionRangeClientCapabilities)
 LspJson.useDefaultReaderFor(LinkedEditingRangeClientCapabilities)
 LspJson.useDefaultReaderFor(CallHierarchyClientCapabilities)
 LspJson.useDefaultSerializationFor(EmptyObject)
-LspJson.useDefaultReaderFor(ClientSemanticTokensRequestFullDelta)
+LspJson.useDefaultSerializationFor(ClientSemanticTokensRequestFullDelta)
+LspJson.useOneOfSerializationFor(ClientSemanticTokensRequestRange)
+LspJson.useOneOfSerializationFor(ClientSemanticTokensRequestFull)
 LspJson.useDefaultReaderFor(ClientSemanticTokensRequestOptions)
 LspJson.useDefaultReaderFor(SemanticTokensClientCapabilities)
 LspJson.useDefaultReaderFor(MonikerClientCapabilities)
