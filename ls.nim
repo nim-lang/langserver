@@ -709,16 +709,21 @@ proc progressSupported(ls: LanguageServer): bool =
     .get(ClientCapabilities_window()).workDoneProgress
     .get(false)
 
-proc progress*(ls: LanguageServer, token, kind: string, title = "") =
+proc progress*[T](ls: LanguageServer, token: string, value: T) =
   if ls.progressSupported:
-    ls.notify(
-      "$/progress",
-      ProgressParams(token: token, value: some %*{"kind": kind, "title": title}),
-    )
+    ls.notify("$/progress", ProgressParams[T](token: token, value: value))
+
+proc progressBegin*(ls: LanguageServer, token, title: string) =
+  ls.progress(token, WorkDoneProgressBegin(kind: "begin", title: title))
+
+proc progressEnd*(ls: LanguageServer, token: string) =
+  ls.progress(token, WorkDoneProgressEnd(kind: "end"))
 
 proc workDoneProgressCreate*(ls: LanguageServer, token: string) =
   if ls.progressSupported:
-    discard ls.call("window/workDoneProgress/create", ProgressParams(token: token))
+    discard ls.call(
+      "window/workDoneProgress/create", WorkDoneProgressCreateParams(token: token)
+    )
 
 proc cancelPendingFileChecks*(ls: LanguageServer, nimsuggest: Nimsuggest) =
   # stop all checks on file level if we are going to run checks on project
@@ -992,11 +997,11 @@ proc checkNimsuggestProject(
 
   let token = ls.createProgressToken()
   ls.workDoneProgressCreate(token)
-  ls.progress(token, "begin", fmt "Checking project {path}")
+  ls.progressBegin(token, fmt "Checking project {path}")
   nimsuggest.checkProjectInProgress = true
   defer:
     nimsuggest.checkProjectInProgress = false
-    ls.progress(token, "end")
+    ls.progressEnd(token)
 
   proc getFilepath(s: Suggest): Path =
     s.filePath
@@ -1110,9 +1115,9 @@ proc checkProject*(
 
     let token = ls.createProgressToken()
     ls.workDoneProgressCreate(token)
-    ls.progress(token, "begin", fmt "Checking project {path}")
+    ls.progressBegin(token, fmt "Checking project {path}")
     defer:
-      ls.progress(token, "end")
+      ls.progressEnd(token)
     let diagnostics = await nimCheck(path, nimPath.get)
     let filesWithDiags = diagnostics.map(r => r.file).toHashSet
 
@@ -1403,9 +1408,9 @@ proc checkFile*(
   let conf = await ls.workspaceConfigurationWait()
   let token = ls.createProgressToken()
   ls.workDoneProgressCreate(token)
-  ls.progress(token, "begin", fmt "Checking {path}")
+  ls.progressBegin(token, fmt "Checking {path}")
   defer:
-    ls.progress(token, "end")
+    ls.progressEnd(token)
 
   if conf.useNimCheck.get(USE_NIM_CHECK_BY_DEFAULT):
     let nimPath = await ls.getNimPath(conf, path)

@@ -793,9 +793,9 @@ proc executeCommand*(
     if project != nil and project.ns != nil:
       let token = ls.createProgressToken()
       ls.workDoneProgressCreate(token)
-      ls.progress(token, "begin", fmt "Compiling project {projectFile}")
+      ls.progressBegin(token, fmt "Compiling project {projectFile}")
       defer:
-        ls.progress(token, "end")
+        ls.progressEnd(token)
       discard await project.ns.recompile()
       await ls.checkProject(projectFile)
 

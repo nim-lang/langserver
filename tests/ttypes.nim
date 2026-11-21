@@ -91,3 +91,30 @@ suite "initialize params":
     )
     check params.initializationOptions.isNone
     check params.processId.isNone
+
+suite "work done progress":
+  test "a begin carries its kind and title":
+    let params = ProgressParams[WorkDoneProgressBegin](
+      token: "t",
+      value: WorkDoneProgressBegin(
+        kind: "begin", title: "Checking", percentage: some uinteger(5)
+      ),
+    )
+    check LspJson.encode(params) ==
+      """{"token":"t","value":{"kind":"begin","title":"Checking","percentage":5}}"""
+
+  test "a report leaves out what is not set":
+    let params = ProgressParams[WorkDoneProgressReport](
+      token: "t", value: WorkDoneProgressReport(kind: "report", message: some "half")
+    )
+    check LspJson.encode(params) ==
+      """{"token":"t","value":{"kind":"report","message":"half"}}"""
+
+  test "an end has no title":
+    let params = ProgressParams[WorkDoneProgressEnd](
+      token: "t", value: WorkDoneProgressEnd(kind: "end")
+    )
+    check LspJson.encode(params) == """{"token":"t","value":{"kind":"end"}}"""
+
+  test "creating a progress sends only the token":
+    check LspJson.encode(WorkDoneProgressCreateParams(token: "t")) == """{"token":"t"}"""

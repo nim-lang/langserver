@@ -181,26 +181,34 @@ type
   SetTraceParams* = ref object of RootObj
     value*: TraceValue_str
 
+  # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#workDoneProgressBegin
   WorkDoneProgressBegin* = ref object of RootObj
     kind*: string
     title*: string
     cancellable*: Option[bool]
     message*: Option[string]
-    percentage*: Option[int]
+    percentage*: Option[uinteger]
 
+  # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#workDoneProgressReport
   WorkDoneProgressReport* = ref object of RootObj
     kind*: string
     cancellable*: Option[bool]
     message*: Option[string]
-    percentage*: Option[int]
+    percentage*: Option[uinteger]
 
+  # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#workDoneProgressEnd
   WorkDoneProgressEnd* = ref object of RootObj
     kind*: string
     message*: Option[string]
 
-  ProgressParams* = ref object of RootObj
+  # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#progress
+  ProgressParams*[T] = ref object of RootObj
     token*: string # can be also int but the server will send strings
-    value*: OptionalNode
+    value*: T
+
+  # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#window_workDoneProgress_create
+  WorkDoneProgressCreateParams* = ref object of RootObj
+    token*: string # can be also int but the server will send strings
 
   ConfigurationItem* = ref object of RootObj
     scopeUri*: Option[string]
@@ -1424,7 +1432,13 @@ LspJson.useDefaultWriterFor(TextEdit)
 LspJson.useDefaultWriterFor(TextDocumentEdit)
 LspJson.useDefaultWriterFor(WorkspaceEdit)
 LspJson.useDefaultWriterFor(VersionedTextDocumentIdentifier)
-LspJson.useDefaultWriterFor(ProgressParams)
+LspJson.useDefaultWriterFor(WorkDoneProgressBegin)
+LspJson.useDefaultWriterFor(WorkDoneProgressReport)
+LspJson.useDefaultWriterFor(WorkDoneProgressEnd)
+LspJson.useDefaultWriterFor(ProgressParams[WorkDoneProgressBegin])
+LspJson.useDefaultWriterFor(ProgressParams[WorkDoneProgressReport])
+LspJson.useDefaultWriterFor(ProgressParams[WorkDoneProgressEnd])
+LspJson.useDefaultWriterFor(WorkDoneProgressCreateParams)
 LspJson.useDefaultWriterFor(ConfigurationItem)
 LspJson.useDefaultWriterFor(ConfigurationParams)
 LspJson.useDefaultWriterFor(McpInitializeParams_serverInfo)
