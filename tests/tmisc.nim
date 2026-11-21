@@ -268,7 +268,7 @@ suite "Nimlangserver request cancellation":
     )
 
     let request = client.call("textDocument/definition", %positionParams(uri, 0, 0))
-    check waitUntil(ls.onGoingRequest("textDocument/definition").isSome)
+    require waitUntil(ls.onGoingRequest("textDocument/definition").isSome)
     let id = ls.onGoingRequest("textDocument/definition").get
     check id.kind == riNumber
 
@@ -296,7 +296,7 @@ suite "Nimlangserver request cancellation":
     discard waitFor client.transport.write(wrapContentWithContentLength($request))
 
     let id = RequestId(kind: riString, str: "str-1")
-    check waitUntil(id in ls.pendingRequests)
+    require waitUntil(id in ls.pendingRequests)
     check ls.pendingRequests[id].state == prsOnGoing
 
     client.notify("$/cancelRequest", %*{"id": "str-1"})
