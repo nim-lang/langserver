@@ -146,3 +146,10 @@ suite "semantic tokens request options":
     check LspJson.encode(BoolOr[EmptyObject](kind: boBool, boolean: true)) == "true"
     check LspJson.encode(BoolOr[EmptyObject](kind: boValue, value: EmptyObject())) ==
       "{}"
+
+suite "client capabilities":
+  test "the experimental capabilities are kept as json":
+    let capabilities = LspJson.decode(
+      """{"experimental": {"snippetTextEdit": true}}""", LspClientCapabilities
+    )
+    check capabilities.experimental.get.string == """{"snippetTextEdit":true}"""

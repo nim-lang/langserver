@@ -626,13 +626,14 @@ type
 
   McpClientCapabilities* = ref object of RootObj
 
+  # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#clientCapabilities
   LspClientCapabilities* = ref object of RootObj
     workspace*: Option[ClientCapabilities_workspace]
     textDocument*: Option[TextDocumentClientCapabilities]
     notebookDocument*: Option[NotebookDocumentClientCapabilities]
     window*: Option[ClientCapabilities_window]
     general*: Option[ClientCapabilities_general]
-    experimental*: OptionalNode
+    experimental*: Option[LspAny]
 
   WorkspaceFolder* = ref object of RootObj
     uri*: LspUri
