@@ -8,7 +8,7 @@ import
   chronicles,
   json_serialization,
   ../[suggestapi, trackapi, ls, utils],
-  ../protocol/types
+  ../protocol/[enums, types]
 
 const McpProtocolVersion* = "2025-11-25"
 
@@ -212,17 +212,43 @@ proc nimFindTypeDefinition(): McpTool =
 
 # Tool calls
 
-proc fileUriArgument(params: McpCallToolParams): Option[Path] =
-  let uri = params.arguments.get(newJObject()){"uri"}.getStr()
-  try:
-    some DocumentUri(uri).uriToPath
-  except UriParseError:
-    none Path
-
 proc toolErrorResult(text: string): McpCallToolResult =
   McpCallToolResult(
     content: @[McpContentBlock(`type`: TextContent, text: text)], isError: true
   )
+
+type
+  PositionArguments = object
+    path: string
+    line: int
+    column: int
+
+  PathArguments = object
+    path: string
+
+  UriArguments = object
+    uri: string
+
+  FindSymbolsArguments = object
+    uri: string
+    query: string
+
+LspJson.useDefaultReaderFor(PositionArguments)
+LspJson.useDefaultReaderFor(PathArguments)
+LspJson.useDefaultReaderFor(UriArguments)
+LspJson.useDefaultReaderFor(FindSymbolsArguments)
+
+proc decodeArguments(params: McpCallToolParams, T: typedesc): Result[T, string] =
+  try:
+    ok LspJson.decode(params.arguments.get(JsonString("{}")).string, T)
+  except SerializationError as ex:
+    err "Invalid arguments: " & ex.msg
+
+proc fileUriArgument(uri: string): Option[Path] =
+  try:
+    some DocumentUri(uri).uriToPath
+  except UriParseError:
+    none Path
 
 proc callNimFindReferences(
     ls: LanguageServer, params: McpCallToolParams
@@ -234,11 +260,12 @@ proc callNimFindReferences(
       ]
     )
 .} =
+  let arguments = params.decodeArguments(PositionArguments).valueOr:
+    return toolErrorResult(error)
   let
-    arguments = params.arguments.get()
-    path = arguments["path"].getStr().absolutePath.normalizedPath.Path
-    line = arguments["line"].getInt()
-    column = arguments["column"].getInt()
+    path = arguments.path.absolutePath.normalizedPath.Path
+    line = arguments.line
+    column = arguments.column
 
   let config = await ls.workspaceConfigurationWait()
 
@@ -310,7 +337,9 @@ proc callNimFindSymbols(
       raises: [CancelledError, KeyError, OSError, IOError, RegexError, NimsuggestError]
     )
 .} =
-  let path = params.fileUriArgument()
+  let arguments = params.decodeArguments(FindSymbolsArguments).valueOr:
+    return toolErrorResult(error)
+  let path = arguments.uri.fileUriArgument()
   if path.isNone:
     return toolErrorResult("Argument uri must be a file URI")
   if path.get.splitFile.ext != ".nim":
@@ -318,7 +347,7 @@ proc callNimFindSymbols(
   if not fileExists(path.get.string):
     return toolErrorResult("Argument uri must be an existing .nim file")
 
-  let query = params.arguments.get(newJObject()){"query"}.getStr()
+  let query = arguments.query
   let nimsuggest = await ls.getNimsuggest(path.get)
 
   if nimsuggest.isSome:
@@ -354,9 +383,9 @@ proc callNimListSymbols(
         [CancelledError, ValueError, OSError, IOError, RegexError, NimsuggestError]
     )
 .} =
-  let
-    arguments = params.arguments.get()
-    path = arguments["path"].getStr().absolutePath.normalizedPath.Path
+  let arguments = params.decodeArguments(PathArguments).valueOr:
+    return toolErrorResult(error)
+  let path = arguments.path.absolutePath.normalizedPath.Path
 
   let nimsuggest = await ls.getNimsuggest(path)
 
@@ -395,7 +424,9 @@ proc callNimCheckProject(
         [CancelledError, ValueError, OSError, IOError, RegexError, NimsuggestError]
     )
 .} =
-  let path = params.fileUriArgument()
+  let arguments = params.decodeArguments(UriArguments).valueOr:
+    return toolErrorResult(error)
+  let path = arguments.uri.fileUriArgument()
   if path.isNone:
     return toolErrorResult("Argument uri must be a file URI")
   if path.get.splitFile.ext != ".nim":
@@ -445,9 +476,9 @@ proc callNimCheckFile(
         [CancelledError, ValueError, OSError, IOError, RegexError, NimsuggestError]
     )
 .} =
-  let
-    arguments = params.arguments.get()
-    path = arguments["path"].getStr().absolutePath.normalizedPath.Path
+  let arguments = params.decodeArguments(PathArguments).valueOr:
+    return toolErrorResult(error)
+  let path = arguments.path.absolutePath.normalizedPath.Path
 
   let nimsuggest = await ls.getNimsuggest(path)
 
@@ -493,11 +524,12 @@ proc callNimFindTypeDefinition(
         [CancelledError, ValueError, OSError, IOError, RegexError, NimsuggestError]
     )
 .} =
+  let arguments = params.decodeArguments(PositionArguments).valueOr:
+    return toolErrorResult(error)
   let
-    arguments = params.arguments.get()
-    path = arguments["path"].getStr().absolutePath.normalizedPath.Path
-    line = arguments["line"].getInt()
-    column = arguments["column"].getInt()
+    path = arguments.path.absolutePath.normalizedPath.Path
+    line = arguments.line
+    column = arguments.column
 
   let nimsuggest = await ls.getNimsuggest(path)
 
@@ -594,9 +626,8 @@ proc callTool*(
   of "nimFindTypeDefinition":
     await callNimFindTypeDefinition(ls, params)
   else:
-    McpCallToolResult(
-      content: @[McpContentBlock(`type`: TextContent, text: "Unknown tool")],
-      isError: true,
+    raise (ref ApplicationError)(
+      code: ErrorCode.InvalidParams.int, msg: "Unknown tool: " & params.name
     )
 
 # Notifications

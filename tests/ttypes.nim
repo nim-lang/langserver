@@ -63,3 +63,15 @@ suite "command":
   test "no arguments leaves the field out":
     let command = Command(title: "t", command: "c")
     check LspJson.encode(command) == """{"title":"t","command":"c"}"""
+
+suite "mcp tool call params":
+  test "the arguments are kept as json, without whitespace":
+    let params = LspJson.decode(
+      """{"name": "nimFindReferences", "arguments": {"path": "/a/hw.nim", "line": 3}}""",
+      McpCallToolParams,
+    )
+    check params.arguments.get.string == """{"path":"/a/hw.nim","line":3}"""
+
+  test "no arguments decodes as none":
+    let params = LspJson.decode("""{"name": "nimCheckProject"}""", McpCallToolParams)
+    check params.arguments.isNone

@@ -7,6 +7,9 @@ import
   ../protocol/types,
   ../routes/mcp
 
+proc toolArguments(node: JsonNode): Option[JsonString] =
+  some JsonString($node)
+
 type McpSocketClient = ref object
   transport: StreamTransport
   nextId: int
@@ -120,7 +123,7 @@ suite "MCP routes":
       "tools/call", %*{"name": "nimCheckProject", "arguments": {}}
     )
     check checkProject{"isError"}.getBool(false)
-    check checkProject{"content"}[0]{"text"}.getStr == "Argument uri must be a file URI"
+    check checkProject{"content"}[0]{"text"}.getStr.startsWith("Invalid arguments: ")
     check "structuredContent" notin checkProject
 
     let httpSymbols = waitFor rpcClient.callRpc(
@@ -156,12 +159,26 @@ suite "MCP routes":
     check missingSymbols{"content"}[0]{"text"}.getStr ==
       "Argument uri must be an existing .nim file"
 
-    let unknown = waitFor rpcClient.callRpc(
-      "tools/call", %*{"name": "thisToolDoesNotExist", "arguments": {}}
+    let badLine = waitFor rpcClient.callRpc(
+      "tools/call",
+      %*{
+        "name": "nimFindReferences",
+        "arguments": {"path": "a.nim", "line": "x", "column": 1},
+      },
     )
-    check unknown{"isError"}.getBool(false)
-    check unknown{"content"}[0]{"text"}.getStr == "Unknown tool"
-    check "structuredContent" notin unknown
+    check badLine{"isError"}.getBool(false)
+    check badLine{"content"}[0]{"text"}.getStr.startsWith("Invalid arguments: ")
+
+    #An unknown tool is a protocol error, not a tool result
+    try:
+      discard waitFor rpcClient.callRpc(
+        "tools/call", %*{"name": "thisToolDoesNotExist", "arguments": {}}
+      )
+      checkpoint "an unknown tool was answered with a result"
+      fail()
+    except JsonRpcError as err:
+      check "-32602" in err.msg
+      check "Unknown tool: thisToolDoesNotExist" in err.msg
 
   test "tools/call is refused until initialize":
     let
@@ -205,7 +222,7 @@ suite "MCP routes":
     let checkProject = waitFor rpcClient.callRpc(
       "tools/call", %*{"name": "nimCheckProject", "arguments": {}}
     )
-    check checkProject{"content"}[0]{"text"}.getStr == "Argument uri must be a file URI"
+    check checkProject{"content"}[0]{"text"}.getStr.startsWith("Invalid arguments: ")
 
   test "listTools returns all MCP tools":
     # initialize is required first; from a directory with no nimble project it
@@ -300,7 +317,7 @@ suite "MCP tools":
       freshLs,
       McpCallToolParams(
         name: "nimFindSymbols",
-        arguments: some %*{"uri": errFile.Path.pathToUri, "query": "add"},
+        arguments: toolArguments(%*{"uri": errFile.Path.pathToUri, "query": "add"}),
       ),
     )
     checkToolResult(symbols)
@@ -311,7 +328,7 @@ suite "MCP tools":
     let diags = waitFor mcp.callTool(
       freshLs,
       McpCallToolParams(
-        name: "nimCheckProject", arguments: some %*{"uri": entryPoint.Path.pathToUri}
+        name: "nimCheckProject", arguments: toolArguments(%*{"uri": entryPoint.Path.pathToUri})
       ),
     )
     checkToolResult(diags)
@@ -324,7 +341,7 @@ suite "MCP tools":
       ls,
       McpCallToolParams(
         name: "nimFindReferences",
-        arguments: some %*{"path": entryPoint, "line": 3, "column": 10},
+        arguments: toolArguments(%*{"path": entryPoint, "line": 3, "column": 10}),
       ),
     )
 
@@ -339,7 +356,7 @@ suite "MCP tools":
       ls,
       McpCallToolParams(
         name: "nimFindSymbols",
-        arguments: some %*{"uri": entryPoint.Path.pathToUri, "query": "add"},
+        arguments: toolArguments(%*{"uri": entryPoint.Path.pathToUri, "query": "add"}),
       ),
     )
 
@@ -355,7 +372,7 @@ suite "MCP tools":
   test "callTool nimListSymbols returns file outline":
     let res = waitFor mcp.callTool(
       ls,
-      McpCallToolParams(name: "nimListSymbols", arguments: some %*{"path": entryPoint}),
+      McpCallToolParams(name: "nimListSymbols", arguments: toolArguments(%*{"path": entryPoint})),
     )
 
     checkToolResult(res)
@@ -371,7 +388,7 @@ suite "MCP tools":
     let res = waitFor mcp.callTool(
       ls,
       McpCallToolParams(
-        name: "nimCheckProject", arguments: some %*{"uri": errFile.Path.pathToUri}
+        name: "nimCheckProject", arguments: toolArguments(%*{"uri": errFile.Path.pathToUri})
       ),
     )
 
@@ -387,7 +404,7 @@ suite "MCP tools":
 
   test "callTool nimCheckFile returns file diagnostics":
     let res = waitFor mcp.callTool(
-      ls, McpCallToolParams(name: "nimCheckFile", arguments: some %*{"path": errFile})
+      ls, McpCallToolParams(name: "nimCheckFile", arguments: toolArguments(%*{"path": errFile}))
     )
 
     checkToolResult(res)
@@ -401,7 +418,7 @@ suite "MCP tools":
 
   test "callTool nimCheckFile outside srcDir returns file diagnostics":
     let res = waitFor mcp.callTool(
-      ls, McpCallToolParams(name: "nimCheckFile", arguments: some %*{"path": testFile})
+      ls, McpCallToolParams(name: "nimCheckFile", arguments: toolArguments(%*{"path": testFile}))
     )
 
     checkToolResult(res)
@@ -418,7 +435,7 @@ suite "MCP tools":
       ls,
       McpCallToolParams(
         name: "nimFindTypeDefinition",
-        arguments: some %*{"path": entryPoint, "line": 3, "column": 10},
+        arguments: toolArguments(%*{"path": entryPoint, "line": 3, "column": 10}),
       ),
     )
 

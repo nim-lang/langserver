@@ -135,7 +135,7 @@ type
 
   McpCallToolParams* = ref object of RootObj
     name*: string
-    arguments*: OptionalNode
+    arguments*: Option[JsonString]
 
   McpInitializeParams_clientInfo_Icon_theme* = enum
     light = "light"
