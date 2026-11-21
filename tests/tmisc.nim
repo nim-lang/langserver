@@ -286,21 +286,25 @@ suite "Nimlangserver request cancellation":
       projectFile:
         Future[Path].Raising([CancelledError, OSError, RegexError]).init("never")
     )
-    #The test client only sends number ids, so the request is written as is
-    let request = %*{
-      "jsonrpc": "2.0",
-      "id": "str-1",
-      "method": "textDocument/definition",
-      "params": %positionParams(uri, 0, 0),
-    }
-    discard waitFor client.transport.write(wrapContentWithContentLength($request))
-
     let id = RequestId(kind: riString, str: "str-1")
+    let request =
+      client.call("textDocument/definition", %positionParams(uri, 0, 0), id)
     require waitUntil(id in ls.pendingRequests)
     check ls.pendingRequests[id].state == prsOnGoing
 
     client.notify("$/cancelRequest", %*{"id": "str-1"})
     check waitUntil(ls.pendingRequests[id].state == prsCancelled)
+
+    #The reply carries the string id back, it is how the client matched it
+    check waitUntil(request.finished)
+    check request.failed
+    check "-32800" in request.error.msg
+
+  test "a request with a string id is answered":
+    let status = waitFor client
+      .call("extension/status", newJObject(), RequestId(kind: riString, str: "str-2"))
+      .wait(10.seconds)
+    check status["version"].getStr == LSPVersion
 
   test "notifications are not tracked as pending requests":
     #They carry no id, so there is nothing to cancel or to report
@@ -416,7 +420,7 @@ suite "Nimlangserver request cancelled during startup":
     let uri = fixtureUri(file)
     client.notify("textDocument/didOpen", %createDidOpenParams(file))
     let cancelled = client.call("textDocument/definition", %positionParams(uri, 1, 6))
-    let id = toSeq(client.responses.keys).max
+    let id = toSeq(client.responses.keys).mapIt(it.num).max
     check waitUntil(ls.onGoingRequest("textDocument/definition").isSome)
     client.notify("$/cancelRequest", %*{"id": id})
 
