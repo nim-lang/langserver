@@ -740,7 +740,7 @@ proc codeAction*(
       command: Command(
         title: "Clean build",
         command: RECOMPILE_COMMAND,
-        arguments: some %*[projectFile],
+        arguments: some @[JsonString(LspJson.encode(projectFile.string))],
       ),
     ),
     CodeAction(
@@ -749,7 +749,7 @@ proc codeAction*(
       command: Command(
         title: "Refresh project errors",
         command: CHECK_PROJECT_COMMAND,
-        arguments: some %*[projectFile],
+        arguments: some @[JsonString(LspJson.encode(projectFile.string))],
       ),
     ),
     CodeAction(
@@ -758,7 +758,7 @@ proc codeAction*(
       command: Command(
         title: "Restart nimsuggest",
         command: RESTART_COMMAND,
-        arguments: some %*[projectFile],
+        arguments: some @[JsonString(LspJson.encode(projectFile.string))],
       ),
     ),
   ]

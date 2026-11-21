@@ -50,6 +50,7 @@ type
 
   OptionalSeq*[T] = Option[seq[T]]
   OptionalNode* = Option[JsonNode]
+  LspAny* = JsonString
 
   CancelParams* = ref object of RootObj
     id*: RequestId
@@ -82,7 +83,7 @@ type
   Command* = ref object of RootObj
     title*: string
     command*: string
-    arguments*: OptionalNode
+    arguments*: OptionalSeq[LspAny]
 
   CodeAction* = ref object of RootObj
     command*: Command

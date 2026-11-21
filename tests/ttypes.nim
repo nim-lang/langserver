@@ -49,3 +49,17 @@ suite "decoding a uinteger":
 
   test "a uinteger is encoded as a number":
     check LspJson.encode(uinteger(5)) == "5"
+
+suite "command":
+  test "the arguments are written as they are":
+    let command = Command(
+      title: "Clean build",
+      command: "nimlangserver.recompile",
+      arguments: some @[JsonString("\"/a/hw.nim\""), JsonString("""{"n": 1}""")],
+    )
+    check LspJson.encode(command) ==
+      """{"title":"Clean build","command":"nimlangserver.recompile","arguments":["/a/hw.nim",{"n": 1}]}"""
+
+  test "no arguments leaves the field out":
+    let command = Command(title: "t", command: "c")
+    check LspJson.encode(command) == """{"title":"t","command":"c"}"""
