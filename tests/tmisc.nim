@@ -7,6 +7,11 @@ import
   ../protocol/[enums, types],
   ./[lspsocketclient, testhelpers]
 
+proc onGoingRequest(ls: LanguageServer, name: string): Option[RequestId] =
+  for id, pending in ls.pendingRequests:
+    if pending.name == name and pending.state == prsOnGoing:
+      return some id
+
 suite "Nimlangserver misc":
   let cmdParams =
     CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
@@ -220,9 +225,10 @@ suite "Nimlangserver pending requests":
     let projectFileFut =
       Future[Path].Raising([CancelledError, OSError, RegexError]).init("projectFile")
     ls.openFiles[path] = NlsFileInfo(projectFile: projectFileFut)
-    ls.pendingRequests[1'u] = PendingRequest(id: 1, name: "textDocument/definition")
+    let id = RequestId(kind: riNumber, num: 1)
+    ls.pendingRequests[id] = PendingRequest(id: id, name: "textDocument/definition")
 
-    let fut = ls.addProjectFileToPendingRequest(1'u, path)
+    let fut = ls.addProjectFileToPendingRequest(id, path)
     projectFileFut.cancelSoon()
 
     check waitUntil(fut.finished)
@@ -262,30 +268,50 @@ suite "Nimlangserver request cancellation":
     )
 
     let request = client.call("textDocument/definition", %positionParams(uri, 0, 0))
-    waitFor sleepAsync(200)
+    require waitUntil(ls.onGoingRequest("textDocument/definition").isSome)
+    let id = ls.onGoingRequest("textDocument/definition").get
+    check id.kind == riNumber
 
-    var id = 0'u
-    for pendingId, pending in ls.pendingRequests:
-      if pending.name == "textDocument/definition":
-        id = pendingId
-    check id != 0'u
-    check ls.pendingRequests[id].state == prsOnGoing
-
-    client.notify("$/cancelRequest", %*{"id": id.int})
-    waitFor sleepAsync(200)
-
-    check ls.pendingRequests[id].state == prsCancelled
+    client.notify("$/cancelRequest", %*{"id": id.num})
+    check waitUntil(ls.pendingRequests[id].state == prsCancelled)
 
     #The client is answered, so that it stops waiting on the request
+    check waitUntil(request.finished)
     check request.failed
     check "-32800" in request.error.msg
 
+  test "$/cancelRequest cancels a request with a string id":
+    let uri = "file:///tmp/tcancelstr.nim".DocumentUri
+    ls.openFiles[uri.uriToPath] = NlsFileInfo(
+      projectFile:
+        Future[Path].Raising([CancelledError, OSError, RegexError]).init("never")
+    )
+    let id = RequestId(kind: riString, str: "str-1")
+    let request =
+      client.call("textDocument/definition", %positionParams(uri, 0, 0), id)
+    require waitUntil(id in ls.pendingRequests)
+    check ls.pendingRequests[id].state == prsOnGoing
+
+    client.notify("$/cancelRequest", %*{"id": "str-1"})
+    check waitUntil(ls.pendingRequests[id].state == prsCancelled)
+
+    #The reply carries the string id back, it is how the client matched it
+    check waitUntil(request.finished)
+    check request.failed
+    check "-32800" in request.error.msg
+
+  test "a request with a string id is answered":
+    let status = waitFor client
+      .call("extension/status", newJObject(), RequestId(kind: riString, str: "str-2"))
+      .wait(10.seconds)
+    check status["version"].getStr == LSPVersion
+
   test "notifications are not tracked as pending requests":
     #They carry no id, so there is nothing to cancel or to report
-    let before = ls.pendingRequests.len
-    client.notify("$/setTrace", %*{"value": "verbose"})
-    waitFor sleepAsync(200)
-    check ls.pendingRequests.len == before
+    let file = "projects/hw/hw.nim"
+    client.notify("textDocument/didOpen", %createDidOpenParams(file))
+    check waitUntil(file.fixturePath in ls.openFiles)
+    check not toSeq(ls.pendingRequests.values).anyIt(it.name == "textDocument/didOpen")
 
 suite "Nimlangserver didOpen visibility":
   let cmdParams =
@@ -313,9 +339,8 @@ suite "Nimlangserver didOpen visibility":
     #No configuration yet, so didOpen cannot get past resolving the project
     let file = "projects/hw/hw.nim"
     client.notify("textDocument/didOpen", %createDidOpenParams(file))
-    waitFor sleepAsync(200)
 
-    check file.fixturePath in ls.openFiles #The entry the readers look for
+    check waitUntil(file.fixturePath in ls.openFiles) #The entry the readers look for
     check ls.openFiles[file.fixturePath].fingerTable.len > 0 #The contents were stashed too
 
 suite "Nimlangserver didOpen ordering":
@@ -354,7 +379,7 @@ suite "Nimlangserver didOpen ordering":
 
     # The file's project is only resolved once the configuration is known, so the
     # request waits for it rather than being answered as if the file were unknown.
-    waitFor sleepAsync(1.seconds)
+    check waitUntil(ls.onGoingRequest("textDocument/definition").isSome)
     check not request.finished
 
     ls.setWorkspaceConfiguration(% @[NlsConfig()])
@@ -395,8 +420,8 @@ suite "Nimlangserver request cancelled during startup":
     let uri = fixtureUri(file)
     client.notify("textDocument/didOpen", %createDidOpenParams(file))
     let cancelled = client.call("textDocument/definition", %positionParams(uri, 1, 6))
-    let id = toSeq(client.responses.keys).max
-    waitFor sleepAsync(200.milliseconds)
+    let id = toSeq(client.responses.keys).mapIt(it.num).max
+    check waitUntil(ls.onGoingRequest("textDocument/definition").isSome)
     client.notify("$/cancelRequest", %*{"id": id})
 
     check waitFor cancelled.withTimeout(10.seconds)
@@ -494,11 +519,7 @@ suite "Nimlangserver single client":
   waitFor client.connect("localhost", cmdParams.port)
   client.registerNotification("extension/statusUpdate")
 
-  proc waitUntilConnected(ls: LanguageServer) {.async.} =
-    while ls.client.isNil:
-      await sleepAsync(10.milliseconds)
-
-  waitFor ls.waitUntilConnected().wait(10.seconds)
+  doAssert waitUntil(not ls.client.isNil)
 
   test "A second client is hung up on":
     let second = waitFor connect(resolveTAddress("localhost", cmdParams.port)[0])

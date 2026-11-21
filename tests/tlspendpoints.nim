@@ -336,7 +336,7 @@ suite "LSP endpoints":
     check status.version == LSPVersion
 
   test "$/cancelRequest cancels an in-flight request":
-    proc cancellableCompletion(ls: LanguageServer, found: var uint): bool =
+    proc cancellableCompletion(ls: LanguageServer, found: var RequestId): bool =
       for id, request in ls.pendingRequests:
         if request.name == "textDocument/completion" and request.state == prsOnGoing and
             request.request != nil:
@@ -346,10 +346,10 @@ suite "LSP endpoints":
 
     let pending =
       client.call("textDocument/completion", %positionParams(helloWorldUri, 2, 0))
-    var target = 0'u
+    var target: RequestId
     check waitUntil(ls.cancellableCompletion(target))
 
-    client.notify("$/cancelRequest", %*{"id": target.int})
+    client.notify("$/cancelRequest", %*{"id": target.num})
     check waitUntil(ls.pendingRequests[target].state == prsCancelled)
 
     var failure: ref CatchableError

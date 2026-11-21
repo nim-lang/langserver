@@ -1,6 +1,6 @@
 import
   std/[options, json, os, jsonutils, tables, strutils, strformat, sugar],
-  json_rpc/[rpcclient],
+  json_rpc/[rpcclient, router],
   chronicles,
   ../protocol/types,
   ../[ls, utils]
@@ -43,7 +43,7 @@ type
     routes*: TableRef[string, Rpc]
     calls*: TableRef[string, seq[JsonNode]]
       #Stores all requests here from the server so we can test on them
-    responses*: TableRef[int, Future[JsonNode]]
+    responses*: TableRef[RequestId, Future[JsonNode]]
       #id -> response. Stores the responses to the calls
     requestId: int
 
@@ -52,17 +52,21 @@ proc newLspSocketClient*(): LspSocketClient =
   result.routes = newTable[string, Rpc]()
   result.notifications = newTable[string, NotificationRpc]()
   result.calls = newTable[string, seq[JsonNode]]()
-  result.responses = newTable[int, Future[JsonNode]]()
+  result.responses = newTable[RequestId, Future[JsonNode]]()
+
+proc toJson(id: RequestId): JsonNode =
+  case id.kind
+  of riNumber: %id.num
+  of riString: %id.str
+  of riNull: newJNull()
 
 proc call*(
-    client: LspSocketClient, name: string, params: JsonNode
+    client: LspSocketClient, name: string, params: JsonNode, id: RequestId
 ): Future[JsonNode] {.async.} =
-  ## Remotely calls the specified RPC method.
-  client.requestId.inc()
-  let id = client.requestId
+  ## Remotely calls the specified RPC method with the given id.
   let reqJson = newJObject()
   reqJson["jsonrpc"] = %"2.0"
-  reqJson["id"] = %id
+  reqJson["id"] = id.toJson
   reqJson["method"] = %name
   #A null params is not valid json-rpc, the member is left out instead
   if not params.isNil and params.kind != JNull:
@@ -79,6 +83,13 @@ proc call*(
   client.responses[id] = newFut
   let res = await client.transport.write(jsonBytes)
   return await newFut
+
+proc call*(
+    client: LspSocketClient, name: string, params: JsonNode
+): Future[JsonNode] =
+  ## Remotely calls the specified RPC method.
+  client.requestId.inc()
+  client.call(name, params, RequestId(kind: riNumber, num: client.requestId))
 
 proc paramsOf(serverReq: JsonNode): JsonNode =
   ## A message with no params at all leaves the member out, which is what the
@@ -110,7 +121,11 @@ proc processMessage(client: LspSocketClient, msg: string) {.raises: [].} =
       else:
         error "Method not implemented ", meth = meth
     elif "id" in serverReq: #Response here
-      let id = serverReq["id"].jsonTo(int)
+      let id =
+        if serverReq["id"].kind == JString:
+          RequestId(kind: riString, str: serverReq["id"].getStr)
+        else:
+          RequestId(kind: riNumber, num: serverReq["id"].getInt)
       if "error" in serverReq:
         client.responses[id].fail(newException(JsonRpcError, $serverReq["error"]))
       else:

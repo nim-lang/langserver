@@ -11,5 +11,5 @@ import
   ./[
     tprojectsetup, textensions, tmisc, ttestrunner, tmcp, tlspendpoints,
     tlspdiagnostics, tlspconfig, tutils, tasyncsafety, tslowstartup, tmaxnimsuggest,
-    tidlefiles, tstdio, tlifecycle, tprogress, tmultirootworkspace,
+    tidlefiles, tstdio, tlifecycle, tprogress, tmultirootworkspace, ttypes,
   ]

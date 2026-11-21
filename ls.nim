@@ -125,7 +125,7 @@ type
     prsComplete = "Complete"
 
   PendingRequest* = object
-    id*: uint
+    id*: RequestId
     name*: string
     request*: FutureBase
     projectFile*: Option[string]
@@ -170,7 +170,7 @@ type
     testRunProcess*: Option[AsyncProcessRef]
       #There is only one test run process at a time
     srv*: RpcServer #Both modes use it to store the routes
-    pendingRequests*: Table[uint, PendingRequest]
+    pendingRequests*: Table[RequestId, PendingRequest]
       #id to future. Each request is added here so we can cancel them later in the cancelRequest. Only requests, not notifications
     transportMode*: TransportMode
     served*: Future[void]
@@ -661,7 +661,7 @@ proc projectFileWait*(
     await ls.getProjectFile(path)
 
 proc addProjectFileToPendingRequest*(
-    ls: LanguageServer, id: uint, path: Path
+    ls: LanguageServer, id: RequestId, path: Path
 ) {.async: (raises: []).} =
   try:
     if id in ls.pendingRequests:
@@ -1453,7 +1453,7 @@ proc didCloseFile*(
 proc removeCompletedPendingRequests(
     ls: LanguageServer, maxTimeAfterRequestWasCompleted = initDuration(seconds = 10)
 ) =
-  var toRemove = newSeq[uint]()
+  var toRemove = newSeq[RequestId]()
   for id, pr in ls.pendingRequests:
     if pr.state != prsOnGoing:
       let passedTime = now() - pr.endTime

@@ -1147,15 +1147,13 @@ proc cancelRequest*(
     ls: LanguageServer, params: CancelParams
 ): Future[void] {.async: (raises: [ApplicationError]).} =
   ls.checkInitialized()
-  if params.id.isSome:
-    let id = params.id.get.getInt.uint
-    let pr = ls.pendingRequests.getOrDefault(id)
-    if pr.request != nil:
-      debug "Cancelling: ", id = id
-      await pr.request.cancelAndWait()
-      withValue(ls.pendingRequests, id, valuePtr):
-        valuePtr.state = prsCancelled
-        valuePtr.endTime = now()
+  let pr = ls.pendingRequests.getOrDefault(params.id)
+  if pr.request != nil:
+    debug "Cancelling: ", id = params.id
+    await pr.request.cancelAndWait()
+    withValue(ls.pendingRequests, params.id, valuePtr):
+      valuePtr.state = prsCancelled
+      valuePtr.endTime = now()
 
 proc setTrace*(
     ls: LanguageServer, params: SetTraceParams

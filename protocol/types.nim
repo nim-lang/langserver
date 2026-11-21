@@ -1,10 +1,11 @@
 import
   std/[json, options, paths, tables, uri],
   chronicles,
+  json_rpc/router,
   json_serialization,
   json_serialization/std/[options as jsoptions, tables as jstables]
 
-export json_serialization, jsoptions, jstables, paths, uri
+export json_serialization, jsoptions, jstables, paths, uri, RequestId, RequestIdKind
 
 type
   LspUri* = distinct string
@@ -58,7 +59,7 @@ type
   uinteger* = range[0 .. (1 shl 31 - 1)]
 
   CancelParams* = ref object of RootObj
-    id*: OptionalNode
+    id*: RequestId
 
   Position* = ref object of RootObj
     line*: uinteger
@@ -1221,6 +1222,17 @@ createJsonFlavor LspJson,
 
 template shouldWriteObjectField*[T](field: ref T): bool =
   field != nil
+
+proc readValue*(
+    r: var JsonReader[LspJson], x: var RequestId
+) {.raises: [IOError, SerializationError].} =
+  case r.tokKind
+  of JsonValueKind.Number:
+    x = RequestId(kind: riNumber, num: r.readValue(int))
+  of JsonValueKind.String:
+    x = RequestId(kind: riString, str: r.readValue(string))
+  else:
+    r.raiseUnexpectedValue("expected an integer or a string id")
 
 LspJson.useDefaultSerializationFor(Position)
 LspJson.useDefaultSerializationFor(Range)

@@ -79,12 +79,9 @@ proc trackRequest(
   if request.kind != rbkSingle:
     return
   let req = request.single
-  let id = req.id.valueOr:
+  let reqId = req.id.valueOr:
     return #A notification, there is nothing to cancel or report
-  if id.kind != riNumber:
-    return
 
-  let reqId = id.num.uint
   ls.pendingRequests[reqId] = PendingRequest(
     id: reqId, name: req.meth, startTime: now(), state: prsOnGoing, request: fut
   )
