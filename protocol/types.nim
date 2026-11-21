@@ -1,7 +1,7 @@
 import
   std/[json, options, paths, tables, uri],
   chronicles,
-  json_rpc/client,
+  json_rpc/router,
   json_serialization,
   json_serialization/std/[options as jsoptions, tables as jstables]
 
