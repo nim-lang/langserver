@@ -75,3 +75,19 @@ suite "mcp tool call params":
   test "no arguments decodes as none":
     let params = LspJson.decode("""{"name": "nimCheckProject"}""", McpCallToolParams)
     check params.arguments.isNone
+
+suite "initialize params":
+  test "the initialization options are kept as json":
+    let params = LspJson.decode(
+      """{"processId": 1, "capabilities": {}, "initializationOptions": {"a": [1]}}""",
+      LspInitializeParams,
+    )
+    check params.initializationOptions.get.string == """{"a":[1]}"""
+
+  test "null initialization options decode as none":
+    let params = LspJson.decode(
+      """{"processId": null, "capabilities": {}, "initializationOptions": null}""",
+      LspInitializeParams,
+    )
+    check params.initializationOptions.isNone
+    check params.processId.isNone

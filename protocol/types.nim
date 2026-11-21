@@ -173,7 +173,7 @@ type
     locale*: Option[string]
     rootPath*: Option[string]
     rootUri*: Option[DocumentUri]
-    initializationOptions*: OptionalNode
+    initializationOptions*: Option[LspAny]
     capabilities*: LspClientCapabilities
     trace*: Option[TraceValue_str]
     workspaceFolders*: OptionalSeq[WorkspaceFolder]
