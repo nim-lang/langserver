@@ -1,5 +1,5 @@
 import
-  std/[json, options, paths, tables, uri],
+  std/[hashes, json, options, paths, tables, uri],
   chronicles,
   json_rpc/router,
   json_serialization,
@@ -13,6 +13,7 @@ type
 
 proc `$`*(x: LspUri): string {.borrow.}
 proc `==`*(a, b: LspUri): bool {.borrow.}
+proc hash*(x: LspUri): Hash {.borrow.}
 proc `%`*(x: LspUri): JsonNode =
   %x.string
 
@@ -53,10 +54,28 @@ proc readValue*(
     r.raiseUnexpectedValue(exc.msg)
   x = LspUri(uri)
 
+# https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#baseTypes
+type uinteger* = distinct int
+
+const uintegerHigh* = uinteger(int32.high)
+
+proc `%`*(x: uinteger): JsonNode =
+  %x.int
+
+proc writeValue*(w: var JsonWriter, x: uinteger) {.raises: [IOError].} =
+  w.writeValue(x.int)
+
+proc readValue*(
+    r: var JsonReader, x: var uinteger
+) {.raises: [IOError, SerializationError].} =
+  let n = r.readValue(int)
+  if n notin 0 .. uintegerHigh.int:
+    r.raiseUnexpectedValue("uinteger out of range: " & $n)
+  x = uinteger(n)
+
 type
   OptionalSeq*[T] = Option[seq[T]]
   OptionalNode* = Option[JsonNode]
-  uinteger* = range[0 .. (1 shl 31 - 1)]
 
   CancelParams* = ref object of RootObj
     id*: RequestId
@@ -104,7 +123,7 @@ type
     edits*: OptionalSeq[TextEdit]
 
   WorkspaceEdit* = ref object of RootObj
-    changes*: OptionalNode
+    changes*: Option[Table[DocumentUri, seq[TextEdit]]]
     documentChanges*: OptionalSeq[TextDocumentEdit]
 
   TextDocumentIdentifier* = ref object of RootObj
@@ -117,7 +136,7 @@ type
     text*: string
 
   VersionedTextDocumentIdentifier* = ref object of TextDocumentIdentifier
-    version*: OptionalNode # int or float
+    version*: Option[int]
     languageId*: Option[string]
 
   TextDocumentPositionParams* = ref object of RootObj
@@ -173,7 +192,7 @@ type
     clientInfo*: McpInitializeParams_clientInfo
 
   LspInitializeParams* = ref object of RootObj
-    processId*: OptionalNode # int or float
+    processId*: Option[int]
     clientInfo*: Option[LspInitializeParams_clientInfo]
     locale*: Option[string]
     rootPath*: Option[string]

@@ -64,7 +64,7 @@ suite "LSP endpoints":
     )
     check locations.len == 1
     check locations.len >= 1 and locations[0].uri == helloWorldUri
-    check locations.len >= 1 and locations[0].range.start.line == 0
+    check locations.len >= 1 and locations[0].range.start.line.int == 0
 
   test "textDocument/documentSymbol lists the symbols of the file":
     let params = %*{"textDocument": {"uri": helloWorldUri}}
@@ -85,7 +85,7 @@ suite "LSP endpoints":
       seq[DocumentHighlight],
     )
     for highlight in highlights:
-      check highlight.range.start.line >= 0
+      check highlight.range.start.line.int >= 0
 
   test "textDocument/signatureHelp answers inside a call":
     let params =
@@ -430,7 +430,7 @@ suite "LSP endpoints":
     )
     check locations.len == 1
     check locations.len >= 1 and locations[0].uri.string.contains("hw.nim")
-    check locations.len >= 1 and locations[0].range.start.line == 0
+    check locations.len >= 1 and locations[0].range.start.line.int == 0
 
   test "documentSymbol reports a non ascii symbol at a UTF-16 offset":
     let params = %*{"textDocument": {"uri": helloWorldUri}}
@@ -439,8 +439,8 @@ suite "LSP endpoints":
     )
     let nonAscii = symbols.filterIt(it.name == "a안녕")
     check nonAscii.len == 1
-    check nonAscii[0].location.range.start.line == 0
-    check nonAscii[0].location.range.start.character == 5
+    check nonAscii[0].location.range.start.line.int == 0
+    check nonAscii[0].location.range.start.character.int == 5
 
   test "documentHighlight reports UTF-16 columns for a non ascii identifier":
     let highlights = to(
@@ -449,10 +449,10 @@ suite "LSP endpoints":
       ),
       seq[DocumentHighlight],
     )
-    let onCallLine = highlights.filterIt(it.range.start.line == 1)
+    let onCallLine = highlights.filterIt(it.range.start.line.int == 1)
     check onCallLine.len > 0
-    check onCallLine.anyIt(it.range.start.character == 6)
-    check not onCallLine.anyIt(it.range.start.character == 10)
+    check onCallLine.anyIt(it.range.start.character.int == 6)
+    check not onCallLine.anyIt(it.range.start.character.int == 10)
 
   test "didChange replaces the whole document and later requests see it":
     let original = readFile("tests" / helloWorldFile)

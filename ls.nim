@@ -775,8 +775,8 @@ proc toUtf16Pos*(checkResult: CheckResult, ls: LanguageServer): CheckResult =
 
 proc range*(startLine, startCharacter, endLine, endCharacter: int): Range =
   Range(
-    start: Position(line: startLine, character: startCharacter),
-    `end`: Position(line: endLine, character: endCharacter),
+    start: Position(line: uinteger(startLine), character: uinteger(startCharacter)),
+    `end`: Position(line: uinteger(endLine), character: uinteger(endCharacter)),
   )
 
 proc toLabelRange*(suggest: Suggest): Range =

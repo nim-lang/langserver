@@ -129,11 +129,11 @@ proc completion*(
     let nimsuggest = await ls.tryGetNimsuggest(path)
     if nimsuggest.isNone():
       return @[]
-    let ch = ls.getCharacter(path, line, character)
+    let ch = ls.getCharacter(path, line.int, character.int)
     if ch.isNone:
       return @[]
     let completions =
-      await nimsuggest.get.sug(path, ls.pathToStash(path), line + 1, ch.get)
+      await nimsuggest.get.sug(path, ls.pathToStash(path), line.int + 1, ch.get)
     result = completions.map(toCompletionItem)
 
     if ls.lspClientCapabilities.supportSignatureHelp() and
@@ -167,7 +167,7 @@ proc definition*(
     # otherwise fall back to nimsuggest (which supports dirty buffers).
     let info = ls.openFiles.getOrDefault(path)
     if config.useNimTrack.get(false) and info != nil and not info.changed:
-      let ch = ls.getCharacter(path, line, character)
+      let ch = ls.getCharacter(path, line.int, character.int)
       if ch.isNone:
         return @[]
       let projectFile = await info.projectFileWait()
@@ -180,7 +180,7 @@ proc definition*(
         await track(
           projectFile,
           path,
-          line + 1,
+          line.int + 1,
           ch.get,
           tmDef,
           nimPath = nimPath.get,
@@ -192,10 +192,10 @@ proc definition*(
     let ns = await ls.tryGetNimsuggest(path)
     if ns.isNone:
       return @[]
-    let ch = ls.getCharacter(path, line, character)
+    let ch = ls.getCharacter(path, line.int, character.int)
     if ch.isNone:
       return @[]
-    result = ns.get.def(path, ls.pathToStash(path), line + 1, ch.get).await().map(
+    result = ns.get.def(path, ls.pathToStash(path), line.int + 1, ch.get).await().map(
         x => x.toUtf16Pos(ls).toLocation
       )
 
@@ -215,11 +215,11 @@ proc declaration*(
     let ns = await ls.tryGetNimsuggest(path)
     if ns.isNone:
       return @[]
-    let ch = ls.getCharacter(path, line, character)
+    let ch = ls.getCharacter(path, line.int, character.int)
     if ch.isNone:
       return @[]
     result = ns.get
-      .declaration(path, ls.pathToStash(path), line + 1, ch.get)
+      .declaration(path, ls.pathToStash(path), line.int + 1, ch.get)
       .await()
       .map(x => x.toUtf16Pos(ls).toLocation)
 
@@ -236,10 +236,10 @@ proc expandAll*(
     let ns = await ls.tryGetNimsuggest(path)
     if ns.isNone:
       return ExpandResult() #TODO make it optional
-    let ch = ls.getCharacter(path, line, character)
+    let ch = ls.getCharacter(path, line.int, character.int)
     if ch.isNone:
       return ExpandResult()
-    let expand = ns.get.expand(path, ls.pathToStash(path), line + 1, ch.get).await()
+    let expand = ns.get.expand(path, ls.pathToStash(path), line.int + 1, ch.get).await()
 
 proc createRangeFromSuggest(suggest: Suggest): Range =
   result = range(suggest.line - 1, 0, suggest.endLine - 1, suggest.endCol)
@@ -278,14 +278,15 @@ proc expand*(
       ns = await ls.tryGetNimsuggest(path)
     if ns.isNone:
       return ExpandResult()
-    let ch = ls.getCharacter(path, line, character)
+    let ch = ls.getCharacter(path, line.int, character.int)
     if ch.isNone:
       return ExpandResult()
-    let expand =
-      ns.get.expand(path, ls.pathToStash(path), line + 1, ch.get, fmt "  {tag}").await()
+    let expand = ns.get
+      .expand(path, ls.pathToStash(path), line.int + 1, ch.get, fmt "  {tag}")
+      .await()
     if expand.len != 0:
       result = ExpandResult(
-        content: expand[0].doc.fixIdentation(character),
+        content: expand[0].doc.fixIdentation(character.int),
         range: expand[0].createRangeFromSuggest(),
       )
 
@@ -354,10 +355,10 @@ proc typeDefinition*(
     let ns = await ls.tryGetNimsuggest(path)
     if ns.isNone:
       return @[]
-    let ch = ls.getCharacter(path, line, character)
+    let ch = ls.getCharacter(path, line.int, character.int)
     if ch.isNone:
       return @[]
-    result = ns.get.`type`(path, ls.pathToStash(path), line + 1, ch.get).await().map(
+    result = ns.get.`type`(path, ls.pathToStash(path), line.int + 1, ch.get).await().map(
         x => x.toUtf16Pos(ls).toLocation
       )
 
@@ -467,11 +468,11 @@ proc hover*(
     let nimsuggest = await ls.tryGetNimsuggest(path)
     if nimsuggest.isNone:
       return none(Hover)
-    let ch = ls.getCharacter(path, line, character)
+    let ch = ls.getCharacter(path, line.int, character.int)
     if ch.isNone:
       return none(Hover)
     let suggestions =
-      await nimsuggest.get().highlight(path, ls.pathToStash(path), line + 1, ch.get)
+      await nimsuggest.get().highlight(path, ls.pathToStash(path), line.int + 1, ch.get)
     if suggestions.len == 0:
       return none(Hover)
     var suggest = suggestions[0]
@@ -479,7 +480,7 @@ proc hover*(
       return some(Hover(contents: some(%toMarkupContent(suggest))))
     else:
       for s in suggestions:
-        if s.line == line + 1:
+        if s.line == line.int + 1:
           if s.column <= ch.get:
             suggest = s
           else:
@@ -532,7 +533,7 @@ proc references*(
     # otherwise fall back to nimsuggest (which supports dirty buffers).
     let info = ls.openFiles.getOrDefault(path)
     if config.useNimTrack.get(false) and info != nil and not info.changed:
-      let ch = ls.getCharacter(path, line, character)
+      let ch = ls.getCharacter(path, line.int, character.int)
       if ch.isNone:
         return @[]
       let projectFile = await info.projectFileWait()
@@ -545,7 +546,7 @@ proc references*(
       let refs = await track(
         projectFile,
         path,
-        line + 1,
+        line.int + 1,
         ch.get,
         mode,
         nimPath = nimPath.get,
@@ -559,10 +560,11 @@ proc references*(
     let nimsuggest = await ls.tryGetNimsuggest(path)
     if nimsuggest.isNone:
       return @[]
-    let ch = ls.getCharacter(path, line, character)
+    let ch = ls.getCharacter(path, line.int, character.int)
     if ch.isNone:
       return @[]
-    let refs = await nimsuggest.get.use(path, ls.pathToStash(path), line + 1, ch.get)
+    let refs =
+      await nimsuggest.get.use(path, ls.pathToStash(path), line.int + 1, ch.get)
     result = refs.filter(suggest => suggest.section != ideDef or includeDeclaration).map(
         x => x.toUtf16Pos(ls).toLocation
       )
@@ -583,10 +585,10 @@ proc prepareRename*(
     let nimsuggest = await ls.tryGetNimsuggest(path)
     if nimsuggest.isNone:
       return newJNull()
-    let ch = ls.getCharacter(path, line, character)
+    let ch = ls.getCharacter(path, line.int, character.int)
     if ch.isNone:
       return newJNull()
-    let def = await nimsuggest.get.def(path, ls.pathToStash(path), line + 1, ch.get)
+    let def = await nimsuggest.get.def(path, ls.pathToStash(path), line.int + 1, ch.get)
     if def.len == 0:
       return newJNull()
     # Check if the symbol belongs to the project
@@ -615,15 +617,14 @@ proc rename*(
     )
   )
   # Build up list of edits that the client needs to perform for each file
-  var edits = newJObject()
+  var edits = initTable[DocumentUri, seq[TextEdit]]()
   for reference in references:
     # Only rename symbols in the project.
     # If client supports prepareRename then an error will already have been thrown
     if ls.workspaceFolderOf(reference.uri.uriToPath()).len > 0:
-      if reference.uri.string notin edits:
-        edits[reference.uri.string] = newJArray()
-      edits[reference.uri.string] &=
-        %TextEdit(range: reference.range, newText: params.newName)
+      edits.mgetOrPut(reference.uri, @[]).add TextEdit(
+        range: reference.range, newText: params.newName
+      )
   result = WorkspaceEdit(changes: some edits)
 
 proc convertInlayHintKind(kind: SuggestInlayHintKind): InlayHintKind_int =
@@ -644,7 +645,7 @@ proc toInlayHint(suggest: SuggestInlayHint, configuration: NlsConfig): InlayHint
   if suggest.label.contains("Error Type"):
     suggest.label = ""
   result = InlayHint(
-    position: Position(line: hint_line, character: hint_col),
+    position: Position(line: uinteger(hint_line), character: uinteger(hint_col)),
     label: suggest.label,
     kind: some(convertInlayHintKind(suggest.kind)),
     paddingLeft: some(suggest.paddingLeft),
@@ -670,8 +671,8 @@ proc toInlayHint(suggest: SuggestInlayHint, configuration: NlsConfig): InlayHint
         TextEdit(
           newText: suggest.label,
           `range`: Range(
-            start: Position(line: hint_line, character: hint_col),
-            `end`: Position(line: hint_line, character: hint_col),
+            start: Position(line: uinteger(hint_line), character: uinteger(hint_col)),
+            `end`: Position(line: uinteger(hint_line), character: uinteger(hint_col)),
           ),
         )
       ]
@@ -698,15 +699,15 @@ proc inlayHint*(
     if nimsuggest.isNone or nimsuggest.get.protocolVersion < 4 or
         not configuration.inlayHintsEnabled:
       return @[]
-    let ch = ls.getCharacter(path, start.line, start.character)
+    let ch = ls.getCharacter(path, start.line.int, start.character.int)
     if ch.isNone:
       return @[]
     let suggestions = await nimsuggest.get.inlayHints(
       path,
       ls.pathToStash(path),
-      start.line + 1,
+      start.line.int + 1,
       ch.get,
-      `end`.line + 1,
+      `end`.line.int + 1,
       ch.get,
       " +exceptionHints +parameterHints",
     )
@@ -851,11 +852,11 @@ proc signatureHelp*(
     if nsCon notin nimsuggest.get.capabilities:
       #support signatureHelp only if the current version of Nimsuggest supports it.
       return none[SignatureHelp]()
-    let ch = ls.getCharacter(path, line, character)
+    let ch = ls.getCharacter(path, line.int, character.int)
     if ch.isNone:
       return none[SignatureHelp]()
     let completions =
-      await nimsuggest.get.con(path, ls.pathToStash(path), line + 1, ch.get)
+      await nimsuggest.get.con(path, ls.pathToStash(path), line.int + 1, ch.get)
     let signatures = completions.map(toSignatureInformation)
     if signatures.len() > 0:
       return some SignatureHelp(
@@ -902,8 +903,8 @@ proc format*(
     return none(TextEdit)
 
   let fullRange = Range(
-    start: Position(line: 0, character: 0),
-    `end`: Position(line: uinteger.high, character: uinteger.high),
+    start: Position(line: uinteger(0), character: uinteger(0)),
+    `end`: Position(line: uintegerHigh, character: uintegerHigh),
   )
   debug "Formatting document", path = path, formattedText = formattedText
   some TextEdit(range: fullRange, newText: formattedText)
@@ -963,11 +964,11 @@ proc documentHighlight*(
     let nimsuggest = await ls.tryGetNimsuggest(path)
     if nimsuggest.isNone:
       return @[]
-    let ch = ls.getCharacter(path, line, character)
+    let ch = ls.getCharacter(path, line.int, character.int)
     if ch.isNone:
       return @[]
     let suggestLocations =
-      await nimsuggest.get.highlight(path, ls.pathToStash(path), line + 1, ch.get)
+      await nimsuggest.get.highlight(path, ls.pathToStash(path), line.int + 1, ch.get)
     result = suggestLocations.map(x => x.toUtf16Pos(ls).toDocumentHighlight)
 
 #proc extractId(id: JsonNode): int {.raises: [ValueError].} =
