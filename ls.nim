@@ -805,7 +805,6 @@ proc toDiagnostic(suggest: Suggest): Diagnostic =
       ),
       message: doc,
       source: some "nim",
-      code: some %"nimsuggest chk",
     )
 
 proc toDiagnostic(checkResult: CheckResult): Diagnostic =
@@ -834,7 +833,6 @@ proc toDiagnostic(checkResult: CheckResult): Diagnostic =
     ),
     message: checkResult.msg,
     source: some "nim",
-    code: some %"nim check",
   )
 
 proc sendDiagnostics*(

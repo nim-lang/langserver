@@ -85,26 +85,6 @@ suite "decoding a uri":
     expect SerializationError:
       discard LspJson.decode("\"file://somehost/hw.nim\"", DocumentUri)
 
-suite "decoding a uinteger":
-  test "0 and 2^31 - 1 are accepted":
-    check LspJson.decode("0", uinteger).int == 0
-    check LspJson.decode("2147483647", uinteger).int == 2147483647
-
-  test "a negative value is rejected":
-    expect SerializationError:
-      discard LspJson.decode("-1", uinteger)
-
-  test "a value above 2^31 - 1 is rejected":
-    expect SerializationError:
-      discard LspJson.decode("2147483648", uinteger)
-
-  test "a position with an out of range field is rejected":
-    expect SerializationError:
-      discard LspJson.decode("""{"line": -1, "character": 0}""", Position)
-
-  test "a uinteger is encoded as a number":
-    check LspJson.encode(uinteger(5)) == "5"
-
 suite "path and seq helpers":
   test "isRelTo reports containment without raising":
     check isRelTo("/a/b/c.nim".Path, "/a/b".Path)

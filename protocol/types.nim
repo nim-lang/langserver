@@ -28,32 +28,6 @@ chronicles.formatIt(Path):
 proc len*(x: Path): int =
   x.string.len
 
-proc parseFileUri*(uri: LspUri): Uri {.raises: [UriParseError].} =
-  result = parseUri(uri.string)
-  if result.scheme != "file":
-    let msg =
-      "Invalid scheme in uri `" & uri.string & "`: " & result.scheme &
-      ", only `file` is supported"
-    raise (ref UriParseError)(msg: msg)
-  elif result.hostname != "":
-    let msg =
-      "Invalid hostname in uri `" & uri.string & "`: " & result.hostname &
-      ", only empty hostname is supported"
-    raise (ref UriParseError)(msg: msg)
-
-proc writeValue*(w: var JsonWriter, x: LspUri) {.raises: [IOError].} =
-  w.writeValue(x.string)
-
-proc readValue*(
-    r: var JsonReader, x: var LspUri
-) {.raises: [IOError, SerializationError].} =
-  let uri = r.readValue(string)
-  try:
-    discard parseFileUri(LspUri(uri))
-  except UriParseError as exc:
-    r.raiseUnexpectedValue(exc.msg)
-  x = LspUri(uri)
-
 # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#baseTypes
 type uinteger* = distinct int
 
@@ -62,18 +36,18 @@ const uintegerHigh* = uinteger(int32.high)
 proc `%`*(x: uinteger): JsonNode =
   %x.int
 
-proc writeValue*(w: var JsonWriter, x: uinteger) {.raises: [IOError].} =
-  w.writeValue(x.int)
-
-proc readValue*(
-    r: var JsonReader, x: var uinteger
-) {.raises: [IOError, SerializationError].} =
-  let n = r.readValue(int)
-  if n notin 0 .. uintegerHigh.int:
-    r.raiseUnexpectedValue("uinteger out of range: " & $n)
-  x = uinteger(n)
-
 type
+  NumOrStrKind* = enum
+    nosNum
+    nosStr
+
+  NumOrStr* = object
+    case kind*: NumOrStrKind
+    of nosNum:
+      num*: int
+    of nosStr:
+      str*: string
+
   OptionalSeq*[T] = Option[seq[T]]
   OptionalNode* = Option[JsonNode]
 
@@ -92,10 +66,11 @@ type
     uri*: DocumentUri
     `range`*: Range
 
+  # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#diagnostic
   Diagnostic* = ref object of RootObj
     `range`*: Range
     severity*: Option[int]
-    code*: OptionalNode # int or string
+    code*: Option[NumOrStr]
     source*: Option[string]
     message*: string
     relatedInformation*: OptionalSeq[DiagnosticRelatedInformation]
@@ -1242,6 +1217,32 @@ createJsonFlavor LspJson,
 template shouldWriteObjectField*[T](field: ref T): bool =
   field != nil
 
+proc parseFileUri*(uri: LspUri): Uri {.raises: [UriParseError].} =
+  result = parseUri(uri.string)
+  if result.scheme != "file":
+    let msg =
+      "Invalid scheme in uri `" & uri.string & "`: " & result.scheme &
+      ", only `file` is supported"
+    raise (ref UriParseError)(msg: msg)
+  elif result.hostname != "":
+    let msg =
+      "Invalid hostname in uri `" & uri.string & "`: " & result.hostname &
+      ", only empty hostname is supported"
+    raise (ref UriParseError)(msg: msg)
+
+proc writeValue*(w: var JsonWriter[LspJson], x: LspUri) {.raises: [IOError].} =
+  w.writeValue(x.string)
+
+proc readValue*(
+    r: var JsonReader[LspJson], x: var LspUri
+) {.raises: [IOError, SerializationError].} =
+  let uri = r.readValue(string)
+  try:
+    discard parseFileUri(LspUri(uri))
+  except UriParseError as exc:
+    r.raiseUnexpectedValue(exc.msg)
+  x = LspUri(uri)
+
 proc readValue*(
     r: var JsonReader[LspJson], x: var RequestId
 ) {.raises: [IOError, SerializationError].} =
@@ -1252,6 +1253,35 @@ proc readValue*(
     x = RequestId(kind: riString, str: r.readValue(string))
   else:
     r.raiseUnexpectedValue("expected an integer or a string id")
+
+proc writeValue*(w: var JsonWriter[LspJson], x: uinteger) {.raises: [IOError].} =
+  w.writeValue(x.int)
+
+proc readValue*(
+    r: var JsonReader[LspJson], x: var uinteger
+) {.raises: [IOError, SerializationError].} =
+  let n = r.readValue(int)
+  if n notin 0 .. uintegerHigh.int:
+    r.raiseUnexpectedValue("uinteger out of range: " & $n)
+  x = uinteger(n)
+
+proc writeValue*(w: var JsonWriter[LspJson], x: NumOrStr) {.raises: [IOError].} =
+  case x.kind
+  of nosNum:
+    w.writeValue(x.num)
+  of nosStr:
+    w.writeValue(x.str)
+
+proc readValue*(
+    r: var JsonReader[LspJson], x: var NumOrStr
+) {.raises: [IOError, SerializationError].} =
+  case r.tokKind
+  of JsonValueKind.Number:
+    x = NumOrStr(kind: nosNum, num: r.readValue(int))
+  of JsonValueKind.String:
+    x = NumOrStr(kind: nosStr, str: r.readValue(string))
+  else:
+    r.raiseUnexpectedValue("expected an integer or a string")
 
 LspJson.useDefaultSerializationFor(Position)
 LspJson.useDefaultSerializationFor(Range)
