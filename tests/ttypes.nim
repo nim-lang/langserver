@@ -175,3 +175,19 @@ suite "workspace folders server capabilities":
   test "a string is read as a string":
     let value = LspJson.decode("\"folders\"", WorkspaceFoldersChangeNotifications)
     check value.kind == wfcnStr and value.str == "folders"
+
+suite "mcp tool call result":
+  test "the structured content is written as it is":
+    let res = McpCallToolResult(
+      content: @[McpContentBlock(`type`: TextContent, text: """{"refs":[]}""")],
+      structuredContent: some JsonString("""{"refs":[]}"""),
+    )
+    check LspJson.encode(res) ==
+      """{"content":[{"type":"text","text":"{\"refs\":[]}"}],"structuredContent":{"refs":[]},"isError":false}"""
+
+  test "no structured content leaves the field out":
+    let res = McpCallToolResult(
+      content: @[McpContentBlock(`type`: TextContent, text: "x")], isError: true
+    )
+    check LspJson.encode(res) ==
+      """{"content":[{"type":"text","text":"x"}],"isError":true}"""

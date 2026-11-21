@@ -764,16 +764,18 @@ type
     resolveProvider*: Option[bool]
 
   McpToolSchema* = object
+    schema* {.serializedFieldName: "$schema".}: Option[string]
     `type`*: string
-    properties*: JsonNode
-    required*: seq[string]
+    properties*: Option[OrderedTable[string, JsonString]]
+    required*: Option[seq[string]]
 
+  # https://modelcontextprotocol.io/specification/2026-07-28/schema#tool
   McpTool* = object
     name*: string
     title*: string
     description*: string
     inputSchema*: McpToolSchema
-    outputSchema*: McpToolSchema
+    outputSchema*: Option[McpToolSchema]
 
   McpListToolsResult* = ref object of RootObj
     tools*: seq[McpTool]
@@ -789,7 +791,7 @@ type
   # https://modelcontextprotocol.io/specification/2026-07-28/schema#calltoolresult
   McpCallToolResult* = ref object of RootObj
     content*: seq[McpContentBlock]
-    structuredContent*: OptionalNode
+    structuredContent*: Option[JsonString]
     isError*: bool
 
   McpToolsOptions* = object

@@ -1,5 +1,5 @@
 import
-  std/[options, strutils],
+  std/options,
   unittest2,
   json_serialization,
   json_serialization/std/options as jsoptions,
@@ -89,9 +89,7 @@ suite "oneOf":
       first: NumStrBool(kind: nsbStr, str: "x"),
       second: some BoolOr[Options](kind: boValue, value: Options(delta: some true)),
     )
-    let json = TestJson.encode(holder)
-    check json == """{"first":"x","second":{"delta":true}}"""
-    check "kind" notin json
+    check TestJson.encode(holder) == """{"first":"x","second":{"delta":true}}"""
 
   test "a JSON kind no member is read from is rejected":
     expect SerializationError:

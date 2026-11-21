@@ -1,5 +1,5 @@
 import
-  std/[json, jsonutils, options, os, sequtils, strutils],
+  std/[json, options, os, sequtils, strutils],
   chronos,
   json_rpc/errors,
   unittest2,
@@ -43,7 +43,7 @@ proc checkToolResult(res: McpCallToolResult) =
   check not res.isError
   check res.structuredContent.isSome
   if res.structuredContent.isSome:
-    check parseJson(res.content[0].text) == res.structuredContent.get
+    check parseJson(res.content[0].text) == res.structuredContent.get.string.parseJson
 
 proc newMcpSocketClient(port: Port): Future[McpSocketClient] {.async.} =
   let addresses = resolveTAddress("localhost", port)
@@ -257,35 +257,46 @@ suite "MCP routes":
       },
     )
 
-    let listToolsResult =
-      (waitFor rpcClient.callRpc("tools/list", %*{})).jsonTo(McpListToolsResult)
+    let tools = (waitFor rpcClient.callRpc("tools/list", %*{}))["tools"].getElems
 
-    check listToolsResult.tools.mapIt(it.name) ==
+    check tools.mapIt(it["name"].getStr) ==
       @[
         "nimFindReferences", "nimFindSymbols", "nimListSymbols", "nimCheckProject",
         "nimCheckFile", "nimFindTypeDefinition",
       ]
 
-    let
-      findReferences = listToolsResult.tools[0]
-      findSymbols = listToolsResult.tools[1]
-      listSymbols = listToolsResult.tools[2]
-      checkProject = listToolsResult.tools[3]
-      checkFile = listToolsResult.tools[4]
-      findTypeDefinition = listToolsResult.tools[5]
+    proc required(tool: JsonNode, schema: string): seq[string] =
+      tool[schema]["required"].getElems.mapIt(it.getStr)
 
-    check findReferences.inputSchema.required == @["path", "line", "column"]
-    check findReferences.outputSchema.required == @["refs"]
-    check findSymbols.inputSchema.required == @["uri", "query"]
-    check findSymbols.outputSchema.required == @["syms"]
-    check listSymbols.inputSchema.required == @["path"]
-    check listSymbols.outputSchema.required == @["syms"]
-    check checkProject.inputSchema.required == @["uri"]
-    check checkProject.outputSchema.required == @["diags"]
-    check checkFile.inputSchema.required == @["path"]
-    check checkFile.outputSchema.required == @["diags"]
-    check findTypeDefinition.inputSchema.required == @["path", "line", "column"]
-    check findTypeDefinition.outputSchema.required == @["defs"]
+    let
+      findReferences = tools[0]
+      findSymbols = tools[1]
+      listSymbols = tools[2]
+      checkProject = tools[3]
+      checkFile = tools[4]
+      findTypeDefinition = tools[5]
+
+    check findReferences.required("inputSchema") == @["path", "line", "column"]
+    check findReferences.required("outputSchema") == @["refs"]
+    check findSymbols.required("inputSchema") == @["uri", "query"]
+    check findSymbols.required("outputSchema") == @["syms"]
+    check listSymbols.required("inputSchema") == @["path"]
+    check listSymbols.required("outputSchema") == @["syms"]
+    check checkProject.required("inputSchema") == @["uri"]
+    check checkProject.required("outputSchema") == @["diags"]
+    check checkFile.required("inputSchema") == @["path"]
+    check checkFile.required("outputSchema") == @["diags"]
+    check findTypeDefinition.required("inputSchema") == @["path", "line", "column"]
+    check findTypeDefinition.required("outputSchema") == @["defs"]
+
+    #The property schemas are written as JSON, not as strings
+    let inputProperties = findReferences["inputSchema"]["properties"]
+    check inputProperties["line"] == %*{"type": "integer"}
+    check findSymbols["inputSchema"]["properties"]["uri"] ==
+      %*{"type": "string", "format": "uri"}
+    let items = findReferences["outputSchema"]["properties"]["refs"]["items"]
+    check items["properties"]["path"] == %*{"type": "string"}
+    check items["required"].getElems.mapIt(it.getStr) == @["path", "line", "column"]
 
 suite "MCP tools":
   let
@@ -321,7 +332,7 @@ suite "MCP tools":
       ),
     )
     checkToolResult(symbols)
-    check symbols.structuredContent.get["syms"].getElems().anyIt(
+    check symbols.structuredContent.get.string.parseJson["syms"].getElems().anyIt(
       it["path"].getStr() == entryPoint and it["kind"].getStr() == "Proc"
     )
 
@@ -332,7 +343,7 @@ suite "MCP tools":
       ),
     )
     checkToolResult(diags)
-    check diags.structuredContent.get["diags"].getElems().anyIt(
+    check diags.structuredContent.get.string.parseJson["diags"].getElems().anyIt(
       it["path"].getStr() == errFile and it["severity"].getStr() == "Error"
     )
 
@@ -347,7 +358,7 @@ suite "MCP tools":
 
     checkToolResult(res)
 
-    let refs = res.structuredContent.get["refs"].getElems()
+    let refs = res.structuredContent.get.string.parseJson["refs"].getElems()
 
     check len(refs) == 1
 
@@ -362,7 +373,7 @@ suite "MCP tools":
 
     checkToolResult(res)
 
-    let syms = res.structuredContent.get["syms"].getElems()
+    let syms = res.structuredContent.get.string.parseJson["syms"].getElems()
 
     check syms.anyIt(
       it["path"].getStr() == entryPoint and it["line"].getInt() == 3 and
@@ -377,7 +388,7 @@ suite "MCP tools":
 
     checkToolResult(res)
 
-    let syms = res.structuredContent.get["syms"].getElems()
+    let syms = res.structuredContent.get.string.parseJson["syms"].getElems()
 
     check syms.len == 1
     check syms.len >= 1 and
@@ -394,7 +405,7 @@ suite "MCP tools":
 
     checkToolResult(res)
 
-    let diags = res.structuredContent.get["diags"].getElems()
+    let diags = res.structuredContent.get.string.parseJson["diags"].getElems()
     check diags.len > 0
     check diags.anyIt(
       it["path"].getStr() == errFile and it["line"].getInt() == 5 and
@@ -409,7 +420,7 @@ suite "MCP tools":
 
     checkToolResult(res)
 
-    let diags = res.structuredContent.get["diags"].getElems()
+    let diags = res.structuredContent.get.string.parseJson["diags"].getElems()
     check diags.len > 0
     check diags.anyIt(
       it["line"].getInt() == 5 and it["severity"].getStr() == "Error" and
@@ -423,7 +434,7 @@ suite "MCP tools":
 
     checkToolResult(res)
 
-    let diags = res.structuredContent.get["diags"].getElems()
+    let diags = res.structuredContent.get.string.parseJson["diags"].getElems()
     check diags.len > 0
     check diags.anyIt(
       it["line"].getInt() == 5 and it["severity"].getStr() == "Error" and
@@ -441,7 +452,7 @@ suite "MCP tools":
 
     checkToolResult(res)
 
-    let defs = res.structuredContent.get["defs"].getElems()
+    let defs = res.structuredContent.get.string.parseJson["defs"].getElems()
     check defs.len > 0
     check defs.anyIt(
       it["name"].getStr() == "int" or it["type"].getStr().contains("int")
