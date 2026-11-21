@@ -48,6 +48,17 @@ type
     of nosStr:
       str*: string
 
+  BoolOrKind* = enum
+    boBool
+    boValue
+
+  BoolOr*[T] = object
+    case kind*: BoolOrKind
+    of boBool:
+      boolean*: bool
+    of boValue:
+      value*: T
+
   OptionalSeq*[T] = Option[seq[T]]
   OptionalNode* = Option[JsonNode]
   LspAny* = JsonString
@@ -493,10 +504,16 @@ type
   CallHierarchyClientCapabilities* = ref object of RootObj
     dynamicRegistration*: Option[bool]
 
+  EmptyObject* = ref object of RootObj
+
   # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#clientSemanticTokensRequestOptions
   ClientSemanticTokensRequestOptions* = ref object of RootObj
-    range*: OptionalNode # boolean | { }
-    full*: OptionalNode # boolean | { delta?: boolean; }
+    range*: Option[BoolOr[EmptyObject]]
+    full*: Option[BoolOr[ClientSemanticTokensRequestFullDelta]]
+
+  # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#clientSemanticTokensRequestFullDelta
+  ClientSemanticTokensRequestFullDelta* = ref object of RootObj
+    delta*: Option[bool]
 
   # 'relative'
   TokenFormat_str = string
@@ -1293,6 +1310,24 @@ proc readValue*(
   else:
     r.raiseUnexpectedValue("expected an integer or a string")
 
+proc writeValue*[T](w: var JsonWriter[LspJson], x: BoolOr[T]) {.raises: [IOError].} =
+  case x.kind
+  of boBool:
+    w.writeValue(x.boolean)
+  of boValue:
+    w.writeValue(x.value)
+
+proc readValue*[T](
+    r: var JsonReader[LspJson], x: var BoolOr[T]
+) {.raises: [IOError, SerializationError].} =
+  case r.tokKind
+  of JsonValueKind.Bool:
+    x = BoolOr[T](kind: boBool, boolean: r.readValue(bool))
+  of JsonValueKind.Object:
+    x = BoolOr[T](kind: boValue, value: r.readValue(T))
+  else:
+    r.raiseUnexpectedValue("expected a boolean or an object")
+
 LspJson.useDefaultSerializationFor(Position)
 LspJson.useDefaultSerializationFor(Range)
 LspJson.useDefaultSerializationFor(Location)
@@ -1376,6 +1411,8 @@ LspJson.useDefaultReaderFor(FoldingRangeClientCapabilities)
 LspJson.useDefaultReaderFor(SelectionRangeClientCapabilities)
 LspJson.useDefaultReaderFor(LinkedEditingRangeClientCapabilities)
 LspJson.useDefaultReaderFor(CallHierarchyClientCapabilities)
+LspJson.useDefaultSerializationFor(EmptyObject)
+LspJson.useDefaultReaderFor(ClientSemanticTokensRequestFullDelta)
 LspJson.useDefaultReaderFor(ClientSemanticTokensRequestOptions)
 LspJson.useDefaultReaderFor(SemanticTokensClientCapabilities)
 LspJson.useDefaultReaderFor(MonikerClientCapabilities)

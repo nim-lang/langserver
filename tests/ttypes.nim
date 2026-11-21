@@ -118,3 +118,31 @@ suite "work done progress":
 
   test "creating a progress sends only the token":
     check LspJson.encode(WorkDoneProgressCreateParams(token: "t")) == """{"token":"t"}"""
+
+suite "semantic tokens request options":
+  test "a boolean and an object are both accepted":
+    let options = LspJson.decode(
+      """{"range": true, "full": {"delta": true}}""", ClientSemanticTokensRequestOptions
+    )
+    check options.range.get.kind == boBool and options.range.get.boolean
+    check options.full.get.kind == boValue and options.full.get.value.delta == some true
+
+  test "the empty object of range is accepted":
+    let options = LspJson.decode(
+      """{"range": {}, "full": false}""", ClientSemanticTokensRequestOptions
+    )
+    check options.range.get.kind == boValue
+    check options.full.get.kind == boBool and not options.full.get.boolean
+
+  test "neither is required":
+    let options = LspJson.decode("{}", ClientSemanticTokensRequestOptions)
+    check options.range.isNone and options.full.isNone
+
+  test "something that is neither a boolean nor an object is rejected":
+    expect SerializationError:
+      discard LspJson.decode("""{"full": "yes"}""", ClientSemanticTokensRequestOptions)
+
+  test "a boolean or an object is encoded as is":
+    check LspJson.encode(BoolOr[EmptyObject](kind: boBool, boolean: true)) == "true"
+    check LspJson.encode(BoolOr[EmptyObject](kind: boValue, value: EmptyObject())) ==
+      "{}"
