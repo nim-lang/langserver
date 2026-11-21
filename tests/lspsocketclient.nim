@@ -188,10 +188,9 @@ proc register*(client: LspSocketClient, name: string, rpc: Rpc) =
 #Calls
 proc initialize*(
     client: LspSocketClient, initParams: JsonNode
-): Future[LspInitializeResult] {.async.} =
-  client.call("initialize", initParams).await.jsonTo(
-    LspInitializeResult, Joptions(allowMissingKeys: true)
-  )
+): Future[JsonNode] {.async.} =
+  ## The result as the server sent it
+  await client.call("initialize", initParams)
 
 proc createDidOpenParams*(file: string): DidOpenTextDocumentParams =
   DidOpenTextDocumentParams(

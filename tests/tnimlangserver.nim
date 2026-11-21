@@ -31,7 +31,7 @@ suite "Nimlangserver":
     let initializeResult = waitFor client.initialize(initParams)
     ls.setWorkspaceConfiguration(% @[NlsConfig()])
 
-    check initializeResult.capabilities.textDocumentSync.isSome
+    check "textDocumentSync" in initializeResult["capabilities"]
 
 let helloWorldUri = fixtureUri("projects/hw/hw.nim")
 

@@ -64,7 +64,8 @@ proc initialize*(
         ServerCapabilities_workspace(
           workspaceFolders: some(
             WorkspaceFoldersServerCapabilities(
-              supported: some(true), changeNotifications: some(%true)
+              supported: some(true),
+              changeNotifications: some BoolOr[string](kind: boBool, boolean: true),
             )
           )
         )

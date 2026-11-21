@@ -1,5 +1,5 @@
 import
-  std/[options, json, os, sets, strformat],
+  std/[options, json, os, sequtils, sets, strformat],
   json_rpc/[rpcclient],
   unittest2,
   ../[nimlangserver, ls, suggestapi, utils],
@@ -91,22 +91,22 @@ suite "LSP diagnostics":
     check status.version == LSPVersion
 
   test "initialize advertises the providers whose routes are registered":
-    let capabilities = initializeResult.capabilities
-    check capabilities.textDocumentSync.isSome
-    check not capabilities.completionProvider.isNil
-    check capabilities.hoverProvider.get(false)
-    check capabilities.definitionProvider.get(false)
-    check capabilities.referencesProvider.get(false)
-    check capabilities.documentSymbolProvider.get(false)
-    check capabilities.workspaceSymbolProvider.get(false)
-    check capabilities.documentHighlightProvider.get(false)
-    check capabilities.typeDefinitionProvider.get(false)
-    check capabilities.declarationProvider.get(false)
+    let capabilities = initializeResult["capabilities"]
+    check "textDocumentSync" in capabilities
+    check "completionProvider" in capabilities
+    check capabilities{"hoverProvider"}.getBool
+    check capabilities{"definitionProvider"}.getBool
+    check capabilities{"referencesProvider"}.getBool
+    check capabilities{"documentSymbolProvider"}.getBool
+    check capabilities{"workspaceSymbolProvider"}.getBool
+    check capabilities{"documentHighlightProvider"}.getBool
+    check capabilities{"typeDefinitionProvider"}.getBool
+    check capabilities{"declarationProvider"}.getBool
 
   test "initialize advertises the extension commands it can execute":
-    let provider = initializeResult.capabilities.executeCommandProvider
-    check provider.isSome
-    let commands = provider.get.commands.get(@[])
+    let provider = initializeResult["capabilities"]{"executeCommandProvider"}
+    check not provider.isNil
+    let commands = provider{"commands"}.getElems.mapIt(it.getStr)
     check RESTART_COMMAND in commands
     check CHECK_PROJECT_COMMAND in commands
     check RECOMPILE_COMMAND in commands

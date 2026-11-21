@@ -694,7 +694,7 @@ type
 
   WorkspaceFoldersServerCapabilities* = ref object of RootObj
     supported*: Option[bool]
-    changeNotifications*: OptionalNode # string or bool
+    changeNotifications*: Option[BoolOr[string]]
 
   # 'file' | 'folder'
   FileOperationPatternKind_str = string
@@ -1321,13 +1321,10 @@ proc writeValue*[T](w: var JsonWriter[LspJson], x: BoolOr[T]) {.raises: [IOError
 proc readValue*[T](
     r: var JsonReader[LspJson], x: var BoolOr[T]
 ) {.raises: [IOError, SerializationError].} =
-  case r.tokKind
-  of JsonValueKind.Bool:
+  if r.tokKind == JsonValueKind.Bool:
     x = BoolOr[T](kind: boBool, boolean: r.readValue(bool))
-  of JsonValueKind.Object:
-    x = BoolOr[T](kind: boValue, value: r.readValue(T))
   else:
-    r.raiseUnexpectedValue("expected a boolean or an object")
+    x = BoolOr[T](kind: boValue, value: r.readValue(T))
 
 LspJson.useDefaultSerializationFor(Position)
 LspJson.useDefaultSerializationFor(Range)

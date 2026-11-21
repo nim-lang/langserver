@@ -64,9 +64,9 @@ suite "Several workspaces":
 
   test "the workspace folders take precedence over the root uri":
     check ls.workspaceFolders == @[hwDir.Path, modulesDir.Path]
-    let capability = initResult.capabilities.workspace.get.workspaceFolders.get
-    check capability.supported == some(true)
-    check capability.changeNotifications == some(%true)
+    let capability = initResult["capabilities"]["workspace"]["workspaceFolders"]
+    check capability["supported"].getBool
+    check capability["changeNotifications"].getBool
 
   test "a file belongs to the workspace that contains it":
     check ls.workspaceFolderOf(hwDir / "hw.nim") == hwDir

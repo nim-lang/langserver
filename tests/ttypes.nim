@@ -153,3 +153,20 @@ suite "client capabilities":
       """{"experimental": {"snippetTextEdit": true}}""", LspClientCapabilities
     )
     check capabilities.experimental.get.string == """{"snippetTextEdit":true}"""
+
+suite "workspace folders server capabilities":
+  test "change notifications can be a boolean":
+    let capability = WorkspaceFoldersServerCapabilities(
+      changeNotifications: some BoolOr[string](kind: boBool, boolean: true)
+    )
+    check LspJson.encode(capability) == """{"changeNotifications":true}"""
+
+  test "change notifications can be a registration id":
+    let capability = WorkspaceFoldersServerCapabilities(
+      changeNotifications: some BoolOr[string](kind: boValue, value: "folders")
+    )
+    check LspJson.encode(capability) == """{"changeNotifications":"folders"}"""
+
+  test "a string is read as a string":
+    let value = LspJson.decode("\"folders\"", BoolOr[string])
+    check value.kind == boValue and value.value == "folders"
