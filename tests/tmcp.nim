@@ -5,7 +5,8 @@ import
   unittest2,
   ../[nimlangserver, ls, utils],
   ../protocol/types,
-  ../routes/mcp
+  ../routes/mcp,
+  ./lspsocketclient
 
 proc toolArguments(node: JsonNode): Option[JsonString] =
   some JsonString($node)

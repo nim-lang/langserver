@@ -5,6 +5,16 @@ import
   ../protocol/types,
   ../[ls, utils]
 
+#The tests build their params with std/json
+proc `%`*(x: LspUri): JsonNode =
+  %x.string
+
+proc `%`*(x: Path): JsonNode =
+  %x.string
+
+proc `%`*(x: uinteger): JsonNode =
+  %x.int
+
 #Utils
 proc fixturePath*(path: string): Path =
   result = paths.getCurrentDir() / "tests".Path / path.Path

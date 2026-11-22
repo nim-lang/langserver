@@ -578,6 +578,7 @@ proc references*(
         x => x.toUtf16Pos(ls).toLocation
       )
 
+# https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#textDocument_prepareRename
 proc prepareRename*(
     ls: LanguageServer, params: PrepareRenameParams
 ): Future[Option[Range]] {.
