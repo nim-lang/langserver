@@ -1307,8 +1307,11 @@ proc maybeRegisterCapabilityDidChangeWatchedFiles*(
     let reg = Registration(
       id: "workspace-did-change-watched-files",
       `method`: "workspace/didChangeWatchedFiles",
-      registerOptions:
-        some(%DidChangeWatchedFilesRegistrationOptions(watchers: some(watchers))),
+      registerOptions: some JsonString(
+        LspJson.encode(
+          DidChangeWatchedFilesRegistrationOptions(watchers: some(watchers))
+        )
+      ),
     )
     let regParams = RegistrationParams(registrations: some(@[reg]))
     try:

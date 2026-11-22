@@ -935,7 +935,7 @@ type
   Registration* = ref object of RootObj
     id*: string
     `method`*: string
-    registerOptions*: OptionalNode
+    registerOptions*: Option[LspAny]
 
   RegistrationParams* = ref object of RootObj
     registrations*: OptionalSeq[Registration]
@@ -1586,6 +1586,8 @@ LspJson.useOneOfWriterFor(ServerCapabilitiesColorProvider)
 LspJson.useOneOfWriterFor(ServerCapabilitiesRenameProvider)
 LspJson.useDefaultWriterFor(LspServerCapabilities)
 LspJson.useDefaultWriterFor(ShowMessageParams)
+LspJson.useDefaultWriterFor(FileSystemWatcher)
+LspJson.useDefaultWriterFor(DidChangeWatchedFilesRegistrationOptions)
 LspJson.useDefaultWriterFor(Registration)
 LspJson.useDefaultWriterFor(RegistrationParams)
 LspJson.useDefaultWriterFor(ApplyWorkspaceEditParams)

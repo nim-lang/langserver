@@ -270,3 +270,20 @@ suite "document selector":
       LspJson.decode("""{"documentSelector": [{"language": "nim"}]}""", SelectorHolder)
     check holder.documentSelector.kind == tdrdsSelector
     check holder.documentSelector.selector[0].language == some "nim"
+
+suite "registration":
+  test "the register options are written as they are":
+    let registration = Registration(
+      id: "watch",
+      `method`: "workspace/didChangeWatchedFiles",
+      registerOptions: some JsonString("""{"watchers":[{"globPattern":"**/*.nim"}]}"""),
+    )
+    check LspJson.encode(registration) ==
+      """{"id":"watch","method":"workspace/didChangeWatchedFiles","registerOptions":{"watchers":[{"globPattern":"**/*.nim"}]}}"""
+
+  test "watched files options are encoded with their watchers":
+    let options = DidChangeWatchedFilesRegistrationOptions(
+      watchers: some @[FileSystemWatcher(globPattern: "**/*.nim", kind: some 7)]
+    )
+    check LspJson.encode(options) ==
+      """{"watchers":[{"globPattern":"**/*.nim","kind":7}]}"""
