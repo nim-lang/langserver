@@ -1197,20 +1197,27 @@ type
     textEdit*: Option[TextEdit]
     additionalTextEdits*: OptionalSeq[TextEdit]
 
+  FormattingOptions* = ref object of RootObj
+    tabSize*: uinteger
+    insertSpaces*: bool
+    trimTrailingWhitespace*: Option[bool]
+    insertFinalNewline*: Option[bool]
+    trimFinalNewlines*: Option[bool]
+
   DocumentFormattingParams* = ref object of RootObj
     textDocument*: TextDocumentIdentifier
-    options*: OptionalNode
+    options*: FormattingOptions
 
   DocumentRangeFormattingParams* = ref object of RootObj
     textDocument*: TextDocumentIdentifier
     `range`*: Range
-    options*: OptionalNode
+    options*: FormattingOptions
 
   DocumentOnTypeFormattingParams* = ref object of RootObj
     textDocument*: TextDocumentIdentifier
     position*: Position
     ch*: string
-    options*: OptionalNode
+    options*: FormattingOptions
 
   DocumentOnTypeFormattingRegistrationOptions* = ref object of TextDocumentRegistrationOptions
     firstTriggerCharacter*: string
@@ -1567,6 +1574,7 @@ LspJson.useDefaultReaderFor(ReferenceContext)
 LspJson.useDefaultReaderFor(DocumentSymbolParams)
 LspJson.useDefaultReaderFor(CodeActionParams)
 LspJson.useDefaultReaderFor(CodeActionContext)
+LspJson.useDefaultReaderFor(FormattingOptions)
 LspJson.useDefaultReaderFor(DocumentFormattingParams)
 LspJson.useDefaultReaderFor(RenameParams)
 LspJson.useDefaultReaderFor(PrepareRenameParams)

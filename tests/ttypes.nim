@@ -218,6 +218,31 @@ suite "document link":
     check LspJson.encode(link) ==
       """{"range":{"start":{"line":0,"character":0},"end":{"line":0,"character":1}},"data":{"a":[1]}}"""
 
+suite "document formatting params":
+  test "the formatting options are read":
+    let params = LspJson.decode(
+      """{"textDocument": {"uri": "file:///a.nim"}, "options": {"tabSize": 2, "insertSpaces": true, "trimFinalNewlines": false}}""",
+      DocumentFormattingParams,
+    )
+    check params.options.tabSize.int == 2
+    check params.options.insertSpaces
+    check params.options.trimTrailingWhitespace.isNone
+    check params.options.insertFinalNewline.isNone
+    check params.options.trimFinalNewlines == some false
+
+  test "missing options are rejected":
+    expect SerializationError:
+      discard LspJson.decode(
+        """{"textDocument": {"uri": "file:///a.nim"}}""", DocumentFormattingParams
+      )
+
+  test "options without a tab size are rejected":
+    expect SerializationError:
+      discard LspJson.decode(
+        """{"textDocument": {"uri": "file:///a.nim"}, "options": {"insertSpaces": true}}""",
+        DocumentFormattingParams,
+      )
+
 suite "initialized params":
   test "an empty object is accepted":
     check not LspJson.decode("{}", InitializedParams).isNil
