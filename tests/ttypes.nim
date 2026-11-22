@@ -99,6 +99,14 @@ suite "initialize params":
     check params.initializationOptions.isNone
     check params.processId.isNone
 
+suite "initialized params":
+  test "an empty object is accepted":
+    check not LspJson.decode("{}", InitializedParams).isNil
+
+  test "something that is not an object is rejected":
+    expect SerializationError:
+      discard LspJson.decode("[]", InitializedParams)
+
 suite "work done progress":
   test "a begin carries its kind and title":
     let params = ProgressParams[WorkDoneProgressBegin](

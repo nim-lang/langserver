@@ -914,7 +914,6 @@ type
     experimental*: Option[LspAny]
 
   InitializedParams* = ref object of RootObj
-    DUMMY*: Option[nil]
 
   ShowMessageParams* = ref object of RootObj
     `type`*: int
@@ -1419,6 +1418,7 @@ LspJson.useDefaultReaderFor(McpInitializeParams_clientInfo)
 LspJson.useDefaultReaderFor(LspInitializeParams_clientInfo)
 LspJson.useDefaultReaderFor(McpInitializeParams)
 LspJson.useDefaultReaderFor(LspInitializeParams)
+LspJson.useDefaultReaderFor(InitializedParams)
 LspJson.useDefaultReaderFor(SetTraceParams)
 LspJson.useDefaultReaderFor(ChangeAnnotationSupportWorkspaceEditClientCapabilities)
 LspJson.useDefaultReaderFor(WorkspaceEditClientCapabilities)

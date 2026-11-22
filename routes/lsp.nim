@@ -1141,7 +1141,7 @@ proc cancelTest*(
 
 #Notifications
 proc initialized*(
-    ls: LanguageServer, _: JsonNode
+    ls: LanguageServer, _: InitializedParams
 ): Future[void] {.async: (raises: [ApplicationError, CancelledError]).} =
   ls.checkInitialized()
   debug "Client initialized."
