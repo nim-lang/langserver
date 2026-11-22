@@ -304,7 +304,7 @@ proc status*(
   ls.getLspStatus()
 
 proc extensionCapabilities*(
-    ls: LanguageServer, _: JsonNode
+    ls: LanguageServer, _: NimLangServerCapabilitiesParams
 ): Future[seq[string]] {.async: (raises: [ApplicationError]).} =
   ls.checkInitialized()
   ls.extensionCapabilities.toSeq.mapIt($it)

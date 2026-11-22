@@ -1297,6 +1297,8 @@ type
 
   NimLangServerStatusParams* = object
 
+  NimLangServerCapabilitiesParams* = object
+
   SuggestAction* = enum
     saNone = "none"
     saRestart = "restart"
@@ -1571,6 +1573,7 @@ LspJson.useDefaultReaderFor(PrepareRenameParams)
 LspJson.useDefaultReaderFor(SignatureHelpContext)
 LspJson.useDefaultReaderFor(InlayHintParams)
 LspJson.useDefaultReaderFor(NimLangServerStatusParams)
+LspJson.useDefaultReaderFor(NimLangServerCapabilitiesParams)
 LspJson.useDefaultReaderFor(SuggestParams)
 LspJson.useDefaultReaderFor(RunTaskParams)
 LspJson.useDefaultReaderFor(ListTestsParams)
