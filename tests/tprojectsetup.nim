@@ -510,9 +510,12 @@ suite "Nimble package changes":
     let
       first = ls.tryGetNimsuggest(libFile)
       second = ls.tryGetNimsuggest(libFile)
-    # the old nimsuggest stays until it has exited, so nothing starts meanwhile
-    check ls.projectFiles[packageProject] == project
-    check packageProject notin ls.nimsuggestCreations
+    # the old nimsuggest stays until it has exited, so nothing starts meanwhile.
+    # If it had already exited, waitForExit completes at once and the restart
+    # starts before the event loop runs, so only a live process tells.
+    if project.process.running() == AsyncProcessResult[bool].ok(true):
+      check ls.projectFiles[packageProject] == project
+      check packageProject notin ls.nimsuggestCreations
 
     check (waitFor first).get == (waitFor second).get
     check ls.projectFiles[packageProject] != project
