@@ -953,8 +953,10 @@ type
   DidChangeWorkspaceFoldersParams* = ref object of RootObj
     event*: WorkspaceFoldersChangeEvent
 
+  # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#workspace_didChangeConfiguration
+  # XXX remove Option when skipNullFields = false
   DidChangeConfigurationParams* = ref object of RootObj
-    settings*: OptionalNode
+    settings*: Option[LspAny]
 
   FileEvent* = ref object of RootObj
     uri*: DocumentUri
@@ -1517,6 +1519,7 @@ LspJson.useDefaultReaderFor(WillSaveTextDocumentParams)
 LspJson.useDefaultReaderFor(DidSaveTextDocumentParams)
 LspJson.useDefaultReaderFor(DidCloseTextDocumentParams)
 LspJson.useDefaultReaderFor(DidChangeWatchedFilesParams)
+LspJson.useDefaultReaderFor(DidChangeConfigurationParams)
 LspJson.useDefaultReaderFor(DidChangeWorkspaceFoldersParams)
 LspJson.useDefaultReaderFor(WorkspaceFoldersChangeEvent)
 LspJson.useDefaultReaderFor(FileEvent)

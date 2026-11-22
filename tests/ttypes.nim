@@ -99,6 +99,17 @@ suite "initialize params":
     check params.initializationOptions.isNone
     check params.processId.isNone
 
+suite "did change configuration params":
+  test "the settings are kept as json, without whitespace":
+    let params = LspJson.decode(
+      """{"settings": {"nim": {"projectMapping": []}}}""", DidChangeConfigurationParams
+    )
+    check params.settings.get.string == """{"nim":{"projectMapping":[]}}"""
+
+  test "null settings decode as none":
+    let params = LspJson.decode("""{"settings": null}""", DidChangeConfigurationParams)
+    check params.settings.isNone
+
 suite "initialized params":
   test "an empty object is accepted":
     check not LspJson.decode("{}", InitializedParams).isNil
