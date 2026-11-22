@@ -224,16 +224,14 @@ suite "LSP features":
         "textDocument": {"uri": fixtureUri("projects/hw/hw.nim")},
       }
 
-    let actualEchoCompletionItem = to(
-      waitFor client.call("textDocument/completion", %completionParams),
-      seq[CompletionItem],
-    )
-      .filter(item => item.label == "echo")[0]
+    let actualEchoCompletionItem = waitFor(
+      client.call("textDocument/completion", %completionParams)
+    ).getElems
+      .filter(item => item["label"].getStr == "echo")[0]
 
-    check actualEchoCompletionItem.label == "echo"
-    check actualEchoCompletionItem.kind.get == 3
-    check actualEchoCompletionItem.detail.get().contains("proc")
-    check actualEchoCompletionItem.documentation.isSome
+    check actualEchoCompletionItem["kind"].getInt == 3
+    check actualEchoCompletionItem["detail"].getStr.contains("proc")
+    check actualEchoCompletionItem["documentation"].kind == JString
 
   test "Shutdown":
     let

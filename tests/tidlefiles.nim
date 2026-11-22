@@ -56,7 +56,7 @@ proc completionLabels(client: LspSocketClient, line, character: int): seq[string
       %positionParams(RootFile.fixtureUri, line, character),
     )
     .wait(60.seconds)
-  completion.to(seq[CompletionItem]).mapIt(it.label)
+  completion.getElems.mapIt(it["label"].getStr)
 
 proc openRootFile(client: LspSocketClient) =
   client.notify("textDocument/didOpen", %createDidOpenParams(RootFile))

@@ -1037,11 +1037,22 @@ type
     detail*: Option[string]
     description*: Option[string]
 
+  CompletionItemDocumentationKind* = enum
+    cidStr
+    cidMarkup
+
+  CompletionItemDocumentation* = object
+    case kind*: CompletionItemDocumentationKind
+    of cidStr:
+      str*: string
+    of cidMarkup:
+      markup*: MarkupContent
+
   CompletionItem* = ref object of RootObj
     label*: string
     kind*: Option[int]
     detail*: Option[string]
-    documentation*: OptionalNode #Option[string or MarkupContent]
+    documentation*: Option[CompletionItemDocumentation]
     deprecated*: Option[bool]
     preselect*: Option[bool]
     sortText*: Option[string]
@@ -1595,6 +1606,8 @@ LspJson.useDefaultWriterFor(Registration)
 LspJson.useDefaultWriterFor(RegistrationParams)
 LspJson.useDefaultWriterFor(ApplyWorkspaceEditParams)
 LspJson.useDefaultWriterFor(PublishDiagnosticsParams)
+LspJson.useDefaultWriterFor(MarkupContent)
+LspJson.useOneOfWriterFor(CompletionItemDocumentation)
 LspJson.useDefaultWriterFor(CompletionItemLabelDetails)
 LspJson.useDefaultWriterFor(CompletionItem)
 LspJson.useDefaultWriterFor(Hover)

@@ -34,7 +34,7 @@ proc completes(client: LspSocketClient, uri: DocumentUri): bool =
   let completion = waitFor client
     .call("textDocument/completion", %positionParams(uri, 4, 7))
     .wait(60.seconds)
-  completion.to(seq[CompletionItem]).len > 0
+  completion.len > 0
 
 suite "Single nimsuggest instance under concurrent opens":
   let cmdParams =

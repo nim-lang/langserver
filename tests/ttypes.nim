@@ -121,6 +121,26 @@ suite "execute command params":
   test "no arguments decodes as none":
     check LspJson.decode("""{"command": "c"}""", ExecuteCommandParams).arguments.isNone
 
+suite "completion item":
+  test "the documentation is written as a string or as markup content":
+    check LspJson.encode(
+      CompletionItem(
+        label: "echo",
+        documentation: some CompletionItemDocumentation(kind: cidStr, str: "doc"),
+      )
+    ) == """{"label":"echo","documentation":"doc"}"""
+    check LspJson.encode(
+      CompletionItem(
+        label: "echo",
+        documentation: some CompletionItemDocumentation(
+          kind: cidMarkup, markup: MarkupContent(kind: "markdown", value: "*doc*")
+        ),
+      )
+    ) == """{"label":"echo","documentation":{"kind":"markdown","value":"*doc*"}}"""
+
+  test "no documentation leaves the field out":
+    check LspJson.encode(CompletionItem(label: "echo")) == """{"label":"echo"}"""
+
 suite "initialized params":
   test "an empty object is accepted":
     check not LspJson.decode("{}", InitializedParams).isNil

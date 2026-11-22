@@ -115,7 +115,7 @@ proc toCompletionItem(suggest: Suggest): CompletionItem =
     CompletionItem(
       label: qualifiedPath[^1].strip(chars = {'`'}),
       kind: some nimSymToLSPKind(suggest).int,
-      documentation: some %doc,
+      documentation: some CompletionItemDocumentation(kind: cidStr, str: doc),
       detail: some nimSymDetails(suggest),
     )
 
