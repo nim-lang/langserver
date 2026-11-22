@@ -146,6 +146,52 @@ suite "completion item":
       CompletionItem(label: "echo", data: some JsonString("""{"a":[1]}"""))
     ) == """{"label":"echo","data":{"a":[1]}}"""
 
+suite "hover":
+  test "the contents are written as markup content":
+    let hover = Hover(
+      contents: HoverContents(
+        kind: hcMarkup, markup: MarkupContent(kind: "markdown", value: "*a*")
+      )
+    )
+    check LspJson.encode(hover) ==
+      """{"contents":{"kind":"markdown","value":"*a*"}}"""
+
+  test "the contents are written as a marked string":
+    let str = Hover(
+      contents: HoverContents(
+        kind: hcMarkedString, markedString: MarkedString(kind: msStr, str: "a")
+      )
+    )
+    check LspJson.encode(str) == """{"contents":"a"}"""
+    let option = Hover(
+      contents: HoverContents(
+        kind: hcMarkedString,
+        markedString: MarkedString(
+          kind: msOption, option: MarkedStringOption(language: "nim", value: "a")
+        ),
+      )
+    )
+    check LspJson.encode(option) == """{"contents":{"language":"nim","value":"a"}}"""
+
+  test "the contents are written as marked strings":
+    let hover = Hover(
+      contents: HoverContents(
+        kind: hcMarkedStrings,
+        markedStrings: @[
+          MarkedString(kind: msStr, str: "a"),
+          MarkedString(
+            kind: msOption, option: MarkedStringOption(language: "nim", value: "b")
+          ),
+        ],
+      ),
+      range: some Range(
+        start: Position(line: uinteger 1, character: uinteger 2),
+        `end`: Position(line: uinteger 1, character: uinteger 3),
+      ),
+    )
+    check LspJson.encode(hover) ==
+      """{"contents":["a",{"language":"nim","value":"b"}],"range":{"start":{"line":1,"character":2},"end":{"line":1,"character":3}}}"""
+
 suite "initialized params":
   test "an empty object is accepted":
     check not LspJson.decode("{}", InitializedParams).isNil

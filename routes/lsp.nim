@@ -483,7 +483,9 @@ proc hover*(
       return none(Hover)
     var suggest = suggestions[0]
     if suggest.symkind == "skModule": # NOTE: skMoudle always return position (1, 0)
-      return some(Hover(contents: some(%toMarkupContent(suggest))))
+      return some(
+        Hover(contents: HoverContents(kind: hcMarkup, markup: toMarkupContent(suggest)))
+      )
     else:
       for s in suggestions:
         if s.line == line.int + 1:
@@ -516,7 +518,8 @@ proc hover*(
           content.value.add &"```nim\n{arcContent}\n```"
       return some(
         Hover(
-          contents: some(%content), range: some(toLabelRange(suggest.toUtf16Pos(ls)))
+          contents: HoverContents(kind: hcMarkup, markup: content),
+          range: some(toLabelRange(suggest.toUtf16Pos(ls))),
         )
       )
 

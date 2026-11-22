@@ -1074,9 +1074,34 @@ type
     language*: string
     value*: string
 
+  MarkedStringKind* = enum
+    msStr
+    msOption
+
+  MarkedString* = object
+    case kind*: MarkedStringKind
+    of msStr:
+      str*: string
+    of msOption:
+      option*: MarkedStringOption
+
+  HoverContentsKind* = enum
+    hcMarkedString
+    hcMarkedStrings
+    hcMarkup
+
+  HoverContents* = object
+    case kind*: HoverContentsKind
+    of hcMarkedString:
+      markedString*: MarkedString
+    of hcMarkedStrings:
+      markedStrings*: seq[MarkedString]
+    of hcMarkup:
+      markup*: MarkupContent
+
+  # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#hover
   Hover* = ref object of RootObj
-    contents*: OptionalNode
-      # string or MarkedStringOption or [string] or [MarkedStringOption] or MarkupContent
+    contents*: HoverContents
     range*: Option[Range]
 
   HoverParams* = ref object of TextDocumentPositionParams
@@ -1610,6 +1635,9 @@ LspJson.useDefaultWriterFor(MarkupContent)
 LspJson.useOneOfWriterFor(CompletionItemDocumentation)
 LspJson.useDefaultWriterFor(CompletionItemLabelDetails)
 LspJson.useDefaultWriterFor(CompletionItem)
+LspJson.useDefaultWriterFor(MarkedStringOption)
+LspJson.useOneOfWriterFor(MarkedString)
+LspJson.useOneOfWriterFor(HoverContents)
 LspJson.useDefaultWriterFor(Hover)
 LspJson.useDefaultWriterFor(DocumentHighlight)
 LspJson.useDefaultWriterFor(SymbolInformation)
