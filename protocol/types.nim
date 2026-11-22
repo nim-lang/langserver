@@ -1063,7 +1063,7 @@ type
     # additionalTextEdits*: Option[TextEdit]
     commitCharacters*: OptionalSeq[string]
     command*: Option[Command]
-    data*: OptionalNode
+    data*: Option[LspAny]
     labelDetails*: Option[CompletionItemLabelDetails]
 
   CompletionRegistrationOptions* = ref object of TextDocumentRegistrationOptions

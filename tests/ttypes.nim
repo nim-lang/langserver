@@ -141,6 +141,11 @@ suite "completion item":
   test "no documentation leaves the field out":
     check LspJson.encode(CompletionItem(label: "echo")) == """{"label":"echo"}"""
 
+  test "the data is written as it is":
+    check LspJson.encode(
+      CompletionItem(label: "echo", data: some JsonString("""{"a":[1]}"""))
+    ) == """{"label":"echo","data":{"a":[1]}}"""
+
 suite "initialized params":
   test "an empty object is accepted":
     check not LspJson.decode("{}", InitializedParams).isNil
