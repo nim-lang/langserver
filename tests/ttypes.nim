@@ -1,4 +1,4 @@
-import unittest2, ../protocol/[oneof, types]
+import std/sequtils, unittest2, ../protocol/[oneof, types]
 
 type SelectorHolder = object
   documentSelector: TextDocumentRegistrationOptionsDocumentSelector
@@ -109,6 +109,17 @@ suite "did change configuration params":
   test "null settings decode as none":
     let params = LspJson.decode("""{"settings": null}""", DidChangeConfigurationParams)
     check params.settings.isNone
+
+suite "execute command params":
+  test "the arguments are kept as json, without whitespace":
+    let params = LspJson.decode(
+      """{"command": "c", "arguments": ["a.nim", {"b": [1, 2]}]}""",
+      ExecuteCommandParams,
+    )
+    check params.arguments.get.mapIt(it.string) == @["\"a.nim\"", """{"b":[1,2]}"""]
+
+  test "no arguments decodes as none":
+    check LspJson.decode("""{"command": "c"}""", ExecuteCommandParams).arguments.isNone
 
 suite "initialized params":
   test "an empty object is accepted":

@@ -769,6 +769,15 @@ proc codeAction*(
     ),
   ]
 
+func projectFileArgument(params: ExecuteCommandParams): Option[Path] =
+  let arguments = params.arguments.get(@[])
+  if arguments.len == 0:
+    return none(Path)
+  try:
+    some LspJson.decode(arguments[0].string, string).Path
+  except SerializationError:
+    none(Path)
+
 proc executeCommand*(
     ls: LanguageServer, params: ExecuteCommandParams
 ): Future[JsonNode] {.
@@ -780,12 +789,13 @@ proc executeCommand*(
     )
 .} =
   ls.checkInitialized()
-  if params.arguments.len == 0:
+  let projectFileArg = projectFileArgument(params)
+  if projectFileArg.isNone:
     raise (ref ApplicationError)(
       code: ErrorCode.InvalidParams.int,
       msg: params.command & " expects the project file as its first argument",
     )
-  let projectFile = params.arguments[0].getStr.Path
+  let projectFile = projectFileArg.get
   case params.command
   of RESTART_COMMAND:
     debug "Restarting nimsuggest", projectFile = projectFile

@@ -977,7 +977,7 @@ type
 
   ExecuteCommandParams* = ref object of RootObj
     command*: string
-    arguments*: seq[JsonNode]
+    arguments*: OptionalSeq[LspAny]
 
   ExecuteCommandRegistrationOptions* = ref object of RootObj
     commands*: OptionalSeq[string]

@@ -199,6 +199,16 @@ suite "LSP endpoints":
       check "-32602" in ex.msg
     check raised
 
+  test "workspace/executeCommand with a project file that is not a string is answered with an error":
+    let params = %*{"command": CHECK_PROJECT_COMMAND, "arguments": [1]}
+    var raised = false
+    try:
+      discard client.callTimeout("workspace/executeCommand", %params)
+    except JsonRpcError as ex:
+      raised = true
+      check "-32602" in ex.msg
+    check raised
+
   test "a request with an invalid uri is answered with an error":
     for uri in ["untitled:Foo", "file://somehost/hw.nim"]:
       var raised = false
