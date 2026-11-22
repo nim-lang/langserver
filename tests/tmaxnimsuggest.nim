@@ -48,7 +48,7 @@ suite "Single nimsuggest instance under concurrent opens":
 
   test "modules opened at the same time do not go over the cap":
     discard waitFor client.initialize(initParams())
-    ls.setWorkspaceConfiguration(% @[NlsConfig(maxNimsuggestProcesses: some 1)])
+    ls.setWorkspaceConfiguration(NlsConfig(maxNimsuggestProcesses: some 1))
 
     # Open all three files and ask for their nimsuggest at once, before any is
     # running. Each file would get its own nimsuggest, but the limit is 1. The
@@ -72,7 +72,7 @@ suite "Idle nimsuggest instance under the cap":
 
   test "a file of an idle nimsuggest does not go over the cap":
     discard waitFor client.initialize(initParams())
-    ls.setWorkspaceConfiguration(% @[NlsConfig(maxNimsuggestProcesses: some 2)])
+    ls.setWorkspaceConfiguration(NlsConfig(maxNimsuggestProcesses: some 2))
     for file in [RootFile, OtherFile]:
       client.notify("textDocument/didOpen", %createDidOpenParams(file))
       check client.completes(file.fixtureUri)
@@ -121,7 +121,7 @@ suite "Reusing a nimsuggest instance over the cap":
         "capabilities": {"workspace": {"configuration": true}},
       }
     )
-    ls.setWorkspaceConfiguration(% @[NlsConfig(maxNimsuggestProcesses: some 2)])
+    ls.setWorkspaceConfiguration(NlsConfig(maxNimsuggestProcesses: some 2))
     let files = ["projects/hw/hw.nim", "projects/vendored/vendored.nim"]
     for file in files:
       waitFor ls.didOpenFixture(file)
@@ -161,18 +161,16 @@ suite "Last used nimsuggest over the cap":
     # dep.nim gets a project of its own, like a file of a global package
     # opened through go-to-definition.
     ls.setWorkspaceConfiguration(
-      % @[
-        NlsConfig(
-          maxNimsuggestProcesses: some 1,
-          projectMapping: some @[
-            # The regex matches the path relative to the root, which uses
-            # backslashes on Windows.
-            NlsNimsuggestConfig(
-              projectFile: "vendored/vendor/dep/dep.nim", fileRegex: r"dep[/\\]dep"
-            )
-          ],
-        )
-      ]
+      NlsConfig(
+        maxNimsuggestProcesses: some 1,
+        projectMapping: some @[
+          # The regex matches the path relative to the root, which uses
+          # backslashes on Windows.
+          NlsNimsuggestConfig(
+            projectFile: "vendored/vendor/dep/dep.nim", fileRegex: r"dep[/\\]dep"
+          )
+        ],
+      )
     )
     let
       vendored = projectsDir / "vendored" / "vendored.nim"

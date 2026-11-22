@@ -28,7 +28,7 @@ suite "Nim track with nim >= 2.4":
   waitFor client.connect("localhost", cmdParams.port)
 
   let conf = NlsConfig(useNimTrack: some true)
-  ls.setWorkspaceConfiguration(% @[conf])
+  ls.setWorkspaceConfiguration(conf)
 
   let initParams =
     %*{
@@ -93,7 +93,7 @@ suite "Nim track unavailable with nim < 2.4":
   waitFor client.connect("localhost", cmdParams.port)
 
   let conf = NlsConfig(useNimTrack: some true)
-  ls.setWorkspaceConfiguration(% @[conf])
+  ls.setWorkspaceConfiguration(conf)
 
   let initParams =
     %*{

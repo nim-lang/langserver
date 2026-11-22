@@ -1318,10 +1318,10 @@ proc didChangeWorkspaceFolders*(
     await ls.stopNimsuggests()
 
 proc didChangeConfiguration*(
-    ls: LanguageServer, conf: JsonNode
+    ls: LanguageServer, params: DidChangeConfigurationParams
 ): Future[void] {.async: (raises: [ApplicationError, CancelledError]).} =
   ls.checkInitialized()
-  debug "Changed configuration: ", conf = $conf
+  debug "Changed configuration: ", settings = $params.settings
   if ls.usePullConfigurationModel:
     await ls.maybeRequestConfigurationFromClient()
   else:
@@ -1329,6 +1329,6 @@ proc didChangeConfiguration*(
     let
       hadConfiguration = ls.workspaceConfigurationReady.finished
       oldConfiguration = ls.workspaceConfiguration
-    ls.setWorkspaceConfiguration(conf)
+    ls.setWorkspaceConfiguration(parseSettings(params.settings))
     if hadConfiguration: #the first configuration is not a change
       await handleConfigurationChanges(ls, oldConfiguration, ls.workspaceConfiguration)

@@ -554,7 +554,7 @@ proc initialize*(
   let ls = p.ls
   ls.mcpServerCapabilities = result.capabilities
   #MCP clients have no settings for us
-  ls.setWorkspaceConfiguration(newJArray())
+  ls.setWorkspaceConfiguration(NlsConfig())
   ls.initialized = true
 
 proc listTools*(

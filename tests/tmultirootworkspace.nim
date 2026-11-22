@@ -53,13 +53,11 @@ suite "Several workspaces":
   )
   # The regex matches the path relative to the file's workspace.
   ls.setWorkspaceConfiguration(
-    % @[
-      NlsConfig(
-        projectMapping: some @[
-          NlsNimsuggestConfig(projectFile: "rootmodule.nim", fileRegex: "othermodule")
-        ]
-      )
-    ]
+    NlsConfig(
+      projectMapping: some @[
+        NlsNimsuggestConfig(projectFile: "rootmodule.nim", fileRegex: "othermodule")
+      ]
+    )
   )
 
   test "the workspace folders take precedence over the root uri":
@@ -104,7 +102,7 @@ suite "Several workspaces":
 
   test "a workspace change stops the nimsuggests when they are capped":
     let hwFile = hwDir / "hw.nim"
-    ls.setWorkspaceConfiguration(% @[NlsConfig(maxNimsuggestProcesses: some 2)])
+    ls.setWorkspaceConfiguration(NlsConfig(maxNimsuggestProcesses: some 2))
     waitFor ls.didOpenFixture("projects/hw/hw.nim")
     check (waitFor ls.tryGetNimsuggest(hwFile)).isSome
     client.notify(
@@ -115,7 +113,7 @@ suite "Several workspaces":
 
   test "a workspace change keeps the nimsuggests when they are not capped":
     let hwFile = hwDir / "hw.nim"
-    ls.setWorkspaceConfiguration(% @[NlsConfig(maxNimsuggestProcesses: some 0)])
+    ls.setWorkspaceConfiguration(NlsConfig(maxNimsuggestProcesses: some 0))
     check (waitFor ls.tryGetNimsuggest(hwFile)).isSome
     let project = ls.projectFiles.getOrDefault(ls.openFiles[hwFile].nimsuggestProject)
     check project != nil
@@ -169,7 +167,7 @@ suite "No workspace":
       "capabilities": {"workspace": {"configuration": true}},
     }
   )
-  ls.setWorkspaceConfiguration(% @[NlsConfig()])
+  ls.setWorkspaceConfiguration(NlsConfig())
 
   test "a file outside the workspace and of any package runs in its own dir":
     check ls.workspaceFolders.len == 0
@@ -209,7 +207,7 @@ suite "Workspaces without a nimble file":
       "capabilities": {"workspace": {"configuration": true}},
     }
   )
-  ls.setWorkspaceConfiguration(% @[NlsConfig()])
+  ls.setWorkspaceConfiguration(NlsConfig())
 
   test "sibling subfolder workspaces resolve to the same parent dir nimble project":
     check (waitFor ls.getProjectFile(mono / "app2" / "app2.nim")) == mono / "mono.nim"

@@ -37,23 +37,41 @@ var editorConfiguration = %*[
 ]
 
 suite "Workspace configuration parsing":
-  test "a configuration we cannot use never parses to nil":
+  test "a pulled configuration we cannot use never parses to nil":
     # NlsConfig is a ref and every caller reads a field out of it, so none of
     # these may come back as nil.
-    for conf in [
-      %*{"settings": {"nim": newJNull()}},
-      %*{"settings": {}},
-      %*{"settings": newJNull()},
-      newJArray(),
-      newJNull(),
-    ]:
+    for conf in [newJArray(), newJNull(), %*[newJNull()]]:
       checkpoint $conf
       check not parseWorkspaceConfiguration(conf).isNil
+
+  test "pushed settings we cannot use never parse to nil":
+    for settings in [
+      none(LspAny),
+      some JsonString("""{"nim":null}"""),
+      some JsonString("{}"),
+      some JsonString("[]"),
+    ]:
+      checkpoint $settings
+      check not parseSettings(settings).isNil
+
+  test "pushed settings are read from the nim section":
+    let settings = some JsonString("""{"nim":{"nimsuggestIdleTimeout":5},"other":{}}""")
+    check parseSettings(settings).nimsuggestIdleTimeout == some 5
+
+  test "pushed settings with a mistyped required field fall back to the default":
+    # projectFile is required, so the whole configuration is dropped.
+    let settings = some JsonString(
+      """{"nim":{"projectMapping":[{"projectFil":"a.nim","fileRegex":".*"}],"timeout":5}}"""
+    )
+    let conf = parseSettings(settings)
+    check conf.projectMapping.isNone
+    check conf.timeout.isNone
 
   test "nimsuggestTimeout stays unset when the client does not send it":
     # The default is applied at the usage site via .get, so an absent key
     # must parse to none rather than to a value.
     check parseWorkspaceConfiguration(%*[{}]).nimsuggestTimeout.isNone
+    check parseSettings(some JsonString("""{"nim":{}}""")).nimsuggestTimeout.isNone
 
 suite "Waiting for the workspace configuration":
   proc newLs(): LanguageServer =
@@ -62,7 +80,7 @@ suite "Waiting for the workspace configuration":
       ensureStorageDir(),
     )
 
-  let pushed = % @[NlsConfig(nimsuggestIdleTimeout: some 1234)]
+  let pushed = NlsConfig(nimsuggestIdleTimeout: some 1234)
 
   test "a waiter that starts before the first configuration is let through":
     # The readiness future is completed once and never replaced, so a wait that

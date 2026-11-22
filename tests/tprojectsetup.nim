@@ -35,7 +35,7 @@ suite "nimble setup":
           {"window": {"workDoneProgress": true}, "workspace": {"configuration": true}},
       }
     discard waitFor client.initialize(initParams)
-    ls.setWorkspaceConfiguration(% @[NlsConfig()])
+    ls.setWorkspaceConfiguration(NlsConfig())
 
     let completionParams =
       %*{
@@ -111,9 +111,9 @@ suite "Project Mapping":
       }
     discard waitFor client.initialize(initParams)
     let configurationParams =
-      @[NlsConfig(projectMapping: some @[NlsNimsuggestConfig(fileRegex: "nonimble*")])]
+      NlsConfig(projectMapping: some @[NlsNimsuggestConfig(fileRegex: "nonimble*")])
     let nonimbleProject = rootDir / "nonimbleproject.nim"
-    ls.setWorkspaceConfiguration(%configurationParams)
+    ls.setWorkspaceConfiguration(configurationParams)
 
     let projectFile = waitFor ls.getProjectFile(nonimbleProject)
     let matchingMsg = fmt"RegEx matched `nonimble*` for file `{nonimbleProject}`"
@@ -145,7 +145,7 @@ suite "Nimble packages":
       "capabilities": {"workspace": {"configuration": true}},
     }
   )
-  ls.setWorkspaceConfiguration(% @[NlsConfig()])
+  ls.setWorkspaceConfiguration(NlsConfig())
 
   suiteTeardown:
     waitFor ls.shutdownNimsuggest()
@@ -261,7 +261,7 @@ suite "A project subfolder as the workspace":
       "capabilities": {"workspace": {"configuration": true}},
     }
   )
-  ls.setWorkspaceConfiguration(% @[NlsConfig()])
+  ls.setWorkspaceConfiguration(NlsConfig())
 
   suiteTeardown:
     waitFor ls.shutdownNimsuggest()
@@ -313,7 +313,7 @@ suite "A sub package as the workspace":
       "capabilities": {"workspace": {"configuration": true}},
     }
   )
-  ls.setWorkspaceConfiguration(% @[NlsConfig()])
+  ls.setWorkspaceConfiguration(NlsConfig())
 
   suiteTeardown:
     waitFor ls.shutdownNimsuggest()
@@ -345,7 +345,7 @@ suite "Projects with local dependencies":
       "capabilities": {"workspace": {"configuration": true}},
     }
   )
-  ls.setWorkspaceConfiguration(% @[NlsConfig()])
+  ls.setWorkspaceConfiguration(NlsConfig())
 
   suiteTeardown:
     waitFor ls.shutdownNimsuggest()
@@ -439,7 +439,7 @@ suite "Nimble package changes":
         "capabilities": {"workspace": {"configuration": true}},
       }
     )
-    ls.setWorkspaceConfiguration(% @[NlsConfig(maxNimsuggestProcesses: some 0)])
+    ls.setWorkspaceConfiguration(NlsConfig(maxNimsuggestProcesses: some 0))
 
   teardown:
     waitFor ls.shutdownNimsuggest()
@@ -520,7 +520,7 @@ suite "Nimble package changes":
 
   test "a nimble.paths change during startup restarts the nimsuggest once":
     # the project check that follows a startup is a request too
-    ls.setWorkspaceConfiguration(% @[NlsConfig(autoCheckProject: some false)])
+    ls.setWorkspaceConfiguration(NlsConfig(autoCheckProject: some false))
     writeFile(nimblePaths.string, "--noNimblePath\n")
     client.open(libFile)
     check ls.started(packageProject)

@@ -31,7 +31,7 @@ suite "LSP endpoints":
         {"window": {"workDoneProgress": false}, "workspace": {"configuration": true}},
     }
   discard waitFor client.initialize(initParams)
-  ls.setWorkspaceConfiguration(% @[NlsConfig()])
+  ls.setWorkspaceConfiguration(NlsConfig())
   client.notify("initialized", newJObject())
 
   let

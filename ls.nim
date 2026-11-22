@@ -92,6 +92,9 @@ type
       #memory cap per nimsuggest process in MB. zero means unlimited
     useNimTrack*: Option[bool]
 
+  NlsSettings* = object
+    nim*: Option[NlsConfig]
+
   NlsFileInfo* = ref object of RootObj
     projectFile*: Future[Path].Raising([CancelledError, OSError, RegexError])
     changed*: bool
@@ -202,6 +205,15 @@ type
     async: (raises: [CancelledError, JsonRpcError])
   .} #Send a request to the client
 
+LspJson.useDefaultReaderFor(NlsNimsuggestConfig)
+LspJson.useDefaultReaderFor(NlsWorkingDirectoryMaping)
+LspJson.useDefaultReaderFor(NlsInlayTypeHintsConfig)
+LspJson.useDefaultReaderFor(NlsInlayExceptionHintsConfig)
+LspJson.useDefaultReaderFor(NlsInlayParameterHintsConfig)
+LspJson.useDefaultReaderFor(NlsInlayHintsConfig)
+LspJson.useDefaultReaderFor(NlsConfig)
+LspJson.useDefaultReaderFor(NlsSettings)
+
 proc notify*[T](ls: LanguageServer, name: string, params: T) =
   if ls.serverMode != lsp:
     return
@@ -258,15 +270,16 @@ proc supportSignatureHelp*(cc: LspClientCapabilities): bool =
   let caps = cc.textDocument
   caps.isSome and caps.get.signatureHelp.isSome
 
-proc parseWorkspaceConfiguration*(conf: JsonNode): NlsConfig =
+proc parseSettings*(settings: Option[LspAny]): NlsConfig =
+  if settings.isNone:
+    return NlsConfig()
   try:
-    if conf.kind == JObject and conf["settings"].kind == JObject:
-      let nimSettings = conf["settings"]["nim"]
-      if nimSettings.kind == JNull:
-        return NlsConfig() #the client has no settings for us
-      return nimSettings.to(NlsConfig)
-  except ValueError:
-    discard
+    LspJson.decode(settings.get.string, NlsSettings).nim.get(NlsConfig())
+  except SerializationError as exc:
+    debug "Failed to parse the configuration.", error = exc.msg
+    NlsConfig()
+
+proc parseWorkspaceConfiguration*(conf: JsonNode): NlsConfig =
   try:
     let nlsConfig: seq[NlsConfig] = (%conf).to(seq[NlsConfig])
     result =
@@ -278,8 +291,8 @@ proc parseWorkspaceConfiguration*(conf: JsonNode): NlsConfig =
     debug "Failed to parse the configuration.", error = getCurrentExceptionMsg()
     result = NlsConfig()
 
-proc setWorkspaceConfiguration*(ls: LanguageServer, conf: JsonNode) {.raises: [].} =
-  ls.workspaceConfiguration = parseWorkspaceConfiguration(conf)
+proc setWorkspaceConfiguration*(ls: LanguageServer, conf: NlsConfig) {.raises: [].} =
+  ls.workspaceConfiguration = conf
   if not ls.workspaceConfigurationReady.finished:
     ls.workspaceConfigurationReady.complete()
 
@@ -295,7 +308,7 @@ proc workspaceConfigurationWait*(
     ):
       if not ls.workspaceConfigurationReady.finished():
         debug "Workspace config ready timeout; setting default config"
-        ls.setWorkspaceConfiguration(newJArray())
+        ls.setWorkspaceConfiguration(NlsConfig())
     ls.workspaceConfiguration
 
 proc showMessage*(
@@ -1359,7 +1372,7 @@ proc maybeRequestConfigurationFromClient*(
       let
         hadConfiguration = ls.workspaceConfigurationReady.finished
         oldConfiguration = ls.workspaceConfiguration
-      ls.setWorkspaceConfiguration(configuration)
+      ls.setWorkspaceConfiguration(parseWorkspaceConfiguration(configuration))
       if hadConfiguration:
         await ls.handleConfigurationChanges(oldConfiguration, ls.workspaceConfiguration)
     except CancelledError:
@@ -1368,11 +1381,11 @@ proc maybeRequestConfigurationFromClient*(
     except JsonRpcError as exc:
       error "Failed to request the client configuration", error = exc.msg
       if not ls.workspaceConfigurationReady.finished():
-        ls.setWorkspaceConfiguration(newJArray())
+        ls.setWorkspaceConfiguration(NlsConfig())
   else:
     debug "Client does not support workspace/configuration"
     if not ls.workspaceConfigurationReady.finished():
-      ls.setWorkspaceConfiguration(newJArray())
+      ls.setWorkspaceConfiguration(NlsConfig())
 
 proc getCharacter*(
     ls: LanguageServer, path: Path, line: int, character: int

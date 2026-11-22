@@ -30,7 +30,7 @@ suite "Async safety":
         {"window": {"workDoneProgress": false}, "workspace": {"configuration": true}},
     }
   discard waitFor client.initialize(initParams)
-  ls.setWorkspaceConfiguration(% @[NlsConfig()])
+  ls.setWorkspaceConfiguration(NlsConfig())
 
   let
     helloWorldFile = "projects/hw/hw.nim"
@@ -101,7 +101,7 @@ suite "Replacing a running nimsuggest":
         {"window": {"workDoneProgress": false}, "workspace": {"configuration": true}},
     }
   )
-  ls.setWorkspaceConfiguration(% @[NlsConfig()])
+  ls.setWorkspaceConfiguration(NlsConfig())
 
   let
     helloWorldFile = "projects/hw/hw.nim"
@@ -146,7 +146,7 @@ suite "Documents closed while a handler is suspended":
         {"window": {"workDoneProgress": false}, "workspace": {"configuration": true}},
     }
   )
-  ls.setWorkspaceConfiguration(% @[NlsConfig()])
+  ls.setWorkspaceConfiguration(NlsConfig())
 
   let
     helloWorldFile = "projects/hw/hw.nim"
@@ -247,7 +247,7 @@ suite "Shutting down twice":
         {"window": {"workDoneProgress": false}, "workspace": {"configuration": true}},
     }
   )
-  ls.setWorkspaceConfiguration(% @[NlsConfig()])
+  ls.setWorkspaceConfiguration(NlsConfig())
 
   let
     helloWorldFile = "projects/hw/hw.nim"

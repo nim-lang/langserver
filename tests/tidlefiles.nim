@@ -45,7 +45,7 @@ proc startServer(root = "projects/multimodules"): (LanguageServer, LspSocketClie
   # The check scheduled after each edit would reopen an idle file on its own,
   # and so would a project check still running when the nimsuggest is stopped.
   ls.setWorkspaceConfiguration(
-    % @[NlsConfig(autoCheckFile: some false, autoCheckProject: some false)]
+    NlsConfig(autoCheckFile: some false, autoCheckProject: some false)
   )
   (ls, client)
 
@@ -90,15 +90,13 @@ suite "Idle nimsuggest shared by several files":
 
   test "it is stopped once none of its files is open":
     ls.setWorkspaceConfiguration(
-      % @[
-        NlsConfig(
-          autoCheckFile: some false,
-          autoCheckProject: some false,
-          projectMapping: some @[
-            NlsNimsuggestConfig(projectFile: "rootmodule.nim", fileRegex: "othermodule")
-          ],
-        )
-      ]
+      NlsConfig(
+        autoCheckFile: some false,
+        autoCheckProject: some false,
+        projectMapping: some @[
+          NlsNimsuggestConfig(projectFile: "rootmodule.nim", fileRegex: "othermodule")
+        ],
+      )
     )
     client.openRootFile()
     # The other file is mapped to the root file's project, so both are served
@@ -150,15 +148,13 @@ suite "Idle nimsuggest of a mapped project":
 
   test "it is stopped like any other":
     ls.setWorkspaceConfiguration(
-      % @[
-        NlsConfig(
-          autoCheckFile: some false,
-          autoCheckProject: some false,
-          projectMapping: some @[
-            NlsNimsuggestConfig(projectFile: "rootmodule.nim", fileRegex: "othermodule")
-          ],
-        )
-      ]
+      NlsConfig(
+        autoCheckFile: some false,
+        autoCheckProject: some false,
+        projectMapping: some @[
+          NlsNimsuggestConfig(projectFile: "rootmodule.nim", fileRegex: "othermodule")
+        ],
+      )
     )
     waitFor ls.didOpenFixture(OtherFile)
     check (waitFor ls.tryGetNimsuggest(OtherFile.fixturePath)).isSome
@@ -179,14 +175,12 @@ suite "Closed file shared with another":
     # The other file is mapped to the root file's project, so both are served
     # by the same nimsuggest.
     ls.setWorkspaceConfiguration(
-      % @[
-        NlsConfig(
-          autoCheckFile: some false,
-          projectMapping: some @[
-            NlsNimsuggestConfig(projectFile: "rootmodule.nim", fileRegex: "othermodule")
-          ],
-        )
-      ]
+      NlsConfig(
+        autoCheckFile: some false,
+        projectMapping: some @[
+          NlsNimsuggestConfig(projectFile: "rootmodule.nim", fileRegex: "othermodule")
+        ],
+      )
     )
     client.openRootFile()
     client.notify("textDocument/didOpen", %createDidOpenParams(OtherFile))
@@ -236,7 +230,7 @@ suite "File closed with unsaved edits":
     waitFor ls.shutdownNimsuggest()
 
   test "its diagnostics are for the file on disk":
-    ls.setWorkspaceConfiguration(% @[NlsConfig(autoCheckFile: some true)])
+    ls.setWorkspaceConfiguration(NlsConfig(autoCheckFile: some true))
     client.openRootFile()
     client.notify(
       "textDocument/didChange",
@@ -263,7 +257,7 @@ suite "File edited while it is checked":
 
   test "the outdated diagnostics are not published":
     ls.setWorkspaceConfiguration(
-      % @[NlsConfig(autoCheckFile: some false, autoCheckProject: some false)]
+      NlsConfig(autoCheckFile: some false, autoCheckProject: some false)
     )
     client.openRootFile()
     let published = client.diagnosticsFor(uri)
@@ -319,7 +313,7 @@ suite "Failed nimsuggest while others run":
 
   test "the file is not served by another nimsuggest":
     ls.setWorkspaceConfiguration(
-      % @[NlsConfig(maxNimsuggestProcesses: some 0, autoCheckFile: some false)]
+      NlsConfig(maxNimsuggestProcesses: some 0, autoCheckFile: some false)
     )
     let files = [RootFile, OtherFile, ThirdFile, FourthFile]
     for file in files:

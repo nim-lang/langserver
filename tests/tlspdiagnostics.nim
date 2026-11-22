@@ -26,7 +26,7 @@ suite "LSP diagnostics":
       "capabilities": {"window": {"workDoneProgress": false}},
     }
   let initializeResult = waitFor client.initialize(initParams)
-  ls.setWorkspaceConfiguration(% @[NlsConfig()])
+  ls.setWorkspaceConfiguration(NlsConfig())
   client.notify("initialized", newJObject())
 
   let
@@ -136,7 +136,7 @@ suite "LSP project check command":
       "capabilities": {"window": {"workDoneProgress": false}},
     }
   )
-  ls.setWorkspaceConfiguration(% @[NlsConfig(useNimCheck: some false)])
+  ls.setWorkspaceConfiguration(NlsConfig(useNimCheck: some false))
 
   suiteTeardown:
     waitFor ls.shutdownNimsuggest()
