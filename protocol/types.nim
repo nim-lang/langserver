@@ -40,7 +40,6 @@ proc `%`*(x: uinteger): JsonNode =
 
 type
   OptionalSeq*[T] = Option[seq[T]]
-  OptionalNode* = Option[JsonNode]
   LspAny* = JsonString
 
   CancelParams* = ref object of RootObj
