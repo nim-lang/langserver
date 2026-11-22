@@ -50,14 +50,15 @@ proc initialize*(
   p.ls.lspClientCapabilities = params.capabilities
   result = LspInitializeResult(
     capabilities: LspServerCapabilities(
-      textDocumentSync: some(
-        %TextDocumentSyncOptions(
+      textDocumentSync: some ServerCapabilitiesTextDocumentSync(
+        kind: stdsOptions,
+        options: TextDocumentSyncOptions(
           openClose: some(true),
           change: some(TextDocumentSyncKind.Full.int),
           willSave: some(false),
           willSaveWaitUntil: some(true),
           save: some(SaveOptions(includeText: some(true))),
-        )
+        ),
       ),
       hoverProvider: some(true),
       workspace: some(
@@ -92,13 +93,16 @@ proc initialize*(
     )
   )
   # Support rename by default, but check if we can also support prepare
-  result.capabilities.renameProvider = %true
+  result.capabilities.renameProvider =
+    some ServerCapabilitiesRenameProvider(kind: srpBool, boolean: true)
   if params.capabilities.textDocument.isSome:
     let docCaps = params.capabilities.textDocument.unsafeGet()
     # Check if the client support prepareRename
     #TODO do the test on the action
     if docCaps.rename.isSome and docCaps.rename.get().prepareSupport.get(false):
-      result.capabilities.renameProvider = %*{"prepareProvider": true}
+      result.capabilities.renameProvider = some ServerCapabilitiesRenameProvider(
+        kind: srpOptions, options: RenameOptions(prepareProvider: some true)
+      )
 
   debug "Initialize completed."
 

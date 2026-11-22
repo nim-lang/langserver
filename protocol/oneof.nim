@@ -4,8 +4,20 @@
 
 import std/[macros, typetraits], json_serialization
 
+type Null* = object
+
+proc writeValue*(w: var JsonWriter, x: Null) {.raises: [IOError].} =
+  w.writeValue(JsonString("null"))
+
+proc readValue*(
+    r: var JsonReader, x: var Null
+) {.raises: [IOError, SerializationError].} =
+  r.parseNull()
+
 func jsonKinds*(T: typedesc): set[JsonValueKind] =
-  when T is JsonString:
+  when T is Null:
+    {JsonValueKind.Null}
+  elif T is JsonString:
     {.error: "oneOf: a JsonString member can be any JSON kind".}
   elif T is distinct:
     jsonKinds(distinctBase(T))
@@ -110,11 +122,16 @@ proc writeOneOf*[T](w: var JsonWriter, x: T) {.raises: [IOError].} =
   mixin writeValue
   writeOneOfImpl(w, x, T)
 
-template useOneOfSerializationFor*(Flavor: type, T: type) =
+template useOneOfReaderFor*(Flavor: type, T: type) =
   proc readValue*(
       r: var JsonReader[Flavor], x: var T
   ) {.raises: [IOError, SerializationError].} =
     readOneOf(r, x)
 
+template useOneOfWriterFor*(Flavor: type, T: type) =
   proc writeValue*(w: var JsonWriter[Flavor], x: T) {.raises: [IOError].} =
     writeOneOf(w, x)
+
+template useOneOfSerializationFor*(Flavor: type, T: type) =
+  useOneOfReaderFor(Flavor, T)
+  useOneOfWriterFor(Flavor, T)

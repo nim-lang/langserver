@@ -36,6 +36,27 @@ type
     of boBool: boolean: bool
     of boValue: value: T
 
+  NumOrNullKind = enum
+    nonNull
+    nonNum
+
+  NumOrNull = object
+    case kind: NumOrNullKind
+    of nonNull: null: Null
+    of nonNum: num: int
+
+  NullHolder = object
+    value: NumOrNull
+
+  TwoNullsKind = enum
+    tnA
+    tnB
+
+  TwoNulls = object
+    case kind: TwoNullsKind
+    of tnA: a: Null
+    of tnB: b: Null
+
   Holder = object
     first: NumStrBool
     second: Option[BoolOr[Options]]
@@ -59,6 +80,12 @@ TestJson.useDefaultSerializationFor(Options)
 TestJson.useDefaultSerializationFor(ObjectA)
 TestJson.useDefaultSerializationFor(ObjectB)
 TestJson.useOneOfSerializationFor(NumStrBool)
+TestJson.useOneOfSerializationFor(NumOrNull)
+
+func isFieldExpected(_: type NumOrNull): bool {.compileTime.} =
+  false
+
+TestJson.useDefaultSerializationFor(NullHolder)
 
 proc readValue[T](
     r: var JsonReader[TestJson], x: var BoolOr[T]
@@ -113,5 +140,24 @@ suite "oneOf":
       block:
         var r: JsonReader[TestJson]
         var x: TwoObjects
+        readOneOf(r, x)
+    )
+
+  test "a Null member is JSON null":
+    check TestJson.encode(NumOrNull(kind: nonNull)) == "null"
+    check TestJson.encode(NumOrNull(kind: nonNum, num: 3)) == "3"
+    check TestJson.decode("null", NumOrNull).kind == nonNull
+    check TestJson.decode("3", NumOrNull).num == 3
+
+  test "a null member of an object field is read and written":
+    check TestJson.encode(NullHolder()) == """{"value":null}"""
+    check TestJson.decode("""{"value": null}""", NullHolder).value.kind == nonNull
+    check TestJson.decode("""{"value": 4}""", NullHolder).value.num == 4
+
+  test "two Null members do not compile":
+    check not compiles(
+      block:
+        var r: JsonReader[TestJson]
+        var x: TwoNulls
         readOneOf(r, x)
     )

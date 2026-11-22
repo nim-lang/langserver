@@ -1,4 +1,11 @@
-import unittest2, ../protocol/types
+import unittest2, ../protocol/[oneof, types]
+
+type SelectorHolder = object
+  documentSelector: TextDocumentRegistrationOptionsDocumentSelector
+
+LspJson.useDefaultReaderFor(DocumentFilter)
+LspJson.useOneOfReaderFor(TextDocumentRegistrationOptionsDocumentSelector)
+LspJson.useDefaultSerializationFor(SelectorHolder)
 
 suite "decoding cancel params":
   test "a number id is decoded as a number":
@@ -191,3 +198,75 @@ suite "mcp tool call result":
     )
     check LspJson.encode(res) ==
       """{"content":[{"type":"text","text":"x"}],"isError":true}"""
+
+suite "server capabilities":
+  test "text document sync is written as its options or its kind":
+    let options = LspServerCapabilities(
+      textDocumentSync: some ServerCapabilitiesTextDocumentSync(
+        kind: stdsOptions,
+        options: TextDocumentSyncOptions(openClose: some true, change: some 1),
+      )
+    )
+    check LspJson.encode(options) ==
+      """{"textDocumentSync":{"openClose":true,"change":1}}"""
+    let kind = LspServerCapabilities(
+      textDocumentSync:
+        some ServerCapabilitiesTextDocumentSync(kind: stdsKind, syncKind: 2)
+    )
+    check LspJson.encode(kind) == """{"textDocumentSync":2}"""
+
+  test "rename is written as a boolean or its options":
+    let boolean = LspServerCapabilities(
+      renameProvider: some ServerCapabilitiesRenameProvider(kind: srpBool, boolean: true)
+    )
+    check LspJson.encode(boolean) == """{"renameProvider":true}"""
+    let options = LspServerCapabilities(
+      renameProvider: some ServerCapabilitiesRenameProvider(
+        kind: srpOptions, options: RenameOptions(prepareProvider: some true)
+      )
+    )
+    check LspJson.encode(options) == """{"renameProvider":{"prepareProvider":true}}"""
+
+  test "a registration option writes the document selector it inherits":
+    let capabilities = LspServerCapabilities(
+      implementationProvider: some ServerCapabilitiesImplementationProvider(
+        kind: sipRegistration,
+        registration: ImplementationRegistrationOptions(
+          documentSelector: TextDocumentRegistrationOptionsDocumentSelector(
+            kind: tdrdsSelector, selector: @[DocumentFilter(language: some "nim")]
+          ),
+          id: some "impl",
+        ),
+      ),
+      colorProvider: some ServerCapabilitiesColorProvider(kind: scpBool, boolean: false),
+    )
+    check LspJson.encode(capabilities) ==
+      """{"implementationProvider":{"id":"impl","documentSelector":[{"language":"nim"}]},"colorProvider":false}"""
+
+  test "the experimental capabilities are written as they are":
+    let capabilities =
+      LspServerCapabilities(experimental: some JsonString("""{"x":1}"""))
+    check LspJson.encode(capabilities) == """{"experimental":{"x":1}}"""
+
+suite "document selector":
+  test "a registration without a document selector writes null":
+    let options = ImplementationRegistrationOptions(id: some "impl")
+    check LspJson.encode(options) == """{"id":"impl","documentSelector":null}"""
+
+  test "a document selector is written as its filters":
+    let holder = SelectorHolder(
+      documentSelector: TextDocumentRegistrationOptionsDocumentSelector(
+        kind: tdrdsSelector, selector: @[DocumentFilter(scheme: some "file")]
+      )
+    )
+    check LspJson.encode(holder) == """{"documentSelector":[{"scheme":"file"}]}"""
+
+  test "null is read as the null member":
+    let holder = LspJson.decode("""{"documentSelector": null}""", SelectorHolder)
+    check holder.documentSelector.kind == tdrdsNull
+
+  test "filters are read as the selector member":
+    let holder =
+      LspJson.decode("""{"documentSelector": [{"language": "nim"}]}""", SelectorHolder)
+    check holder.documentSelector.kind == tdrdsSelector
+    check holder.documentSelector.selector[0].language == some "nim"

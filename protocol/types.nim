@@ -6,7 +6,8 @@ import
   json_serialization/std/[options as jsoptions, tables as jstables],
   ./oneof
 
-export json_serialization, jsoptions, jstables, paths, uri, RequestId, RequestIdKind
+export
+  json_serialization, jsoptions, jstables, paths, uri, RequestId, RequestIdKind, Null
 
 type
   LspUri* = distinct string
@@ -690,8 +691,6 @@ type
   SaveOptions* = ref object of RootObj
     includeText*: Option[bool]
 
-  ColorProviderOptions* = ref object of RootObj
-
   TextDocumentSyncKind_int = int
 
   TextDocumentSyncOptions* = ref object of RootObj
@@ -749,16 +748,92 @@ type
     workspaceFolders*: Option[WorkspaceFoldersServerCapabilities]
     #!!!!!!!fileOperations*: Option[ServerCapabilities_workspace_fileOperations]
 
-  TextDocumentRegistrationOptions* = ref object of RootObj
-    documentSelector*: OptionalSeq[DocumentFilter]
+  DocumentSelector* = seq[DocumentFilter]
 
-  TextDocumentAndStaticRegistrationOptions* = ref object of TextDocumentRegistrationOptions
+  TextDocumentRegistrationOptionsDocumentSelectorKind* = enum
+    tdrdsNull
+    tdrdsSelector
+
+  TextDocumentRegistrationOptionsDocumentSelector* = object
+    case kind*: TextDocumentRegistrationOptionsDocumentSelectorKind
+    of tdrdsNull:
+      null*: Null
+    of tdrdsSelector:
+      selector*: DocumentSelector
+
+  TextDocumentRegistrationOptions* = ref object of RootObj
+    documentSelector*: TextDocumentRegistrationOptionsDocumentSelector
+
+  # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#renameOptions
+  RenameOptions* = ref object of RootObj
+    workDoneProgress*: Option[bool]
+    prepareProvider*: Option[bool]
+
+  # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#implementationOptions
+  ImplementationOptions* = ref object of RootObj
+    workDoneProgress*: Option[bool]
+
+  ImplementationRegistrationOptions* = ref object of TextDocumentRegistrationOptions
+    workDoneProgress*: Option[bool]
     id*: Option[string]
 
-  RenameOptions* = object
-    # We support rename, but need to change json
-    # depending on if the client supports prepare or not
-    supportsPrepare*: bool
+  # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#documentColorOptions
+  DocumentColorOptions* = ref object of RootObj
+    workDoneProgress*: Option[bool]
+
+  DocumentColorRegistrationOptions* = ref object of TextDocumentRegistrationOptions
+    id*: Option[string]
+    workDoneProgress*: Option[bool]
+
+  ServerCapabilitiesTextDocumentSyncKind* = enum
+    stdsOptions
+    stdsKind
+
+  ServerCapabilitiesTextDocumentSync* = object
+    case kind*: ServerCapabilitiesTextDocumentSyncKind
+    of stdsOptions:
+      options*: TextDocumentSyncOptions
+    of stdsKind:
+      syncKind*: TextDocumentSyncKind_int
+
+  ServerCapabilitiesImplementationProviderKind* = enum
+    sipBool
+    sipOptions
+    sipRegistration
+
+  ServerCapabilitiesImplementationProvider* = object
+    case kind*: ServerCapabilitiesImplementationProviderKind
+    of sipBool:
+      boolean*: bool
+    of sipOptions:
+      options*: ImplementationOptions
+    of sipRegistration:
+      registration*: ImplementationRegistrationOptions
+
+  ServerCapabilitiesColorProviderKind* = enum
+    scpBool
+    scpOptions
+    scpRegistration
+
+  ServerCapabilitiesColorProvider* = object
+    case kind*: ServerCapabilitiesColorProviderKind
+    of scpBool:
+      boolean*: bool
+    of scpOptions:
+      options*: DocumentColorOptions
+    of scpRegistration:
+      registration*: DocumentColorRegistrationOptions
+
+  ServerCapabilitiesRenameProviderKind* = enum
+    srpBool
+    srpOptions
+
+  ServerCapabilitiesRenameProvider* = object
+    case kind*: ServerCapabilitiesRenameProviderKind
+    of srpBool:
+      boolean*: bool
+    of srpOptions:
+      options*: RenameOptions
 
   InlayHintOptions* = object
     resolveProvider*: Option[bool]
@@ -801,7 +876,7 @@ type
 
   LspServerCapabilities* = ref object of RootObj
     #!!!positionEncoding*: Option[PositionEncodingKind_str]
-    textDocumentSync*: OptionalNode # TextDocumentSyncOptions or TextDocumentSyncKind_int
+    textDocumentSync*: Option[ServerCapabilitiesTextDocumentSync]
     #notebookDocumentSync?: NotebookDocumentSyncOptions | NotebookDocumentSyncRegistrationOptions;
     completionProvider*: CompletionOptions
     hoverProvider*: Option[bool]
@@ -809,8 +884,7 @@ type
     declarationProvider*: Option[bool]
     definitionProvider*: Option[bool]
     typeDefinitionProvider*: Option[bool]
-    implementationProvider*: OptionalNode
-      # bool or TextDocumentAndStaticRegistrationOptions
+    implementationProvider*: Option[ServerCapabilitiesImplementationProvider]
     referencesProvider*: Option[bool]
     documentHighlightProvider*: Option[bool]
     documentSymbolProvider*: Option[bool]
@@ -818,13 +892,11 @@ type
     codeActionProvider*: Option[bool]
     codeLensProvider*: CodeLensOptions
     documentLinkProvider*: Option[DocumentLinkOptions]
-    # colorProvider?: boolean | DocumentColorOptions | DocumentColorRegistrationOptions;
-    colorProvider*: OptionalNode
-      # bool or ColorProviderOptions or TextDocumentAndStaticRegistrationOptions
+    colorProvider*: Option[ServerCapabilitiesColorProvider]
     documentFormattingProvider*: Option[bool]
     documentRangeFormattingProvider*: Option[bool]
     documentOnTypeFormattingProvider*: DocumentOnTypeFormattingOptions
-    renameProvider*: JsonNode # bool or RenameOptions
+    renameProvider*: Option[ServerCapabilitiesRenameProvider]
     # foldingRangeProvider?: boolean | FoldingRangeOptions | FoldingRangeRegistrationOptions;
     executeCommandProvider*: Option[ExecuteCommandOptions]
     # selectionRangeProvider?: boolean | SelectionRangeOptions | SelectionRangeRegistrationOptions;
@@ -839,7 +911,7 @@ type
     # diagnosticProvider?: DiagnosticOptions | DiagnosticRegistrationOptions;
     # workspaceSymbolProvider?: boolean | WorkspaceSymbolOptions;
     workspace*: Option[ServerCapabilities_workspace]
-    experimental*: OptionalNode
+    experimental*: Option[LspAny]
 
   InitializedParams* = ref object of RootObj
     DUMMY*: Option[nil]
@@ -1318,6 +1390,12 @@ proc readValue*(
     r.raiseUnexpectedValue("uinteger out of range: " & $n)
   x = uinteger(n)
 
+# XXX skipNullFields = false and remove this
+func isFieldExpected*(
+    _: type TextDocumentRegistrationOptionsDocumentSelector
+): bool {.compileTime.} =
+  false
+
 LspJson.useOneOfSerializationFor(DiagnosticCode)
 LspJson.useOneOfSerializationFor(WorkspaceFoldersChangeNotifications)
 
@@ -1493,6 +1571,19 @@ LspJson.useDefaultWriterFor(McpContentBlock)
 LspJson.useDefaultWriterFor(McpCallToolResult)
 LspJson.useDefaultWriterFor(McpToolsOptions)
 LspJson.useDefaultWriterFor(McpServerCapabilities)
+LspJson.useDefaultWriterFor(DocumentFilter)
+LspJson.useOneOfWriterFor(TextDocumentRegistrationOptionsDocumentSelector)
+LspJson.useDefaultWriterFor(SaveOptions)
+LspJson.useDefaultWriterFor(TextDocumentSyncOptions)
+LspJson.useDefaultWriterFor(RenameOptions)
+LspJson.useDefaultWriterFor(ImplementationOptions)
+LspJson.useDefaultWriterFor(ImplementationRegistrationOptions)
+LspJson.useDefaultWriterFor(DocumentColorOptions)
+LspJson.useDefaultWriterFor(DocumentColorRegistrationOptions)
+LspJson.useOneOfWriterFor(ServerCapabilitiesTextDocumentSync)
+LspJson.useOneOfWriterFor(ServerCapabilitiesImplementationProvider)
+LspJson.useOneOfWriterFor(ServerCapabilitiesColorProvider)
+LspJson.useOneOfWriterFor(ServerCapabilitiesRenameProvider)
 LspJson.useDefaultWriterFor(LspServerCapabilities)
 LspJson.useDefaultWriterFor(ShowMessageParams)
 LspJson.useDefaultWriterFor(Registration)
