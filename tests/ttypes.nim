@@ -7,6 +7,7 @@ LspJson.useDefaultReaderFor(DocumentFilter)
 LspJson.useOneOfReaderFor(TextDocumentRegistrationOptionsDocumentSelector)
 LspJson.useDefaultSerializationFor(SelectorHolder)
 LspJson.useDefaultWriterFor(CodeLens)
+LspJson.useDefaultWriterFor(DocumentLink)
 
 suite "decoding cancel params":
   test "a number id is decoded as a number":
@@ -203,6 +204,18 @@ suite "code lens":
       data: some JsonString("""{"a":[1]}"""),
     )
     check LspJson.encode(lens) ==
+      """{"range":{"start":{"line":0,"character":0},"end":{"line":0,"character":1}},"data":{"a":[1]}}"""
+
+suite "document link":
+  test "the data is written as it is":
+    let link = DocumentLink(
+      range: Range(
+        start: Position(line: uinteger 0, character: uinteger 0),
+        `end`: Position(line: uinteger 0, character: uinteger 1),
+      ),
+      data: some JsonString("""{"a":[1]}"""),
+    )
+    check LspJson.encode(link) ==
       """{"range":{"start":{"line":0,"character":0},"end":{"line":0,"character":1}},"data":{"a":[1]}}"""
 
 suite "initialized params":

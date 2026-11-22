@@ -1153,6 +1153,7 @@ type
   CodeLensParams* = ref object of RootObj
     textDocument*: TextDocumentIdentifier
 
+  # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#codeLens
   CodeLens* = ref object of RootObj
     `range`*: Range
     command*: Option[Command]
@@ -1164,10 +1165,11 @@ type
   DocumentLinkParams* = ref object of RootObj
     textDocument*: TextDocumentIdentifier
 
+  # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#documentLink
   DocumentLink* = ref object of RootObj
     `range`*: Range
     target*: Option[string]
-    data*: OptionalNode
+    data*: Option[LspAny]
 
   DocumentLinkRegistrationOptions* = ref object of TextDocumentRegistrationOptions
     resolveProvider*: Option[bool]
