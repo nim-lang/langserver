@@ -56,8 +56,8 @@ suite "nimble setup":
     discard client.call("textDocument/completion", %completionParams).waitFor
     let completionList = client
       .call("textDocument/completion", %completionParams).waitFor
-      .to(seq[CompletionItem])
-      .mapIt(it.label)
+      .getElems
+      .mapIt(it["label"].getStr)
     check completionList.len > 0
 
   test "`submodule.nim` should not be part of the nimble project file":

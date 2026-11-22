@@ -6,6 +6,7 @@ type SelectorHolder = object
 LspJson.useDefaultReaderFor(DocumentFilter)
 LspJson.useOneOfReaderFor(TextDocumentRegistrationOptionsDocumentSelector)
 LspJson.useDefaultSerializationFor(SelectorHolder)
+LspJson.useDefaultWriterFor(CodeLens)
 
 suite "decoding cancel params":
   test "a number id is decoded as a number":
@@ -191,6 +192,18 @@ suite "hover":
     )
     check LspJson.encode(hover) ==
       """{"contents":["a",{"language":"nim","value":"b"}],"range":{"start":{"line":1,"character":2},"end":{"line":1,"character":3}}}"""
+
+suite "code lens":
+  test "the data is written as it is":
+    let lens = CodeLens(
+      range: Range(
+        start: Position(line: uinteger 0, character: uinteger 0),
+        `end`: Position(line: uinteger 0, character: uinteger 1),
+      ),
+      data: some JsonString("""{"a":[1]}"""),
+    )
+    check LspJson.encode(lens) ==
+      """{"range":{"start":{"line":0,"character":0},"end":{"line":0,"character":1}},"data":{"a":[1]}}"""
 
 suite "initialized params":
   test "an empty object is accepted":

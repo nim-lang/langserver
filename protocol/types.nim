@@ -1156,7 +1156,7 @@ type
   CodeLens* = ref object of RootObj
     `range`*: Range
     command*: Option[Command]
-    data*: OptionalNode
+    data*: Option[LspAny]
 
   CodeLensRegistrationOptions* = ref object of TextDocumentRegistrationOptions
     resolveProvider*: Option[bool]
