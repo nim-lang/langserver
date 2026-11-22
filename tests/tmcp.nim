@@ -31,8 +31,8 @@ proc initMcpServer(
     notifications[].add name
   ls.callAction = proc(
       name: string, params: JsonString
-  ): Future[JsonNode] {.async: (raises: [CancelledError, JsonRpcError]).} =
-    newJNull()
+  ): Future[JsonString] {.async: (raises: [CancelledError, JsonRpcError]).} =
+    JsonString("null")
   ls.onExit = proc(): Future[void] {.async: (raises: []).} =
     discard
 

@@ -40,9 +40,23 @@ suite "Workspace configuration parsing":
   test "a pulled configuration we cannot use never parses to nil":
     # NlsConfig is a ref and every caller reads a field out of it, so none of
     # these may come back as nil.
-    for conf in [newJArray(), newJNull(), %*[newJNull()]]:
-      checkpoint $conf
-      check not parseWorkspaceConfiguration(conf).isNil
+    for conf in ["[]", "null", "[null]", "{}"]:
+      checkpoint conf
+      check not parseWorkspaceConfiguration(JsonString(conf)).isNil
+
+  test "a pulled configuration is read from its first item":
+    let configuration = JsonString("""[{"nimsuggestIdleTimeout":5}]""")
+    check parseWorkspaceConfiguration(configuration).nimsuggestIdleTimeout == some 5
+
+  test "a pulled configuration with a mistyped required field falls back to the default":
+    # projectFile is required, so the whole configuration is dropped.
+    let conf = parseWorkspaceConfiguration(
+      JsonString(
+        """[{"projectMapping":[{"projectFil":"a.nim","fileRegex":".*"}],"timeout":5}]"""
+      )
+    )
+    check conf.projectMapping.isNone
+    check conf.timeout.isNone
 
   test "pushed settings we cannot use never parse to nil":
     for settings in [
@@ -70,7 +84,7 @@ suite "Workspace configuration parsing":
   test "nimsuggestTimeout stays unset when the client does not send it":
     # The default is applied at the usage site via .get, so an absent key
     # must parse to none rather than to a value.
-    check parseWorkspaceConfiguration(%*[{}]).nimsuggestTimeout.isNone
+    check parseWorkspaceConfiguration(JsonString("[{}]")).nimsuggestTimeout.isNone
     check parseSettings(some JsonString("""{"nim":{}}""")).nimsuggestTimeout.isNone
 
 suite "Waiting for the workspace configuration":

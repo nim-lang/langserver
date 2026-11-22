@@ -2,8 +2,8 @@
 
 import
   std/[
-    strformat, os, sugar, hashes, tables, strutils, sets, json, sequtils, setutils,
-    times, files,
+    strformat, os, sugar, hashes, tables, strutils, sets, sequtils, setutils, times,
+    files,
   ],
   with,
   chronos,
@@ -159,7 +159,8 @@ type
       #Set through setWorkspaceConfiguration, read through workspaceConfigurationWait.
     workspaceConfigurationReady*: Future[void].Raising([CancelledError])
       #Completed the first time a configuration is known, and never replaced.
-    inlayHintsRefreshRequest*: Future[JsonNode].Raising([CancelledError, JsonRpcError])
+    inlayHintsRefreshRequest*:
+      Future[JsonString].Raising([CancelledError, JsonRpcError])
     watchingFiles*: bool
     filesWithDiags*: HashSet[Path]
     lastNimsuggestProject*: Path
@@ -201,7 +202,7 @@ type
   NotifyAction* =
     proc(name: string, params: JsonString): Future[void] {.async: (raises: []).}
     #Send a notification to the client
-  CallAction* = proc(name: string, params: JsonString): Future[JsonNode] {.
+  CallAction* = proc(name: string, params: JsonString): Future[JsonString] {.
     async: (raises: [CancelledError, JsonRpcError])
   .} #Send a request to the client
 
@@ -221,7 +222,7 @@ proc notify*[T](ls: LanguageServer, name: string, params: T) =
 
 proc call*[T](
     ls: LanguageServer, name: string, params: T
-): Future[JsonNode] {.async: (raw: true, raises: [CancelledError, JsonRpcError]).} =
+): Future[JsonString] {.async: (raw: true, raises: [CancelledError, JsonRpcError]).} =
   ls.callAction(name, JsonString LspJson.encode(params))
 
 proc initLs*(params: CommandLineParams, storageDir: string): LanguageServer =
@@ -279,17 +280,16 @@ proc parseSettings*(settings: Option[LspAny]): NlsConfig =
     debug "Failed to parse the configuration.", error = exc.msg
     NlsConfig()
 
-proc parseWorkspaceConfiguration*(conf: JsonNode): NlsConfig =
+proc parseWorkspaceConfiguration*(configuration: JsonString): NlsConfig =
   try:
-    let nlsConfig: seq[NlsConfig] = (%conf).to(seq[NlsConfig])
-    result =
-      if nlsConfig.len > 0 and nlsConfig[0] != nil:
-        nlsConfig[0]
-      else:
-        NlsConfig()
-  except ValueError:
-    debug "Failed to parse the configuration.", error = getCurrentExceptionMsg()
-    result = NlsConfig()
+    let items = LspJson.decode(configuration.string, seq[Option[NlsConfig]])
+    if items.len > 0 and items[0].isSome:
+      items[0].get
+    else:
+      NlsConfig()
+  except SerializationError as exc:
+    debug "Failed to parse the configuration.", error = exc.msg
+    NlsConfig()
 
 proc setWorkspaceConfiguration*(ls: LanguageServer, conf: NlsConfig) {.raises: [].} =
   ls.workspaceConfiguration = conf
@@ -337,10 +337,10 @@ proc showMessage*(
 proc applyEdit*(
     ls: LanguageServer, params: ApplyWorkspaceEditParams
 ): Future[ApplyWorkspaceEditResponse] {.
-    async: (raises: [CancelledError, ValueError, JsonRpcError])
+    async: (raises: [CancelledError, SerializationError, JsonRpcError])
 .} =
   let res = await ls.call("workspace/applyEdit", params)
-  res.to(ApplyWorkspaceEditResponse)
+  LspJson.decode(res.string, ApplyWorkspaceEditResponse)
 
 proc toPendingRequestStatus(pr: PendingRequest): PendingRequestStatus =
   result.time =
@@ -1303,7 +1303,8 @@ proc maybeRegisterCapabilityDidChangeConfiguration*(
     )
     try:
       let res = await ls.call("client/registerCapability", registrationParams)
-      debug "Got response for the didChangeConfiguration registration:", res = $res
+      debug "Got response for the didChangeConfiguration registration:",
+        res = res.string
     except JsonRpcError as err:
       warn "The didChangeConfiguration registration failed", err = err.msg
 
@@ -1329,7 +1330,7 @@ proc maybeRegisterCapabilityDidChangeWatchedFiles*(
     let regParams = RegistrationParams(registrations: some(@[reg]))
     try:
       let res = await ls.call("client/registerCapability", regParams)
-      debug "Got response for the didChangeWatchedFiles registration:", res = $res
+      debug "Got response for the didChangeWatchedFiles registration:", res = res.string
       ls.watchingFiles = true
     except JsonRpcError as err:
       warn "The didChangeWatchedFiles registration failed", err = err.msg
@@ -1367,7 +1368,7 @@ proc maybeRequestConfigurationFromClient*(
       let configurationParams =
         ConfigurationParams(items: @[ConfigurationItem(section: some "nim")])
       let configuration = await ls.call("workspace/configuration", configurationParams)
-      debug "Received the following configuration", configuration = $configuration
+      debug "Received the following configuration", configuration = configuration.string
       #the first configuration is not a change, so there is nothing to handle
       let
         hadConfiguration = ls.workspaceConfigurationReady.finished
