@@ -1033,7 +1033,7 @@ proc startNimbleProcess(
   )
 
 proc tasks*(
-    ls: LanguageServer, conf: JsonNode
+    ls: LanguageServer
 ): Future[seq[NimbleTask]] {.
     async: (
       raises:
@@ -1133,7 +1133,7 @@ proc runTests*(
   )
 
 proc cancelTest*(
-    ls: LanguageServer, params: JsonNode
+    ls: LanguageServer
 ): Future[CancelTestResult] {.async: (raises: [ApplicationError]).} =
   ls.checkInitialized()
   debug "Cancelling test"
