@@ -1,7 +1,7 @@
 {.push raises: [], gcsafe.}
 
 import
-  std/[os, sequtils, tables, json],
+  std/[os, sequtils, tables],
   chronos,
   chronos/asyncproc,
   json_rpc/[errors, server],
@@ -606,7 +606,7 @@ proc callTool*(
 
 # Notifications
 proc initialized*(
-    ls: LanguageServer, _: JsonNode
+    ls: LanguageServer, _: McpNotificationParams
 ) {.async: (raises: [ApplicationError]).} =
   ls.checkInitialized()
   debug "Client initialized."

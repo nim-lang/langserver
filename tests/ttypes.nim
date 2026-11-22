@@ -73,6 +73,18 @@ suite "command":
     let command = Command(title: "t", command: "c")
     check LspJson.encode(command) == """{"title":"t","command":"c"}"""
 
+suite "mcp notification params":
+  test "the meta fields are kept as json, without whitespace":
+    let params =
+      LspJson.decode("""{"_meta": {"a": [1, 2], "b": "x"}}""", McpNotificationParams)
+    let meta = params.meta.get
+    check meta.len == 2
+    check meta["a"].string == "[1,2]"
+    check meta["b"].string == "\"x\""
+
+  test "no meta decodes as none":
+    check LspJson.decode("{}", McpNotificationParams).meta.isNone
+
 suite "mcp tool call params":
   test "the arguments are kept as json, without whitespace":
     let params = LspJson.decode(

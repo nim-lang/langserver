@@ -123,6 +123,10 @@ type
     kind*: string
     value*: string
 
+  # https://modelcontextprotocol.io/specification/2025-11-25/schema#notificationparams
+  McpNotificationParams* = ref object of RootObj
+    meta* {.serializedFieldName: "_meta".}: Option[OrderedTable[string, JsonString]]
+
   McpListToolsParams* = ref object of RootObj
 
   McpCallToolParams* = ref object of RootObj
@@ -1450,6 +1454,7 @@ LspJson.useDefaultReaderFor(CancelParams)
 LspJson.useDefaultReaderFor(TextDocumentIdentifier)
 LspJson.useDefaultReaderFor(TextDocumentItem)
 LspJson.useDefaultReaderFor(TextDocumentPositionParams)
+LspJson.useDefaultReaderFor(McpNotificationParams)
 LspJson.useDefaultReaderFor(McpListToolsParams)
 LspJson.useDefaultReaderFor(McpCallToolParams)
 LspJson.useDefaultReaderFor(McpInitializeParams_clientInfo_Icon)
