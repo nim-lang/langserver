@@ -580,7 +580,7 @@ proc references*(
 
 proc prepareRename*(
     ls: LanguageServer, params: PrepareRenameParams
-): Future[JsonNode] {.
+): Future[Option[Range]] {.
     async: (
       raises: [
         ApplicationError, CancelledError, OSError, IOError, RegexError, NimsuggestError,
@@ -593,18 +593,17 @@ proc prepareRename*(
   with params.position:
     let nimsuggest = await ls.tryGetNimsuggest(path)
     if nimsuggest.isNone:
-      return newJNull()
+      return none(Range)
     let ch = ls.getCharacter(path, line.int, character.int)
     if ch.isNone:
-      return newJNull()
+      return none(Range)
     let def = await nimsuggest.get.def(path, ls.pathToStash(path), line.int + 1, ch.get)
     if def.len == 0:
-      return newJNull()
+      return none(Range)
     # Check if the symbol belongs to the project
     if ls.workspaceFolderOf(def[0].filePath).len > 0:
-      return %def[0].toLocation().range
-
-    return newJNull()
+      return some def[0].toLocation().range
+    none(Range)
 
 proc rename*(
     ls: LanguageServer, params: RenameParams

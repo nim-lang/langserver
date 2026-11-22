@@ -1,5 +1,5 @@
 import
-  std/[hashes, json, options, paths, tables, uri],
+  std/[hashes, options, paths, tables, uri],
   chronicles,
   json_rpc/router,
   json_serialization,
@@ -16,12 +16,6 @@ type
 proc `$`*(x: LspUri): string {.borrow.}
 proc `==`*(a, b: LspUri): bool {.borrow.}
 proc hash*(x: LspUri): Hash {.borrow.}
-proc `%`*(x: LspUri): JsonNode =
-  %x.string
-
-proc `%`*(x: Path): JsonNode =
-  %x.string
-
 chronicles.formatIt(LspUri):
   $it
 chronicles.formatIt(Path):
@@ -34,9 +28,6 @@ proc len*(x: Path): int =
 type uinteger* = distinct int
 
 const uintegerHigh* = uinteger(int32.high)
-
-proc `%`*(x: uinteger): JsonNode =
-  %x.int
 
 type
   OptionalSeq*[T] = Option[seq[T]]
