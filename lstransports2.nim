@@ -54,7 +54,7 @@ func toParams(params: JsonString): Result[RequestParamsTx, string] =
     err ex.msg
 
 proc wrapRpc*[T, F](fn: proc(params: T): F {.gcsafe, raises: [].}): Rpc =
-  return proc(params: RequestParamsRx): Future[JsonString] {.async.} =
+  proc(params: RequestParamsRx): Future[JsonString] {.async.} =
     let val =
       try:
         LspJson.decode(params.toJson, T)
@@ -66,6 +66,19 @@ proc wrapRpc*[T, F](fn: proc(params: T): F {.gcsafe, raises: [].}): Rpc =
         return JsonString("null")
       else:
         let res = await fn(val)
+        return JsonString(LspJson.encode(res))
+    except CancelledError:
+      raise
+        (ref ApplicationError)(code: ord(RequestCancelled), msg: "Request cancelled")
+
+proc wrapRpc*[F](fn: proc(): F {.gcsafe, raises: [].}): Rpc =
+  proc(params: RequestParamsRx): Future[JsonString] {.async.} =
+    try:
+      when typeof(fn()) is Future[void]: #Notification
+        await fn()
+        return JsonString("null")
+      else:
+        let res = await fn()
         return JsonString(LspJson.encode(res))
     except CancelledError:
       raise

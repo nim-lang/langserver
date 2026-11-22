@@ -783,7 +783,7 @@ func projectFileArgument(params: ExecuteCommandParams): Option[Path] =
 
 proc executeCommand*(
     ls: LanguageServer, params: ExecuteCommandParams
-): Future[JsonNode] {.
+): Future[Option[LspAny]] {.
     async: (
       raises: [
         ApplicationError, CancelledError, OSError, IOError, RegexError, NimsuggestError,
@@ -817,8 +817,7 @@ proc executeCommand*(
         ls.progressEnd(token)
       discard await project.ns.recompile()
       await ls.checkProject(projectFile)
-
-  result = newJNull()
+  none(LspAny)
 
 proc toSignatureInformation(suggest: Suggest): SignatureInformation =
   var fnKind, strParams: string
@@ -997,24 +996,22 @@ proc documentHighlight*(
 #    discard parseInt(id.getStr, result)
 
 proc shutdown*(
-    ls: LanguageServer, input: JsonNode
-): Future[JsonNode] {.async: (raises: [ApplicationError]).} =
+    ls: LanguageServer
+): Future[void] {.async: (raises: [ApplicationError]).} =
   ls.checkInitialized()
   debug "Shutting down"
   ls.isShutdown = true
   await ls.shutdownNimsuggest()
   # let id = input{"id"}.extractId
-  result = newJNull()
   trace "Shutdown complete"
 
 proc exit*(
-    p: tuple[ls: LanguageServer, onExit: OnExitCallback], _: JsonNode
-): Future[JsonNode] {.async: (raises: [IOError, OSError]).} =
+    p: tuple[ls: LanguageServer, onExit: OnExitCallback]
+): Future[void] {.async: (raises: [IOError, OSError]).} =
   if not p.ls.isShutdown:
     debug "Received an exit request without prior shutdown request"
   await p.ls.shutdownNimsuggest()
   debug "Quitting process"
-  result = newJNull()
   await p.onExit()
 
 proc startNimbleProcess(
