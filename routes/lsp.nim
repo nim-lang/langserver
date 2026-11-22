@@ -50,21 +50,24 @@ proc initialize*(
   p.ls.lspClientCapabilities = params.capabilities
   result = LspInitializeResult(
     capabilities: LspServerCapabilities(
-      textDocumentSync: some(
-        %TextDocumentSyncOptions(
+      textDocumentSync: some ServerCapabilitiesTextDocumentSync(
+        kind: stdsOptions,
+        options: TextDocumentSyncOptions(
           openClose: some(true),
           change: some(TextDocumentSyncKind.Full.int),
           willSave: some(false),
           willSaveWaitUntil: some(true),
           save: some(SaveOptions(includeText: some(true))),
-        )
+        ),
       ),
       hoverProvider: some(true),
       workspace: some(
         ServerCapabilities_workspace(
           workspaceFolders: some(
             WorkspaceFoldersServerCapabilities(
-              supported: some(true), changeNotifications: some(%true)
+              supported: some(true),
+              changeNotifications:
+                some WorkspaceFoldersChangeNotifications(kind: wfcnBool, boolean: true),
             )
           )
         )
@@ -90,13 +93,16 @@ proc initialize*(
     )
   )
   # Support rename by default, but check if we can also support prepare
-  result.capabilities.renameProvider = %true
+  result.capabilities.renameProvider =
+    some ServerCapabilitiesRenameProvider(kind: srpBool, boolean: true)
   if params.capabilities.textDocument.isSome:
     let docCaps = params.capabilities.textDocument.unsafeGet()
     # Check if the client support prepareRename
     #TODO do the test on the action
     if docCaps.rename.isSome and docCaps.rename.get().prepareSupport.get(false):
-      result.capabilities.renameProvider = %*{"prepareProvider": true}
+      result.capabilities.renameProvider = some ServerCapabilitiesRenameProvider(
+        kind: srpOptions, options: RenameOptions(prepareProvider: some true)
+      )
 
   debug "Initialize completed."
 
@@ -109,7 +115,7 @@ proc toCompletionItem(suggest: Suggest): CompletionItem =
     CompletionItem(
       label: qualifiedPath[^1].strip(chars = {'`'}),
       kind: some nimSymToLSPKind(suggest).int,
-      documentation: some %doc,
+      documentation: some CompletionItemDocumentation(kind: cidStr, str: doc),
       detail: some nimSymDetails(suggest),
     )
 
@@ -129,11 +135,11 @@ proc completion*(
     let nimsuggest = await ls.tryGetNimsuggest(path)
     if nimsuggest.isNone():
       return @[]
-    let ch = ls.getCharacter(path, line, character)
+    let ch = ls.getCharacter(path, line.int, character.int)
     if ch.isNone:
       return @[]
     let completions =
-      await nimsuggest.get.sug(path, ls.pathToStash(path), line + 1, ch.get)
+      await nimsuggest.get.sug(path, ls.pathToStash(path), line.int + 1, ch.get)
     result = completions.map(toCompletionItem)
 
     if ls.lspClientCapabilities.supportSignatureHelp() and
@@ -167,7 +173,7 @@ proc definition*(
     # otherwise fall back to nimsuggest (which supports dirty buffers).
     let info = ls.openFiles.getOrDefault(path)
     if config.useNimTrack.get(false) and info != nil and not info.changed:
-      let ch = ls.getCharacter(path, line, character)
+      let ch = ls.getCharacter(path, line.int, character.int)
       if ch.isNone:
         return @[]
       let projectFile = await info.projectFileWait()
@@ -180,7 +186,7 @@ proc definition*(
         await track(
           projectFile,
           path,
-          line + 1,
+          line.int + 1,
           ch.get,
           tmDef,
           nimPath = nimPath.get,
@@ -192,10 +198,10 @@ proc definition*(
     let ns = await ls.tryGetNimsuggest(path)
     if ns.isNone:
       return @[]
-    let ch = ls.getCharacter(path, line, character)
+    let ch = ls.getCharacter(path, line.int, character.int)
     if ch.isNone:
       return @[]
-    result = ns.get.def(path, ls.pathToStash(path), line + 1, ch.get).await().map(
+    result = ns.get.def(path, ls.pathToStash(path), line.int + 1, ch.get).await().map(
         x => x.toUtf16Pos(ls).toLocation
       )
 
@@ -215,11 +221,11 @@ proc declaration*(
     let ns = await ls.tryGetNimsuggest(path)
     if ns.isNone:
       return @[]
-    let ch = ls.getCharacter(path, line, character)
+    let ch = ls.getCharacter(path, line.int, character.int)
     if ch.isNone:
       return @[]
     result = ns.get
-      .declaration(path, ls.pathToStash(path), line + 1, ch.get)
+      .declaration(path, ls.pathToStash(path), line.int + 1, ch.get)
       .await()
       .map(x => x.toUtf16Pos(ls).toLocation)
 
@@ -236,10 +242,10 @@ proc expandAll*(
     let ns = await ls.tryGetNimsuggest(path)
     if ns.isNone:
       return ExpandResult() #TODO make it optional
-    let ch = ls.getCharacter(path, line, character)
+    let ch = ls.getCharacter(path, line.int, character.int)
     if ch.isNone:
       return ExpandResult()
-    let expand = ns.get.expand(path, ls.pathToStash(path), line + 1, ch.get).await()
+    let expand = ns.get.expand(path, ls.pathToStash(path), line.int + 1, ch.get).await()
 
 proc createRangeFromSuggest(suggest: Suggest): Range =
   result = range(suggest.line - 1, 0, suggest.endLine - 1, suggest.endCol)
@@ -278,14 +284,15 @@ proc expand*(
       ns = await ls.tryGetNimsuggest(path)
     if ns.isNone:
       return ExpandResult()
-    let ch = ls.getCharacter(path, line, character)
+    let ch = ls.getCharacter(path, line.int, character.int)
     if ch.isNone:
       return ExpandResult()
-    let expand =
-      ns.get.expand(path, ls.pathToStash(path), line + 1, ch.get, fmt "  {tag}").await()
+    let expand = ns.get
+      .expand(path, ls.pathToStash(path), line.int + 1, ch.get, fmt "  {tag}")
+      .await()
     if expand.len != 0:
       result = ExpandResult(
-        content: expand[0].doc.fixIdentation(character),
+        content: expand[0].doc.fixIdentation(character.int),
         range: expand[0].createRangeFromSuggest(),
       )
 
@@ -297,7 +304,7 @@ proc status*(
   ls.getLspStatus()
 
 proc extensionCapabilities*(
-    ls: LanguageServer, _: JsonNode
+    ls: LanguageServer, _: NimLangServerCapabilitiesParams
 ): Future[seq[string]] {.async: (raises: [ApplicationError]).} =
   ls.checkInitialized()
   ls.extensionCapabilities.toSeq.mapIt($it)
@@ -354,10 +361,10 @@ proc typeDefinition*(
     let ns = await ls.tryGetNimsuggest(path)
     if ns.isNone:
       return @[]
-    let ch = ls.getCharacter(path, line, character)
+    let ch = ls.getCharacter(path, line.int, character.int)
     if ch.isNone:
       return @[]
-    result = ns.get.`type`(path, ls.pathToStash(path), line + 1, ch.get).await().map(
+    result = ns.get.`type`(path, ls.pathToStash(path), line.int + 1, ch.get).await().map(
         x => x.toUtf16Pos(ls).toLocation
       )
 
@@ -467,19 +474,21 @@ proc hover*(
     let nimsuggest = await ls.tryGetNimsuggest(path)
     if nimsuggest.isNone:
       return none(Hover)
-    let ch = ls.getCharacter(path, line, character)
+    let ch = ls.getCharacter(path, line.int, character.int)
     if ch.isNone:
       return none(Hover)
     let suggestions =
-      await nimsuggest.get().highlight(path, ls.pathToStash(path), line + 1, ch.get)
+      await nimsuggest.get().highlight(path, ls.pathToStash(path), line.int + 1, ch.get)
     if suggestions.len == 0:
       return none(Hover)
     var suggest = suggestions[0]
     if suggest.symkind == "skModule": # NOTE: skMoudle always return position (1, 0)
-      return some(Hover(contents: some(%toMarkupContent(suggest))))
+      return some(
+        Hover(contents: HoverContents(kind: hcMarkup, markup: toMarkupContent(suggest)))
+      )
     else:
       for s in suggestions:
-        if s.line == line + 1:
+        if s.line == line.int + 1:
           if s.column <= ch.get:
             suggest = s
           else:
@@ -509,7 +518,8 @@ proc hover*(
           content.value.add &"```nim\n{arcContent}\n```"
       return some(
         Hover(
-          contents: some(%content), range: some(toLabelRange(suggest.toUtf16Pos(ls)))
+          contents: HoverContents(kind: hcMarkup, markup: content),
+          range: some(toLabelRange(suggest.toUtf16Pos(ls))),
         )
       )
 
@@ -532,7 +542,7 @@ proc references*(
     # otherwise fall back to nimsuggest (which supports dirty buffers).
     let info = ls.openFiles.getOrDefault(path)
     if config.useNimTrack.get(false) and info != nil and not info.changed:
-      let ch = ls.getCharacter(path, line, character)
+      let ch = ls.getCharacter(path, line.int, character.int)
       if ch.isNone:
         return @[]
       let projectFile = await info.projectFileWait()
@@ -545,7 +555,7 @@ proc references*(
       let refs = await track(
         projectFile,
         path,
-        line + 1,
+        line.int + 1,
         ch.get,
         mode,
         nimPath = nimPath.get,
@@ -559,17 +569,19 @@ proc references*(
     let nimsuggest = await ls.tryGetNimsuggest(path)
     if nimsuggest.isNone:
       return @[]
-    let ch = ls.getCharacter(path, line, character)
+    let ch = ls.getCharacter(path, line.int, character.int)
     if ch.isNone:
       return @[]
-    let refs = await nimsuggest.get.use(path, ls.pathToStash(path), line + 1, ch.get)
+    let refs =
+      await nimsuggest.get.use(path, ls.pathToStash(path), line.int + 1, ch.get)
     result = refs.filter(suggest => suggest.section != ideDef or includeDeclaration).map(
         x => x.toUtf16Pos(ls).toLocation
       )
 
+# https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#textDocument_prepareRename
 proc prepareRename*(
     ls: LanguageServer, params: PrepareRenameParams
-): Future[JsonNode] {.
+): Future[Option[Range]] {.
     async: (
       raises: [
         ApplicationError, CancelledError, OSError, IOError, RegexError, NimsuggestError,
@@ -582,18 +594,17 @@ proc prepareRename*(
   with params.position:
     let nimsuggest = await ls.tryGetNimsuggest(path)
     if nimsuggest.isNone:
-      return newJNull()
-    let ch = ls.getCharacter(path, line, character)
+      return none(Range)
+    let ch = ls.getCharacter(path, line.int, character.int)
     if ch.isNone:
-      return newJNull()
-    let def = await nimsuggest.get.def(path, ls.pathToStash(path), line + 1, ch.get)
+      return none(Range)
+    let def = await nimsuggest.get.def(path, ls.pathToStash(path), line.int + 1, ch.get)
     if def.len == 0:
-      return newJNull()
+      return none(Range)
     # Check if the symbol belongs to the project
     if ls.workspaceFolderOf(def[0].filePath).len > 0:
-      return %def[0].toLocation().range
-
-    return newJNull()
+      return some def[0].toLocation().range
+    none(Range)
 
 proc rename*(
     ls: LanguageServer, params: RenameParams
@@ -615,15 +626,14 @@ proc rename*(
     )
   )
   # Build up list of edits that the client needs to perform for each file
-  var edits = newJObject()
+  var edits = initTable[DocumentUri, seq[TextEdit]]()
   for reference in references:
     # Only rename symbols in the project.
     # If client supports prepareRename then an error will already have been thrown
     if ls.workspaceFolderOf(reference.uri.uriToPath()).len > 0:
-      if reference.uri.string notin edits:
-        edits[reference.uri.string] = newJArray()
-      edits[reference.uri.string] &=
-        %TextEdit(range: reference.range, newText: params.newName)
+      edits.mgetOrPut(reference.uri, @[]).add TextEdit(
+        range: reference.range, newText: params.newName
+      )
   result = WorkspaceEdit(changes: some edits)
 
 proc convertInlayHintKind(kind: SuggestInlayHintKind): InlayHintKind_int =
@@ -644,7 +654,7 @@ proc toInlayHint(suggest: SuggestInlayHint, configuration: NlsConfig): InlayHint
   if suggest.label.contains("Error Type"):
     suggest.label = ""
   result = InlayHint(
-    position: Position(line: hint_line, character: hint_col),
+    position: Position(line: uinteger(hint_line), character: uinteger(hint_col)),
     label: suggest.label,
     kind: some(convertInlayHintKind(suggest.kind)),
     paddingLeft: some(suggest.paddingLeft),
@@ -670,8 +680,8 @@ proc toInlayHint(suggest: SuggestInlayHint, configuration: NlsConfig): InlayHint
         TextEdit(
           newText: suggest.label,
           `range`: Range(
-            start: Position(line: hint_line, character: hint_col),
-            `end`: Position(line: hint_line, character: hint_col),
+            start: Position(line: uinteger(hint_line), character: uinteger(hint_col)),
+            `end`: Position(line: uinteger(hint_line), character: uinteger(hint_col)),
           ),
         )
       ]
@@ -698,15 +708,15 @@ proc inlayHint*(
     if nimsuggest.isNone or nimsuggest.get.protocolVersion < 4 or
         not configuration.inlayHintsEnabled:
       return @[]
-    let ch = ls.getCharacter(path, start.line, start.character)
+    let ch = ls.getCharacter(path, start.line.int, start.character.int)
     if ch.isNone:
       return @[]
     let suggestions = await nimsuggest.get.inlayHints(
       path,
       ls.pathToStash(path),
-      start.line + 1,
+      start.line.int + 1,
       ch.get,
-      `end`.line + 1,
+      `end`.line.int + 1,
       ch.get,
       " +exceptionHints +parameterHints",
     )
@@ -739,7 +749,7 @@ proc codeAction*(
       command: Command(
         title: "Clean build",
         command: RECOMPILE_COMMAND,
-        arguments: some %*[projectFile],
+        arguments: some @[JsonString(LspJson.encode(projectFile.string))],
       ),
     ),
     CodeAction(
@@ -748,7 +758,7 @@ proc codeAction*(
       command: Command(
         title: "Refresh project errors",
         command: CHECK_PROJECT_COMMAND,
-        arguments: some %*[projectFile],
+        arguments: some @[JsonString(LspJson.encode(projectFile.string))],
       ),
     ),
     CodeAction(
@@ -757,14 +767,23 @@ proc codeAction*(
       command: Command(
         title: "Restart nimsuggest",
         command: RESTART_COMMAND,
-        arguments: some %*[projectFile],
+        arguments: some @[JsonString(LspJson.encode(projectFile.string))],
       ),
     ),
   ]
 
+func projectFileArgument(params: ExecuteCommandParams): Option[Path] =
+  let arguments = params.arguments.get(@[])
+  if arguments.len == 0:
+    return none(Path)
+  try:
+    some LspJson.decode(arguments[0].string, string).Path
+  except SerializationError:
+    none(Path)
+
 proc executeCommand*(
     ls: LanguageServer, params: ExecuteCommandParams
-): Future[JsonNode] {.
+): Future[Option[LspAny]] {.
     async: (
       raises: [
         ApplicationError, CancelledError, OSError, IOError, RegexError, NimsuggestError,
@@ -773,12 +792,13 @@ proc executeCommand*(
     )
 .} =
   ls.checkInitialized()
-  if params.arguments.len == 0:
+  let projectFileArg = projectFileArgument(params)
+  if projectFileArg.isNone:
     raise (ref ApplicationError)(
       code: ErrorCode.InvalidParams.int,
       msg: params.command & " expects the project file as its first argument",
     )
-  let projectFile = params.arguments[0].getStr.Path
+  let projectFile = projectFileArg.get
   case params.command
   of RESTART_COMMAND:
     debug "Restarting nimsuggest", projectFile = projectFile
@@ -792,13 +812,12 @@ proc executeCommand*(
     if project != nil and project.ns != nil:
       let token = ls.createProgressToken()
       ls.workDoneProgressCreate(token)
-      ls.progress(token, "begin", fmt "Compiling project {projectFile}")
+      ls.progressBegin(token, fmt "Compiling project {projectFile}")
       defer:
-        ls.progress(token, "end")
+        ls.progressEnd(token)
       discard await project.ns.recompile()
       await ls.checkProject(projectFile)
-
-  result = newJNull()
+  none(LspAny)
 
 proc toSignatureInformation(suggest: Suggest): SignatureInformation =
   var fnKind, strParams: string
@@ -851,11 +870,11 @@ proc signatureHelp*(
     if nsCon notin nimsuggest.get.capabilities:
       #support signatureHelp only if the current version of Nimsuggest supports it.
       return none[SignatureHelp]()
-    let ch = ls.getCharacter(path, line, character)
+    let ch = ls.getCharacter(path, line.int, character.int)
     if ch.isNone:
       return none[SignatureHelp]()
     let completions =
-      await nimsuggest.get.con(path, ls.pathToStash(path), line + 1, ch.get)
+      await nimsuggest.get.con(path, ls.pathToStash(path), line.int + 1, ch.get)
     let signatures = completions.map(toSignatureInformation)
     if signatures.len() > 0:
       return some SignatureHelp(
@@ -902,8 +921,8 @@ proc format*(
     return none(TextEdit)
 
   let fullRange = Range(
-    start: Position(line: 0, character: 0),
-    `end`: Position(line: uinteger.high, character: uinteger.high),
+    start: Position(line: uinteger(0), character: uinteger(0)),
+    `end`: Position(line: uintegerHigh, character: uintegerHigh),
   )
   debug "Formatting document", path = path, formattedText = formattedText
   some TextEdit(range: fullRange, newText: formattedText)
@@ -963,11 +982,11 @@ proc documentHighlight*(
     let nimsuggest = await ls.tryGetNimsuggest(path)
     if nimsuggest.isNone:
       return @[]
-    let ch = ls.getCharacter(path, line, character)
+    let ch = ls.getCharacter(path, line.int, character.int)
     if ch.isNone:
       return @[]
     let suggestLocations =
-      await nimsuggest.get.highlight(path, ls.pathToStash(path), line + 1, ch.get)
+      await nimsuggest.get.highlight(path, ls.pathToStash(path), line.int + 1, ch.get)
     result = suggestLocations.map(x => x.toUtf16Pos(ls).toDocumentHighlight)
 
 #proc extractId(id: JsonNode): int {.raises: [ValueError].} =
@@ -977,24 +996,22 @@ proc documentHighlight*(
 #    discard parseInt(id.getStr, result)
 
 proc shutdown*(
-    ls: LanguageServer, input: JsonNode
-): Future[JsonNode] {.async: (raises: [ApplicationError]).} =
+    ls: LanguageServer
+): Future[void] {.async: (raises: [ApplicationError]).} =
   ls.checkInitialized()
   debug "Shutting down"
   ls.isShutdown = true
   await ls.shutdownNimsuggest()
   # let id = input{"id"}.extractId
-  result = newJNull()
   trace "Shutdown complete"
 
 proc exit*(
-    p: tuple[ls: LanguageServer, onExit: OnExitCallback], _: JsonNode
-): Future[JsonNode] {.async: (raises: [IOError, OSError]).} =
+    p: tuple[ls: LanguageServer, onExit: OnExitCallback]
+): Future[void] {.async: (raises: [IOError, OSError]).} =
   if not p.ls.isShutdown:
     debug "Received an exit request without prior shutdown request"
   await p.ls.shutdownNimsuggest()
   debug "Quitting process"
-  result = newJNull()
   await p.onExit()
 
 proc startNimbleProcess(
@@ -1016,7 +1033,7 @@ proc startNimbleProcess(
   )
 
 proc tasks*(
-    ls: LanguageServer, conf: JsonNode
+    ls: LanguageServer
 ): Future[seq[NimbleTask]] {.
     async: (
       raises:
@@ -1116,7 +1133,7 @@ proc runTests*(
   )
 
 proc cancelTest*(
-    ls: LanguageServer, params: JsonNode
+    ls: LanguageServer
 ): Future[CancelTestResult] {.async: (raises: [ApplicationError]).} =
   ls.checkInitialized()
   debug "Cancelling test"
@@ -1134,7 +1151,7 @@ proc cancelTest*(
 
 #Notifications
 proc initialized*(
-    ls: LanguageServer, _: JsonNode
+    ls: LanguageServer, _: InitializedParams
 ): Future[void] {.async: (raises: [ApplicationError, CancelledError]).} =
   ls.checkInitialized()
   debug "Client initialized."
@@ -1301,10 +1318,10 @@ proc didChangeWorkspaceFolders*(
     await ls.stopNimsuggests()
 
 proc didChangeConfiguration*(
-    ls: LanguageServer, conf: JsonNode
+    ls: LanguageServer, params: DidChangeConfigurationParams
 ): Future[void] {.async: (raises: [ApplicationError, CancelledError]).} =
   ls.checkInitialized()
-  debug "Changed configuration: ", conf = $conf
+  debug "Changed configuration: ", settings = $params.settings
   if ls.usePullConfigurationModel:
     await ls.maybeRequestConfigurationFromClient()
   else:
@@ -1312,6 +1329,6 @@ proc didChangeConfiguration*(
     let
       hadConfiguration = ls.workspaceConfigurationReady.finished
       oldConfiguration = ls.workspaceConfiguration
-    ls.setWorkspaceConfiguration(conf)
+    ls.setWorkspaceConfiguration(parseSettings(params.settings))
     if hadConfiguration: #the first configuration is not a change
       await handleConfigurationChanges(ls, oldConfiguration, ls.workspaceConfiguration)

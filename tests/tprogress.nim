@@ -30,7 +30,7 @@ proc startServer(): (LanguageServer, LspSocketClient) =
   )
   # Only the checks a test runs report progress.
   ls.setWorkspaceConfiguration(
-    % @[NlsConfig(autoCheckFile: some false, autoCheckProject: some false)]
+    NlsConfig(autoCheckFile: some false, autoCheckProject: some false)
   )
   client.notify("textDocument/didOpen", %createDidOpenParams(RootFile))
   discard waitFor client
@@ -91,7 +91,7 @@ suite "Progress of project checks":
 
   test "every project check reports its own progress":
     ls.setWorkspaceConfiguration(
-      % @[NlsConfig(autoCheckFile: some false, autoCheckProject: some true)]
+      NlsConfig(autoCheckFile: some false, autoCheckProject: some true)
     )
     let created = client.createdTokens().len
     waitFor ls.checkProject(RootFile.fixturePath)
@@ -105,7 +105,7 @@ suite "Progress of project checks":
 
   test "the progress of a recompile is ended":
     ls.setWorkspaceConfiguration(
-      % @[NlsConfig(autoCheckFile: some false, autoCheckProject: some false)]
+      NlsConfig(autoCheckFile: some false, autoCheckProject: some false)
     )
     let created = client.createdTokens().len
     discard waitFor client

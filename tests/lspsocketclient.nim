@@ -5,6 +5,16 @@ import
   ../protocol/types,
   ../[ls, utils]
 
+#The tests build their params with std/json
+proc `%`*(x: LspUri): JsonNode =
+  %x.string
+
+proc `%`*(x: Path): JsonNode =
+  %x.string
+
+proc `%`*(x: uinteger): JsonNode =
+  %x.int
+
 #Utils
 proc fixturePath*(path: string): Path =
   result = paths.getCurrentDir() / "tests".Path / path.Path
@@ -188,10 +198,9 @@ proc register*(client: LspSocketClient, name: string, rpc: Rpc) =
 #Calls
 proc initialize*(
     client: LspSocketClient, initParams: JsonNode
-): Future[LspInitializeResult] {.async.} =
-  client.call("initialize", initParams).await.jsonTo(
-    LspInitializeResult, Joptions(allowMissingKeys: true)
-  )
+): Future[JsonNode] {.async.} =
+  ## The result as the server sent it
+  await client.call("initialize", initParams)
 
 proc createDidOpenParams*(file: string): DidOpenTextDocumentParams =
   DidOpenTextDocumentParams(
@@ -212,7 +221,7 @@ proc openFile*(client: LspSocketClient, file: string) =
 
 proc positionParams*(uri: DocumentUri, line, character: int): TextDocumentPositionParams =
   TextDocumentPositionParams(
-    position: Position(line: line, character: character),
+    position: Position(line: uinteger(line), character: uinteger(character)),
     textDocument: TextDocumentIdentifier(uri: uri),
   )
 

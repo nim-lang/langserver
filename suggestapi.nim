@@ -54,7 +54,7 @@ type
     column*: int # Starts at 0
     doc*: string # Not escaped (yet)
     forth*: string # type
-    quality*: range[0 .. 100] # matching quality
+    quality*: int # matching quality
     isGlobal*: bool # is a global variable
     contextFits*: bool # type/non-type context matches
     prefix*: PrefixMatch

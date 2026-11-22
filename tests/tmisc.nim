@@ -37,7 +37,7 @@ suite "Nimlangserver misc":
     let initializeResult = waitFor client.initialize(initParams)
     let nsTimeout = 1000
     let conf = NlsConfig(nimsuggestIdleTimeout: some nsTimeout)
-    ls.setWorkspaceConfiguration(% @[conf])
+    ls.setWorkspaceConfiguration(conf)
 
     asyncSpawn ls.tickLs()
       #We need to tick the ls so it get rid of the inactive nimsuggests
@@ -79,7 +79,7 @@ suite "A nimsuggest that fails":
         {"window": {"workDoneProgress": true}, "workspace": {"configuration": true}},
     }
   )
-  ls.setWorkspaceConfiguration(% @[NlsConfig()])
+  ls.setWorkspaceConfiguration(NlsConfig())
   client.openFile(helloWorldFile)
   check waitFor client.waitForNotificationMessage(
     fmt"Nimsuggest initialized for {hwAbsFile}"
@@ -134,7 +134,7 @@ suite "A nimsuggest that fails to start":
         {"window": {"workDoneProgress": true}, "workspace": {"configuration": true}},
     }
   )
-  ls.setWorkspaceConfiguration(% @[notNimsuggest])
+  ls.setWorkspaceConfiguration(notNimsuggest)
   client.openFile(helloWorldFile)
 
   suiteTeardown:
@@ -160,7 +160,7 @@ suite "A nimsuggest that fails to start":
     check symbols.kind in {JNull, JArray}
 
   test "is started again after a configuration change":
-    ls.setWorkspaceConfiguration(% @[NlsConfig()])
+    ls.setWorkspaceConfiguration(NlsConfig())
     waitFor ls.handleConfigurationChanges(notNimsuggest, NlsConfig())
 
     check (waitFor ls.tryGetNimsuggest(hwAbsFile)).isSome
@@ -185,7 +185,7 @@ suite "A nimsuggest whose startup does not finish":
         {"window": {"workDoneProgress": true}, "workspace": {"configuration": true}},
     }
   )
-  ls.setWorkspaceConfiguration(% @[NlsConfig()])
+  ls.setWorkspaceConfiguration(NlsConfig())
 
   suiteTeardown:
     waitFor ls.shutdownNimsuggest()
@@ -205,7 +205,7 @@ suite "A nimsuggest whose startup does not finish":
     check hwAbsFile notin ls.projectFiles
 
   test "is reported when it times out":
-    ls.setWorkspaceConfiguration(% @[NlsConfig(nimsuggestTimeout: some 1)])
+    ls.setWorkspaceConfiguration(NlsConfig(nimsuggestTimeout: some 1))
     waitFor ls.createOrRestartNimsuggest(hwAbsFile, hwAbsFile)
 
     check ls.projectFiles[hwAbsFile].failed
@@ -382,7 +382,7 @@ suite "Nimlangserver didOpen ordering":
     check waitUntil(ls.onGoingRequest("textDocument/definition").isSome)
     check not request.finished
 
-    ls.setWorkspaceConfiguration(% @[NlsConfig()])
+    ls.setWorkspaceConfiguration(NlsConfig())
     let locations = to(waitFor request.wait(30.seconds), seq[Location])
 
     check locations.len == 1
@@ -430,7 +430,7 @@ suite "Nimlangserver request cancelled during startup":
     if file.fixturePath in ls.openFiles:
       check not ls.openFiles[file.fixturePath].projectFile.cancelled
 
-    ls.setWorkspaceConfiguration(% @[NlsConfig()])
+    ls.setWorkspaceConfiguration(NlsConfig())
     let locations = to(
       waitFor client
       .call("textDocument/definition", %positionParams(uri, 1, 6))
@@ -468,7 +468,7 @@ suite "Nimlangserver idle nimsuggest cleanup":
       }
     discard waitFor client.initialize(initParams)
     let conf = NlsConfig(nimsuggestIdleTimeout: some 1000)
-    ls.setWorkspaceConfiguration(% @[conf])
+    ls.setWorkspaceConfiguration(conf)
 
     let helloWorldFile = "projects/hw/hw.nim"
     let hwAbsFile = uriToPath(helloWorldFile.fixtureUri())
@@ -606,7 +606,7 @@ suite "Nimlangserver nimsuggest creation":
       },
     }
   discard waitFor client.initialize(initParams)
-  ls.setWorkspaceConfiguration(% @[NlsConfig()])
+  ls.setWorkspaceConfiguration(NlsConfig())
 
   let hwProjectFile = fixturePath("projects/hw/hw.nim")
 
@@ -725,7 +725,7 @@ suite "Nimlangserver nimsuggest slow commands":
       },
     }
   discard waitFor client.initialize(initParams)
-  ls.setWorkspaceConfiguration(% @[NlsConfig()])
+  ls.setWorkspaceConfiguration(NlsConfig())
 
   let hwProjectFile = fixturePath("projects/hw/hw.nim")
 
@@ -764,7 +764,7 @@ suite "Nimlangserver project lookup replaced by a configuration change":
     }
   )
   let before = NlsConfig(autoCheckFile: some false, autoCheckProject: some false)
-  ls.setWorkspaceConfiguration(% @[before])
+  ls.setWorkspaceConfiguration(before)
 
   let
     hwPath = fixturePath("projects/hw/hw.nim")
@@ -784,7 +784,7 @@ suite "Nimlangserver project lookup replaced by a configuration change":
     let after = NlsConfig(
       autoCheckFile: some false, autoCheckProject: some false, timeout: some 1234
     )
-    ls.setWorkspaceConfiguration(% @[after])
+    ls.setWorkspaceConfiguration(after)
     waitFor ls.handleConfigurationChanges(before, after).wait(60.seconds)
     check (waitFor ls.openFiles[hwPath].projectFileWait().wait(60.seconds)) == hwPath
 
@@ -803,7 +803,7 @@ suite "Nimlangserver project lookup replaced by a configuration change":
       autoCheckFile: some false, autoCheckProject: some false, timeout: some 4321
     )
     let current = ls.workspaceConfiguration
-    ls.setWorkspaceConfiguration(% @[changed])
+    ls.setWorkspaceConfiguration(changed)
     # The new lookup can't finish before the old one does: it waits on the
     # configuration, which is made to look unknown again
     let parked = Future[void].Raising([CancelledError]).init("parked")
@@ -851,13 +851,11 @@ suite "External file edits":
     }
   )
   ls.setWorkspaceConfiguration(
-    % @[
-      NlsConfig(
-        autoCheckFile: some false,
-        autoCheckProject: some true,
-        checkOnSave: some true,
-      )
-    ]
+    NlsConfig(
+      autoCheckFile: some false,
+      autoCheckProject: some true,
+      checkOnSave: some true,
+    )
   )
   client.notify("initialized", newJObject())
   client.notify(

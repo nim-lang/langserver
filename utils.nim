@@ -168,6 +168,12 @@ proc head*[T](xs: seq[T]): Option[T] =
   else:
     none(T)
 
+proc partial*[A, B](
+    fn: proc(a: A): B {.gcsafe, raises: [], nimcall.}, a: A
+): proc(): B {.gcsafe, raises: [].} =
+  return proc(): B {.gcsafe, raises: [].} =
+    return fn(a)
+
 proc partial*[A, B, C](
     fn: proc(a: A, b: B): C {.gcsafe, raises: [], nimcall.}, a: A
 ): proc(b: B): C {.gcsafe, raises: [].} =

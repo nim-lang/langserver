@@ -7,7 +7,7 @@
 
 import ../[nimlangserver, ls, utils, lstransports2]
 import ../protocol/types
-import std/[options, json, jsonutils, strutils]
+import std/[options, json, strutils]
 import chronos/osutils
 import stew/byteutils
 import json_rpc/[clients/stdioclient, router]
@@ -62,9 +62,7 @@ suite "Nimlangserver stdio transport":
       %*{"processId": nil, "rootUri": nil, "capabilities": {}, "workspaceFolders": nil}
     )
     let res = waitFor client.call("initialize", initParams).wait(30.seconds)
-    let initRes =
-      res.string.parseJson.jsonTo(LspInitializeResult, Joptions(allowMissingKeys: true))
-    check not initRes.capabilities.completionProvider.isNil
+    check "completionProvider" in res.string.parseJson["capabilities"]
 
   test "The server notifies the client over the same pipes":
     #`extension/statusUpdate` is pushed by the server on its own

@@ -54,7 +54,7 @@ func toParams(params: JsonString): Result[RequestParamsTx, string] =
     err ex.msg
 
 proc wrapRpc*[T, F](fn: proc(params: T): F {.gcsafe, raises: [].}): Rpc =
-  return proc(params: RequestParamsRx): Future[JsonString] {.async.} =
+  proc(params: RequestParamsRx): Future[JsonString] {.async.} =
     let val =
       try:
         LspJson.decode(params.toJson, T)
@@ -66,6 +66,19 @@ proc wrapRpc*[T, F](fn: proc(params: T): F {.gcsafe, raises: [].}): Rpc =
         return JsonString("null")
       else:
         let res = await fn(val)
+        return JsonString(LspJson.encode(res))
+    except CancelledError:
+      raise
+        (ref ApplicationError)(code: ord(RequestCancelled), msg: "Request cancelled")
+
+proc wrapRpc*[F](fn: proc(): F {.gcsafe, raises: [].}): Rpc =
+  proc(params: RequestParamsRx): Future[JsonString] {.async.} =
+    try:
+      when typeof(fn()) is Future[void]: #Notification
+        await fn()
+        return JsonString("null")
+      else:
+        let res = await fn()
         return JsonString(LspJson.encode(res))
     except CancelledError:
       raise
@@ -258,17 +271,14 @@ proc initActions*(ls: LanguageServer) =
 
   let callAction: CallAction = proc(
       name: string, params: JsonString
-  ): Future[JsonNode] {.async: (raises: [CancelledError, JsonRpcError]).} =
+  ): Future[JsonString] {.async: (raises: [CancelledError, JsonRpcError]).} =
     let conn = ls.client
     if conn.isNil:
       raise newException(JsonRpcError, "No client connected")
     let reqParams = params.toParams.valueOr:
       raise newException(JsonRpcError, "Cannot encode the request params: " & error)
     try:
-      LspJson.decode(await conn.call(name, reqParams), JsonNode)
-    except SerializationError as ex:
-      error "Cannot decode the client response", name = name, err = ex.msg
-      raise newException(JsonRpcError, ex.msg)
+      await conn.call(name, reqParams)
     except JsonRpcError as ex:
       error "Call to the client failed", name = name, err = ex.msg
       raise ex

@@ -1,11 +1,15 @@
 import
-  std/[json, jsonutils, options, os, sequtils, strutils],
+  std/[json, options, os, sequtils, strutils],
   chronos,
   json_rpc/errors,
   unittest2,
   ../[nimlangserver, ls, utils],
   ../protocol/types,
-  ../routes/mcp
+  ../routes/mcp,
+  ./lspsocketclient
+
+proc toolArguments(node: JsonNode): Option[JsonString] =
+  some JsonString($node)
 
 type McpSocketClient = ref object
   transport: StreamTransport
@@ -27,8 +31,8 @@ proc initMcpServer(
     notifications[].add name
   ls.callAction = proc(
       name: string, params: JsonString
-  ): Future[JsonNode] {.async: (raises: [CancelledError, JsonRpcError]).} =
-    newJNull()
+  ): Future[JsonString] {.async: (raises: [CancelledError, JsonRpcError]).} =
+    JsonString("null")
   ls.onExit = proc(): Future[void] {.async: (raises: []).} =
     discard
 
@@ -40,7 +44,7 @@ proc checkToolResult(res: McpCallToolResult) =
   check not res.isError
   check res.structuredContent.isSome
   if res.structuredContent.isSome:
-    check parseJson(res.content[0].text) == res.structuredContent.get
+    check parseJson(res.content[0].text) == res.structuredContent.get.string.parseJson
 
 proc newMcpSocketClient(port: Port): Future[McpSocketClient] {.async.} =
   let addresses = resolveTAddress("localhost", port)
@@ -120,7 +124,7 @@ suite "MCP routes":
       "tools/call", %*{"name": "nimCheckProject", "arguments": {}}
     )
     check checkProject{"isError"}.getBool(false)
-    check checkProject{"content"}[0]{"text"}.getStr == "Argument uri must be a file URI"
+    check checkProject{"content"}[0]{"text"}.getStr.startsWith("Invalid arguments: ")
     check "structuredContent" notin checkProject
 
     let httpSymbols = waitFor rpcClient.callRpc(
@@ -156,12 +160,26 @@ suite "MCP routes":
     check missingSymbols{"content"}[0]{"text"}.getStr ==
       "Argument uri must be an existing .nim file"
 
-    let unknown = waitFor rpcClient.callRpc(
-      "tools/call", %*{"name": "thisToolDoesNotExist", "arguments": {}}
+    let badLine = waitFor rpcClient.callRpc(
+      "tools/call",
+      %*{
+        "name": "nimFindReferences",
+        "arguments": {"path": "a.nim", "line": "x", "column": 1},
+      },
     )
-    check unknown{"isError"}.getBool(false)
-    check unknown{"content"}[0]{"text"}.getStr == "Unknown tool"
-    check "structuredContent" notin unknown
+    check badLine{"isError"}.getBool(false)
+    check badLine{"content"}[0]{"text"}.getStr.startsWith("Invalid arguments: ")
+
+    #An unknown tool is a protocol error, not a tool result
+    try:
+      discard waitFor rpcClient.callRpc(
+        "tools/call", %*{"name": "thisToolDoesNotExist", "arguments": {}}
+      )
+      checkpoint "an unknown tool was answered with a result"
+      fail()
+    except JsonRpcError as err:
+      check "-32602" in err.msg
+      check "Unknown tool: thisToolDoesNotExist" in err.msg
 
   test "tools/call is refused until initialize":
     let
@@ -205,7 +223,7 @@ suite "MCP routes":
     let checkProject = waitFor rpcClient.callRpc(
       "tools/call", %*{"name": "nimCheckProject", "arguments": {}}
     )
-    check checkProject{"content"}[0]{"text"}.getStr == "Argument uri must be a file URI"
+    check checkProject{"content"}[0]{"text"}.getStr.startsWith("Invalid arguments: ")
 
   test "listTools returns all MCP tools":
     # initialize is required first; from a directory with no nimble project it
@@ -240,35 +258,46 @@ suite "MCP routes":
       },
     )
 
-    let listToolsResult =
-      (waitFor rpcClient.callRpc("tools/list", %*{})).jsonTo(McpListToolsResult)
+    let tools = (waitFor rpcClient.callRpc("tools/list", %*{}))["tools"].getElems
 
-    check listToolsResult.tools.mapIt(it.name) ==
+    check tools.mapIt(it["name"].getStr) ==
       @[
         "nimFindReferences", "nimFindSymbols", "nimListSymbols", "nimCheckProject",
         "nimCheckFile", "nimFindTypeDefinition",
       ]
 
-    let
-      findReferences = listToolsResult.tools[0]
-      findSymbols = listToolsResult.tools[1]
-      listSymbols = listToolsResult.tools[2]
-      checkProject = listToolsResult.tools[3]
-      checkFile = listToolsResult.tools[4]
-      findTypeDefinition = listToolsResult.tools[5]
+    proc required(tool: JsonNode, schema: string): seq[string] =
+      tool[schema]["required"].getElems.mapIt(it.getStr)
 
-    check findReferences.inputSchema.required == @["path", "line", "column"]
-    check findReferences.outputSchema.required == @["refs"]
-    check findSymbols.inputSchema.required == @["uri", "query"]
-    check findSymbols.outputSchema.required == @["syms"]
-    check listSymbols.inputSchema.required == @["path"]
-    check listSymbols.outputSchema.required == @["syms"]
-    check checkProject.inputSchema.required == @["uri"]
-    check checkProject.outputSchema.required == @["diags"]
-    check checkFile.inputSchema.required == @["path"]
-    check checkFile.outputSchema.required == @["diags"]
-    check findTypeDefinition.inputSchema.required == @["path", "line", "column"]
-    check findTypeDefinition.outputSchema.required == @["defs"]
+    let
+      findReferences = tools[0]
+      findSymbols = tools[1]
+      listSymbols = tools[2]
+      checkProject = tools[3]
+      checkFile = tools[4]
+      findTypeDefinition = tools[5]
+
+    check findReferences.required("inputSchema") == @["path", "line", "column"]
+    check findReferences.required("outputSchema") == @["refs"]
+    check findSymbols.required("inputSchema") == @["uri", "query"]
+    check findSymbols.required("outputSchema") == @["syms"]
+    check listSymbols.required("inputSchema") == @["path"]
+    check listSymbols.required("outputSchema") == @["syms"]
+    check checkProject.required("inputSchema") == @["uri"]
+    check checkProject.required("outputSchema") == @["diags"]
+    check checkFile.required("inputSchema") == @["path"]
+    check checkFile.required("outputSchema") == @["diags"]
+    check findTypeDefinition.required("inputSchema") == @["path", "line", "column"]
+    check findTypeDefinition.required("outputSchema") == @["defs"]
+
+    #The property schemas are written as JSON, not as strings
+    let inputProperties = findReferences["inputSchema"]["properties"]
+    check inputProperties["line"] == %*{"type": "integer"}
+    check findSymbols["inputSchema"]["properties"]["uri"] ==
+      %*{"type": "string", "format": "uri"}
+    let items = findReferences["outputSchema"]["properties"]["refs"]["items"]
+    check items["properties"]["path"] == %*{"type": "string"}
+    check items["required"].getElems.mapIt(it.getStr) == @["path", "line", "column"]
 
 suite "MCP tools":
   let
@@ -300,22 +329,22 @@ suite "MCP tools":
       freshLs,
       McpCallToolParams(
         name: "nimFindSymbols",
-        arguments: some %*{"uri": errFile.Path.pathToUri, "query": "add"},
+        arguments: toolArguments(%*{"uri": errFile.Path.pathToUri, "query": "add"}),
       ),
     )
     checkToolResult(symbols)
-    check symbols.structuredContent.get["syms"].getElems().anyIt(
+    check symbols.structuredContent.get.string.parseJson["syms"].getElems().anyIt(
       it["path"].getStr() == entryPoint and it["kind"].getStr() == "Proc"
     )
 
     let diags = waitFor mcp.callTool(
       freshLs,
       McpCallToolParams(
-        name: "nimCheckProject", arguments: some %*{"uri": entryPoint.Path.pathToUri}
+        name: "nimCheckProject", arguments: toolArguments(%*{"uri": entryPoint.Path.pathToUri})
       ),
     )
     checkToolResult(diags)
-    check diags.structuredContent.get["diags"].getElems().anyIt(
+    check diags.structuredContent.get.string.parseJson["diags"].getElems().anyIt(
       it["path"].getStr() == errFile and it["severity"].getStr() == "Error"
     )
 
@@ -324,13 +353,13 @@ suite "MCP tools":
       ls,
       McpCallToolParams(
         name: "nimFindReferences",
-        arguments: some %*{"path": entryPoint, "line": 3, "column": 10},
+        arguments: toolArguments(%*{"path": entryPoint, "line": 3, "column": 10}),
       ),
     )
 
     checkToolResult(res)
 
-    let refs = res.structuredContent.get["refs"].getElems()
+    let refs = res.structuredContent.get.string.parseJson["refs"].getElems()
 
     check len(refs) == 1
 
@@ -339,13 +368,13 @@ suite "MCP tools":
       ls,
       McpCallToolParams(
         name: "nimFindSymbols",
-        arguments: some %*{"uri": entryPoint.Path.pathToUri, "query": "add"},
+        arguments: toolArguments(%*{"uri": entryPoint.Path.pathToUri, "query": "add"}),
       ),
     )
 
     checkToolResult(res)
 
-    let syms = res.structuredContent.get["syms"].getElems()
+    let syms = res.structuredContent.get.string.parseJson["syms"].getElems()
 
     check syms.anyIt(
       it["path"].getStr() == entryPoint and it["line"].getInt() == 3 and
@@ -355,12 +384,12 @@ suite "MCP tools":
   test "callTool nimListSymbols returns file outline":
     let res = waitFor mcp.callTool(
       ls,
-      McpCallToolParams(name: "nimListSymbols", arguments: some %*{"path": entryPoint}),
+      McpCallToolParams(name: "nimListSymbols", arguments: toolArguments(%*{"path": entryPoint})),
     )
 
     checkToolResult(res)
 
-    let syms = res.structuredContent.get["syms"].getElems()
+    let syms = res.structuredContent.get.string.parseJson["syms"].getElems()
 
     check syms.len == 1
     check syms.len >= 1 and
@@ -371,13 +400,13 @@ suite "MCP tools":
     let res = waitFor mcp.callTool(
       ls,
       McpCallToolParams(
-        name: "nimCheckProject", arguments: some %*{"uri": errFile.Path.pathToUri}
+        name: "nimCheckProject", arguments: toolArguments(%*{"uri": errFile.Path.pathToUri})
       ),
     )
 
     checkToolResult(res)
 
-    let diags = res.structuredContent.get["diags"].getElems()
+    let diags = res.structuredContent.get.string.parseJson["diags"].getElems()
     check diags.len > 0
     check diags.anyIt(
       it["path"].getStr() == errFile and it["line"].getInt() == 5 and
@@ -387,12 +416,12 @@ suite "MCP tools":
 
   test "callTool nimCheckFile returns file diagnostics":
     let res = waitFor mcp.callTool(
-      ls, McpCallToolParams(name: "nimCheckFile", arguments: some %*{"path": errFile})
+      ls, McpCallToolParams(name: "nimCheckFile", arguments: toolArguments(%*{"path": errFile}))
     )
 
     checkToolResult(res)
 
-    let diags = res.structuredContent.get["diags"].getElems()
+    let diags = res.structuredContent.get.string.parseJson["diags"].getElems()
     check diags.len > 0
     check diags.anyIt(
       it["line"].getInt() == 5 and it["severity"].getStr() == "Error" and
@@ -401,12 +430,12 @@ suite "MCP tools":
 
   test "callTool nimCheckFile outside srcDir returns file diagnostics":
     let res = waitFor mcp.callTool(
-      ls, McpCallToolParams(name: "nimCheckFile", arguments: some %*{"path": testFile})
+      ls, McpCallToolParams(name: "nimCheckFile", arguments: toolArguments(%*{"path": testFile}))
     )
 
     checkToolResult(res)
 
-    let diags = res.structuredContent.get["diags"].getElems()
+    let diags = res.structuredContent.get.string.parseJson["diags"].getElems()
     check diags.len > 0
     check diags.anyIt(
       it["line"].getInt() == 5 and it["severity"].getStr() == "Error" and
@@ -418,13 +447,13 @@ suite "MCP tools":
       ls,
       McpCallToolParams(
         name: "nimFindTypeDefinition",
-        arguments: some %*{"path": entryPoint, "line": 3, "column": 10},
+        arguments: toolArguments(%*{"path": entryPoint, "line": 3, "column": 10}),
       ),
     )
 
     checkToolResult(res)
 
-    let defs = res.structuredContent.get["defs"].getElems()
+    let defs = res.structuredContent.get.string.parseJson["defs"].getElems()
     check defs.len > 0
     check defs.anyIt(
       it["name"].getStr() == "int" or it["type"].getStr().contains("int")

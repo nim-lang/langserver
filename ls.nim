@@ -2,8 +2,8 @@
 
 import
   std/[
-    strformat, os, sugar, hashes, tables, strutils, sets, json, sequtils, setutils,
-    times, files,
+    strformat, os, sugar, hashes, tables, strutils, sets, sequtils, setutils, times,
+    files,
   ],
   with,
   chronos,
@@ -92,6 +92,9 @@ type
       #memory cap per nimsuggest process in MB. zero means unlimited
     useNimTrack*: Option[bool]
 
+  NlsSettings* = object
+    nim*: Option[NlsConfig]
+
   NlsFileInfo* = ref object of RootObj
     projectFile*: Future[Path].Raising([CancelledError, OSError, RegexError])
     changed*: bool
@@ -156,7 +159,8 @@ type
       #Set through setWorkspaceConfiguration, read through workspaceConfigurationWait.
     workspaceConfigurationReady*: Future[void].Raising([CancelledError])
       #Completed the first time a configuration is known, and never replaced.
-    inlayHintsRefreshRequest*: Future[JsonNode].Raising([CancelledError, JsonRpcError])
+    inlayHintsRefreshRequest*:
+      Future[JsonString].Raising([CancelledError, JsonRpcError])
     watchingFiles*: bool
     filesWithDiags*: HashSet[Path]
     lastNimsuggestProject*: Path
@@ -198,9 +202,18 @@ type
   NotifyAction* =
     proc(name: string, params: JsonString): Future[void] {.async: (raises: []).}
     #Send a notification to the client
-  CallAction* = proc(name: string, params: JsonString): Future[JsonNode] {.
+  CallAction* = proc(name: string, params: JsonString): Future[JsonString] {.
     async: (raises: [CancelledError, JsonRpcError])
   .} #Send a request to the client
+
+LspJson.useDefaultReaderFor(NlsNimsuggestConfig)
+LspJson.useDefaultReaderFor(NlsWorkingDirectoryMaping)
+LspJson.useDefaultReaderFor(NlsInlayTypeHintsConfig)
+LspJson.useDefaultReaderFor(NlsInlayExceptionHintsConfig)
+LspJson.useDefaultReaderFor(NlsInlayParameterHintsConfig)
+LspJson.useDefaultReaderFor(NlsInlayHintsConfig)
+LspJson.useDefaultReaderFor(NlsConfig)
+LspJson.useDefaultReaderFor(NlsSettings)
 
 proc notify*[T](ls: LanguageServer, name: string, params: T) =
   if ls.serverMode != lsp:
@@ -209,7 +222,7 @@ proc notify*[T](ls: LanguageServer, name: string, params: T) =
 
 proc call*[T](
     ls: LanguageServer, name: string, params: T
-): Future[JsonNode] {.async: (raw: true, raises: [CancelledError, JsonRpcError]).} =
+): Future[JsonString] {.async: (raw: true, raises: [CancelledError, JsonRpcError]).} =
   ls.callAction(name, JsonString LspJson.encode(params))
 
 proc initLs*(params: CommandLineParams, storageDir: string): LanguageServer =
@@ -258,28 +271,28 @@ proc supportSignatureHelp*(cc: LspClientCapabilities): bool =
   let caps = cc.textDocument
   caps.isSome and caps.get.signatureHelp.isSome
 
-proc parseWorkspaceConfiguration*(conf: JsonNode): NlsConfig =
+proc parseSettings*(settings: Option[LspAny]): NlsConfig =
+  if settings.isNone:
+    return NlsConfig()
   try:
-    if conf.kind == JObject and conf["settings"].kind == JObject:
-      let nimSettings = conf["settings"]["nim"]
-      if nimSettings.kind == JNull:
-        return NlsConfig() #the client has no settings for us
-      return nimSettings.to(NlsConfig)
-  except ValueError:
-    discard
-  try:
-    let nlsConfig: seq[NlsConfig] = (%conf).to(seq[NlsConfig])
-    result =
-      if nlsConfig.len > 0 and nlsConfig[0] != nil:
-        nlsConfig[0]
-      else:
-        NlsConfig()
-  except ValueError:
-    debug "Failed to parse the configuration.", error = getCurrentExceptionMsg()
-    result = NlsConfig()
+    LspJson.decode(settings.get.string, NlsSettings).nim.get(NlsConfig())
+  except SerializationError as exc:
+    debug "Failed to parse the configuration.", error = exc.msg
+    NlsConfig()
 
-proc setWorkspaceConfiguration*(ls: LanguageServer, conf: JsonNode) {.raises: [].} =
-  ls.workspaceConfiguration = parseWorkspaceConfiguration(conf)
+proc parseWorkspaceConfiguration*(configuration: JsonString): NlsConfig =
+  try:
+    let items = LspJson.decode(configuration.string, seq[Option[NlsConfig]])
+    if items.len > 0 and items[0].isSome:
+      items[0].get
+    else:
+      NlsConfig()
+  except SerializationError as exc:
+    debug "Failed to parse the configuration.", error = exc.msg
+    NlsConfig()
+
+proc setWorkspaceConfiguration*(ls: LanguageServer, conf: NlsConfig) {.raises: [].} =
+  ls.workspaceConfiguration = conf
   if not ls.workspaceConfigurationReady.finished:
     ls.workspaceConfigurationReady.complete()
 
@@ -295,7 +308,7 @@ proc workspaceConfigurationWait*(
     ):
       if not ls.workspaceConfigurationReady.finished():
         debug "Workspace config ready timeout; setting default config"
-        ls.setWorkspaceConfiguration(newJArray())
+        ls.setWorkspaceConfiguration(NlsConfig())
     ls.workspaceConfiguration
 
 proc showMessage*(
@@ -324,10 +337,10 @@ proc showMessage*(
 proc applyEdit*(
     ls: LanguageServer, params: ApplyWorkspaceEditParams
 ): Future[ApplyWorkspaceEditResponse] {.
-    async: (raises: [CancelledError, ValueError, JsonRpcError])
+    async: (raises: [CancelledError, SerializationError, JsonRpcError])
 .} =
   let res = await ls.call("workspace/applyEdit", params)
-  res.to(ApplyWorkspaceEditResponse)
+  LspJson.decode(res.string, ApplyWorkspaceEditResponse)
 
 proc toPendingRequestStatus(pr: PendingRequest): PendingRequestStatus =
   result.time =
@@ -709,16 +722,21 @@ proc progressSupported(ls: LanguageServer): bool =
     .get(ClientCapabilities_window()).workDoneProgress
     .get(false)
 
-proc progress*(ls: LanguageServer, token, kind: string, title = "") =
+proc progress*[T](ls: LanguageServer, token: string, value: T) =
   if ls.progressSupported:
-    ls.notify(
-      "$/progress",
-      ProgressParams(token: token, value: some %*{"kind": kind, "title": title}),
-    )
+    ls.notify("$/progress", ProgressParams[T](token: token, value: value))
+
+proc progressBegin*(ls: LanguageServer, token, title: string) =
+  ls.progress(token, WorkDoneProgressBegin(kind: "begin", title: title))
+
+proc progressEnd*(ls: LanguageServer, token: string) =
+  ls.progress(token, WorkDoneProgressEnd(kind: "end"))
 
 proc workDoneProgressCreate*(ls: LanguageServer, token: string) =
   if ls.progressSupported:
-    discard ls.call("window/workDoneProgress/create", ProgressParams(token: token))
+    discard ls.call(
+      "window/workDoneProgress/create", WorkDoneProgressCreateParams(token: token)
+    )
 
 proc cancelPendingFileChecks*(ls: LanguageServer, nimsuggest: Nimsuggest) =
   # stop all checks on file level if we are going to run checks on project
@@ -775,8 +793,8 @@ proc toUtf16Pos*(checkResult: CheckResult, ls: LanguageServer): CheckResult =
 
 proc range*(startLine, startCharacter, endLine, endCharacter: int): Range =
   Range(
-    start: Position(line: startLine, character: startCharacter),
-    `end`: Position(line: endLine, character: endCharacter),
+    start: Position(line: uinteger(startLine), character: uinteger(startCharacter)),
+    `end`: Position(line: uinteger(endLine), character: uinteger(endCharacter)),
   )
 
 proc toLabelRange*(suggest: Suggest): Range =
@@ -805,7 +823,6 @@ proc toDiagnostic(suggest: Suggest): Diagnostic =
       ),
       message: doc,
       source: some "nim",
-      code: some %"nimsuggest chk",
     )
 
 proc toDiagnostic(checkResult: CheckResult): Diagnostic =
@@ -834,7 +851,6 @@ proc toDiagnostic(checkResult: CheckResult): Diagnostic =
     ),
     message: checkResult.msg,
     source: some "nim",
-    code: some %"nim check",
   )
 
 proc sendDiagnostics*(
@@ -994,11 +1010,11 @@ proc checkNimsuggestProject(
 
   let token = ls.createProgressToken()
   ls.workDoneProgressCreate(token)
-  ls.progress(token, "begin", fmt "Checking project {path}")
+  ls.progressBegin(token, fmt "Checking project {path}")
   nimsuggest.checkProjectInProgress = true
   defer:
     nimsuggest.checkProjectInProgress = false
-    ls.progress(token, "end")
+    ls.progressEnd(token)
 
   proc getFilepath(s: Suggest): Path =
     s.filePath
@@ -1112,9 +1128,9 @@ proc checkProject*(
 
     let token = ls.createProgressToken()
     ls.workDoneProgressCreate(token)
-    ls.progress(token, "begin", fmt "Checking project {path}")
+    ls.progressBegin(token, fmt "Checking project {path}")
     defer:
-      ls.progress(token, "end")
+      ls.progressEnd(token)
     let diagnostics = await nimCheck(path, nimPath.get)
     let filesWithDiags = diagnostics.map(r => r.file).toHashSet
 
@@ -1287,7 +1303,8 @@ proc maybeRegisterCapabilityDidChangeConfiguration*(
     )
     try:
       let res = await ls.call("client/registerCapability", registrationParams)
-      debug "Got response for the didChangeConfiguration registration:", res = $res
+      debug "Got response for the didChangeConfiguration registration:",
+        res = res.string
     except JsonRpcError as err:
       warn "The didChangeConfiguration registration failed", err = err.msg
 
@@ -1304,13 +1321,16 @@ proc maybeRegisterCapabilityDidChangeWatchedFiles*(
     let reg = Registration(
       id: "workspace-did-change-watched-files",
       `method`: "workspace/didChangeWatchedFiles",
-      registerOptions:
-        some(%DidChangeWatchedFilesRegistrationOptions(watchers: some(watchers))),
+      registerOptions: some JsonString(
+        LspJson.encode(
+          DidChangeWatchedFilesRegistrationOptions(watchers: some(watchers))
+        )
+      ),
     )
     let regParams = RegistrationParams(registrations: some(@[reg]))
     try:
       let res = await ls.call("client/registerCapability", regParams)
-      debug "Got response for the didChangeWatchedFiles registration:", res = $res
+      debug "Got response for the didChangeWatchedFiles registration:", res = res.string
       ls.watchingFiles = true
     except JsonRpcError as err:
       warn "The didChangeWatchedFiles registration failed", err = err.msg
@@ -1348,12 +1368,12 @@ proc maybeRequestConfigurationFromClient*(
       let configurationParams =
         ConfigurationParams(items: @[ConfigurationItem(section: some "nim")])
       let configuration = await ls.call("workspace/configuration", configurationParams)
-      debug "Received the following configuration", configuration = $configuration
+      debug "Received the following configuration", configuration = configuration.string
       #the first configuration is not a change, so there is nothing to handle
       let
         hadConfiguration = ls.workspaceConfigurationReady.finished
         oldConfiguration = ls.workspaceConfiguration
-      ls.setWorkspaceConfiguration(configuration)
+      ls.setWorkspaceConfiguration(parseWorkspaceConfiguration(configuration))
       if hadConfiguration:
         await ls.handleConfigurationChanges(oldConfiguration, ls.workspaceConfiguration)
     except CancelledError:
@@ -1362,11 +1382,11 @@ proc maybeRequestConfigurationFromClient*(
     except JsonRpcError as exc:
       error "Failed to request the client configuration", error = exc.msg
       if not ls.workspaceConfigurationReady.finished():
-        ls.setWorkspaceConfiguration(newJArray())
+        ls.setWorkspaceConfiguration(NlsConfig())
   else:
     debug "Client does not support workspace/configuration"
     if not ls.workspaceConfigurationReady.finished():
-      ls.setWorkspaceConfiguration(newJArray())
+      ls.setWorkspaceConfiguration(NlsConfig())
 
 proc getCharacter*(
     ls: LanguageServer, path: Path, line: int, character: int
@@ -1405,9 +1425,9 @@ proc checkFile*(
   let conf = await ls.workspaceConfigurationWait()
   let token = ls.createProgressToken()
   ls.workDoneProgressCreate(token)
-  ls.progress(token, "begin", fmt "Checking {path}")
+  ls.progressBegin(token, fmt "Checking {path}")
   defer:
-    ls.progress(token, "end")
+    ls.progressEnd(token)
 
   if conf.useNimCheck.get(USE_NIM_CHECK_BY_DEFAULT):
     let nimPath = await ls.getNimPath(conf, path)

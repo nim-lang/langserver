@@ -29,9 +29,9 @@ suite "Nimlangserver":
           {"window": {"workDoneProgress": true}, "workspace": {"configuration": true}},
       }
     let initializeResult = waitFor client.initialize(initParams)
-    ls.setWorkspaceConfiguration(% @[NlsConfig()])
+    ls.setWorkspaceConfiguration(NlsConfig())
 
-    check initializeResult.capabilities.textDocumentSync.isSome
+    check "textDocumentSync" in initializeResult["capabilities"]
 
 let helloWorldUri = fixtureUri("projects/hw/hw.nim")
 
@@ -54,7 +54,7 @@ suite "Suggest API selection":
         {"window": {"workDoneProgress": true}, "workspace": {"configuration": true}},
     }
   discard waitFor client.initialize(initParams)
-  ls.setWorkspaceConfiguration(% @[NlsConfig()])
+  ls.setWorkspaceConfiguration(NlsConfig())
   client.notify("initialized", newJObject())
 
   suiteTeardown:
@@ -99,7 +99,7 @@ suite "LSP features":
     }
 
   discard waitFor client.initialize(initParams)
-  ls.setWorkspaceConfiguration(% @[NlsConfig()])
+  ls.setWorkspaceConfiguration(NlsConfig())
 
   client.notify("initialized", newJObject())
   let didOpenParams = createDidOpenParams("projects/hw/hw.nim")
@@ -177,7 +177,7 @@ suite "LSP features":
   test "Prepare rename":
     let renameParams = PrepareRenameParams(
       textDocument: TextDocumentIdentifier(uri: helloWorldUri),
-      position: Position(line: 2, character: 6),
+      position: Position(line: uinteger(2), character: uinteger(6)),
     )
     let resp = client.call("textDocument/prepareRename", %renameParams).waitFor()
     check resp ==
@@ -186,7 +186,7 @@ suite "LSP features":
   test "Prepare rename doesn't allow non-project symbols":
     let renameParams = PrepareRenameParams(
       textDocument: TextDocumentIdentifier(uri: helloWorldUri),
-      position: Position(line: 8, character: 10),
+      position: Position(line: uinteger(8), character: uinteger(10)),
     )
     let resp = client.call("textDocument/prepareRename", %renameParams).waitFor()
     check resp.kind == JNull
@@ -195,16 +195,13 @@ suite "LSP features":
     let renameParams = RenameParams(
       textDocument: TextDocumentIdentifier(uri: helloWorldUri),
       newName: "hello",
-      position: Position(line: 2, character: 6),
+      position: Position(line: uinteger(2), character: uinteger(6)),
     )
-    let changes = client
-      .call("textDocument/rename", %renameParams)
-      .waitFor()
-      .to(WorkspaceEdit).changes
-      .get()
+    let changes =
+      client.call("textDocument/rename", %renameParams).waitFor()["changes"]
     check changes.len == 1
     check changes[helloWorldUri.string].len == 3
-    check changes[helloWorldUri.string].mapIt(it["newText"].getStr()) ==
+    check changes[helloWorldUri.string].getElems.mapIt(it["newText"].getStr()) ==
       @["hello", "hello", "hello"]
 
   test "didChange then sending hover.":
@@ -227,16 +224,14 @@ suite "LSP features":
         "textDocument": {"uri": fixtureUri("projects/hw/hw.nim")},
       }
 
-    let actualEchoCompletionItem = to(
-      waitFor client.call("textDocument/completion", %completionParams),
-      seq[CompletionItem],
-    )
-      .filter(item => item.label == "echo")[0]
+    let actualEchoCompletionItem = waitFor(
+      client.call("textDocument/completion", %completionParams)
+    ).getElems
+      .filter(item => item["label"].getStr == "echo")[0]
 
-    check actualEchoCompletionItem.label == "echo"
-    check actualEchoCompletionItem.kind.get == 3
-    check actualEchoCompletionItem.detail.get().contains("proc")
-    check actualEchoCompletionItem.documentation.isSome
+    check actualEchoCompletionItem["kind"].getInt == 3
+    check actualEchoCompletionItem["detail"].getStr.contains("proc")
+    check actualEchoCompletionItem["documentation"].kind == JString
 
   test "Shutdown":
     let
@@ -270,7 +265,7 @@ suite "Null configuration:":
     }
 
   discard waitFor client.initialize(initParams)
-  ls.setWorkspaceConfiguration(% @[NlsConfig()])
+  ls.setWorkspaceConfiguration(NlsConfig())
   client.notify("initialized", newJObject())
 
   suiteTeardown:

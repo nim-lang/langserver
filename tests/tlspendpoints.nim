@@ -31,7 +31,7 @@ suite "LSP endpoints":
         {"window": {"workDoneProgress": false}, "workspace": {"configuration": true}},
     }
   discard waitFor client.initialize(initParams)
-  ls.setWorkspaceConfiguration(% @[NlsConfig()])
+  ls.setWorkspaceConfiguration(NlsConfig())
   client.notify("initialized", newJObject())
 
   let
@@ -64,7 +64,7 @@ suite "LSP endpoints":
     )
     check locations.len == 1
     check locations.len >= 1 and locations[0].uri == helloWorldUri
-    check locations.len >= 1 and locations[0].range.start.line == 0
+    check locations.len >= 1 and locations[0].range.start.line.int == 0
 
   test "textDocument/documentSymbol lists the symbols of the file":
     let params = %*{"textDocument": {"uri": helloWorldUri}}
@@ -85,7 +85,7 @@ suite "LSP endpoints":
       seq[DocumentHighlight],
     )
     for highlight in highlights:
-      check highlight.range.start.line >= 0
+      check highlight.range.start.line.int >= 0
 
   test "textDocument/signatureHelp answers inside a call":
     let params =
@@ -191,6 +191,16 @@ suite "LSP endpoints":
 
   test "workspace/executeCommand without arguments is answered with an error":
     let params = %*{"command": RECOMPILE_COMMAND, "arguments": []}
+    var raised = false
+    try:
+      discard client.callTimeout("workspace/executeCommand", %params)
+    except JsonRpcError as ex:
+      raised = true
+      check "-32602" in ex.msg
+    check raised
+
+  test "workspace/executeCommand with a project file that is not a string is answered with an error":
+    let params = %*{"command": CHECK_PROJECT_COMMAND, "arguments": [1]}
     var raised = false
     try:
       discard client.callTimeout("workspace/executeCommand", %params)
@@ -430,7 +440,7 @@ suite "LSP endpoints":
     )
     check locations.len == 1
     check locations.len >= 1 and locations[0].uri.string.contains("hw.nim")
-    check locations.len >= 1 and locations[0].range.start.line == 0
+    check locations.len >= 1 and locations[0].range.start.line.int == 0
 
   test "documentSymbol reports a non ascii symbol at a UTF-16 offset":
     let params = %*{"textDocument": {"uri": helloWorldUri}}
@@ -439,8 +449,8 @@ suite "LSP endpoints":
     )
     let nonAscii = symbols.filterIt(it.name == "a안녕")
     check nonAscii.len == 1
-    check nonAscii[0].location.range.start.line == 0
-    check nonAscii[0].location.range.start.character == 5
+    check nonAscii[0].location.range.start.line.int == 0
+    check nonAscii[0].location.range.start.character.int == 5
 
   test "documentHighlight reports UTF-16 columns for a non ascii identifier":
     let highlights = to(
@@ -449,10 +459,10 @@ suite "LSP endpoints":
       ),
       seq[DocumentHighlight],
     )
-    let onCallLine = highlights.filterIt(it.range.start.line == 1)
+    let onCallLine = highlights.filterIt(it.range.start.line.int == 1)
     check onCallLine.len > 0
-    check onCallLine.anyIt(it.range.start.character == 6)
-    check not onCallLine.anyIt(it.range.start.character == 10)
+    check onCallLine.anyIt(it.range.start.character.int == 6)
+    check not onCallLine.anyIt(it.range.start.character.int == 10)
 
   test "didChange replaces the whole document and later requests see it":
     let original = readFile("tests" / helloWorldFile)

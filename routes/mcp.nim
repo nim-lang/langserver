@@ -1,18 +1,23 @@
 {.push raises: [], gcsafe.}
 
 import
-  std/[os, sequtils, tables, json],
+  std/[os, sequtils, tables],
   chronos,
   chronos/asyncproc,
   json_rpc/[errors, server],
   chronicles,
   json_serialization,
   ../[suggestapi, trackapi, ls, utils],
-  ../protocol/types
+  ../protocol/[enums, types]
 
 const McpProtocolVersion* = "2025-11-25"
 
 # Tool definitions
+
+const
+  StringSchema = JsonString("""{"type": "string"}""")
+  IntegerSchema = JsonString("""{"type": "integer"}""")
+  UriSchema = JsonString("""{"type": "string", "format": "uri"}""")
 
 proc nimFindReferences(): McpTool =
   McpTool(
@@ -21,30 +26,19 @@ proc nimFindReferences(): McpTool =
     description: "Find references of the symbol under cursor in the current workspace.",
     inputSchema: McpToolSchema(
       `type`: "object",
-      properties: %*{
-        "path": {"type": "string"},
-        "line": {"type": "integer"},
-        "column": {"type": "integer"},
-      },
-      required: @["path", "line", "column"],
+      properties: some {
+        "path": StringSchema, "line": IntegerSchema, "column": IntegerSchema
+      }.toOrderedTable,
+      required: some @["path", "line", "column"],
     ),
-    outputSchema: McpToolSchema(
+    outputSchema: some McpToolSchema(
       `type`: "object",
-      properties: %*{
-        "refs": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "properties": {
-              "path": {"type": "string"},
-              "line": {"type": "integer"},
-              "column": {"type": "integer"},
-            },
-            "required": ["path", "line", "column"],
-          },
-        }
-      },
-      required: @["refs"],
+      properties: some {
+        "refs": JsonString(
+          """{"type": "array", "items": {"type": "object", "properties": {"path": {"type": "string"}, "line": {"type": "integer"}, "column": {"type": "integer"}}, "required": ["path", "line", "column"]}}"""
+        )
+      }.toOrderedTable,
+      required: some @["refs"],
     ),
   )
 
@@ -56,28 +50,17 @@ proc nimFindSymbols(): McpTool =
       "Find symbols matching the given search query in the project of the given .nim file URI.",
     inputSchema: McpToolSchema(
       `type`: "object",
-      properties:
-        %*{"uri": {"type": "string", "format": "uri"}, "query": {"type": "string"}},
-      required: @["uri", "query"],
+      properties: some {"uri": UriSchema, "query": StringSchema}.toOrderedTable,
+      required: some @["uri", "query"],
     ),
-    outputSchema: McpToolSchema(
+    outputSchema: some McpToolSchema(
       `type`: "object",
-      properties: %*{
-        "syms": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "properties": {
-              "path": {"type": "string"},
-              "line": {"type": "integer"},
-              "column": {"type": "integer"},
-              "kind": {"type": "string"},
-            },
-            "required": ["path", "line", "column", "kind"],
-          },
-        }
-      },
-      required: @["syms"],
+      properties: some {
+        "syms": JsonString(
+          """{"type": "array", "items": {"type": "object", "properties": {"path": {"type": "string"}, "line": {"type": "integer"}, "column": {"type": "integer"}, "kind": {"type": "string"}}, "required": ["path", "line", "column", "kind"]}}"""
+        )
+      }.toOrderedTable,
+      required: some @["syms"],
     ),
   )
 
@@ -87,26 +70,18 @@ proc nimListSymbols(): McpTool =
     title: "List symbols in a .nim file",
     description: "List all symbols in the given .nim file.",
     inputSchema: McpToolSchema(
-      `type`: "object", properties: %*{"path": {"type": "string"}}, required: @["path"]
-    ),
-    outputSchema: McpToolSchema(
       `type`: "object",
-      properties: %*{
-        "syms": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "properties": {
-              "name": {"type": "string"},
-              "line": {"type": "integer"},
-              "column": {"type": "integer"},
-              "kind": {"type": "string"},
-            },
-            "required": ["name", "line", "column", "kind"],
-          },
-        }
-      },
-      required: @["syms"],
+      properties: some {"path": StringSchema}.toOrderedTable,
+      required: some @["path"],
+    ),
+    outputSchema: some McpToolSchema(
+      `type`: "object",
+      properties: some {
+        "syms": JsonString(
+          """{"type": "array", "items": {"type": "object", "properties": {"name": {"type": "string"}, "line": {"type": "integer"}, "column": {"type": "integer"}, "kind": {"type": "string"}}, "required": ["name", "line", "column", "kind"]}}"""
+        )
+      }.toOrderedTable,
+      required: some @["syms"],
     ),
   )
 
@@ -118,28 +93,17 @@ proc nimCheckProject(): McpTool =
       "Get diagnostics (errors, warnings, and hints) for the project of the given .nim file URI.",
     inputSchema: McpToolSchema(
       `type`: "object",
-      properties: %*{"uri": {"type": "string", "format": "uri"}},
-      required: @["uri"],
+      properties: some {"uri": UriSchema}.toOrderedTable,
+      required: some @["uri"],
     ),
-    outputSchema: McpToolSchema(
+    outputSchema: some McpToolSchema(
       `type`: "object",
-      properties: %*{
-        "diags": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "properties": {
-              "path": {"type": "string"},
-              "line": {"type": "integer"},
-              "column": {"type": "integer"},
-              "severity": {"type": "string"},
-              "message": {"type": "string"},
-            },
-            "required": ["path", "line", "column", "severity", "message"],
-          },
-        }
-      },
-      required: @["diags"],
+      properties: some {
+        "diags": JsonString(
+          """{"type": "array", "items": {"type": "object", "properties": {"path": {"type": "string"}, "line": {"type": "integer"}, "column": {"type": "integer"}, "severity": {"type": "string"}, "message": {"type": "string"}}, "required": ["path", "line", "column", "severity", "message"]}}"""
+        )
+      }.toOrderedTable,
+      required: some @["diags"],
     ),
   )
 
@@ -149,26 +113,18 @@ proc nimCheckFile(): McpTool =
     title: "Check a .nim file",
     description: "Get diagnostics (errors, warnings, and hints) for a given .nim file.",
     inputSchema: McpToolSchema(
-      `type`: "object", properties: %*{"path": {"type": "string"}}, required: @["path"]
-    ),
-    outputSchema: McpToolSchema(
       `type`: "object",
-      properties: %*{
-        "diags": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "properties": {
-              "line": {"type": "integer"},
-              "column": {"type": "integer"},
-              "severity": {"type": "string"},
-              "message": {"type": "string"},
-            },
-            "required": ["line", "column", "severity", "message"],
-          },
-        }
-      },
-      required: @["diags"],
+      properties: some {"path": StringSchema}.toOrderedTable,
+      required: some @["path"],
+    ),
+    outputSchema: some McpToolSchema(
+      `type`: "object",
+      properties: some {
+        "diags": JsonString(
+          """{"type": "array", "items": {"type": "object", "properties": {"line": {"type": "integer"}, "column": {"type": "integer"}, "severity": {"type": "string"}, "message": {"type": "string"}}, "required": ["line", "column", "severity", "message"]}}"""
+        )
+      }.toOrderedTable,
+      required: some @["diags"],
     ),
   )
 
@@ -180,49 +136,140 @@ proc nimFindTypeDefinition(): McpTool =
       "Find the type definition of the symbol under cursor in the current workspace.",
     inputSchema: McpToolSchema(
       `type`: "object",
-      properties: %*{
-        "path": {"type": "string"},
-        "line": {"type": "integer"},
-        "column": {"type": "integer"},
-      },
-      required: @["path", "line", "column"],
+      properties: some {
+        "path": StringSchema, "line": IntegerSchema, "column": IntegerSchema
+      }.toOrderedTable,
+      required: some @["path", "line", "column"],
     ),
-    outputSchema: McpToolSchema(
+    outputSchema: some McpToolSchema(
       `type`: "object",
-      properties: %*{
-        "defs": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "properties": {
-              "path": {"type": "string"},
-              "line": {"type": "integer"},
-              "column": {"type": "integer"},
-              "name": {"type": "string"},
-              "type": {"type": "string"},
-              "kind": {"type": "string"},
-            },
-            "required": ["path", "line", "column", "name", "type", "kind"],
-          },
-        }
-      },
-      required: @["defs"],
+      properties: some {
+        "defs": JsonString(
+          """{"type": "array", "items": {"type": "object", "properties": {"path": {"type": "string"}, "line": {"type": "integer"}, "column": {"type": "integer"}, "name": {"type": "string"}, "type": {"type": "string"}, "kind": {"type": "string"}}, "required": ["path", "line", "column", "name", "type", "kind"]}}"""
+        )
+      }.toOrderedTable,
+      required: some @["defs"],
     ),
   )
 
 # Tool calls
 
-proc fileUriArgument(params: McpCallToolParams): Option[Path] =
-  let uri = params.arguments.get(newJObject()){"uri"}.getStr()
-  try:
-    some DocumentUri(uri).uriToPath
-  except UriParseError:
-    none Path
-
 proc toolErrorResult(text: string): McpCallToolResult =
   McpCallToolResult(
     content: @[McpContentBlock(`type`: TextContent, text: text)], isError: true
   )
+
+type
+  PositionArguments = object
+    path: string
+    line: int
+    column: int
+
+  PathArguments = object
+    path: string
+
+  UriArguments = object
+    uri: string
+
+  FindSymbolsArguments = object
+    uri: string
+    query: string
+
+LspJson.useDefaultReaderFor(PositionArguments)
+LspJson.useDefaultReaderFor(PathArguments)
+LspJson.useDefaultReaderFor(UriArguments)
+LspJson.useDefaultReaderFor(FindSymbolsArguments)
+
+type
+  ReferenceOutput = object
+    path: string
+    line: int
+    column: int
+
+  ReferencesOutput = object
+    refs: seq[ReferenceOutput]
+
+  SymbolOutput = object
+    path: string
+    line: int
+    column: int
+    kind: string
+
+  SymbolsOutput = object
+    syms: seq[SymbolOutput]
+
+  ListedSymbolOutput = object
+    name: string
+    path: string
+    line: int
+    column: int
+    kind: string
+
+  ListedSymbolsOutput = object
+    syms: seq[ListedSymbolOutput]
+
+  ProjectDiagnosticOutput = object
+    path: string
+    line: int
+    column: int
+    severity: string
+    message: string
+
+  ProjectDiagnosticsOutput = object
+    diags: seq[ProjectDiagnosticOutput]
+
+  FileDiagnosticOutput = object
+    line: int
+    column: int
+    severity: string
+    message: string
+
+  FileDiagnosticsOutput = object
+    diags: seq[FileDiagnosticOutput]
+
+  TypeDefinitionOutput = object
+    path: string
+    line: int
+    column: int
+    name: string
+    `type`: string
+    kind: string
+
+  TypeDefinitionsOutput = object
+    defs: seq[TypeDefinitionOutput]
+
+LspJson.useDefaultWriterFor(ReferenceOutput)
+LspJson.useDefaultWriterFor(ReferencesOutput)
+LspJson.useDefaultWriterFor(SymbolOutput)
+LspJson.useDefaultWriterFor(SymbolsOutput)
+LspJson.useDefaultWriterFor(ListedSymbolOutput)
+LspJson.useDefaultWriterFor(ListedSymbolsOutput)
+LspJson.useDefaultWriterFor(ProjectDiagnosticOutput)
+LspJson.useDefaultWriterFor(ProjectDiagnosticsOutput)
+LspJson.useDefaultWriterFor(FileDiagnosticOutput)
+LspJson.useDefaultWriterFor(FileDiagnosticsOutput)
+LspJson.useDefaultWriterFor(TypeDefinitionOutput)
+LspJson.useDefaultWriterFor(TypeDefinitionsOutput)
+
+proc toolResult[T](output: T): McpCallToolResult =
+  let json = LspJson.encode(output)
+  McpCallToolResult(
+    content: @[McpContentBlock(`type`: TextContent, text: json)],
+    structuredContent: some JsonString(json),
+    isError: false,
+  )
+
+proc decodeArguments(params: McpCallToolParams, T: typedesc): Result[T, string] =
+  try:
+    ok LspJson.decode(params.arguments.get(JsonString("{}")).string, T)
+  except SerializationError as ex:
+    err "Invalid arguments: " & ex.msg
+
+proc fileUriArgument(uri: string): Option[Path] =
+  try:
+    some DocumentUri(uri).uriToPath
+  except UriParseError:
+    none Path
 
 proc callNimFindReferences(
     ls: LanguageServer, params: McpCallToolParams
@@ -234,11 +281,12 @@ proc callNimFindReferences(
       ]
     )
 .} =
+  let arguments = params.decodeArguments(PositionArguments).valueOr:
+    return toolErrorResult(error)
   let
-    arguments = params.arguments.get()
-    path = arguments["path"].getStr().absolutePath.normalizedPath.Path
-    line = arguments["line"].getInt()
-    column = arguments["column"].getInt()
+    path = arguments.path.absolutePath.normalizedPath.Path
+    line = arguments.line
+    column = arguments.column
 
   let config = await ls.workspaceConfigurationWait()
 
@@ -263,39 +311,27 @@ proc callNimFindReferences(
       timeout = timeout,
     )
 
-    var usageReferencesJson = newJArray()
+    var output: ReferencesOutput
     for reference in refs:
-      usageReferencesJson.add %*{
-        "path": reference.filePath, "line": reference.line, "column": reference.column
-      }
-
-    let structuredContent = %*{"refs": usageReferencesJson}
-
-    return McpCallToolResult(
-      content: @[McpContentBlock(`type`: TextContent, text: $structuredContent)],
-      structuredContent: some structuredContent,
-      isError: false,
-    )
+      output.refs.add ReferenceOutput(
+        path: reference.filePath.string, line: reference.line, column: reference.column
+      )
+    return toolResult(output)
 
   let nimsuggest = await ls.getNimsuggest(path)
 
   if nimsuggest.isSome:
     let references = await nimsuggest.get.use(path, path, line, column)
 
-    var usageReferencesJson = newJArray()
+    var output: ReferencesOutput
     for reference in references:
       if reference.section == ideUse:
-        usageReferencesJson.add %*{
-          "path": reference.filePath, "line": reference.line, "column": reference.column
-        }
-
-    let structuredContent = %*{"refs": usageReferencesJson}
-
-    McpCallToolResult(
-      content: @[McpContentBlock(`type`: TextContent, text: $structuredContent)],
-      structuredContent: some structuredContent,
-      isError: false,
-    )
+        output.refs.add ReferenceOutput(
+          path: reference.filePath.string,
+          line: reference.line,
+          column: reference.column,
+        )
+    toolResult(output)
   else:
     McpCallToolResult(
       content:
@@ -310,7 +346,9 @@ proc callNimFindSymbols(
       raises: [CancelledError, KeyError, OSError, IOError, RegexError, NimsuggestError]
     )
 .} =
-  let path = params.fileUriArgument()
+  let arguments = params.decodeArguments(FindSymbolsArguments).valueOr:
+    return toolErrorResult(error)
+  let path = arguments.uri.fileUriArgument()
   if path.isNone:
     return toolErrorResult("Argument uri must be a file URI")
   if path.get.splitFile.ext != ".nim":
@@ -318,27 +356,20 @@ proc callNimFindSymbols(
   if not fileExists(path.get.string):
     return toolErrorResult("Argument uri must be an existing .nim file")
 
-  let query = params.arguments.get(newJObject()){"query"}.getStr()
+  let query = arguments.query
   let nimsuggest = await ls.getNimsuggest(path.get)
 
   if nimsuggest.isSome:
     let symbols = await nimsuggest.get.globalSymbols(query)
-    var symbolsJson = newJArray()
+    var output: SymbolsOutput
     for symbol in symbols:
-      symbolsJson.add %*{
-        "path": symbol.filePath,
-        "line": symbol.line,
-        "column": symbol.column,
-        "kind": symbol.symkind[2 ..^ 1], # trim leading "sk", e.g. "skConst" -> "Const"
-      }
-
-    let structuredContent = %*{"syms": symbolsJson}
-
-    McpCallToolResult(
-      content: @[McpContentBlock(`type`: TextContent, text: $structuredContent)],
-      structuredContent: some structuredContent,
-      isError: false,
-    )
+      output.syms.add SymbolOutput(
+        path: symbol.filePath.string,
+        line: symbol.line,
+        column: symbol.column,
+        kind: symbol.symkind[2 ..^ 1], # trim leading "sk", e.g. "skConst" -> "Const"
+      )
+    toolResult(output)
   else:
     McpCallToolResult(
       content:
@@ -354,32 +385,25 @@ proc callNimListSymbols(
         [CancelledError, ValueError, OSError, IOError, RegexError, NimsuggestError]
     )
 .} =
-  let
-    arguments = params.arguments.get()
-    path = arguments["path"].getStr().absolutePath.normalizedPath.Path
+  let arguments = params.decodeArguments(PathArguments).valueOr:
+    return toolErrorResult(error)
+  let path = arguments.path.absolutePath.normalizedPath.Path
 
   let nimsuggest = await ls.getNimsuggest(path)
 
   if nimsuggest.isSome:
     let symbols = await nimsuggest.get.outlineFile(path)
 
-    var symbolsJson = newJArray()
+    var output: ListedSymbolsOutput
     for symbol in symbols:
-      symbolsJson.add %*{
-        "name": symbol.name,
-        "path": symbol.filePath,
-        "line": symbol.line,
-        "column": symbol.column,
-        "kind": symbol.symkind[2 ..^ 1], # trim leading "sk"
-      }
-
-    let structuredContent = %*{"syms": symbolsJson}
-
-    McpCallToolResult(
-      content: @[McpContentBlock(`type`: TextContent, text: $structuredContent)],
-      structuredContent: some structuredContent,
-      isError: false,
-    )
+      output.syms.add ListedSymbolOutput(
+        name: symbol.name,
+        path: symbol.filePath.string,
+        line: symbol.line,
+        column: symbol.column,
+        kind: symbol.symkind[2 ..^ 1], # trim leading "sk"
+      )
+    toolResult(output)
   else:
     McpCallToolResult(
       content:
@@ -395,7 +419,9 @@ proc callNimCheckProject(
         [CancelledError, ValueError, OSError, IOError, RegexError, NimsuggestError]
     )
 .} =
-  let path = params.fileUriArgument()
+  let arguments = params.decodeArguments(UriArguments).valueOr:
+    return toolErrorResult(error)
+  let path = arguments.uri.fileUriArgument()
   if path.isNone:
     return toolErrorResult("Argument uri must be a file URI")
   if path.get.splitFile.ext != ".nim":
@@ -408,28 +434,21 @@ proc callNimCheckProject(
 
   if nimsuggest.isSome:
     let diagnostics = await nimsuggest.get.chk(projectFile, projectFile)
-    var diagJson: seq[JsonNode]
-
+    var diags: seq[ProjectDiagnosticOutput]
     for diagnostic in diagnostics:
       # Diagnostics with path ??? are not related to the project
       if diagnostic.filePath.string != "???":
-        diagJson.add %*{
-          "path": diagnostic.filePath,
-          "line": diagnostic.line,
-          "column": diagnostic.column,
-          "severity": diagnostic.forth,
-          "message": diagnostic.doc,
-        }
+        diags.add ProjectDiagnosticOutput(
+          path: diagnostic.filePath.string,
+          line: diagnostic.line,
+          column: diagnostic.column,
+          severity: diagnostic.forth,
+          message: diagnostic.doc,
+        )
 
     # nimsuggest would return duplicate diagnostics
     # so we deduplicate them before returning
-    let structuredContent = %*{"diags": deduplicate(diagJson)}
-
-    McpCallToolResult(
-      content: @[McpContentBlock(`type`: TextContent, text: $structuredContent)],
-      structuredContent: some structuredContent,
-      isError: false,
-    )
+    toolResult(ProjectDiagnosticsOutput(diags: deduplicate(diags)))
   else:
     McpCallToolResult(
       content:
@@ -445,9 +464,9 @@ proc callNimCheckFile(
         [CancelledError, ValueError, OSError, IOError, RegexError, NimsuggestError]
     )
 .} =
-  let
-    arguments = params.arguments.get()
-    path = arguments["path"].getStr().absolutePath.normalizedPath.Path
+  let arguments = params.decodeArguments(PathArguments).valueOr:
+    return toolErrorResult(error)
+  let path = arguments.path.absolutePath.normalizedPath.Path
 
   let nimsuggest = await ls.getNimsuggest(path)
 
@@ -459,25 +478,18 @@ proc callNimCheckFile(
 
     let diagnostics = await nimsuggest.get.chkFile(path)
 
-    var diagJson: seq[JsonNode]
-
+    var diags: seq[FileDiagnosticOutput]
     for diagnostic in diagnostics:
-      diagJson.add %*{
-        "line": diagnostic.line,
-        "column": diagnostic.column,
-        "severity": diagnostic.forth,
-        "message": diagnostic.doc,
-      }
+      diags.add FileDiagnosticOutput(
+        line: diagnostic.line,
+        column: diagnostic.column,
+        severity: diagnostic.forth,
+        message: diagnostic.doc,
+      )
 
     # nimsuggest would return duplicate diagnostics
     # so we deduplicate them before returning
-    let structuredContent = %*{"diags": deduplicate(diagJson)}
-
-    McpCallToolResult(
-      content: @[McpContentBlock(`type`: TextContent, text: $structuredContent)],
-      structuredContent: some structuredContent,
-      isError: false,
-    )
+    toolResult(FileDiagnosticsOutput(diags: deduplicate(diags)))
   else:
     McpCallToolResult(
       content:
@@ -493,35 +505,29 @@ proc callNimFindTypeDefinition(
         [CancelledError, ValueError, OSError, IOError, RegexError, NimsuggestError]
     )
 .} =
+  let arguments = params.decodeArguments(PositionArguments).valueOr:
+    return toolErrorResult(error)
   let
-    arguments = params.arguments.get()
-    path = arguments["path"].getStr().absolutePath.normalizedPath.Path
-    line = arguments["line"].getInt()
-    column = arguments["column"].getInt()
+    path = arguments.path.absolutePath.normalizedPath.Path
+    line = arguments.line
+    column = arguments.column
 
   let nimsuggest = await ls.getNimsuggest(path)
 
   if nimsuggest.isSome:
     let typeDefs = await nimsuggest.get.`type`(path, path, line, column)
 
-    var typeDefsJson = newJArray()
+    var output: TypeDefinitionsOutput
     for td in typeDefs:
-      typeDefsJson.add %*{
-        "path": td.filePath,
-        "line": td.line,
-        "column": td.column,
-        "name": td.name,
-        "type": td.forth,
-        "kind": td.symkind[2 ..^ 1],
-      }
-
-    let structuredContent = %*{"defs": typeDefsJson}
-
-    McpCallToolResult(
-      content: @[McpContentBlock(`type`: TextContent, text: $structuredContent)],
-      structuredContent: some structuredContent,
-      isError: false,
-    )
+      output.defs.add TypeDefinitionOutput(
+        path: td.filePath.string,
+        line: td.line,
+        column: td.column,
+        name: td.name,
+        `type`: td.forth,
+        kind: td.symkind[2 ..^ 1],
+      )
+    toolResult(output)
   else:
     McpCallToolResult(
       content:
@@ -548,7 +554,7 @@ proc initialize*(
   let ls = p.ls
   ls.mcpServerCapabilities = result.capabilities
   #MCP clients have no settings for us
-  ls.setWorkspaceConfiguration(newJArray())
+  ls.setWorkspaceConfiguration(NlsConfig())
   ls.initialized = true
 
 proc listTools*(
@@ -594,14 +600,13 @@ proc callTool*(
   of "nimFindTypeDefinition":
     await callNimFindTypeDefinition(ls, params)
   else:
-    McpCallToolResult(
-      content: @[McpContentBlock(`type`: TextContent, text: "Unknown tool")],
-      isError: true,
+    raise (ref ApplicationError)(
+      code: ErrorCode.InvalidParams.int, msg: "Unknown tool: " & params.name
     )
 
 # Notifications
 proc initialized*(
-    ls: LanguageServer, _: JsonNode
+    ls: LanguageServer, _: McpNotificationParams
 ) {.async: (raises: [ApplicationError]).} =
   ls.checkInitialized()
   debug "Client initialized."

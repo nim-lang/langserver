@@ -1,11 +1,13 @@
 import
-  std/[json, options, paths, tables, uri],
+  std/[hashes, options, paths, tables, uri],
   chronicles,
   json_rpc/router,
   json_serialization,
-  json_serialization/std/[options as jsoptions, tables as jstables]
+  json_serialization/std/[options as jsoptions, tables as jstables],
+  ./oneof
 
-export json_serialization, jsoptions, jstables, paths, uri, RequestId, RequestIdKind
+export
+  json_serialization, jsoptions, jstables, paths, uri, RequestId, RequestIdKind, Null
 
 type
   LspUri* = distinct string
@@ -13,12 +15,7 @@ type
 
 proc `$`*(x: LspUri): string {.borrow.}
 proc `==`*(a, b: LspUri): bool {.borrow.}
-proc `%`*(x: LspUri): JsonNode =
-  %x.string
-
-proc `%`*(x: Path): JsonNode =
-  %x.string
-
+proc hash*(x: LspUri): Hash {.borrow.}
 chronicles.formatIt(LspUri):
   $it
 chronicles.formatIt(Path):
@@ -27,36 +24,14 @@ chronicles.formatIt(Path):
 proc len*(x: Path): int =
   x.string.len
 
-proc parseFileUri*(uri: LspUri): Uri {.raises: [UriParseError].} =
-  result = parseUri(uri.string)
-  if result.scheme != "file":
-    let msg =
-      "Invalid scheme in uri `" & uri.string & "`: " & result.scheme &
-      ", only `file` is supported"
-    raise (ref UriParseError)(msg: msg)
-  elif result.hostname != "":
-    let msg =
-      "Invalid hostname in uri `" & uri.string & "`: " & result.hostname &
-      ", only empty hostname is supported"
-    raise (ref UriParseError)(msg: msg)
+# https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#baseTypes
+type uinteger* = distinct int
 
-proc writeValue*(w: var JsonWriter, x: LspUri) {.raises: [IOError].} =
-  w.writeValue(x.string)
-
-proc readValue*(
-    r: var JsonReader, x: var LspUri
-) {.raises: [IOError, SerializationError].} =
-  let uri = r.readValue(string)
-  try:
-    discard parseFileUri(LspUri(uri))
-  except UriParseError as exc:
-    r.raiseUnexpectedValue(exc.msg)
-  x = LspUri(uri)
+const uintegerHigh* = uinteger(int32.high)
 
 type
   OptionalSeq*[T] = Option[seq[T]]
-  OptionalNode* = Option[JsonNode]
-  uinteger* = range[0 .. (1 shl 31 - 1)]
+  LspAny* = JsonString
 
   CancelParams* = ref object of RootObj
     id*: RequestId
@@ -73,10 +48,22 @@ type
     uri*: DocumentUri
     `range`*: Range
 
+  DiagnosticCodeKind* = enum
+    dgcNum
+    dgcStr
+
+  DiagnosticCode* = object
+    case kind*: DiagnosticCodeKind
+    of dgcNum:
+      num*: int
+    of dgcStr:
+      str*: string
+
+  # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#diagnostic
   Diagnostic* = ref object of RootObj
     `range`*: Range
     severity*: Option[int]
-    code*: OptionalNode # int or string
+    code*: Option[DiagnosticCode]
     source*: Option[string]
     message*: string
     relatedInformation*: OptionalSeq[DiagnosticRelatedInformation]
@@ -88,7 +75,7 @@ type
   Command* = ref object of RootObj
     title*: string
     command*: string
-    arguments*: OptionalNode
+    arguments*: OptionalSeq[LspAny]
 
   CodeAction* = ref object of RootObj
     command*: Command
@@ -104,7 +91,7 @@ type
     edits*: OptionalSeq[TextEdit]
 
   WorkspaceEdit* = ref object of RootObj
-    changes*: OptionalNode
+    changes*: Option[Table[DocumentUri, seq[TextEdit]]]
     documentChanges*: OptionalSeq[TextDocumentEdit]
 
   TextDocumentIdentifier* = ref object of RootObj
@@ -117,7 +104,7 @@ type
     text*: string
 
   VersionedTextDocumentIdentifier* = ref object of TextDocumentIdentifier
-    version*: OptionalNode # int or float
+    version*: Option[int]
     languageId*: Option[string]
 
   TextDocumentPositionParams* = ref object of RootObj
@@ -136,11 +123,15 @@ type
     kind*: string
     value*: string
 
+  # https://modelcontextprotocol.io/specification/2025-11-25/schema#notificationparams
+  McpNotificationParams* = ref object of RootObj
+    meta* {.serializedFieldName: "_meta".}: Option[OrderedTable[string, JsonString]]
+
   McpListToolsParams* = ref object of RootObj
 
   McpCallToolParams* = ref object of RootObj
     name*: string
-    arguments*: OptionalNode
+    arguments*: Option[JsonString]
 
   McpInitializeParams_clientInfo_Icon_theme* = enum
     light = "light"
@@ -173,12 +164,12 @@ type
     clientInfo*: McpInitializeParams_clientInfo
 
   LspInitializeParams* = ref object of RootObj
-    processId*: OptionalNode # int or float
+    processId*: Option[int]
     clientInfo*: Option[LspInitializeParams_clientInfo]
     locale*: Option[string]
     rootPath*: Option[string]
     rootUri*: Option[DocumentUri]
-    initializationOptions*: OptionalNode
+    initializationOptions*: Option[LspAny]
     capabilities*: LspClientCapabilities
     trace*: Option[TraceValue_str]
     workspaceFolders*: OptionalSeq[WorkspaceFolder]
@@ -186,26 +177,34 @@ type
   SetTraceParams* = ref object of RootObj
     value*: TraceValue_str
 
+  # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#workDoneProgressBegin
   WorkDoneProgressBegin* = ref object of RootObj
     kind*: string
     title*: string
     cancellable*: Option[bool]
     message*: Option[string]
-    percentage*: Option[int]
+    percentage*: Option[uinteger]
 
+  # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#workDoneProgressReport
   WorkDoneProgressReport* = ref object of RootObj
     kind*: string
     cancellable*: Option[bool]
     message*: Option[string]
-    percentage*: Option[int]
+    percentage*: Option[uinteger]
 
+  # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#workDoneProgressEnd
   WorkDoneProgressEnd* = ref object of RootObj
     kind*: string
     message*: Option[string]
 
-  ProgressParams* = ref object of RootObj
+  # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#progress
+  ProgressParams*[T] = ref object of RootObj
     token*: string # can be also int but the server will send strings
-    value*: OptionalNode
+    value*: T
+
+  # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#window_workDoneProgress_create
+  WorkDoneProgressCreateParams* = ref object of RootObj
+    token*: string # can be also int but the server will send strings
 
   ConfigurationItem* = ref object of RootObj
     scopeUri*: Option[string]
@@ -490,16 +489,45 @@ type
   CallHierarchyClientCapabilities* = ref object of RootObj
     dynamicRegistration*: Option[bool]
 
-  SemanticTokensClientCapabilities_requests* = ref object of RootObj
-    range*: OptionalNode # boolean | { }
-    full*: OptionalNode # boolean | { delta?: boolean; }
+  EmptyObject* = ref object of RootObj
+
+  ClientSemanticTokensRequestRangeKind* = enum
+    cstrBool
+    cstrEmpty
+
+  ClientSemanticTokensRequestRange* = object
+    case kind*: ClientSemanticTokensRequestRangeKind
+    of cstrBool:
+      boolean*: bool
+    of cstrEmpty:
+      empty*: EmptyObject
+
+  ClientSemanticTokensRequestFullKind* = enum
+    cstfBool
+    cstfDelta
+
+  ClientSemanticTokensRequestFull* = object
+    case kind*: ClientSemanticTokensRequestFullKind
+    of cstfBool:
+      boolean*: bool
+    of cstfDelta:
+      delta*: ClientSemanticTokensRequestFullDelta
+
+  # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#clientSemanticTokensRequestOptions
+  ClientSemanticTokensRequestOptions* = ref object of RootObj
+    range*: Option[ClientSemanticTokensRequestRange]
+    full*: Option[ClientSemanticTokensRequestFull]
+
+  # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#clientSemanticTokensRequestFullDelta
+  ClientSemanticTokensRequestFullDelta* = ref object of RootObj
+    delta*: Option[bool]
 
   # 'relative'
   TokenFormat_str = string
 
   SemanticTokensClientCapabilities* = ref object of RootObj
     dynamicRegistration*: Option[bool]
-    requests*: SemanticTokensClientCapabilities_requests
+    requests*: ClientSemanticTokensRequestOptions
     tokenTypes*: seq[string]
     tokenModifiers*: seq[string]
     formats*: seq[TokenFormat_str]
@@ -605,13 +633,14 @@ type
 
   McpClientCapabilities* = ref object of RootObj
 
+  # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#clientCapabilities
   LspClientCapabilities* = ref object of RootObj
     workspace*: Option[ClientCapabilities_workspace]
     textDocument*: Option[TextDocumentClientCapabilities]
     notebookDocument*: Option[NotebookDocumentClientCapabilities]
     window*: Option[ClientCapabilities_window]
     general*: Option[ClientCapabilities_general]
-    experimental*: OptionalNode
+    experimental*: Option[LspAny]
 
   WorkspaceFolder* = ref object of RootObj
     uri*: LspUri
@@ -656,8 +685,6 @@ type
   SaveOptions* = ref object of RootObj
     includeText*: Option[bool]
 
-  ColorProviderOptions* = ref object of RootObj
-
   TextDocumentSyncKind_int = int
 
   TextDocumentSyncOptions* = ref object of RootObj
@@ -670,9 +697,20 @@ type
   StaticRegistrationOptions* = ref object of RootObj
     id*: Option[string]
 
+  WorkspaceFoldersChangeNotificationsKind* = enum
+    wfcnStr
+    wfcnBool
+
+  WorkspaceFoldersChangeNotifications* = object
+    case kind*: WorkspaceFoldersChangeNotificationsKind
+    of wfcnStr:
+      str*: string
+    of wfcnBool:
+      boolean*: bool
+
   WorkspaceFoldersServerCapabilities* = ref object of RootObj
     supported*: Option[bool]
-    changeNotifications*: OptionalNode # string or bool
+    changeNotifications*: Option[WorkspaceFoldersChangeNotifications]
 
   # 'file' | 'folder'
   FileOperationPatternKind_str = string
@@ -704,31 +742,109 @@ type
     workspaceFolders*: Option[WorkspaceFoldersServerCapabilities]
     #!!!!!!!fileOperations*: Option[ServerCapabilities_workspace_fileOperations]
 
-  TextDocumentRegistrationOptions* = ref object of RootObj
-    documentSelector*: OptionalSeq[DocumentFilter]
+  DocumentSelector* = seq[DocumentFilter]
 
-  TextDocumentAndStaticRegistrationOptions* = ref object of TextDocumentRegistrationOptions
+  TextDocumentRegistrationOptionsDocumentSelectorKind* = enum
+    tdrdsNull
+    tdrdsSelector
+
+  TextDocumentRegistrationOptionsDocumentSelector* = object
+    case kind*: TextDocumentRegistrationOptionsDocumentSelectorKind
+    of tdrdsNull:
+      null*: Null
+    of tdrdsSelector:
+      selector*: DocumentSelector
+
+  TextDocumentRegistrationOptions* = ref object of RootObj
+    documentSelector*: TextDocumentRegistrationOptionsDocumentSelector
+
+  # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#renameOptions
+  RenameOptions* = ref object of RootObj
+    workDoneProgress*: Option[bool]
+    prepareProvider*: Option[bool]
+
+  # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#implementationOptions
+  ImplementationOptions* = ref object of RootObj
+    workDoneProgress*: Option[bool]
+
+  ImplementationRegistrationOptions* = ref object of TextDocumentRegistrationOptions
+    workDoneProgress*: Option[bool]
     id*: Option[string]
 
-  RenameOptions* = object
-    # We support rename, but need to change json
-    # depending on if the client supports prepare or not
-    supportsPrepare*: bool
+  # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#documentColorOptions
+  DocumentColorOptions* = ref object of RootObj
+    workDoneProgress*: Option[bool]
+
+  DocumentColorRegistrationOptions* = ref object of TextDocumentRegistrationOptions
+    id*: Option[string]
+    workDoneProgress*: Option[bool]
+
+  ServerCapabilitiesTextDocumentSyncKind* = enum
+    stdsOptions
+    stdsKind
+
+  ServerCapabilitiesTextDocumentSync* = object
+    case kind*: ServerCapabilitiesTextDocumentSyncKind
+    of stdsOptions:
+      options*: TextDocumentSyncOptions
+    of stdsKind:
+      syncKind*: TextDocumentSyncKind_int
+
+  ServerCapabilitiesImplementationProviderKind* = enum
+    sipBool
+    sipOptions
+    sipRegistration
+
+  ServerCapabilitiesImplementationProvider* = object
+    case kind*: ServerCapabilitiesImplementationProviderKind
+    of sipBool:
+      boolean*: bool
+    of sipOptions:
+      options*: ImplementationOptions
+    of sipRegistration:
+      registration*: ImplementationRegistrationOptions
+
+  ServerCapabilitiesColorProviderKind* = enum
+    scpBool
+    scpOptions
+    scpRegistration
+
+  ServerCapabilitiesColorProvider* = object
+    case kind*: ServerCapabilitiesColorProviderKind
+    of scpBool:
+      boolean*: bool
+    of scpOptions:
+      options*: DocumentColorOptions
+    of scpRegistration:
+      registration*: DocumentColorRegistrationOptions
+
+  ServerCapabilitiesRenameProviderKind* = enum
+    srpBool
+    srpOptions
+
+  ServerCapabilitiesRenameProvider* = object
+    case kind*: ServerCapabilitiesRenameProviderKind
+    of srpBool:
+      boolean*: bool
+    of srpOptions:
+      options*: RenameOptions
 
   InlayHintOptions* = object
     resolveProvider*: Option[bool]
 
   McpToolSchema* = object
+    schema* {.serializedFieldName: "$schema".}: Option[string]
     `type`*: string
-    properties*: JsonNode
-    required*: seq[string]
+    properties*: Option[OrderedTable[string, JsonString]]
+    required*: Option[seq[string]]
 
+  # https://modelcontextprotocol.io/specification/2026-07-28/schema#tool
   McpTool* = object
     name*: string
     title*: string
     description*: string
     inputSchema*: McpToolSchema
-    outputSchema*: McpToolSchema
+    outputSchema*: Option[McpToolSchema]
 
   McpListToolsResult* = ref object of RootObj
     tools*: seq[McpTool]
@@ -744,7 +860,7 @@ type
   # https://modelcontextprotocol.io/specification/2026-07-28/schema#calltoolresult
   McpCallToolResult* = ref object of RootObj
     content*: seq[McpContentBlock]
-    structuredContent*: OptionalNode
+    structuredContent*: Option[JsonString]
     isError*: bool
 
   McpToolsOptions* = object
@@ -754,7 +870,7 @@ type
 
   LspServerCapabilities* = ref object of RootObj
     #!!!positionEncoding*: Option[PositionEncodingKind_str]
-    textDocumentSync*: OptionalNode # TextDocumentSyncOptions or TextDocumentSyncKind_int
+    textDocumentSync*: Option[ServerCapabilitiesTextDocumentSync]
     #notebookDocumentSync?: NotebookDocumentSyncOptions | NotebookDocumentSyncRegistrationOptions;
     completionProvider*: CompletionOptions
     hoverProvider*: Option[bool]
@@ -762,8 +878,7 @@ type
     declarationProvider*: Option[bool]
     definitionProvider*: Option[bool]
     typeDefinitionProvider*: Option[bool]
-    implementationProvider*: OptionalNode
-      # bool or TextDocumentAndStaticRegistrationOptions
+    implementationProvider*: Option[ServerCapabilitiesImplementationProvider]
     referencesProvider*: Option[bool]
     documentHighlightProvider*: Option[bool]
     documentSymbolProvider*: Option[bool]
@@ -771,13 +886,11 @@ type
     codeActionProvider*: Option[bool]
     codeLensProvider*: CodeLensOptions
     documentLinkProvider*: Option[DocumentLinkOptions]
-    # colorProvider?: boolean | DocumentColorOptions | DocumentColorRegistrationOptions;
-    colorProvider*: OptionalNode
-      # bool or ColorProviderOptions or TextDocumentAndStaticRegistrationOptions
+    colorProvider*: Option[ServerCapabilitiesColorProvider]
     documentFormattingProvider*: Option[bool]
     documentRangeFormattingProvider*: Option[bool]
     documentOnTypeFormattingProvider*: DocumentOnTypeFormattingOptions
-    renameProvider*: JsonNode # bool or RenameOptions
+    renameProvider*: Option[ServerCapabilitiesRenameProvider]
     # foldingRangeProvider?: boolean | FoldingRangeOptions | FoldingRangeRegistrationOptions;
     executeCommandProvider*: Option[ExecuteCommandOptions]
     # selectionRangeProvider?: boolean | SelectionRangeOptions | SelectionRangeRegistrationOptions;
@@ -792,10 +905,9 @@ type
     # diagnosticProvider?: DiagnosticOptions | DiagnosticRegistrationOptions;
     # workspaceSymbolProvider?: boolean | WorkspaceSymbolOptions;
     workspace*: Option[ServerCapabilities_workspace]
-    experimental*: OptionalNode
+    experimental*: Option[LspAny]
 
   InitializedParams* = ref object of RootObj
-    DUMMY*: Option[nil]
 
   ShowMessageParams* = ref object of RootObj
     `type`*: int
@@ -816,7 +928,7 @@ type
   Registration* = ref object of RootObj
     id*: string
     `method`*: string
-    registerOptions*: OptionalNode
+    registerOptions*: Option[LspAny]
 
   RegistrationParams* = ref object of RootObj
     registrations*: OptionalSeq[Registration]
@@ -835,8 +947,10 @@ type
   DidChangeWorkspaceFoldersParams* = ref object of RootObj
     event*: WorkspaceFoldersChangeEvent
 
+  # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#workspace_didChangeConfiguration
+  # XXX remove Option when skipNullFields = false
   DidChangeConfigurationParams* = ref object of RootObj
-    settings*: OptionalNode
+    settings*: Option[LspAny]
 
   FileEvent* = ref object of RootObj
     uri*: DocumentUri
@@ -857,7 +971,7 @@ type
 
   ExecuteCommandParams* = ref object of RootObj
     command*: string
-    arguments*: seq[JsonNode]
+    arguments*: OptionalSeq[LspAny]
 
   ExecuteCommandRegistrationOptions* = ref object of RootObj
     commands*: OptionalSeq[string]
@@ -917,11 +1031,22 @@ type
     detail*: Option[string]
     description*: Option[string]
 
+  CompletionItemDocumentationKind* = enum
+    cidStr
+    cidMarkup
+
+  CompletionItemDocumentation* = object
+    case kind*: CompletionItemDocumentationKind
+    of cidStr:
+      str*: string
+    of cidMarkup:
+      markup*: MarkupContent
+
   CompletionItem* = ref object of RootObj
     label*: string
     kind*: Option[int]
     detail*: Option[string]
-    documentation*: OptionalNode #Option[string or MarkupContent]
+    documentation*: Option[CompletionItemDocumentation]
     deprecated*: Option[bool]
     preselect*: Option[bool]
     sortText*: Option[string]
@@ -932,7 +1057,7 @@ type
     # additionalTextEdits*: Option[TextEdit]
     commitCharacters*: OptionalSeq[string]
     command*: Option[Command]
-    data*: OptionalNode
+    data*: Option[LspAny]
     labelDetails*: Option[CompletionItemLabelDetails]
 
   CompletionRegistrationOptions* = ref object of TextDocumentRegistrationOptions
@@ -943,9 +1068,34 @@ type
     language*: string
     value*: string
 
+  MarkedStringKind* = enum
+    msStr
+    msOption
+
+  MarkedString* = object
+    case kind*: MarkedStringKind
+    of msStr:
+      str*: string
+    of msOption:
+      option*: MarkedStringOption
+
+  HoverContentsKind* = enum
+    hcMarkedString
+    hcMarkedStrings
+    hcMarkup
+
+  HoverContents* = object
+    case kind*: HoverContentsKind
+    of hcMarkedString:
+      markedString*: MarkedString
+    of hcMarkedStrings:
+      markedStrings*: seq[MarkedString]
+    of hcMarkup:
+      markup*: MarkupContent
+
+  # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#hover
   Hover* = ref object of RootObj
-    contents*: OptionalNode
-      # string or MarkedStringOption or [string] or [MarkedStringOption] or MarkupContent
+    contents*: HoverContents
     range*: Option[Range]
 
   HoverParams* = ref object of TextDocumentPositionParams
@@ -997,10 +1147,11 @@ type
   CodeLensParams* = ref object of RootObj
     textDocument*: TextDocumentIdentifier
 
+  # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#codeLens
   CodeLens* = ref object of RootObj
     `range`*: Range
     command*: Option[Command]
-    data*: OptionalNode
+    data*: Option[LspAny]
 
   CodeLensRegistrationOptions* = ref object of TextDocumentRegistrationOptions
     resolveProvider*: Option[bool]
@@ -1008,10 +1159,11 @@ type
   DocumentLinkParams* = ref object of RootObj
     textDocument*: TextDocumentIdentifier
 
+  # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#documentLink
   DocumentLink* = ref object of RootObj
     `range`*: Range
     target*: Option[string]
-    data*: OptionalNode
+    data*: Option[LspAny]
 
   DocumentLinkRegistrationOptions* = ref object of TextDocumentRegistrationOptions
     resolveProvider*: Option[bool]
@@ -1039,20 +1191,27 @@ type
     textEdit*: Option[TextEdit]
     additionalTextEdits*: OptionalSeq[TextEdit]
 
+  FormattingOptions* = ref object of RootObj
+    tabSize*: uinteger
+    insertSpaces*: bool
+    trimTrailingWhitespace*: Option[bool]
+    insertFinalNewline*: Option[bool]
+    trimFinalNewlines*: Option[bool]
+
   DocumentFormattingParams* = ref object of RootObj
     textDocument*: TextDocumentIdentifier
-    options*: OptionalNode
+    options*: FormattingOptions
 
   DocumentRangeFormattingParams* = ref object of RootObj
     textDocument*: TextDocumentIdentifier
     `range`*: Range
-    options*: OptionalNode
+    options*: FormattingOptions
 
   DocumentOnTypeFormattingParams* = ref object of RootObj
     textDocument*: TextDocumentIdentifier
     position*: Position
     ch*: string
-    options*: OptionalNode
+    options*: FormattingOptions
 
   DocumentOnTypeFormattingRegistrationOptions* = ref object of TextDocumentRegistrationOptions
     firstTriggerCharacter*: string
@@ -1142,6 +1301,8 @@ type
 
   NimLangServerStatusParams* = object
 
+  NimLangServerCapabilitiesParams* = object
+
   SuggestAction* = enum
     saNone = "none"
     saRestart = "restart"
@@ -1223,6 +1384,32 @@ createJsonFlavor LspJson,
 template shouldWriteObjectField*[T](field: ref T): bool =
   field != nil
 
+proc parseFileUri*(uri: LspUri): Uri {.raises: [UriParseError].} =
+  result = parseUri(uri.string)
+  if result.scheme != "file":
+    let msg =
+      "Invalid scheme in uri `" & uri.string & "`: " & result.scheme &
+      ", only `file` is supported"
+    raise (ref UriParseError)(msg: msg)
+  elif result.hostname != "":
+    let msg =
+      "Invalid hostname in uri `" & uri.string & "`: " & result.hostname &
+      ", only empty hostname is supported"
+    raise (ref UriParseError)(msg: msg)
+
+proc writeValue*(w: var JsonWriter[LspJson], x: LspUri) {.raises: [IOError].} =
+  w.writeValue(x.string)
+
+proc readValue*(
+    r: var JsonReader[LspJson], x: var LspUri
+) {.raises: [IOError, SerializationError].} =
+  let uri = r.readValue(string)
+  try:
+    discard parseFileUri(LspUri(uri))
+  except UriParseError as exc:
+    r.raiseUnexpectedValue(exc.msg)
+  x = LspUri(uri)
+
 proc readValue*(
     r: var JsonReader[LspJson], x: var RequestId
 ) {.raises: [IOError, SerializationError].} =
@@ -1233,6 +1420,26 @@ proc readValue*(
     x = RequestId(kind: riString, str: r.readValue(string))
   else:
     r.raiseUnexpectedValue("expected an integer or a string id")
+
+proc writeValue*(w: var JsonWriter[LspJson], x: uinteger) {.raises: [IOError].} =
+  w.writeValue(x.int)
+
+proc readValue*(
+    r: var JsonReader[LspJson], x: var uinteger
+) {.raises: [IOError, SerializationError].} =
+  let n = r.readValue(int)
+  if n notin 0 .. uintegerHigh.int:
+    r.raiseUnexpectedValue("uinteger out of range: " & $n)
+  x = uinteger(n)
+
+# XXX skipNullFields = false and remove this
+func isFieldExpected*(
+    _: type TextDocumentRegistrationOptionsDocumentSelector
+): bool {.compileTime.} =
+  false
+
+LspJson.useOneOfSerializationFor(DiagnosticCode)
+LspJson.useOneOfSerializationFor(WorkspaceFoldersChangeNotifications)
 
 LspJson.useDefaultSerializationFor(Position)
 LspJson.useDefaultSerializationFor(Range)
@@ -1247,6 +1454,7 @@ LspJson.useDefaultReaderFor(CancelParams)
 LspJson.useDefaultReaderFor(TextDocumentIdentifier)
 LspJson.useDefaultReaderFor(TextDocumentItem)
 LspJson.useDefaultReaderFor(TextDocumentPositionParams)
+LspJson.useDefaultReaderFor(McpNotificationParams)
 LspJson.useDefaultReaderFor(McpListToolsParams)
 LspJson.useDefaultReaderFor(McpCallToolParams)
 LspJson.useDefaultReaderFor(McpInitializeParams_clientInfo_Icon)
@@ -1254,6 +1462,7 @@ LspJson.useDefaultReaderFor(McpInitializeParams_clientInfo)
 LspJson.useDefaultReaderFor(LspInitializeParams_clientInfo)
 LspJson.useDefaultReaderFor(McpInitializeParams)
 LspJson.useDefaultReaderFor(LspInitializeParams)
+LspJson.useDefaultReaderFor(InitializedParams)
 LspJson.useDefaultReaderFor(SetTraceParams)
 LspJson.useDefaultReaderFor(ChangeAnnotationSupportWorkspaceEditClientCapabilities)
 LspJson.useDefaultReaderFor(WorkspaceEditClientCapabilities)
@@ -1317,7 +1526,11 @@ LspJson.useDefaultReaderFor(FoldingRangeClientCapabilities)
 LspJson.useDefaultReaderFor(SelectionRangeClientCapabilities)
 LspJson.useDefaultReaderFor(LinkedEditingRangeClientCapabilities)
 LspJson.useDefaultReaderFor(CallHierarchyClientCapabilities)
-LspJson.useDefaultReaderFor(SemanticTokensClientCapabilities_requests)
+LspJson.useDefaultSerializationFor(EmptyObject)
+LspJson.useDefaultSerializationFor(ClientSemanticTokensRequestFullDelta)
+LspJson.useOneOfSerializationFor(ClientSemanticTokensRequestRange)
+LspJson.useOneOfSerializationFor(ClientSemanticTokensRequestFull)
+LspJson.useDefaultReaderFor(ClientSemanticTokensRequestOptions)
 LspJson.useDefaultReaderFor(SemanticTokensClientCapabilities)
 LspJson.useDefaultReaderFor(MonikerClientCapabilities)
 LspJson.useDefaultReaderFor(TypeHierarchyClientCapabilities)
@@ -1348,6 +1561,7 @@ LspJson.useDefaultReaderFor(WillSaveTextDocumentParams)
 LspJson.useDefaultReaderFor(DidSaveTextDocumentParams)
 LspJson.useDefaultReaderFor(DidCloseTextDocumentParams)
 LspJson.useDefaultReaderFor(DidChangeWatchedFilesParams)
+LspJson.useDefaultReaderFor(DidChangeConfigurationParams)
 LspJson.useDefaultReaderFor(DidChangeWorkspaceFoldersParams)
 LspJson.useDefaultReaderFor(WorkspaceFoldersChangeEvent)
 LspJson.useDefaultReaderFor(FileEvent)
@@ -1357,12 +1571,14 @@ LspJson.useDefaultReaderFor(ReferenceContext)
 LspJson.useDefaultReaderFor(DocumentSymbolParams)
 LspJson.useDefaultReaderFor(CodeActionParams)
 LspJson.useDefaultReaderFor(CodeActionContext)
+LspJson.useDefaultReaderFor(FormattingOptions)
 LspJson.useDefaultReaderFor(DocumentFormattingParams)
 LspJson.useDefaultReaderFor(RenameParams)
 LspJson.useDefaultReaderFor(PrepareRenameParams)
 LspJson.useDefaultReaderFor(SignatureHelpContext)
 LspJson.useDefaultReaderFor(InlayHintParams)
 LspJson.useDefaultReaderFor(NimLangServerStatusParams)
+LspJson.useDefaultReaderFor(NimLangServerCapabilitiesParams)
 LspJson.useDefaultReaderFor(SuggestParams)
 LspJson.useDefaultReaderFor(RunTaskParams)
 LspJson.useDefaultReaderFor(ListTestsParams)
@@ -1374,7 +1590,13 @@ LspJson.useDefaultWriterFor(TextEdit)
 LspJson.useDefaultWriterFor(TextDocumentEdit)
 LspJson.useDefaultWriterFor(WorkspaceEdit)
 LspJson.useDefaultWriterFor(VersionedTextDocumentIdentifier)
-LspJson.useDefaultWriterFor(ProgressParams)
+LspJson.useDefaultWriterFor(WorkDoneProgressBegin)
+LspJson.useDefaultWriterFor(WorkDoneProgressReport)
+LspJson.useDefaultWriterFor(WorkDoneProgressEnd)
+LspJson.useDefaultWriterFor(ProgressParams[WorkDoneProgressBegin])
+LspJson.useDefaultWriterFor(ProgressParams[WorkDoneProgressReport])
+LspJson.useDefaultWriterFor(ProgressParams[WorkDoneProgressEnd])
+LspJson.useDefaultWriterFor(WorkDoneProgressCreateParams)
 LspJson.useDefaultWriterFor(ConfigurationItem)
 LspJson.useDefaultWriterFor(ConfigurationParams)
 LspJson.useDefaultWriterFor(McpInitializeParams_serverInfo)
@@ -1396,14 +1618,35 @@ LspJson.useDefaultWriterFor(McpContentBlock)
 LspJson.useDefaultWriterFor(McpCallToolResult)
 LspJson.useDefaultWriterFor(McpToolsOptions)
 LspJson.useDefaultWriterFor(McpServerCapabilities)
+LspJson.useDefaultWriterFor(DocumentFilter)
+LspJson.useOneOfWriterFor(TextDocumentRegistrationOptionsDocumentSelector)
+LspJson.useDefaultWriterFor(SaveOptions)
+LspJson.useDefaultWriterFor(TextDocumentSyncOptions)
+LspJson.useDefaultWriterFor(RenameOptions)
+LspJson.useDefaultWriterFor(ImplementationOptions)
+LspJson.useDefaultWriterFor(ImplementationRegistrationOptions)
+LspJson.useDefaultWriterFor(DocumentColorOptions)
+LspJson.useDefaultWriterFor(DocumentColorRegistrationOptions)
+LspJson.useOneOfWriterFor(ServerCapabilitiesTextDocumentSync)
+LspJson.useOneOfWriterFor(ServerCapabilitiesImplementationProvider)
+LspJson.useOneOfWriterFor(ServerCapabilitiesColorProvider)
+LspJson.useOneOfWriterFor(ServerCapabilitiesRenameProvider)
 LspJson.useDefaultWriterFor(LspServerCapabilities)
 LspJson.useDefaultWriterFor(ShowMessageParams)
+LspJson.useDefaultWriterFor(FileSystemWatcher)
+LspJson.useDefaultWriterFor(DidChangeWatchedFilesRegistrationOptions)
 LspJson.useDefaultWriterFor(Registration)
 LspJson.useDefaultWriterFor(RegistrationParams)
 LspJson.useDefaultWriterFor(ApplyWorkspaceEditParams)
+LspJson.useDefaultReaderFor(ApplyWorkspaceEditResponse)
 LspJson.useDefaultWriterFor(PublishDiagnosticsParams)
+LspJson.useDefaultWriterFor(MarkupContent)
+LspJson.useOneOfWriterFor(CompletionItemDocumentation)
 LspJson.useDefaultWriterFor(CompletionItemLabelDetails)
 LspJson.useDefaultWriterFor(CompletionItem)
+LspJson.useDefaultWriterFor(MarkedStringOption)
+LspJson.useOneOfWriterFor(MarkedString)
+LspJson.useOneOfWriterFor(HoverContents)
 LspJson.useDefaultWriterFor(Hover)
 LspJson.useDefaultWriterFor(DocumentHighlight)
 LspJson.useDefaultWriterFor(SymbolInformation)
