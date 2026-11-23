@@ -139,13 +139,13 @@ type
   LanguageServer* = ref object
     case serverMode*: ServerMode
     of lsp:
-      lspClientCapabilities*: LspClientCapabilities
-      lspServerCapabilities*: LspServerCapabilities
-      lspInitializeParams*: LspInitializeParams
+      lspClientCapabilities*: ClientCapabilities
+      lspServerCapabilities*: ServerCapabilities
+      lspInitializeParams*: InitializeParams
     of mcp:
       mcpClientCapabilities*: McpClientCapabilities
       mcpServerCapabilities*: McpServerCapabilities
-      mcpInitializeParams*: McpInitializeParams
+      mcpInitializeParams*: McpInitializeRequestParams
     extensionCapabilities*: set[LspExtensionCapability]
     notifyAction*: NotifyAction
     callAction*: CallAction
@@ -237,9 +237,9 @@ proc initLs*(params: CommandLineParams, storageDir: string): LanguageServer =
     extensionCapabilities: LspExtensionCapability.items.toSet,
   )
 
-proc createProgressToken*(ls: LanguageServer): string =
+proc createProgressToken*(ls: LanguageServer): ProgressToken =
   inc ls.token
-  "token-" & $ls.token
+  ProgressToken(kind: ptStr, str: "token-" & $ls.token)
 
 proc isShutdownNimsuggest*(ls: LanguageServer): bool =
   ls.nimsuggestShutdown != nil
@@ -265,15 +265,14 @@ func parameterHintsEnabled*(cnf: NlsConfig): bool =
 func inlayHintsEnabled*(cnf: NlsConfig): bool =
   typeHintsEnabled(cnf) or exceptionHintsEnabled(cnf) or parameterHintsEnabled(cnf)
 
-proc supportSignatureHelp*(cc: LspClientCapabilities): bool =
+proc supportSignatureHelp*(cc: ClientCapabilities): bool =
   let caps = cc.textDocument
   caps.isSome and caps.get.signatureHelp.isSome
 
-proc parseSettings*(settings: Option[LspAny]): NlsConfig =
-  if settings.isNone:
-    return NlsConfig()
+proc parseSettings*(settings: LspAny): NlsConfig =
   try:
-    LspJson.decode(settings.get.string, NlsSettings).nim.get(NlsConfig())
+    let parsed = LspJson.decode(settings.string, Option[NlsSettings])
+    parsed.get(NlsSettings()).nim.get(NlsConfig())
   except SerializationError as exc:
     debug "Failed to parse the configuration.", error = exc.msg
     NlsConfig()
@@ -334,11 +333,11 @@ proc showMessage*(
 
 proc applyEdit*(
     ls: LanguageServer, params: ApplyWorkspaceEditParams
-): Future[ApplyWorkspaceEditResponse] {.
+): Future[ApplyWorkspaceEditResult] {.
     async: (raises: [CancelledError, SerializationError, JsonRpcError])
 .} =
   let res = await ls.call("workspace/applyEdit", params)
-  LspJson.decode(res.string, ApplyWorkspaceEditResponse)
+  LspJson.decode(res.string, ApplyWorkspaceEditResult)
 
 proc toPendingRequestStatus(pr: PendingRequest): PendingRequestStatus =
   result.time =
@@ -717,20 +716,20 @@ proc getWorkingDir*(
 proc progressSupported(ls: LanguageServer): bool =
   ls.serverMode == lsp and
     ls.lspInitializeParams.capabilities.window
-    .get(ClientCapabilities_window()).workDoneProgress
+    .get(WindowClientCapabilities()).workDoneProgress
     .get(false)
 
-proc progress*[T](ls: LanguageServer, token: string, value: T) =
+proc progress*[T](ls: LanguageServer, token: ProgressToken, value: T) =
   if ls.progressSupported:
     ls.notify("$/progress", ProgressParams[T](token: token, value: value))
 
-proc progressBegin*(ls: LanguageServer, token, title: string) =
+proc progressBegin*(ls: LanguageServer, token: ProgressToken, title: string) =
   ls.progress(token, WorkDoneProgressBegin(kind: "begin", title: title))
 
-proc progressEnd*(ls: LanguageServer, token: string) =
+proc progressEnd*(ls: LanguageServer, token: ProgressToken) =
   ls.progress(token, WorkDoneProgressEnd(kind: "end"))
 
-proc workDoneProgressCreate*(ls: LanguageServer, token: string) =
+proc workDoneProgressCreate*(ls: LanguageServer, token: ProgressToken) =
   if ls.progressSupported:
     discard ls.call(
       "window/workDoneProgress/create", WorkDoneProgressCreateParams(token: token)
@@ -857,7 +856,7 @@ proc sendDiagnostics*(
   trace "Sending diagnostics", count = diagnostics.len, path = path
   let params = PublishDiagnosticsParams(
     uri: pathToUri(path),
-    diagnostics: some diagnostics.map(x => x.toUtf16Pos(ls).toDiagnostic),
+    diagnostics: diagnostics.map(x => x.toUtf16Pos(ls).toDiagnostic),
   )
   ls.notify("textDocument/publishDiagnostics", params)
   if diagnostics.len != 0:
@@ -1034,7 +1033,7 @@ proc checkNimsuggestProject(
       if not filesWithDiags.contains file:
         debug "Sending zero diags", path = file
         let params = PublishDiagnosticsParams(
-          uri: pathToUri(file), diagnostics: some newSeq[Diagnostic]()
+          uri: pathToUri(file), diagnostics: newSeq[Diagnostic]()
         )
         ls.notify("textDocument/publishDiagnostics", params)
     ls.filesWithDiags = filesWithDiags
@@ -1141,7 +1140,7 @@ proc checkProject*(
       if not filesWithDiags.contains file:
         debug "Sending zero diags", path = file
         let params = PublishDiagnosticsParams(
-          uri: pathToUri(file), diagnostics: some newSeq[Diagnostic]()
+          uri: pathToUri(file), diagnostics: newSeq[Diagnostic]()
         )
         ls.notify("textDocument/publishDiagnostics", params)
     ls.filesWithDiags = filesWithDiags
@@ -1290,14 +1289,12 @@ proc maybeRegisterCapabilityDidChangeConfiguration*(
 ) {.async: (raises: [CancelledError]).} =
   if ls.requiresDynamicRegistrationForDidChangeConfiguration:
     let registrationParams = RegistrationParams(
-      registrations: some(
-        @[
-          Registration(
-            id: "a4606617-82c1-4e22-83db-0095fecb1093",
-            `method`: "workspace/didChangeConfiguration",
-          )
-        ]
-      )
+      registrations: @[
+        Registration(
+          id: "a4606617-82c1-4e22-83db-0095fecb1093",
+          `method`: "workspace/didChangeConfiguration",
+        )
+      ]
     )
     try:
       let res = await ls.call("client/registerCapability", registrationParams)
@@ -1320,12 +1317,10 @@ proc maybeRegisterCapabilityDidChangeWatchedFiles*(
       id: "workspace-did-change-watched-files",
       `method`: "workspace/didChangeWatchedFiles",
       registerOptions: some JsonString(
-        LspJson.encode(
-          DidChangeWatchedFilesRegistrationOptions(watchers: some(watchers))
-        )
+        LspJson.encode(DidChangeWatchedFilesRegistrationOptions(watchers: watchers))
       ),
     )
-    let regParams = RegistrationParams(registrations: some(@[reg]))
+    let regParams = RegistrationParams(registrations: @[reg])
     try:
       let res = await ls.call("client/registerCapability", regParams)
       debug "Got response for the didChangeWatchedFiles registration:", res = res.string

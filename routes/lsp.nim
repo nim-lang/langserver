@@ -27,14 +27,12 @@ proc getNphPath(): Option[string] {.raises: [OSError].} =
   else:
     some path
 
-proc getWorkspaceFolders(
-    ip: LspInitializeParams
-): seq[Path] {.raises: [UriParseError].} =
+proc getWorkspaceFolders(ip: InitializeParams): seq[Path] {.raises: [UriParseError].} =
   if ip.workspaceFolders.isSome:
     for folder in ip.workspaceFolders.get:
       result.add folder.uri.uriToPath
-  elif ip.rootUri.isSome:
-    result.add ip.rootUri.get.uriToPath
+  elif ip.rootUri.kind == nkValue:
+    result.add ip.rootUri.value.uriToPath
   elif ip.rootPath.get("") != "":
     result.add ip.rootPath.get.Path
 
@@ -42,14 +40,14 @@ proc getWorkspaceFolders(
 
 # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#initialize
 proc initialize*(
-    p: tuple[ls: LanguageServer, onExit: OnExitCallback], params: LspInitializeParams
-): Future[LspInitializeResult] {.async: (raises: [OSError, UriParseError]).} =
+    p: tuple[ls: LanguageServer, onExit: OnExitCallback], params: InitializeParams
+): Future[InitializeResult] {.async: (raises: [OSError, UriParseError]).} =
   debug "Initialize received..."
   p.ls.lspInitializeParams = params
   p.ls.workspaceFolders = params.getWorkspaceFolders()
   p.ls.lspClientCapabilities = params.capabilities
-  result = LspInitializeResult(
-    capabilities: LspServerCapabilities(
+  result = InitializeResult(
+    capabilities: ServerCapabilities(
       textDocumentSync: some ServerCapabilitiesTextDocumentSync(
         kind: stdsOptions,
         options: TextDocumentSyncOptions(
@@ -62,7 +60,7 @@ proc initialize*(
       ),
       hoverProvider: some(true),
       workspace: some(
-        ServerCapabilities_workspace(
+        WorkspaceOptions(
           workspaceFolders: some(
             WorkspaceFoldersServerCapabilities(
               supported: some(true),
@@ -85,7 +83,7 @@ proc initialize*(
       workspaceSymbolProvider: some(true),
       executeCommandProvider: some(
         ExecuteCommandOptions(
-          commands: some(@[RESTART_COMMAND, RECOMPILE_COMMAND, CHECK_PROJECT_COMMAND])
+          commands: @[RESTART_COMMAND, RECOMPILE_COMMAND, CHECK_PROJECT_COMMAND]
         )
       ),
       inlayHintProvider: some(InlayHintOptions(resolveProvider: some(false))),
@@ -747,7 +745,7 @@ proc codeAction*(
   return @[
     CodeAction(
       title: "Clean build",
-      kind: "source",
+      kind: some "source",
       command: some Command(
         title: "Clean build",
         command: RECOMPILE_COMMAND,
@@ -756,7 +754,7 @@ proc codeAction*(
     ),
     CodeAction(
       title: "Refresh project errors",
-      kind: "source",
+      kind: some "source",
       command: some Command(
         title: "Refresh project errors",
         command: CHECK_PROJECT_COMMAND,
@@ -765,7 +763,7 @@ proc codeAction*(
     ),
     CodeAction(
       title: "Restart nimsuggest",
-      kind: "source",
+      kind: some "source",
       command: some Command(
         title: "Restart nimsuggest",
         command: RESTART_COMMAND,
@@ -835,9 +833,8 @@ proc toSignatureInformation(suggest: Suggest): SignatureInformation =
   var label = name
   if detail.len > 1:
     label = &"{fnKind} {name}({strParams})"
-  SignatureInformation(
-    label: label, parameters: newSeq[ParameterInformation]() #notice params is not used
-  )
+  #notice params is not used
+  SignatureInformation(label: label, parameters: some newSeq[ParameterInformation]())
 
 proc signatureHelp*(
     ls: LanguageServer, params: SignatureHelpParams
@@ -880,7 +877,9 @@ proc signatureHelp*(
     let signatures = completions.map(toSignatureInformation)
     if signatures.len() > 0:
       return some SignatureHelp(
-        signatures: some(signatures), activeSignature: some(0), activeParameter: some(0)
+        signatures: signatures,
+        activeSignature: some uinteger(0),
+        activeParameter: some uinteger(0),
       )
     else:
       return none[SignatureHelp]()
@@ -1293,7 +1292,7 @@ proc didChangeWatchedFiles*(
     ls: LanguageServer, params: DidChangeWatchedFilesParams
 ): Future[void] {.async: (raises: [ApplicationError, CancelledError]).} =
   ls.checkInitialized()
-  debug "Watched files changed", changes = params.changes.get(@[]).len
+  debug "Watched files changed", changes = params.changes.len
   let conf = await ls.workspaceConfigurationWait()
   if conf.autoCheckProject.get(true) and conf.checkOnSave.get(true) and
       not conf.useNimCheck.get(USE_NIM_CHECK_BY_DEFAULT):
@@ -1303,10 +1302,10 @@ proc didChangeWorkspaceFolders*(
     ls: LanguageServer, params: DidChangeWorkspaceFoldersParams
 ): Future[void] {.async: (raises: [ApplicationError, CancelledError, UriParseError]).} =
   ls.checkInitialized()
-  for folder in params.event.removed.get(@[]):
+  for folder in params.event.removed:
     let path = folder.uri.uriToPath
     ls.workspaceFolders.keepItIf(it != path)
-  for folder in params.event.added.get(@[]):
+  for folder in params.event.added:
     let path = folder.uri.uriToPath
     if path notin ls.workspaceFolders:
       ls.workspaceFolders.add path
@@ -1323,7 +1322,7 @@ proc didChangeConfiguration*(
     ls: LanguageServer, params: DidChangeConfigurationParams
 ): Future[void] {.async: (raises: [ApplicationError, CancelledError]).} =
   ls.checkInitialized()
-  debug "Changed configuration: ", settings = $params.settings
+  debug "Changed configuration: ", settings = params.settings.string
   if ls.usePullConfigurationModel:
     await ls.maybeRequestConfigurationFromClient()
   else:

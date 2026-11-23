@@ -22,8 +22,9 @@ const
 proc nimFindReferences(): McpTool =
   McpTool(
     name: "nimFindReferences",
-    title: "Find symbol references in .nim files",
-    description: "Find references of the symbol under cursor in the current workspace.",
+    title: some "Find symbol references in .nim files",
+    description:
+      some "Find references of the symbol under cursor in the current workspace.",
     inputSchema: McpToolSchema(
       `type`: "object",
       properties: some {
@@ -45,9 +46,8 @@ proc nimFindReferences(): McpTool =
 proc nimFindSymbols(): McpTool =
   McpTool(
     name: "nimFindSymbols",
-    title: "Find symbols in .nim files",
-    description:
-      "Find symbols matching the given search query in the project of the given .nim file URI.",
+    title: some "Find symbols in .nim files",
+    description: some "Find symbols matching the given search query in the project of the given .nim file URI.",
     inputSchema: McpToolSchema(
       `type`: "object",
       properties: some {"uri": UriSchema, "query": StringSchema}.toOrderedTable,
@@ -67,8 +67,8 @@ proc nimFindSymbols(): McpTool =
 proc nimListSymbols(): McpTool =
   McpTool(
     name: "nimListSymbols",
-    title: "List symbols in a .nim file",
-    description: "List all symbols in the given .nim file.",
+    title: some "List symbols in a .nim file",
+    description: some "List all symbols in the given .nim file.",
     inputSchema: McpToolSchema(
       `type`: "object",
       properties: some {"path": StringSchema}.toOrderedTable,
@@ -88,9 +88,8 @@ proc nimListSymbols(): McpTool =
 proc nimCheckProject(): McpTool =
   McpTool(
     name: "nimCheckProject",
-    title: "Check a project",
-    description:
-      "Get diagnostics (errors, warnings, and hints) for the project of the given .nim file URI.",
+    title: some "Check a project",
+    description: some "Get diagnostics (errors, warnings, and hints) for the project of the given .nim file URI.",
     inputSchema: McpToolSchema(
       `type`: "object",
       properties: some {"uri": UriSchema}.toOrderedTable,
@@ -110,8 +109,9 @@ proc nimCheckProject(): McpTool =
 proc nimCheckFile(): McpTool =
   McpTool(
     name: "nimCheckFile",
-    title: "Check a .nim file",
-    description: "Get diagnostics (errors, warnings, and hints) for a given .nim file.",
+    title: some "Check a .nim file",
+    description:
+      some "Get diagnostics (errors, warnings, and hints) for a given .nim file.",
     inputSchema: McpToolSchema(
       `type`: "object",
       properties: some {"path": StringSchema}.toOrderedTable,
@@ -131,9 +131,8 @@ proc nimCheckFile(): McpTool =
 proc nimFindTypeDefinition(): McpTool =
   McpTool(
     name: "nimFindTypeDefinition",
-    title: "Find type definition in .nim files",
-    description:
-      "Find the type definition of the symbol under cursor in the current workspace.",
+    title: some "Find type definition in .nim files",
+    description: some "Find the type definition of the symbol under cursor in the current workspace.",
     inputSchema: McpToolSchema(
       `type`: "object",
       properties: some {
@@ -156,7 +155,7 @@ proc nimFindTypeDefinition(): McpTool =
 
 proc toolErrorResult(text: string): McpCallToolResult =
   McpCallToolResult(
-    content: @[McpContentBlock(`type`: TextContent, text: text)], isError: true
+    content: @[McpContentBlock(`type`: TextContent, text: text)], isError: some true
   )
 
 type
@@ -256,10 +255,10 @@ proc toolResult[T](output: T): McpCallToolResult =
   McpCallToolResult(
     content: @[McpContentBlock(`type`: TextContent, text: json)],
     structuredContent: some JsonString(json),
-    isError: false,
+    isError: some false,
   )
 
-proc decodeArguments(params: McpCallToolParams, T: typedesc): Result[T, string] =
+proc decodeArguments(params: McpCallToolRequestParams, T: typedesc): Result[T, string] =
   try:
     ok LspJson.decode(params.arguments.get(JsonString("{}")).string, T)
   except SerializationError as ex:
@@ -272,7 +271,7 @@ proc fileUriArgument(uri: string): Option[Path] =
     none Path
 
 proc callNimFindReferences(
-    ls: LanguageServer, params: McpCallToolParams
+    ls: LanguageServer, params: McpCallToolRequestParams
 ): Future[McpCallToolResult] {.
     async: (
       raises: [
@@ -298,7 +297,7 @@ proc callNimFindReferences(
     if nimPath.isNone:
       return McpCallToolResult(
         content: @[McpContentBlock(`type`: TextContent, text: "Nim not found")],
-        isError: true,
+        isError: some true,
       )
     let refs = await track(
       projectFile,
@@ -336,11 +335,11 @@ proc callNimFindReferences(
     McpCallToolResult(
       content:
         @[McpContentBlock(`type`: TextContent, text: "Nimsuggest is unavailable")],
-      isError: true,
+      isError: some true,
     )
 
 proc callNimFindSymbols(
-    ls: LanguageServer, params: McpCallToolParams
+    ls: LanguageServer, params: McpCallToolRequestParams
 ): Future[McpCallToolResult] {.
     async: (
       raises: [CancelledError, KeyError, OSError, IOError, RegexError, NimsuggestError]
@@ -374,11 +373,11 @@ proc callNimFindSymbols(
     McpCallToolResult(
       content:
         @[McpContentBlock(`type`: TextContent, text: "Nimsuggest is unavailable")],
-      isError: true,
+      isError: some true,
     )
 
 proc callNimListSymbols(
-    ls: LanguageServer, params: McpCallToolParams
+    ls: LanguageServer, params: McpCallToolRequestParams
 ): Future[McpCallToolResult] {.
     async: (
       raises:
@@ -408,11 +407,11 @@ proc callNimListSymbols(
     McpCallToolResult(
       content:
         @[McpContentBlock(`type`: TextContent, text: "Nimsuggest is unavailable")],
-      isError: true,
+      isError: some true,
     )
 
 proc callNimCheckProject(
-    ls: LanguageServer, params: McpCallToolParams
+    ls: LanguageServer, params: McpCallToolRequestParams
 ): Future[McpCallToolResult] {.
     async: (
       raises:
@@ -453,11 +452,11 @@ proc callNimCheckProject(
     McpCallToolResult(
       content:
         @[McpContentBlock(`type`: TextContent, text: "Nimsuggest is unavailable")],
-      isError: true,
+      isError: some true,
     )
 
 proc callNimCheckFile(
-    ls: LanguageServer, params: McpCallToolParams
+    ls: LanguageServer, params: McpCallToolRequestParams
 ): Future[McpCallToolResult] {.
     async: (
       raises:
@@ -494,11 +493,11 @@ proc callNimCheckFile(
     McpCallToolResult(
       content:
         @[McpContentBlock(`type`: TextContent, text: "Nimsuggest is unavailable")],
-      isError: true,
+      isError: some true,
     )
 
 proc callNimFindTypeDefinition(
-    ls: LanguageServer, params: McpCallToolParams
+    ls: LanguageServer, params: McpCallToolRequestParams
 ): Future[McpCallToolResult] {.
     async: (
       raises:
@@ -532,12 +531,13 @@ proc callNimFindTypeDefinition(
     McpCallToolResult(
       content:
         @[McpContentBlock(`type`: TextContent, text: "Nimsuggest is unavailable")],
-      isError: true,
+      isError: some true,
     )
 
 # Routes
 proc initialize*(
-    p: tuple[ls: LanguageServer, onExit: OnExitCallback], params: McpInitializeParams
+    p: tuple[ls: LanguageServer, onExit: OnExitCallback],
+    params: McpInitializeRequestParams,
 ): Future[McpInitializeResult] {.async: (raises: [OSError]).} =
   debug "Initialize received..."
   p.ls.mcpInitializeParams = params
@@ -545,9 +545,8 @@ proc initialize*(
   p.ls.mcpClientCapabilities = params.capabilities
   result = McpInitializeResult(
     protocolVersion: McpProtocolVersion,
-    capabilities: McpServerCapabilities(tools: McpToolsOptions()),
-    serverInfo:
-      McpInitializeParams_serverInfo(name: "nimlangserver", version: LSPVersion),
+    capabilities: McpServerCapabilities(tools: some McpToolsOptions()),
+    serverInfo: McpImplementation(name: "nimlangserver", version: LSPVersion),
   )
   debug "Initialize completed."
 
@@ -558,7 +557,7 @@ proc initialize*(
   ls.initialized = true
 
 proc listTools*(
-    ls: LanguageServer, params: McpListToolsParams
+    ls: LanguageServer, params: McpPaginatedRequestParams
 ): Future[McpListToolsResult] {.async: (raises: [ApplicationError]).} =
   ls.checkInitialized()
   debug "Call tool received..."
@@ -574,7 +573,7 @@ proc listTools*(
   )
 
 proc callTool*(
-    ls: LanguageServer, params: McpCallToolParams
+    ls: LanguageServer, params: McpCallToolRequestParams
 ): Future[McpCallToolResult] {.
     async: (
       raises: [

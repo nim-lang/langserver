@@ -10,7 +10,7 @@ createJsonFlavor TestJson,
   requireAllFields = true,
   omitOptionalFields = true,
   allowUnknownFields = true,
-  skipNullFields = true
+  skipNullFields = false
 
 extendTypes:
   type

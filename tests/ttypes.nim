@@ -1,10 +1,9 @@
 import std/sequtils, unittest2, ../protocol/[oneof, types]
 
 type SelectorHolder = object
-  documentSelector: TextDocumentRegistrationOptionsDocumentSelector
+  documentSelector: Nullable[DocumentSelector]
 
 LspJson.useDefaultReaderFor(DocumentFilter)
-LspJson.useOneOfReaderFor(TextDocumentRegistrationOptionsDocumentSelector)
 LspJson.useDefaultSerializationFor(SelectorHolder)
 LspJson.useDefaultWriterFor(CodeLens)
 LspJson.useDefaultWriterFor(DocumentLink)
@@ -89,40 +88,76 @@ suite "mcp tool call params":
   test "the arguments are kept as json, without whitespace":
     let params = LspJson.decode(
       """{"name": "nimFindReferences", "arguments": {"path": "/a/hw.nim", "line": 3}}""",
-      McpCallToolParams,
+      McpCallToolRequestParams,
     )
     check params.arguments.get.string == """{"path":"/a/hw.nim","line":3}"""
 
   test "no arguments decodes as none":
-    let params = LspJson.decode("""{"name": "nimCheckProject"}""", McpCallToolParams)
+    let params = LspJson.decode("""{"name": "nimCheckProject"}""", McpCallToolRequestParams)
     check params.arguments.isNone
 
 suite "initialize params":
   test "the initialization options are kept as json":
     let params = LspJson.decode(
-      """{"processId": 1, "capabilities": {}, "initializationOptions": {"a": [1]}}""",
-      LspInitializeParams,
+      """{"processId": 1, "rootUri": null, "capabilities": {}, "initializationOptions": {"a": [1]}}""",
+      InitializeParams,
     )
     check params.initializationOptions.get.string == """{"a":[1]}"""
+    check params.processId.kind == nkValue
+    check params.processId.value == 1
 
   test "null initialization options decode as none":
     let params = LspJson.decode(
-      """{"processId": null, "capabilities": {}, "initializationOptions": null}""",
-      LspInitializeParams,
+      """{"processId": null, "rootUri": null, "capabilities": {}, "initializationOptions": null}""",
+      InitializeParams,
     )
     check params.initializationOptions.isNone
-    check params.processId.isNone
+    check params.processId.kind == nkNull
+    check params.rootUri.kind == nkNull
+
+  test "the root uri is read":
+    let params = LspJson.decode(
+      """{"processId": null, "rootUri": "file:///a", "capabilities": {}}""",
+      InitializeParams,
+    )
+    check params.rootUri.kind == nkValue
+    check params.rootUri.value == LspUri("file:///a")
+
+  test "the process id and the root uri are required, even though they can be null":
+    expect SerializationError:
+      discard LspJson.decode("""{"rootUri": null, "capabilities": {}}""", InitializeParams)
+    expect SerializationError:
+      discard LspJson.decode("""{"processId": null, "capabilities": {}}""", InitializeParams)
+
+  test "null for an optional field decodes as none":
+    let params = LspJson.decode(
+      """{"processId": null, "rootUri": null, "rootPath": null, "workspaceFolders": null, "capabilities": {}}""",
+      InitializeParams,
+    )
+    check params.rootPath.isNone
+    check params.workspaceFolders.isNone
+
+  test "null for a required field that cannot be null is rejected":
+    expect SerializationError:
+      discard LspJson.decode(
+        """{"processId": null, "rootUri": null, "capabilities": null}""",
+        InitializeParams,
+      )
 
 suite "did change configuration params":
   test "the settings are kept as json, without whitespace":
     let params = LspJson.decode(
       """{"settings": {"nim": {"projectMapping": []}}}""", DidChangeConfigurationParams
     )
-    check params.settings.get.string == """{"nim":{"projectMapping":[]}}"""
+    check params.settings.string == """{"nim":{"projectMapping":[]}}"""
 
-  test "null settings decode as none":
+  test "null settings are kept as null":
     let params = LspJson.decode("""{"settings": null}""", DidChangeConfigurationParams)
-    check params.settings.isNone
+    check params.settings.string == "null"
+
+  test "the settings are required":
+    expect SerializationError:
+      discard LspJson.decode("{}", DidChangeConfigurationParams)
 
 suite "execute command params":
   test "the arguments are kept as json, without whitespace":
@@ -281,7 +316,27 @@ suite "extended params":
       """{"uri": "file:///a.nim", "version": 3}""", VersionedTextDocumentIdentifier
     )
     check identifier.uri == LspUri("file:///a.nim")
-    check identifier.version == some 3
+    check identifier.version == 3
+
+  test "the version of a versioned text document is required":
+    expect SerializationError:
+      discard LspJson.decode("""{"uri": "file:///a.nim"}""", VersionedTextDocumentIdentifier)
+    expect SerializationError:
+      discard LspJson.decode(
+        """{"uri": "file:///a.nim", "version": null}""", VersionedTextDocumentIdentifier
+      )
+
+  test "an edit writes the version of its document, or null":
+    let edit = TextDocumentEdit(
+      textDocument: OptionalVersionedTextDocumentIdentifier(uri: LspUri("file:///a.nim")),
+      edits: @[TextEdit(newText: "x")],
+    )
+    check LspJson.encode(edit) ==
+      """{"textDocument":{"uri":"file:///a.nim","version":null},"edits":[{"range":{"start":{"line":0,"character":0},"end":{"line":0,"character":0}},"newText":"x"}]}"""
+    let versioned = OptionalVersionedTextDocumentIdentifier(
+      uri: LspUri("file:///a.nim"), version: Nullable[int](kind: nkValue, value: 2)
+    )
+    check LspJson.encode(versioned) == """{"uri":"file:///a.nim","version":2}"""
 
   test "a progress token is a number or a string":
     check LspJson.encode(ProgressToken(kind: ptNum, num: 1)) == "1"
@@ -300,7 +355,7 @@ suite "initialized params":
 suite "work done progress":
   test "a begin carries its kind and title":
     let params = ProgressParams[WorkDoneProgressBegin](
-      token: "t",
+      token: ProgressToken(kind: ptStr, str: "t"),
       value: WorkDoneProgressBegin(
         kind: "begin", title: "Checking", percentage: some uinteger(5)
       ),
@@ -310,19 +365,25 @@ suite "work done progress":
 
   test "a report leaves out what is not set":
     let params = ProgressParams[WorkDoneProgressReport](
-      token: "t", value: WorkDoneProgressReport(kind: "report", message: some "half")
+      token: ProgressToken(kind: ptStr, str: "t"),
+      value: WorkDoneProgressReport(kind: "report", message: some "half"),
     )
     check LspJson.encode(params) ==
       """{"token":"t","value":{"kind":"report","message":"half"}}"""
 
   test "an end has no title":
     let params = ProgressParams[WorkDoneProgressEnd](
-      token: "t", value: WorkDoneProgressEnd(kind: "end")
+      token: ProgressToken(kind: ptStr, str: "t"), value: WorkDoneProgressEnd(kind: "end")
     )
     check LspJson.encode(params) == """{"token":"t","value":{"kind":"end"}}"""
 
   test "creating a progress sends only the token":
-    check LspJson.encode(WorkDoneProgressCreateParams(token: "t")) == """{"token":"t"}"""
+    let params = WorkDoneProgressCreateParams(token: ProgressToken(kind: ptStr, str: "t"))
+    check LspJson.encode(params) == """{"token":"t"}"""
+
+  test "a number token is written as a number":
+    let params = WorkDoneProgressCreateParams(token: ProgressToken(kind: ptNum, num: 7))
+    check LspJson.encode(params) == """{"token":7}"""
 
 suite "semantic tokens request options":
   test "a boolean and an object are both accepted":
@@ -358,7 +419,7 @@ suite "semantic tokens request options":
 suite "client capabilities":
   test "the experimental capabilities are kept as json":
     let capabilities = LspJson.decode(
-      """{"experimental": {"snippetTextEdit": true}}""", LspClientCapabilities
+      """{"experimental": {"snippetTextEdit": true}}""", ClientCapabilities
     )
     check capabilities.experimental.get.string == """{"snippetTextEdit":true}"""
 
@@ -381,6 +442,59 @@ suite "workspace folders server capabilities":
     let value = LspJson.decode("\"folders\"", WorkspaceFoldersChangeNotifications)
     check value.kind == wfcnStr and value.str == "folders"
 
+suite "spec field names":
+  test "the completion documentation formats are read":
+    let options = LspJson.decode(
+      """{"documentationFormat": ["markdown"]}""", ClientCompletionItemOptions
+    )
+    check options.documentationFormat == some @["markdown"]
+
+  test "the active signature is a uinteger":
+    let help = SignatureHelp(signatures: @[], activeSignature: some uinteger(0))
+    check LspJson.encode(help) == """{"signatures":[],"activeSignature":0}"""
+
+suite "mcp initialize":
+  test "the request params read the meta and the client icons":
+    let params = LspJson.decode(
+      """{"_meta": {"progressToken": 1}, "protocolVersion": "v", "capabilities": {},
+      "clientInfo": {"name": "c", "version": "1", "icons": [{"src": "x", "theme": "dark"}]}}""",
+      McpInitializeRequestParams,
+    )
+    check params.meta.isSome
+    check params.clientInfo.name == "c"
+    check params.clientInfo.icons.get[0].theme == some dark
+
+  test "the client info requires a name and a version":
+    expect SerializationError:
+      discard LspJson.decode(
+        """{"protocolVersion": "v", "capabilities": {}, "clientInfo": {"name": "c"}}""",
+        McpInitializeRequestParams,
+      )
+
+  test "the server info leaves out what is not set":
+    let res = McpInitializeResult(
+      protocolVersion: "v",
+      capabilities: McpServerCapabilities(tools: some McpToolsOptions()),
+      serverInfo: McpImplementation(name: "n", version: "1"),
+    )
+    check LspJson.encode(res) ==
+      """{"protocolVersion":"v","capabilities":{"tools":{}},"serverInfo":{"name":"n","version":"1"}}"""
+
+suite "mcp tool":
+  test "the title and the description are optional":
+    let tool = McpTool(name: "t", inputSchema: McpToolSchema(`type`: "object"))
+    check LspJson.encode(tool) == """{"name":"t","inputSchema":{"type":"object"}}"""
+
+  test "the base metadata comes first":
+    let tool = McpTool(
+      name: "t",
+      title: some "T",
+      description: some "d",
+      inputSchema: McpToolSchema(`type`: "object"),
+    )
+    check LspJson.encode(tool) ==
+      """{"name":"t","title":"T","description":"d","inputSchema":{"type":"object"}}"""
+
 suite "mcp tool call result":
   test "the structured content is written as it is":
     let res = McpCallToolResult(
@@ -388,18 +502,18 @@ suite "mcp tool call result":
       structuredContent: some JsonString("""{"refs":[]}"""),
     )
     check LspJson.encode(res) ==
-      """{"content":[{"type":"text","text":"{\"refs\":[]}"}],"structuredContent":{"refs":[]},"isError":false}"""
+      """{"content":[{"type":"text","text":"{\"refs\":[]}"}],"structuredContent":{"refs":[]}}"""
 
   test "no structured content leaves the field out":
     let res = McpCallToolResult(
-      content: @[McpContentBlock(`type`: TextContent, text: "x")], isError: true
+      content: @[McpContentBlock(`type`: TextContent, text: "x")], isError: some true
     )
     check LspJson.encode(res) ==
       """{"content":[{"type":"text","text":"x"}],"isError":true}"""
 
 suite "server capabilities":
   test "text document sync is written as its options or its kind":
-    let options = LspServerCapabilities(
+    let options = ServerCapabilities(
       textDocumentSync: some ServerCapabilitiesTextDocumentSync(
         kind: stdsOptions,
         options: TextDocumentSyncOptions(openClose: some true, change: some 1),
@@ -407,18 +521,18 @@ suite "server capabilities":
     )
     check LspJson.encode(options) ==
       """{"textDocumentSync":{"openClose":true,"change":1}}"""
-    let kind = LspServerCapabilities(
+    let kind = ServerCapabilities(
       textDocumentSync:
         some ServerCapabilitiesTextDocumentSync(kind: stdsKind, syncKind: 2)
     )
     check LspJson.encode(kind) == """{"textDocumentSync":2}"""
 
   test "rename is written as a boolean or its options":
-    let boolean = LspServerCapabilities(
+    let boolean = ServerCapabilities(
       renameProvider: some ServerCapabilitiesRenameProvider(kind: srpBool, boolean: true)
     )
     check LspJson.encode(boolean) == """{"renameProvider":true}"""
-    let options = LspServerCapabilities(
+    let options = ServerCapabilities(
       renameProvider: some ServerCapabilitiesRenameProvider(
         kind: srpOptions, options: RenameOptions(prepareProvider: some true)
       )
@@ -426,12 +540,12 @@ suite "server capabilities":
     check LspJson.encode(options) == """{"renameProvider":{"prepareProvider":true}}"""
 
   test "a registration option writes the document selector it inherits":
-    let capabilities = LspServerCapabilities(
+    let capabilities = ServerCapabilities(
       implementationProvider: some ServerCapabilitiesImplementationProvider(
         kind: sipRegistration,
         registration: ImplementationRegistrationOptions(
-          documentSelector: TextDocumentRegistrationOptionsDocumentSelector(
-            kind: tdrdsSelector, selector: @[DocumentFilter(language: some "nim")]
+          documentSelector: Nullable[DocumentSelector](
+            kind: nkValue, value: @[DocumentFilter(language: some "nim")]
           ),
           id: some "impl",
         ),
@@ -443,8 +557,17 @@ suite "server capabilities":
 
   test "the experimental capabilities are written as they are":
     let capabilities =
-      LspServerCapabilities(experimental: some JsonString("""{"x":1}"""))
+      ServerCapabilities(experimental: some JsonString("""{"x":1}"""))
     check LspJson.encode(capabilities) == """{"experimental":{"x":1}}"""
+
+suite "nullable":
+  test "a Nullable is the value or null":
+    check LspJson.encode(Nullable[int](kind: nkValue, value: 3)) == "3"
+    check LspJson.encode(Nullable[int]()) == "null"
+    check LspJson.decode("3", Nullable[int]).value == 3
+    check LspJson.decode("null", Nullable[int]).kind == nkNull
+    expect SerializationError:
+      discard LspJson.decode("\"x\"", Nullable[int])
 
 suite "document selector":
   test "a registration without a document selector writes null":
@@ -453,21 +576,25 @@ suite "document selector":
 
   test "a document selector is written as its filters":
     let holder = SelectorHolder(
-      documentSelector: TextDocumentRegistrationOptionsDocumentSelector(
-        kind: tdrdsSelector, selector: @[DocumentFilter(scheme: some "file")]
+      documentSelector: Nullable[DocumentSelector](
+        kind: nkValue, value: @[DocumentFilter(scheme: some "file")]
       )
     )
     check LspJson.encode(holder) == """{"documentSelector":[{"scheme":"file"}]}"""
 
   test "null is read as the null member":
     let holder = LspJson.decode("""{"documentSelector": null}""", SelectorHolder)
-    check holder.documentSelector.kind == tdrdsNull
+    check holder.documentSelector.kind == nkNull
+
+  test "a missing document selector is rejected":
+    expect SerializationError:
+      discard LspJson.decode("{}", SelectorHolder)
 
   test "filters are read as the selector member":
     let holder =
       LspJson.decode("""{"documentSelector": [{"language": "nim"}]}""", SelectorHolder)
-    check holder.documentSelector.kind == tdrdsSelector
-    check holder.documentSelector.selector[0].language == some "nim"
+    check holder.documentSelector.kind == nkValue
+    check holder.documentSelector.value[0].language == some "nim"
 
 suite "registration":
   test "the register options are written as they are":
@@ -481,7 +608,7 @@ suite "registration":
 
   test "watched files options are encoded with their watchers":
     let options = DidChangeWatchedFilesRegistrationOptions(
-      watchers: some @[FileSystemWatcher(globPattern: "**/*.nim", kind: some 7)]
+      watchers: @[FileSystemWatcher(globPattern: "**/*.nim", kind: some 7)]
     )
     check LspJson.encode(options) ==
       """{"watchers":[{"globPattern":"**/*.nim","kind":7}]}"""
