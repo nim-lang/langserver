@@ -55,10 +55,12 @@ proc initialize*(
           change: some(TextDocumentSyncKind.Full.int),
           willSave: some(false),
           willSaveWaitUntil: some(true),
-          save: some(SaveOptions(includeText: some(true))),
+          save: some TextDocumentSyncOptionsSave(
+            kind: tdsosOptions, options: SaveOptions(includeText: some(true))
+          ),
         ),
       ),
-      hoverProvider: some(true),
+      hoverProvider: some ServerCapabilitiesHoverProvider(kind: shpBool, boolean: true),
       workspace: some(
         WorkspaceOptions(
           workspaceFolders: some(
@@ -75,21 +77,33 @@ proc initialize*(
       ),
       signatureHelpProvider:
         some SignatureHelpOptions(triggerCharacters: some(@["(", ","])),
-      definitionProvider: some(true),
-      declarationProvider: some(true),
-      typeDefinitionProvider: some(true),
-      referencesProvider: some(true),
-      documentHighlightProvider: some(true),
-      workspaceSymbolProvider: some(true),
+      definitionProvider:
+        some ServerCapabilitiesDefinitionProvider(kind: sdefpBool, boolean: true),
+      declarationProvider:
+        some ServerCapabilitiesDeclarationProvider(kind: sdeclpBool, boolean: true),
+      typeDefinitionProvider:
+        some ServerCapabilitiesTypeDefinitionProvider(kind: stdpBool, boolean: true),
+      referencesProvider:
+        some ServerCapabilitiesReferencesProvider(kind: srefpBool, boolean: true),
+      documentHighlightProvider:
+        some ServerCapabilitiesDocumentHighlightProvider(kind: sdhpBool, boolean: true),
+      workspaceSymbolProvider:
+        some ServerCapabilitiesWorkspaceSymbolProvider(kind: swspBool, boolean: true),
       executeCommandProvider: some(
         ExecuteCommandOptions(
           commands: @[RESTART_COMMAND, RECOMPILE_COMMAND, CHECK_PROJECT_COMMAND]
         )
       ),
-      inlayHintProvider: some(InlayHintOptions(resolveProvider: some(false))),
-      documentSymbolProvider: some(true),
-      codeActionProvider: some(true),
-      documentFormattingProvider: some(getNphPath().isSome),
+      inlayHintProvider: some ServerCapabilitiesInlayHintProvider(
+        kind: sihpOptions, options: InlayHintOptions(resolveProvider: some(false))
+      ),
+      documentSymbolProvider:
+        some ServerCapabilitiesDocumentSymbolProvider(kind: sdspBool, boolean: true),
+      codeActionProvider:
+        some ServerCapabilitiesCodeActionProvider(kind: scapBool, boolean: true),
+      documentFormattingProvider: some ServerCapabilitiesDocumentFormattingProvider(
+        kind: sdfpBool, boolean: getNphPath().isSome
+      ),
     )
   )
   # Support rename by default, but check if we can also support prepare
@@ -655,7 +669,7 @@ proc toInlayHint(suggest: SuggestInlayHint, configuration: NlsConfig): InlayHint
     suggest.label = ""
   result = InlayHint(
     position: Position(line: uinteger(hint_line), character: uinteger(hint_col)),
-    label: suggest.label,
+    label: InlayHintLabel(kind: ihlStr, str: suggest.label),
     kind: some(convertInlayHintKind(suggest.kind)),
     paddingLeft: some(suggest.paddingLeft),
     paddingRight: some(suggest.paddingRight),
@@ -664,16 +678,19 @@ proc toInlayHint(suggest: SuggestInlayHint, configuration: NlsConfig): InlayHint
       configuration.inlayHints.isSome and
       configuration.inlayHints.get.exceptionHints.isSome and
       configuration.inlayHints.get.exceptionHints.get.hintStringLeft.isSome:
-    result.label = configuration.inlayHints.get.exceptionHints.get.hintStringLeft.get
+    result.label = InlayHintLabel(
+      kind: ihlStr,
+      str: configuration.inlayHints.get.exceptionHints.get.hintStringLeft.get,
+    )
   if suggest.kind == sihkException and suggest.label == "!" and
       configuration.inlayHints.isSome and
       configuration.inlayHints.get.exceptionHints.isSome and
       configuration.inlayHints.get.exceptionHints.get.hintStringRight.isSome:
-    result.label = configuration.inlayHints.get.exceptionHints.get.hintStringRight.get
-  if suggest.tooltip != "":
-    result.tooltip = some(suggest.tooltip)
-  else:
-    result.tooltip = some("")
+    result.label = InlayHintLabel(
+      kind: ihlStr,
+      str: configuration.inlayHints.get.exceptionHints.get.hintStringRight.get,
+    )
+  result.tooltip = some InlayHintTooltip(kind: ihtStr, str: suggest.tooltip)
   if suggest.allowInsert:
     result.textEdits = some(
       @[
@@ -732,7 +749,7 @@ proc inlayHint*(
           )
       )
       .map(x => x.inlayHintInfo.toUtf16Pos(ls, path).toInlayHint(configuration))
-      .filter(x => x.label != "")
+      .filter(x => x.label.kind == ihlParts or x.label.str != "")
 
 proc codeAction*(
     ls: LanguageServer, params: CodeActionParams
@@ -826,7 +843,9 @@ proc toSignatureInformation(suggest: Suggest): SignatureInformation =
   #notice we will need to also handle the  ',' and the back and forths between the client and the server
   if scanf(suggest.forth, "$*($*)", fnKind, strParams):
     for param in strParams.split(","):
-      params.add(ParameterInformation(label: param))
+      params.add(
+        ParameterInformation(label: ParameterInformationLabel(kind: pilStr, str: param))
+      )
 
   let name = suggest.qualifiedPath[^1].strip(chars = {'`'})
   let detail = suggest.forth.split(" ")
@@ -1232,8 +1251,10 @@ proc willSaveWaitUntil*(
     config = await ls.workspaceConfigurationWait()
     nphPath = getNphPath()
 
+  let formattingProvider = ls.lspServerCapabilities.documentFormattingProvider
   let shouldFormat =
-    nphPath.isSome and ls.lspServerCapabilities.documentFormattingProvider.get(false) and
+    nphPath.isSome and formattingProvider.isSome and
+    formattingProvider.get.kind == sdfpBool and formattingProvider.get.boolean and
     config.formatOnSave.get(false)
 
   if shouldFormat:

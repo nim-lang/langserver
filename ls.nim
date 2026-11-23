@@ -818,7 +818,7 @@ proc toDiagnostic(suggest: Suggest): Diagnostic =
         of "Warning": DiagnosticSeverity.Warning.int
         else: DiagnosticSeverity.Error.int
       ),
-      message: doc,
+      message: DiagnosticMessage(kind: dmStr, str: doc),
       source: some "nim",
     )
 
@@ -846,7 +846,7 @@ proc toDiagnostic(checkResult: CheckResult): Diagnostic =
       of "Warning": DiagnosticSeverity.Warning.int
       else: DiagnosticSeverity.Error.int
     ),
-    message: checkResult.msg,
+    message: DiagnosticMessage(kind: dmStr, str: checkResult.msg),
     source: some "nim",
   )
 
@@ -1309,7 +1309,7 @@ proc maybeRegisterCapabilityDidChangeWatchedFiles*(
   if ls.supportsDynamicRegistrationForDidChangeWatchedFiles:
     let watchers = @[
       FileSystemWatcher(
-        globPattern: "**/*.nim",
+        globPattern: GlobPattern(kind: gpPattern, pattern: "**/*.nim"),
         kind: some(WatchKind.Create.int or WatchKind.Change.int or WatchKind.Delete.int),
       )
     ]

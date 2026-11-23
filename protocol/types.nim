@@ -76,7 +76,6 @@ extendTypes:
       dgcNum
       dgcStr
 
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#diagnostic
     DiagnosticCode* = object
       case kind*: DiagnosticCodeKind
       of dgcNum:
@@ -84,13 +83,24 @@ extendTypes:
       of dgcStr:
         str*: string
 
+    DiagnosticMessageKind* = enum
+      dmStr
+      dmMarkup
+
+    DiagnosticMessage* = object
+      case kind*: DiagnosticMessageKind
+      of dmStr:
+        str*: string
+      of dmMarkup:
+        markup*: MarkupContent
+
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#diagnostic
     Diagnostic* = object
       `range`*: Range
       severity*: Option[int]
       code*: Option[DiagnosticCode]
       source*: Option[string]
-      message*: string
+      message*: DiagnosticMessage
       relatedInformation*: OptionalSeq[DiagnosticRelatedInformation]
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#diagnosticRelatedInformation
@@ -115,15 +125,82 @@ extendTypes:
       `range`*: Range
       newText*: string
 
+    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#changeAnnotationIdentifier
+    ChangeAnnotationIdentifier* = string
+
+    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#annotatedTextEdit
+    AnnotatedTextEdit* {.extends: [TextEdit].} = object
+      annotationId*: ChangeAnnotationIdentifier
+
+    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#stringValue
+    StringValue* = object
+      kind*: string
+      value*: string
+
+    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#snippetTextEdit
+    SnippetTextEdit* = object
+      `range`*: Range
+      snippet*: StringValue
+      annotationId*: Option[ChangeAnnotationIdentifier]
+
+    TextDocumentEditEditKind* = enum
+      tdeeText
+      tdeeAnnotated
+      tdeeSnippet
+
+    TextDocumentEditEdit* = object
+      case kind*: TextDocumentEditEditKind
+      of tdeeText:
+        text*: TextEdit
+      of tdeeAnnotated:
+        annotated*: AnnotatedTextEdit
+      of tdeeSnippet:
+        snippet*: SnippetTextEdit
+
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#textDocumentEdit
     TextDocumentEdit* = object
       textDocument*: OptionalVersionedTextDocumentIdentifier
-      edits*: seq[TextEdit]
+      edits*: seq[TextDocumentEditEdit]
+
+    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#resourceChanges
+    ResourceOperation* = object
+      kind*: string
+      annotationId*: Option[ChangeAnnotationIdentifier]
+
+    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#createFile
+    CreateFile* {.extends: [ResourceOperation].} = object
+      uri*: DocumentUri
+
+    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#renameFile
+    RenameFile* {.extends: [ResourceOperation].} = object
+      oldUri*: DocumentUri
+      newUri*: DocumentUri
+
+    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#deleteFile
+    DeleteFile* {.extends: [ResourceOperation].} = object
+      uri*: DocumentUri
+
+    WorkspaceEditDocumentChangeKind* = enum
+      wedcEdit
+      wedcCreate
+      wedcRename
+      wedcDelete
+
+    WorkspaceEditDocumentChange* = object
+      case kind*: WorkspaceEditDocumentChangeKind
+      of wedcEdit:
+        edit*: TextDocumentEdit
+      of wedcCreate:
+        create*: CreateFile
+      of wedcRename:
+        rename*: RenameFile
+      of wedcDelete:
+        delete*: DeleteFile
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#workspaceEdit
     WorkspaceEdit* = object
       changes*: Option[Table[DocumentUri, seq[TextEdit]]]
-      documentChanges*: OptionalSeq[TextDocumentEdit]
+      documentChanges*: OptionalSeq[WorkspaceEditDocumentChange]
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#textDocumentIdentifier
     TextDocumentIdentifier* = object
@@ -645,7 +722,6 @@ extendTypes:
       cstrBool
       cstrEmpty
 
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#clientSemanticTokensRequestOptions
     ClientSemanticTokensRequestRange* = object
       case kind*: ClientSemanticTokensRequestRangeKind
       of cstrBool:
@@ -657,7 +733,6 @@ extendTypes:
       cstfBool
       cstfDelta
 
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#clientSemanticTokensRequestOptions
     ClientSemanticTokensRequestFull* = object
       case kind*: ClientSemanticTokensRequestFullKind
       of cstfBool:
@@ -865,13 +940,24 @@ extendTypes:
 
     TextDocumentSyncKind_int = int
 
+    TextDocumentSyncOptionsSaveKind* = enum
+      tdsosBool
+      tdsosOptions
+
+    TextDocumentSyncOptionsSave* = object
+      case kind*: TextDocumentSyncOptionsSaveKind
+      of tdsosBool:
+        boolean*: bool
+      of tdsosOptions:
+        options*: SaveOptions
+
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#textDocumentSyncOptions
     TextDocumentSyncOptions* = object
       openClose*: Option[bool]
       change*: Option[TextDocumentSyncKind_int]
       willSave*: Option[bool]
       willSaveWaitUntil*: Option[bool]
-      save*: Option[SaveOptions]
+      save*: Option[TextDocumentSyncOptionsSave]
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#staticRegistrationOptions
     StaticRegistrationOptions* = object
@@ -881,7 +967,6 @@ extendTypes:
       wfcnStr
       wfcnBool
 
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#workspaceFoldersServerCapabilities
     WorkspaceFoldersChangeNotifications* = object
       case kind*: WorkspaceFoldersChangeNotificationsKind
       of wfcnStr:
@@ -966,7 +1051,6 @@ extendTypes:
       stdsOptions
       stdsKind
 
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#serverCapabilities
     ServerCapabilitiesTextDocumentSync* = object
       case kind*: ServerCapabilitiesTextDocumentSyncKind
       of stdsOptions:
@@ -979,7 +1063,6 @@ extendTypes:
       sipOptions
       sipRegistration
 
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#serverCapabilities
     ServerCapabilitiesImplementationProvider* = object
       case kind*: ServerCapabilitiesImplementationProviderKind
       of sipBool:
@@ -994,7 +1077,6 @@ extendTypes:
       scpOptions
       scpRegistration
 
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#serverCapabilities
     ServerCapabilitiesColorProvider* = object
       case kind*: ServerCapabilitiesColorProviderKind
       of scpBool:
@@ -1004,11 +1086,209 @@ extendTypes:
       of scpRegistration:
         registration*: DocumentColorRegistrationOptions
 
+    ServerCapabilitiesHoverProviderKind* = enum
+      shpBool
+      shpOptions
+
+    ServerCapabilitiesHoverProvider* = object
+      case kind*: ServerCapabilitiesHoverProviderKind
+      of shpBool:
+        boolean*: bool
+      of shpOptions:
+        options*: HoverOptions
+
+    ServerCapabilitiesDeclarationProviderKind* = enum
+      sdeclpBool
+      sdeclpOptions
+      sdeclpRegistration
+
+    ServerCapabilitiesDeclarationProvider* = object
+      case kind*: ServerCapabilitiesDeclarationProviderKind
+      of sdeclpBool:
+        boolean*: bool
+      of sdeclpOptions:
+        options*: DeclarationOptions
+      of sdeclpRegistration:
+        registration*: DeclarationRegistrationOptions
+
+    ServerCapabilitiesDefinitionProviderKind* = enum
+      sdefpBool
+      sdefpOptions
+
+    ServerCapabilitiesDefinitionProvider* = object
+      case kind*: ServerCapabilitiesDefinitionProviderKind
+      of sdefpBool:
+        boolean*: bool
+      of sdefpOptions:
+        options*: DefinitionOptions
+
+    ServerCapabilitiesTypeDefinitionProviderKind* = enum
+      stdpBool
+      stdpOptions
+      stdpRegistration
+
+    ServerCapabilitiesTypeDefinitionProvider* = object
+      case kind*: ServerCapabilitiesTypeDefinitionProviderKind
+      of stdpBool:
+        boolean*: bool
+      of stdpOptions:
+        options*: TypeDefinitionOptions
+      of stdpRegistration:
+        registration*: TypeDefinitionRegistrationOptions
+
+    ServerCapabilitiesReferencesProviderKind* = enum
+      srefpBool
+      srefpOptions
+
+    ServerCapabilitiesReferencesProvider* = object
+      case kind*: ServerCapabilitiesReferencesProviderKind
+      of srefpBool:
+        boolean*: bool
+      of srefpOptions:
+        options*: ReferenceOptions
+
+    ServerCapabilitiesDocumentHighlightProviderKind* = enum
+      sdhpBool
+      sdhpOptions
+
+    ServerCapabilitiesDocumentHighlightProvider* = object
+      case kind*: ServerCapabilitiesDocumentHighlightProviderKind
+      of sdhpBool:
+        boolean*: bool
+      of sdhpOptions:
+        options*: DocumentHighlightOptions
+
+    ServerCapabilitiesDocumentSymbolProviderKind* = enum
+      sdspBool
+      sdspOptions
+
+    ServerCapabilitiesDocumentSymbolProvider* = object
+      case kind*: ServerCapabilitiesDocumentSymbolProviderKind
+      of sdspBool:
+        boolean*: bool
+      of sdspOptions:
+        options*: DocumentSymbolOptions
+
+    ServerCapabilitiesWorkspaceSymbolProviderKind* = enum
+      swspBool
+      swspOptions
+
+    ServerCapabilitiesWorkspaceSymbolProvider* = object
+      case kind*: ServerCapabilitiesWorkspaceSymbolProviderKind
+      of swspBool:
+        boolean*: bool
+      of swspOptions:
+        options*: WorkspaceSymbolOptions
+
+    ServerCapabilitiesCodeActionProviderKind* = enum
+      scapBool
+      scapOptions
+
+    ServerCapabilitiesCodeActionProvider* = object
+      case kind*: ServerCapabilitiesCodeActionProviderKind
+      of scapBool:
+        boolean*: bool
+      of scapOptions:
+        options*: CodeActionOptions
+
+    ServerCapabilitiesDocumentFormattingProviderKind* = enum
+      sdfpBool
+      sdfpOptions
+
+    ServerCapabilitiesDocumentFormattingProvider* = object
+      case kind*: ServerCapabilitiesDocumentFormattingProviderKind
+      of sdfpBool:
+        boolean*: bool
+      of sdfpOptions:
+        options*: DocumentFormattingOptions
+
+    ServerCapabilitiesDocumentRangeFormattingProviderKind* = enum
+      sdrfpBool
+      sdrfpOptions
+
+    ServerCapabilitiesDocumentRangeFormattingProvider* = object
+      case kind*: ServerCapabilitiesDocumentRangeFormattingProviderKind
+      of sdrfpBool:
+        boolean*: bool
+      of sdrfpOptions:
+        options*: DocumentRangeFormattingOptions
+
+    ServerCapabilitiesInlayHintProviderKind* = enum
+      sihpBool
+      sihpOptions
+      sihpRegistration
+
+    ServerCapabilitiesInlayHintProvider* = object
+      case kind*: ServerCapabilitiesInlayHintProviderKind
+      of sihpBool:
+        boolean*: bool
+      of sihpOptions:
+        options*: InlayHintOptions
+      of sihpRegistration:
+        registration*: InlayHintRegistrationOptions
+
+    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#hoverOptions
+    HoverOptions* {.extends: [WorkDoneProgressOptions].} = object
+
+    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#declarationOptions
+    DeclarationOptions* {.extends: [WorkDoneProgressOptions].} = object
+
+    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#declarationRegistrationOptions
+    DeclarationRegistrationOptions* {.
+      extends:
+        [DeclarationOptions, TextDocumentRegistrationOptions, StaticRegistrationOptions]
+    .} = object
+
+    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#definitionOptions
+    DefinitionOptions* {.extends: [WorkDoneProgressOptions].} = object
+
+    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#typeDefinitionOptions
+    TypeDefinitionOptions* {.extends: [WorkDoneProgressOptions].} = object
+
+    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#typeDefinitionRegistrationOptions
+    TypeDefinitionRegistrationOptions* {.
+      extends: [
+        TextDocumentRegistrationOptions, TypeDefinitionOptions,
+        StaticRegistrationOptions,
+      ]
+    .} = object
+
+    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#referenceOptions
+    ReferenceOptions* {.extends: [WorkDoneProgressOptions].} = object
+
+    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#documentHighlightOptions
+    DocumentHighlightOptions* {.extends: [WorkDoneProgressOptions].} = object
+
+    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#documentSymbolOptions
+    DocumentSymbolOptions* {.extends: [WorkDoneProgressOptions].} = object
+      label*: Option[string]
+
+    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#workspaceSymbolOptions
+    WorkspaceSymbolOptions* {.extends: [WorkDoneProgressOptions].} = object
+      resolveProvider*: Option[bool]
+
+    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#codeActionOptions
+    CodeActionOptions* {.extends: [WorkDoneProgressOptions].} = object
+      codeActionKinds*: OptionalSeq[CodeActionKind_str]
+      resolveProvider*: Option[bool]
+
+    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#documentFormattingOptions
+    DocumentFormattingOptions* {.extends: [WorkDoneProgressOptions].} = object
+
+    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#documentRangeFormattingOptions
+    DocumentRangeFormattingOptions* {.extends: [WorkDoneProgressOptions].} = object
+      rangesSupport*: Option[bool]
+
+    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#inlayHintRegistrationOptions
+    InlayHintRegistrationOptions* {.
+      extends:
+        [InlayHintOptions, TextDocumentRegistrationOptions, StaticRegistrationOptions]
+    .} = object
+
     ServerCapabilitiesRenameProviderKind* = enum
       srpBool
       srpOptions
 
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#serverCapabilities
     ServerCapabilitiesRenameProvider* = object
       case kind*: ServerCapabilitiesRenameProviderKind
       of srpBool:
@@ -1037,7 +1317,6 @@ extendTypes:
     McpListToolsResult* {.extends: [McpPaginatedResult].} = object
       tools*: seq[McpTool]
 
-    # https://modelcontextprotocol.io/specification/2025-11-25/schema#contentblock
     McpContentBlockType* = enum
       TextContent = "text"
 
@@ -1065,22 +1344,23 @@ extendTypes:
       textDocumentSync*: Option[ServerCapabilitiesTextDocumentSync]
       #notebookDocumentSync?: NotebookDocumentSyncOptions | NotebookDocumentSyncRegistrationOptions;
       completionProvider*: Option[CompletionOptions]
-      hoverProvider*: Option[bool]
+      hoverProvider*: Option[ServerCapabilitiesHoverProvider]
       signatureHelpProvider*: Option[SignatureHelpOptions]
-      declarationProvider*: Option[bool]
-      definitionProvider*: Option[bool]
-      typeDefinitionProvider*: Option[bool]
+      declarationProvider*: Option[ServerCapabilitiesDeclarationProvider]
+      definitionProvider*: Option[ServerCapabilitiesDefinitionProvider]
+      typeDefinitionProvider*: Option[ServerCapabilitiesTypeDefinitionProvider]
       implementationProvider*: Option[ServerCapabilitiesImplementationProvider]
-      referencesProvider*: Option[bool]
-      documentHighlightProvider*: Option[bool]
-      documentSymbolProvider*: Option[bool]
-      workspaceSymbolProvider*: Option[bool]
-      codeActionProvider*: Option[bool]
+      referencesProvider*: Option[ServerCapabilitiesReferencesProvider]
+      documentHighlightProvider*: Option[ServerCapabilitiesDocumentHighlightProvider]
+      documentSymbolProvider*: Option[ServerCapabilitiesDocumentSymbolProvider]
+      workspaceSymbolProvider*: Option[ServerCapabilitiesWorkspaceSymbolProvider]
+      codeActionProvider*: Option[ServerCapabilitiesCodeActionProvider]
       codeLensProvider*: Option[CodeLensOptions]
       documentLinkProvider*: Option[DocumentLinkOptions]
       colorProvider*: Option[ServerCapabilitiesColorProvider]
-      documentFormattingProvider*: Option[bool]
-      documentRangeFormattingProvider*: Option[bool]
+      documentFormattingProvider*: Option[ServerCapabilitiesDocumentFormattingProvider]
+      documentRangeFormattingProvider*:
+        Option[ServerCapabilitiesDocumentRangeFormattingProvider]
       documentOnTypeFormattingProvider*: Option[DocumentOnTypeFormattingOptions]
       renameProvider*: Option[ServerCapabilitiesRenameProvider]
       # foldingRangeProvider?: boolean | FoldingRangeOptions | FoldingRangeRegistrationOptions;
@@ -1092,10 +1372,8 @@ extendTypes:
       # monikerProvider?: boolean | MonikerOptions | MonikerRegistrationOptions;
       # typeHierarchyProvider?: boolean | TypeHierarchyOptions | TypeHierarchyRegistrationOptions;
       # inlineValueProvider?: boolean | InlineValueOptions | InlineValueRegistrationOptions;
-      inlayHintProvider*: Option[InlayHintOptions]
-        # boolean | InlayHintOptions | InlayHintRegistrationOptions;
+      inlayHintProvider*: Option[ServerCapabilitiesInlayHintProvider]
       # diagnosticProvider?: DiagnosticOptions | DiagnosticRegistrationOptions;
-      # workspaceSymbolProvider?: boolean | WorkspaceSymbolOptions;
       workspace*: Option[WorkspaceOptions]
       experimental*: Option[LspAny]
 
@@ -1167,9 +1445,40 @@ extendTypes:
     DidChangeWatchedFilesRegistrationOptions* = object
       watchers*: seq[FileSystemWatcher]
 
+    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#pattern
+    Pattern* = string
+
+    RelativePatternBaseUriKind* = enum
+      rpbuFolder
+      rpbuUri
+
+    RelativePatternBaseUri* = object
+      case kind*: RelativePatternBaseUriKind
+      of rpbuFolder:
+        folder*: WorkspaceFolder
+      of rpbuUri:
+        uri*: string
+
+    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#relativePattern
+    RelativePattern* = object
+      baseUri*: RelativePatternBaseUri
+      pattern*: Pattern
+
+    GlobPatternKind* = enum
+      gpPattern
+      gpRelative
+
+    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#globPattern
+    GlobPattern* = object
+      case kind*: GlobPatternKind
+      of gpPattern:
+        pattern*: Pattern
+      of gpRelative:
+        relative*: RelativePattern
+
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#fileSystemWatcher
     FileSystemWatcher* = object
-      globPattern*: string
+      globPattern*: GlobPattern
       kind*: Option[int]
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#workspaceSymbolParams
@@ -1263,7 +1572,6 @@ extendTypes:
       cidStr
       cidMarkup
 
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#completionItem
     CompletionItemDocumentation* = object
       case kind*: CompletionItemDocumentationKind
       of cidStr:
@@ -1317,7 +1625,6 @@ extendTypes:
       hcMarkedStrings
       hcMarkup
 
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#hover
     HoverContents* = object
       case kind*: HoverContentsKind
       of hcMarkedString:
@@ -1348,8 +1655,20 @@ extendTypes:
       parameters*: OptionalSeq[ParameterInformation]
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#parameterInformation
+    ParameterInformationLabelKind* = enum
+      pilStr
+      pilOffsets
+
+    ParameterInformationLabel* = object
+      case kind*: ParameterInformationLabelKind
+      of pilStr:
+        str*: string
+      of pilOffsets:
+        offsets*: array[2, uinteger]
+
+    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#parameterInformation
     ParameterInformation* = object
-      label*: string # documentation*: Option[string]
+      label*: ParameterInformationLabel
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#signatureHelpRegistrationOptions
     SignatureHelpRegistrationOptions* {.
@@ -1525,12 +1844,42 @@ extendTypes:
     InlayHintKind_int* = int
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#inlayHint
+    InlayHintTooltipKind* = enum
+      ihtStr
+      ihtMarkup
+
+    InlayHintTooltip* = object
+      case kind*: InlayHintTooltipKind
+      of ihtStr:
+        str*: string
+      of ihtMarkup:
+        markup*: MarkupContent
+
+    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#inlayHintLabelPart
+    InlayHintLabelPart* = object
+      value*: string
+      tooltip*: Option[InlayHintTooltip]
+      location*: Option[Location]
+      command*: Option[Command]
+
+    InlayHintLabelKind* = enum
+      ihlStr
+      ihlParts
+
+    InlayHintLabel* = object
+      case kind*: InlayHintLabelKind
+      of ihlStr:
+        str*: string
+      of ihlParts:
+        parts*: seq[InlayHintLabelPart]
+
+    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#inlayHint
     InlayHint* = object
       position*: Position
-      label*: string # string | InlayHintLabelPart[]
+      label*: InlayHintLabel
       kind*: Option[InlayHintKind_int]
       textEdits*: OptionalSeq[TextEdit]
-      tooltip*: Option[string] # string | MarkupContent
+      tooltip*: Option[InlayHintTooltip]
       paddingLeft*: Option[bool]
       paddingRight*: Option[bool] #data*: OptionalNode
 
@@ -1723,6 +2072,9 @@ proc writeValue*[T](w: var JsonWriter[LspJson], x: Nullable[T]) {.raises: [IOErr
     w.writeValue(x.value)
 
 LspJson.useOneOfSerializationFor(DiagnosticCode)
+LspJson.useDefaultSerializationFor(MarkupContent)
+LspJson.useOneOfSerializationFor(DiagnosticMessage)
+LspJson.useOneOfSerializationFor(ParameterInformationLabel)
 LspJson.useOneOfSerializationFor(ProgressToken)
 LspJson.useOneOfSerializationFor(WorkspaceFoldersChangeNotifications)
 
@@ -1869,9 +2221,17 @@ LspJson.useDefaultReaderFor(RunTestParams)
 LspJson.useDefaultWriterFor(Command)
 LspJson.useDefaultWriterFor(CodeAction)
 LspJson.useDefaultWriterFor(TextEdit)
-LspJson.useDefaultWriterFor(TextDocumentEdit)
-LspJson.useDefaultWriterFor(WorkspaceEdit)
+LspJson.useDefaultWriterFor(AnnotatedTextEdit)
+LspJson.useDefaultWriterFor(StringValue)
+LspJson.useDefaultWriterFor(SnippetTextEdit)
+LspJson.useOneOfWriterFor(TextDocumentEditEdit)
 LspJson.useDefaultWriterFor(OptionalVersionedTextDocumentIdentifier)
+LspJson.useDefaultWriterFor(TextDocumentEdit)
+LspJson.useDefaultWriterFor(CreateFile)
+LspJson.useDefaultWriterFor(RenameFile)
+LspJson.useDefaultWriterFor(DeleteFile)
+LspJson.useOneOfWriterFor(WorkspaceEditDocumentChange)
+LspJson.useDefaultWriterFor(WorkspaceEdit)
 LspJson.useDefaultWriterFor(WorkDoneProgressBegin)
 LspJson.useDefaultWriterFor(WorkDoneProgressReport)
 LspJson.useDefaultWriterFor(WorkDoneProgressEnd)
@@ -1903,6 +2263,7 @@ LspJson.useDefaultWriterFor(McpToolsOptions)
 LspJson.useDefaultWriterFor(McpServerCapabilities)
 LspJson.useDefaultWriterFor(DocumentFilter)
 LspJson.useDefaultWriterFor(SaveOptions)
+LspJson.useOneOfWriterFor(TextDocumentSyncOptionsSave)
 LspJson.useDefaultWriterFor(TextDocumentSyncOptions)
 LspJson.useDefaultWriterFor(RenameOptions)
 LspJson.useDefaultWriterFor(ImplementationOptions)
@@ -1913,6 +2274,39 @@ LspJson.useOneOfWriterFor(ServerCapabilitiesTextDocumentSync)
 LspJson.useOneOfWriterFor(ServerCapabilitiesImplementationProvider)
 LspJson.useOneOfWriterFor(ServerCapabilitiesColorProvider)
 LspJson.useOneOfWriterFor(ServerCapabilitiesRenameProvider)
+LspJson.useDefaultWriterFor(WorkspaceFolder)
+LspJson.useOneOfWriterFor(RelativePatternBaseUri)
+LspJson.useDefaultWriterFor(RelativePattern)
+LspJson.useOneOfWriterFor(GlobPattern)
+LspJson.useOneOfWriterFor(InlayHintTooltip)
+LspJson.useDefaultWriterFor(InlayHintLabelPart)
+LspJson.useOneOfWriterFor(InlayHintLabel)
+LspJson.useDefaultWriterFor(HoverOptions)
+LspJson.useDefaultWriterFor(DeclarationOptions)
+LspJson.useDefaultWriterFor(DeclarationRegistrationOptions)
+LspJson.useDefaultWriterFor(DefinitionOptions)
+LspJson.useDefaultWriterFor(TypeDefinitionOptions)
+LspJson.useDefaultWriterFor(TypeDefinitionRegistrationOptions)
+LspJson.useDefaultWriterFor(ReferenceOptions)
+LspJson.useDefaultWriterFor(DocumentHighlightOptions)
+LspJson.useDefaultWriterFor(DocumentSymbolOptions)
+LspJson.useDefaultWriterFor(WorkspaceSymbolOptions)
+LspJson.useDefaultWriterFor(CodeActionOptions)
+LspJson.useDefaultWriterFor(DocumentFormattingOptions)
+LspJson.useDefaultWriterFor(DocumentRangeFormattingOptions)
+LspJson.useDefaultWriterFor(InlayHintRegistrationOptions)
+LspJson.useOneOfWriterFor(ServerCapabilitiesHoverProvider)
+LspJson.useOneOfWriterFor(ServerCapabilitiesDeclarationProvider)
+LspJson.useOneOfWriterFor(ServerCapabilitiesDefinitionProvider)
+LspJson.useOneOfWriterFor(ServerCapabilitiesTypeDefinitionProvider)
+LspJson.useOneOfWriterFor(ServerCapabilitiesReferencesProvider)
+LspJson.useOneOfWriterFor(ServerCapabilitiesDocumentHighlightProvider)
+LspJson.useOneOfWriterFor(ServerCapabilitiesDocumentSymbolProvider)
+LspJson.useOneOfWriterFor(ServerCapabilitiesWorkspaceSymbolProvider)
+LspJson.useOneOfWriterFor(ServerCapabilitiesCodeActionProvider)
+LspJson.useOneOfWriterFor(ServerCapabilitiesDocumentFormattingProvider)
+LspJson.useOneOfWriterFor(ServerCapabilitiesDocumentRangeFormattingProvider)
+LspJson.useOneOfWriterFor(ServerCapabilitiesInlayHintProvider)
 LspJson.useDefaultWriterFor(ServerCapabilities)
 LspJson.useDefaultWriterFor(ShowMessageParams)
 LspJson.useDefaultWriterFor(FileSystemWatcher)
@@ -1922,7 +2316,6 @@ LspJson.useDefaultWriterFor(RegistrationParams)
 LspJson.useDefaultWriterFor(ApplyWorkspaceEditParams)
 LspJson.useDefaultReaderFor(ApplyWorkspaceEditResult)
 LspJson.useDefaultWriterFor(PublishDiagnosticsParams)
-LspJson.useDefaultWriterFor(MarkupContent)
 LspJson.useOneOfWriterFor(CompletionItemDocumentation)
 LspJson.useDefaultWriterFor(CompletionItemLabelDetails)
 LspJson.useDefaultWriterFor(CompletionItem)

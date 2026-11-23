@@ -329,7 +329,7 @@ suite "extended params":
   test "an edit writes the version of its document, or null":
     let edit = TextDocumentEdit(
       textDocument: OptionalVersionedTextDocumentIdentifier(uri: LspUri("file:///a.nim")),
-      edits: @[TextEdit(newText: "x")],
+      edits: @[TextDocumentEditEdit(kind: tdeeText, text: TextEdit(newText: "x"))],
     )
     check LspJson.encode(edit) ==
       """{"textDocument":{"uri":"file:///a.nim","version":null},"edits":[{"range":{"start":{"line":0,"character":0},"end":{"line":0,"character":0}},"newText":"x"}]}"""
@@ -441,6 +441,146 @@ suite "workspace folders server capabilities":
   test "a string is read as a string":
     let value = LspJson.decode("\"folders\"", WorkspaceFoldersChangeNotifications)
     check value.kind == wfcnStr and value.str == "folders"
+
+suite "unions":
+  const zero = """{"start":{"line":0,"character":0},"end":{"line":0,"character":0}}"""
+
+  test "a diagnostic message is a string or markup":
+    let plain = Diagnostic(message: DiagnosticMessage(kind: dmStr, str: "m"))
+    check LspJson.encode(plain) == """{"range":""" & zero & ""","message":"m"}"""
+    let markup = Diagnostic(
+      message: DiagnosticMessage(
+        kind: dmMarkup, markup: MarkupContent(kind: "markdown", value: "*m*")
+      )
+    )
+    check LspJson.encode(markup) ==
+      """{"range":""" & zero & ""","message":{"kind":"markdown","value":"*m*"}}"""
+
+  test "a diagnostic message is read as a string or markup":
+    let plain =
+      LspJson.decode("""{"range":""" & zero & ""","message":"m"}""", Diagnostic)
+    check plain.message.kind == dmStr and plain.message.str == "m"
+    let markup = LspJson.decode(
+      """{"range":""" & zero & ""","message":{"kind":"markdown","value":"*m*"}}""",
+      Diagnostic,
+    )
+    check markup.message.kind == dmMarkup and markup.message.markup.value == "*m*"
+
+  test "a text document edit takes annotated and snippet edits":
+    let edit = TextDocumentEdit(
+      textDocument: OptionalVersionedTextDocumentIdentifier(uri: LspUri("file:///a.nim")),
+      edits: @[
+        TextDocumentEditEdit(
+          kind: tdeeAnnotated,
+          annotated: AnnotatedTextEdit(newText: "x", annotationId: "a"),
+        ),
+        TextDocumentEditEdit(
+          kind: tdeeSnippet,
+          snippet: SnippetTextEdit(snippet: StringValue(kind: "snippet", value: "$1")),
+        ),
+      ],
+    )
+    check LspJson.encode(edit) ==
+      """{"textDocument":{"uri":"file:///a.nim","version":null},"edits":[{"range":""" &
+      zero & ""","newText":"x","annotationId":"a"},{"range":""" & zero &
+      ""","snippet":{"kind":"snippet","value":"$1"}}]}"""
+
+  test "workspace edit document changes take file operations":
+    let edit = WorkspaceEdit(
+      documentChanges: some @[
+        WorkspaceEditDocumentChange(
+          kind: wedcCreate, create: CreateFile(kind: "create", uri: LspUri("file:///a.nim"))
+        ),
+        WorkspaceEditDocumentChange(
+          kind: wedcRename,
+          rename: RenameFile(
+            kind: "rename", oldUri: LspUri("file:///a.nim"), newUri: LspUri("file:///b.nim")
+          ),
+        ),
+        WorkspaceEditDocumentChange(
+          kind: wedcDelete, delete: DeleteFile(kind: "delete", uri: LspUri("file:///b.nim"))
+        ),
+      ]
+    )
+    check LspJson.encode(edit) ==
+      """{"documentChanges":[{"kind":"create","uri":"file:///a.nim"},{"kind":"rename","oldUri":"file:///a.nim","newUri":"file:///b.nim"},{"kind":"delete","uri":"file:///b.nim"}]}"""
+
+  test "save is a boolean or save options":
+    check LspJson.encode(
+      TextDocumentSyncOptions(
+        save: some TextDocumentSyncOptionsSave(kind: tdsosBool, boolean: true)
+      )
+    ) == """{"save":true}"""
+    check LspJson.encode(
+      TextDocumentSyncOptions(
+        save: some TextDocumentSyncOptionsSave(
+          kind: tdsosOptions, options: SaveOptions(includeText: some true)
+        )
+      )
+    ) == """{"save":{"includeText":true}}"""
+
+  test "a glob pattern is a pattern or a relative pattern":
+    let relative = FileSystemWatcher(
+      globPattern: GlobPattern(
+        kind: gpRelative,
+        relative: RelativePattern(
+          baseUri: RelativePatternBaseUri(
+            kind: rpbuFolder,
+            folder: WorkspaceFolder(uri: LspUri("file:///w"), name: "w"),
+          ),
+          pattern: "*.nim",
+        ),
+      )
+    )
+    check LspJson.encode(relative) ==
+      """{"globPattern":{"baseUri":{"uri":"file:///w","name":"w"},"pattern":"*.nim"}}"""
+    let uri = RelativePattern(
+      baseUri: RelativePatternBaseUri(kind: rpbuUri, uri: "file:///w"), pattern: "*.nim"
+    )
+    check LspJson.encode(uri) == """{"baseUri":"file:///w","pattern":"*.nim"}"""
+
+  test "a parameter label is a string or offsets":
+    let offsets = ParameterInformation(
+      label: ParameterInformationLabel(
+        kind: pilOffsets, offsets: [uinteger(1), uinteger(3)]
+      )
+    )
+    check LspJson.encode(offsets) == """{"label":[1,3]}"""
+    let decoded = LspJson.decode("""{"label":[1,3]}""", ParameterInformation)
+    check decoded.label.offsets.mapIt(it.int) == @[1, 3]
+    check LspJson.decode("""{"label":"p"}""", ParameterInformation).label.str == "p"
+
+  test "an inlay hint label is a string or parts with tooltips":
+    let hint = InlayHint(
+      label: InlayHintLabel(
+        kind: ihlParts,
+        parts: @[
+          InlayHintLabelPart(
+            value: "v",
+            tooltip: some InlayHintTooltip(
+              kind: ihtMarkup, markup: MarkupContent(kind: "plaintext", value: "t")
+            ),
+          )
+        ],
+      ),
+      tooltip: some InlayHintTooltip(kind: ihtStr, str: "s"),
+    )
+    check LspJson.encode(hint) ==
+      """{"position":{"line":0,"character":0},"label":[{"value":"v","tooltip":{"kind":"plaintext","value":"t"}}],"tooltip":"s"}"""
+
+  test "a provider is a boolean or its options":
+    let capabilities = ServerCapabilities(
+      hoverProvider: some ServerCapabilitiesHoverProvider(kind: shpBool, boolean: true),
+      documentSymbolProvider: some ServerCapabilitiesDocumentSymbolProvider(
+        kind: sdspOptions, options: DocumentSymbolOptions(label: some "nim")
+      ),
+      inlayHintProvider: some ServerCapabilitiesInlayHintProvider(
+        kind: sihpRegistration,
+        registration: InlayHintRegistrationOptions(id: some "hints"),
+      ),
+    )
+    check LspJson.encode(capabilities) ==
+      """{"hoverProvider":true,"documentSymbolProvider":{"label":"nim"},"inlayHintProvider":{"documentSelector":null,"id":"hints"}}"""
 
 suite "spec field names":
   test "the completion documentation formats are read":
@@ -608,7 +748,11 @@ suite "registration":
 
   test "watched files options are encoded with their watchers":
     let options = DidChangeWatchedFilesRegistrationOptions(
-      watchers: @[FileSystemWatcher(globPattern: "**/*.nim", kind: some 7)]
+      watchers: @[
+        FileSystemWatcher(
+          globPattern: GlobPattern(kind: gpPattern, pattern: "**/*.nim"), kind: some 7
+        )
+      ]
     )
     check LspJson.encode(options) ==
       """{"watchers":[{"globPattern":"**/*.nim","kind":7}]}"""
