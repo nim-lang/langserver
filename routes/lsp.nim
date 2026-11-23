@@ -650,7 +650,7 @@ proc rename*(
       )
   result = WorkspaceEdit(changes: some edits)
 
-proc convertInlayHintKind(kind: SuggestInlayHintKind): InlayHintKind_int =
+proc convertInlayHintKind(kind: SuggestInlayHintKind): int =
   case kind
   of sihkType:
     result = 1

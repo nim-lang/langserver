@@ -297,9 +297,6 @@ extendTypes:
       name*: string
       version*: Option[string]
 
-    # 'off' | 'messages' | 'verbose'
-    TraceValue_str = string
-
     # https://modelcontextprotocol.io/specification/2025-11-25/schema#initializerequestparams
     McpInitializeRequestParams* {.extends: [McpRequestParams].} = object
       protocolVersion*: string
@@ -315,7 +312,7 @@ extendTypes:
       rootUri*: Nullable[DocumentUri]
       capabilities*: ClientCapabilities
       initializationOptions*: Option[LspAny]
-      trace*: Option[TraceValue_str]
+      trace*: Option[string]
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#initializeParams
     WorkspaceFoldersInitializeParams* = object
@@ -328,7 +325,7 @@ extendTypes:
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#setTrace
     SetTraceParams* = object
-      value*: TraceValue_str
+      value*: string
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#workDoneProgressBegin
     ProgressTokenKind* = enum
@@ -489,30 +486,23 @@ extendTypes:
       willSaveWaitUntil*: Option[bool]
       didSave*: Option[bool]
 
-    # 'plaintext' | 'markdown'
-    MarkupKind_str = string
-
-    CompletionItemTag_int = int
-
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#completionItemTagOptions
     CompletionItemTagOptions* = object
-      valueSet*: seq[CompletionItemTag_int]
+      valueSet*: seq[int]
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#clientCompletionItemResolveOptions
     ClientCompletionItemResolveOptions* = object
       properties*: seq[string]
 
-    InsertTextMode_int = int
-
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#clientCompletionItemInsertTextModeOptions
     ClientCompletionItemInsertTextModeOptions* = object
-      valueSet*: seq[InsertTextMode_int]
+      valueSet*: seq[int]
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#clientCompletionItemOptions
     ClientCompletionItemOptions* = object
       snippetSupport*: Option[bool]
       commitCharactersSupport*: Option[bool]
-      documentationFormat*: OptionalSeq[MarkupKind_str]
+      documentationFormat*: OptionalSeq[string]
       deprecatedSupport*: Option[bool]
       preselectSupport*: Option[bool]
       tagSupport*: Option[CompletionItemTagOptions]
@@ -521,11 +511,9 @@ extendTypes:
       insertTextModeSupport*: Option[ClientCompletionItemInsertTextModeOptions]
       labelDetailsSupport*: Option[bool]
 
-    CompletionItemKind_int = int
-
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#clientCompletionItemOptionsKind
     ClientCompletionItemOptionsKind* = object
-      valueSet*: OptionalSeq[CompletionItemKind_int]
+      valueSet*: OptionalSeq[int]
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#completionListCapabilities
     CompletionListCapabilities* = object
@@ -537,13 +525,13 @@ extendTypes:
       completionItem*: Option[ClientCompletionItemOptions]
       completionItemKind*: Option[ClientCompletionItemOptionsKind]
       contextSupport*: Option[bool]
-      insertTextMode*: Option[InsertTextMode_int]
+      insertTextMode*: Option[int]
       completionList*: Option[CompletionListCapabilities]
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#hoverClientCapabilities
     HoverClientCapabilities* = object
       dynamicRegistration*: Option[bool]
-      contentFormat*: OptionalSeq[MarkupKind_str]
+      contentFormat*: OptionalSeq[string]
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#clientSignatureParameterInformationOptions
     ClientSignatureParameterInformationOptions* = object
@@ -551,7 +539,7 @@ extendTypes:
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#clientSignatureInformationOptions
     ClientSignatureInformationOptions* = object
-      documentationFormat*: OptionalSeq[MarkupKind_str]
+      documentationFormat*: OptionalSeq[string]
       parameterInformation*: Option[ClientSignatureParameterInformationOptions]
       activeParameterSupport*: Option[bool]
 
@@ -569,17 +557,13 @@ extendTypes:
     DocumentHighlightClientCapabilities* = object
       dynamicRegistration*: Option[bool]
 
-    SymbolKind_int = int
-
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#clientSymbolKindOptions
     ClientSymbolKindOptions* = object
-      valueSet*: OptionalSeq[SymbolKind_int]
-
-    SymbolTag_int = int
+      valueSet*: OptionalSeq[int]
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#clientSymbolTagOptions
     ClientSymbolTagOptions* = object
-      valueSet*: seq[SymbolTag_int]
+      valueSet*: seq[int]
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#documentSymbolClientCapabilities
     DocumentSymbolClientCapabilities* = object
@@ -616,11 +600,9 @@ extendTypes:
       dynamicRegistration*: Option[bool]
       linkSupport*: Option[bool]
 
-    CodeActionKind_str = string
-
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#clientCodeActionKindOptions
     ClientCodeActionKindOptions* = object
-      valueSet*: seq[CodeActionKind_str]
+      valueSet*: seq[string]
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#clientCodeActionLiteralOptions
     ClientCodeActionLiteralOptions* = object
@@ -653,20 +635,16 @@ extendTypes:
     DocumentColorClientCapabilities* = object
       dynamicRegistration*: Option[bool]
 
-    PrepareSupportDefaultBehavior_int = int
-
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#renameClientCapabilities
     RenameClientCapabilities* = object
       dynamicRegistration*: Option[bool]
       prepareSupport*: Option[bool]
-      prepareSupportDefaultBehavior*: Option[PrepareSupportDefaultBehavior_int]
+      prepareSupportDefaultBehavior*: Option[int]
       honorsChangeAnnotations*: Option[bool]
-
-    DiagnosticTag_int = int
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#clientDiagnosticsTagOptions
     ClientDiagnosticsTagOptions* = object
-      valueSet*: seq[DiagnosticTag_int]
+      valueSet*: seq[int]
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#publishDiagnosticsClientCapabilities
     DiagnosticsCapabilities* = object
@@ -684,12 +662,9 @@ extendTypes:
       dynamicRegistration*: Option[bool]
       linkSupport*: Option[bool]
 
-    # 'comment' | 'imports' | 'region' | ...
-    FoldingRangeKind_str = string
-
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#clientFoldingRangeKindOptions
     ClientFoldingRangeKindOptions* = object
-      valueSet*: OptionalSeq[FoldingRangeKind_str]
+      valueSet*: OptionalSeq[string]
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#clientFoldingRangeOptions
     ClientFoldingRangeOptions* = object
@@ -749,16 +724,13 @@ extendTypes:
     ClientSemanticTokensRequestFullDelta* = object
       delta*: Option[bool]
 
-    # 'relative'
-    TokenFormat_str = string
-
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#semanticTokensClientCapabilities
     SemanticTokensClientCapabilities* = object
       dynamicRegistration*: Option[bool]
       requests*: ClientSemanticTokensRequestOptions
       tokenTypes*: seq[string]
       tokenModifiers*: seq[string]
-      formats*: seq[TokenFormat_str]
+      formats*: seq[string]
       overlappingTokenSupport*: Option[bool]
       multilineTokenSupport*: Option[bool]
       serverCancelSupport*: Option[bool]
@@ -866,15 +838,12 @@ extendTypes:
       version*: Option[string]
       allowedTags*: OptionalSeq[string]
 
-    # 'utf-8' | 'utf-16' | 'utf-32' | ...
-    PositionEncodingKind_str = string
-
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#generalClientCapabilities
     GeneralClientCapabilities* = object
       staleRequestSupport*: Option[StaleRequestSupportOptions]
       regularExpressions*: Option[RegularExpressionsClientCapabilities]
       markdown*: Option[MarkdownClientCapabilities]
-      positionEncodings*: OptionalSeq[PositionEncodingKind_str]
+      positionEncodings*: OptionalSeq[string]
 
     # https://modelcontextprotocol.io/specification/2025-11-25/schema#clientcapabilities
     McpClientCapabilities* = object
@@ -937,8 +906,6 @@ extendTypes:
     SaveOptions* = object
       includeText*: Option[bool]
 
-    TextDocumentSyncKind_int = int
-
     TextDocumentSyncOptionsSaveKind* = enum
       tdsosBool
       tdsosOptions
@@ -953,7 +920,7 @@ extendTypes:
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#textDocumentSyncOptions
     TextDocumentSyncOptions* = object
       openClose*: Option[bool]
-      change*: Option[TextDocumentSyncKind_int]
+      change*: Option[int]
       willSave*: Option[bool]
       willSaveWaitUntil*: Option[bool]
       save*: Option[TextDocumentSyncOptionsSave]
@@ -978,9 +945,6 @@ extendTypes:
       supported*: Option[bool]
       changeNotifications*: Option[WorkspaceFoldersChangeNotifications]
 
-    # 'file' | 'folder'
-    FileOperationPatternKind_str = string
-
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#fileOperationPatternOptions
     FileOperationPatternOptions* = object
       ignoreCase*: Option[bool]
@@ -988,7 +952,7 @@ extendTypes:
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#fileOperationPattern
     FileOperationPattern* = object
       glob*: string
-      matches*: Option[FileOperationPatternKind_str]
+      matches*: Option[string]
       options*: Option[FileOperationPatternOptions]
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#fileOperationFilter
@@ -1055,7 +1019,7 @@ extendTypes:
       of stdsOptions:
         options*: TextDocumentSyncOptions
       of stdsKind:
-        syncKind*: TextDocumentSyncKind_int
+        syncKind*: int
 
     ServerCapabilitiesImplementationProviderKind* = enum
       sipBool
@@ -1268,7 +1232,7 @@ extendTypes:
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#codeActionOptions
     CodeActionOptions* {.extends: [WorkDoneProgressOptions].} = object
-      codeActionKinds*: OptionalSeq[CodeActionKind_str]
+      codeActionKinds*: OptionalSeq[string]
       resolveProvider*: Option[bool]
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#documentFormattingOptions
@@ -1339,7 +1303,7 @@ extendTypes:
       tools*: Option[McpToolsOptions]
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#serverCapabilities
-    ServerCapabilities* = object #!!!positionEncoding*: Option[PositionEncodingKind_str]
+    ServerCapabilities* = object #!!!positionEncoding*: Option[string]
       textDocumentSync*: Option[ServerCapabilitiesTextDocumentSync]
       #notebookDocumentSync?: NotebookDocumentSyncOptions | NotebookDocumentSyncRegistrationOptions;
       completionProvider*: Option[CompletionOptions]
@@ -1697,7 +1661,7 @@ extendTypes:
     BaseSymbolInformation* = object
       name*: string
       kind*: int
-      tags*: OptionalSeq[SymbolTag_int]
+      tags*: OptionalSeq[int]
       containerName*: Option[string]
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#symbolInformation
@@ -1839,9 +1803,6 @@ extendTypes:
       textDocument*: TextDocumentIdentifier
       range*: Range
 
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#inlayHintKind
-    InlayHintKind_int* = int
-
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#inlayHint
     InlayHintTooltipKind* = enum
       ihtStr
@@ -1876,7 +1837,7 @@ extendTypes:
     InlayHint* = object
       position*: Position
       label*: InlayHintLabel
-      kind*: Option[InlayHintKind_int]
+      kind*: Option[int]
       textEdits*: OptionalSeq[TextEdit]
       tooltip*: Option[InlayHintTooltip]
       paddingLeft*: Option[bool]
