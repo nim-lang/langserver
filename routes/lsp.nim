@@ -72,9 +72,11 @@ proc initialize*(
           )
         )
       ),
-      completionProvider:
-        CompletionOptions(triggerCharacters: some(@["."]), resolveProvider: some(false)),
-      signatureHelpProvider: SignatureHelpOptions(triggerCharacters: some(@["(", ","])),
+      completionProvider: some CompletionOptions(
+        triggerCharacters: some(@["."]), resolveProvider: some(false)
+      ),
+      signatureHelpProvider:
+        some SignatureHelpOptions(triggerCharacters: some(@["(", ","])),
       definitionProvider: some(true),
       declarationProvider: some(true),
       typeDefinitionProvider: some(true),
@@ -746,7 +748,7 @@ proc codeAction*(
     CodeAction(
       title: "Clean build",
       kind: "source",
-      command: Command(
+      command: some Command(
         title: "Clean build",
         command: RECOMPILE_COMMAND,
         arguments: some @[JsonString(LspJson.encode(projectFile.string))],
@@ -755,7 +757,7 @@ proc codeAction*(
     CodeAction(
       title: "Refresh project errors",
       kind: "source",
-      command: Command(
+      command: some Command(
         title: "Refresh project errors",
         command: CHECK_PROJECT_COMMAND,
         arguments: some @[JsonString(LspJson.encode(projectFile.string))],
@@ -764,7 +766,7 @@ proc codeAction*(
     CodeAction(
       title: "Restart nimsuggest",
       kind: "source",
-      command: Command(
+      command: some Command(
         title: "Restart nimsuggest",
         command: RESTART_COMMAND,
         arguments: some @[JsonString(LspJson.encode(projectFile.string))],
