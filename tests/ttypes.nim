@@ -602,7 +602,7 @@ suite "mcp initialize":
     )
     check params.meta.isSome
     check params.clientInfo.name == "c"
-    check params.clientInfo.icons.get[0].theme == some dark
+    check params.clientInfo.icons.get[0].theme == some "dark"
 
   test "the client info requires a name and a version":
     expect SerializationError:
@@ -708,6 +708,36 @@ suite "nullable":
     check LspJson.decode("null", Nullable[int]).kind == nkNull
     expect SerializationError:
       discard LspJson.decode("\"x\"", Nullable[int])
+
+suite "document filter":
+  test "a pattern is written as a glob or a relative pattern":
+    let glob = DocumentFilter(
+      pattern: some GlobPattern(kind: gpPattern, pattern: "**/*.nim")
+    )
+    check LspJson.encode(glob) == """{"pattern":"**/*.nim"}"""
+    let relative = DocumentFilter(
+      pattern: some GlobPattern(
+        kind: gpRelative,
+        relative: RelativePattern(
+          baseUri: RelativePatternBaseUri(kind: rpbuUri, uri: "file:///w"),
+          pattern: "*.nim",
+        ),
+      )
+    )
+    check LspJson.encode(relative) ==
+      """{"pattern":{"baseUri":"file:///w","pattern":"*.nim"}}"""
+
+  test "a pattern is read as a glob or a relative pattern":
+    let glob = LspJson.decode("""{"pattern": "**/*.nim"}""", DocumentFilter)
+    check glob.pattern.get.kind == gpPattern
+    check glob.pattern.get.pattern == "**/*.nim"
+    let relative = LspJson.decode(
+      """{"pattern": {"baseUri": {"uri": "file:///w", "name": "w"}, "pattern": "*.nim"}}""",
+      DocumentFilter,
+    )
+    check relative.pattern.get.kind == gpRelative
+    check relative.pattern.get.relative.baseUri.kind == rpbuFolder
+    check relative.pattern.get.relative.pattern == "*.nim"
 
 suite "document selector":
   test "a registration without a document selector writes null":

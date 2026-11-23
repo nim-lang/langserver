@@ -234,75 +234,17 @@ extendTypes:
     DocumentFilter* = object
       language*: Option[string]
       scheme*: Option[string]
-      pattern*: Option[string]
+      pattern*: Option[GlobPattern]
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#markupContent
     MarkupContent* = object
       kind*: string
       value*: string
 
-    # https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/schema/2025-11-25/schema.ts#L73
-    McpNotificationParams* = object
-      meta* {.serializedFieldName: "_meta".}: Option[OrderedTable[string, JsonString]]
-
-    # https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/schema/2025-11-25/schema.ts#L51
-    McpRequestParams* = object
-      meta* {.serializedFieldName: "_meta".}: Option[OrderedTable[string, JsonString]]
-
-    # https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/schema/2025-11-25/schema.ts#L35
-    McpTaskAugmentedRequestParams* {.extends: [McpRequestParams].} = object
-
-    # https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/schema/2025-11-25/schema.ts#L627
-    McpPaginatedRequestParams* {.extends: [McpRequestParams].} = object
-
-    # https://modelcontextprotocol.io/specification/2025-11-25/schema#calltoolrequestparams
-    McpCallToolRequestParams* {.extends: [McpTaskAugmentedRequestParams].} = object
-      name*: string
-      arguments*: Option[JsonString]
-
-    # https://modelcontextprotocol.io/specification/2025-11-25/schema#result
-    McpResult* = object
-      meta* {.serializedFieldName: "_meta".}: Option[OrderedTable[string, JsonString]]
-
-    # https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/schema/2025-11-25/schema.ts#L641
-    McpPaginatedResult* {.extends: [McpResult].} = object
-
-    McpIconTheme* = enum
-      light = "light"
-      dark = "dark"
-
-    # https://modelcontextprotocol.io/specification/2025-11-25/schema#icon
-    McpIcon* = object
-      src*: string
-      mimeType*: Option[string]
-      sizes*: OptionalSeq[string]
-      theme*: Option[McpIconTheme]
-
-    # https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/schema/2025-11-25/schema.ts#L508
-    McpIcons* = object
-      icons*: OptionalSeq[McpIcon]
-
-    # https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/schema/2025-11-25/schema.ts#L528
-    McpBaseMetadata* = object
-      name*: string
-      title*: Option[string]
-
-    # https://modelcontextprotocol.io/specification/2025-11-25/schema#implementation
-    McpImplementation* {.extends: [McpBaseMetadata, McpIcons].} = object
-      version*: string
-      description*: Option[string]
-      websiteUrl*: Option[string]
-
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#clientInfo
     ClientInfo* = object
       name*: string
       version*: Option[string]
-
-    # https://modelcontextprotocol.io/specification/2025-11-25/schema#initializerequestparams
-    McpInitializeRequestParams* {.extends: [McpRequestParams].} = object
-      protocolVersion*: string
-      capabilities*: McpClientCapabilities
-      clientInfo*: McpImplementation
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#initializeParams
     InitializeParams* {.extends: [WorkDoneProgressParams].} = object
@@ -839,9 +781,6 @@ extendTypes:
       markdown*: Option[MarkdownClientCapabilities]
       positionEncodings*: OptionalSeq[string]
 
-    # https://modelcontextprotocol.io/specification/2025-11-25/schema#clientcapabilities
-    McpClientCapabilities* = object
-
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#clientCapabilities
     ClientCapabilities* = object
       workspace*: Option[WorkspaceClientCapabilities]
@@ -855,12 +794,6 @@ extendTypes:
     WorkspaceFolder* = object
       uri*: LspUri
       name*: string
-
-    # https://modelcontextprotocol.io/specification/2025-11-25/schema#initializeresult
-    McpInitializeResult* {.extends: [McpResult].} = object
-      protocolVersion*: string
-      capabilities*: McpServerCapabilities
-      serverInfo*: McpImplementation
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#initializeResult
     InitializeResult* = object
@@ -1256,45 +1189,6 @@ extendTypes:
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#inlayHintOptions
     InlayHintOptions* {.extends: [WorkDoneProgressOptions].} = object
       resolveProvider*: Option[bool]
-
-    # https://modelcontextprotocol.io/specification/2025-11-25/schema#tool
-    McpToolSchema* = object
-      schema* {.serializedFieldName: "$schema".}: Option[string]
-      `type`*: string
-      properties*: Option[OrderedTable[string, JsonString]]
-      required*: Option[seq[string]]
-
-    # https://modelcontextprotocol.io/specification/2025-11-25/schema#tool
-    McpTool* {.extends: [McpBaseMetadata, McpIcons].} = object
-      description*: Option[string]
-      inputSchema*: McpToolSchema
-      outputSchema*: Option[McpToolSchema]
-
-    # https://modelcontextprotocol.io/specification/2025-11-25/schema#listtoolsresult
-    McpListToolsResult* {.extends: [McpPaginatedResult].} = object
-      tools*: seq[McpTool]
-
-    McpContentBlockType* = enum
-      TextContent = "text"
-
-    # https://modelcontextprotocol.io/specification/2025-11-25/schema#contentblock
-    McpContentBlock* = object
-      case `type`*: McpContentBlockType
-      of TextContent:
-        text*: string
-
-    # https://modelcontextprotocol.io/specification/2025-11-25/schema#calltoolresult
-    McpCallToolResult* {.extends: [McpResult].} = object
-      content*: seq[McpContentBlock]
-      structuredContent*: Option[JsonString]
-      isError*: Option[bool]
-
-    # https://modelcontextprotocol.io/specification/2025-11-25/schema#servercapabilities
-    McpToolsOptions* = object
-
-    # https://modelcontextprotocol.io/specification/2025-11-25/schema#servercapabilities
-    McpServerCapabilities* = object
-      tools*: Option[McpToolsOptions]
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#serverCapabilities
     ServerCapabilities* = object #!!!positionEncoding*: Option[string]
@@ -1950,6 +1844,108 @@ extendTypes:
     CancelTestResult* = object
       cancelled*: bool
 
+    # https://github.com/modelcontextprotocol/modelcontextprotocol/blob/c4c367f9f58296a7053f5c78a52fd02bfbb56a49/schema/2025-11-25/schema.ts#L73
+    McpNotificationParams* = object
+      meta* {.serializedFieldName: "_meta".}: Option[OrderedTable[string, JsonString]]
+
+    # https://github.com/modelcontextprotocol/modelcontextprotocol/blob/c4c367f9f58296a7053f5c78a52fd02bfbb56a49/schema/2025-11-25/schema.ts#L51
+    McpRequestParams* = object
+      meta* {.serializedFieldName: "_meta".}: Option[OrderedTable[string, JsonString]]
+
+    # https://github.com/modelcontextprotocol/modelcontextprotocol/blob/c4c367f9f58296a7053f5c78a52fd02bfbb56a49/schema/2025-11-25/schema.ts#L35
+    McpTaskAugmentedRequestParams* {.extends: [McpRequestParams].} = object
+
+    # https://github.com/modelcontextprotocol/modelcontextprotocol/blob/c4c367f9f58296a7053f5c78a52fd02bfbb56a49/schema/2025-11-25/schema.ts#L627
+    McpPaginatedRequestParams* {.extends: [McpRequestParams].} = object
+
+    # https://modelcontextprotocol.io/specification/2025-11-25/schema#calltoolrequestparams
+    McpCallToolRequestParams* {.extends: [McpTaskAugmentedRequestParams].} = object
+      name*: string
+      arguments*: Option[JsonString]
+
+    # https://modelcontextprotocol.io/specification/2025-11-25/schema#result
+    McpResult* = object
+      meta* {.serializedFieldName: "_meta".}: Option[OrderedTable[string, JsonString]]
+
+    # https://github.com/modelcontextprotocol/modelcontextprotocol/blob/c4c367f9f58296a7053f5c78a52fd02bfbb56a49/schema/2025-11-25/schema.ts#L641
+    McpPaginatedResult* {.extends: [McpResult].} = object
+
+    # https://modelcontextprotocol.io/specification/2025-11-25/schema#icon
+    McpIcon* = object
+      src*: string
+      mimeType*: Option[string]
+      sizes*: OptionalSeq[string]
+      theme*: Option[string]
+
+    # https://github.com/modelcontextprotocol/modelcontextprotocol/blob/c4c367f9f58296a7053f5c78a52fd02bfbb56a49/schema/2025-11-25/schema.ts#L508
+    McpIcons* = object
+      icons*: OptionalSeq[McpIcon]
+
+    # https://github.com/modelcontextprotocol/modelcontextprotocol/blob/c4c367f9f58296a7053f5c78a52fd02bfbb56a49/schema/2025-11-25/schema.ts#L528
+    McpBaseMetadata* = object
+      name*: string
+      title*: Option[string]
+
+    # https://modelcontextprotocol.io/specification/2025-11-25/schema#implementation
+    McpImplementation* {.extends: [McpBaseMetadata, McpIcons].} = object
+      version*: string
+      description*: Option[string]
+      websiteUrl*: Option[string]
+
+    # https://modelcontextprotocol.io/specification/2025-11-25/schema#initializerequestparams
+    McpInitializeRequestParams* {.extends: [McpRequestParams].} = object
+      protocolVersion*: string
+      capabilities*: McpClientCapabilities
+      clientInfo*: McpImplementation
+
+    # https://modelcontextprotocol.io/specification/2025-11-25/schema#clientcapabilities
+    McpClientCapabilities* = object
+
+    # https://modelcontextprotocol.io/specification/2025-11-25/schema#initializeresult
+    McpInitializeResult* {.extends: [McpResult].} = object
+      protocolVersion*: string
+      capabilities*: McpServerCapabilities
+      serverInfo*: McpImplementation
+
+    # https://modelcontextprotocol.io/specification/2025-11-25/schema#tool
+    McpToolSchema* = object
+      schema* {.serializedFieldName: "$schema".}: Option[string]
+      `type`*: string
+      properties*: Option[OrderedTable[string, JsonString]]
+      required*: Option[seq[string]]
+
+    # https://modelcontextprotocol.io/specification/2025-11-25/schema#tool
+    McpTool* {.extends: [McpBaseMetadata, McpIcons].} = object
+      description*: Option[string]
+      inputSchema*: McpToolSchema
+      outputSchema*: Option[McpToolSchema]
+
+    # https://modelcontextprotocol.io/specification/2025-11-25/schema#listtoolsresult
+    McpListToolsResult* {.extends: [McpPaginatedResult].} = object
+      tools*: seq[McpTool]
+
+    McpContentBlockType* = enum
+      TextContent = "text"
+
+    # https://modelcontextprotocol.io/specification/2025-11-25/schema#contentblock
+    McpContentBlock* = object
+      case `type`*: McpContentBlockType
+      of TextContent:
+        text*: string
+
+    # https://modelcontextprotocol.io/specification/2025-11-25/schema#calltoolresult
+    McpCallToolResult* {.extends: [McpResult].} = object
+      content*: seq[McpContentBlock]
+      structuredContent*: Option[JsonString]
+      isError*: Option[bool]
+
+    # https://modelcontextprotocol.io/specification/2025-11-25/schema#servercapabilities
+    McpToolsOptions* = object
+
+    # https://modelcontextprotocol.io/specification/2025-11-25/schema#servercapabilities
+    McpServerCapabilities* = object
+      tools*: Option[McpToolsOptions]
+
 createJsonFlavor LspJson,
   automaticObjectSerialization = false,
   requireAllFields = true,
@@ -2225,9 +2221,9 @@ LspJson.useOneOfWriterFor(ServerCapabilitiesImplementationProvider)
 LspJson.useOneOfWriterFor(ServerCapabilitiesColorProvider)
 LspJson.useOneOfWriterFor(ServerCapabilitiesRenameProvider)
 LspJson.useDefaultWriterFor(WorkspaceFolder)
-LspJson.useOneOfWriterFor(RelativePatternBaseUri)
-LspJson.useDefaultWriterFor(RelativePattern)
-LspJson.useOneOfWriterFor(GlobPattern)
+LspJson.useOneOfSerializationFor(RelativePatternBaseUri)
+LspJson.useDefaultSerializationFor(RelativePattern)
+LspJson.useOneOfSerializationFor(GlobPattern)
 LspJson.useOneOfWriterFor(InlayHintTooltip)
 LspJson.useDefaultWriterFor(InlayHintLabelPart)
 LspJson.useOneOfWriterFor(InlayHintLabel)
