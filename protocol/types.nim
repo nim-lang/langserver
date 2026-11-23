@@ -162,23 +162,24 @@ extendTypes:
       textDocument*: OptionalVersionedTextDocumentIdentifier
       edits*: seq[TextDocumentEditEdit]
 
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#resourceChanges
-    ResourceOperation* = object
+    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#createFile
+    CreateFile* = object
       kind*: string
+      uri*: DocumentUri
       annotationId*: Option[ChangeAnnotationIdentifier]
 
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#createFile
-    CreateFile* {.extends: [ResourceOperation].} = object
-      uri*: DocumentUri
-
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#renameFile
-    RenameFile* {.extends: [ResourceOperation].} = object
+    RenameFile* = object
+      kind*: string
       oldUri*: DocumentUri
       newUri*: DocumentUri
+      annotationId*: Option[ChangeAnnotationIdentifier]
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#deleteFile
-    DeleteFile* {.extends: [ResourceOperation].} = object
+    DeleteFile* = object
+      kind*: string
       uri*: DocumentUri
+      annotationId*: Option[ChangeAnnotationIdentifier]
 
     WorkspaceEditDocumentChangeKind* = enum
       wedcEdit
@@ -304,24 +305,16 @@ extendTypes:
       clientInfo*: McpImplementation
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#initializeParams
-    BaseInitializeParams* {.extends: [WorkDoneProgressParams].} = object
+    InitializeParams* {.extends: [WorkDoneProgressParams].} = object
       processId*: Nullable[int]
       clientInfo*: Option[ClientInfo]
       locale*: Option[string]
       rootPath*: Option[string]
       rootUri*: Nullable[DocumentUri]
-      capabilities*: ClientCapabilities
       initializationOptions*: Option[LspAny]
+      capabilities*: ClientCapabilities
       trace*: Option[string]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#initializeParams
-    WorkspaceFoldersInitializeParams* = object
       workspaceFolders*: OptionalSeq[WorkspaceFolder]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#initializeParams
-    InitializeParams* {.
-      extends: [BaseInitializeParams, WorkspaceFoldersInitializeParams]
-    .} = object
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#setTrace
     SetTraceParams* = object
@@ -647,15 +640,12 @@ extendTypes:
       valueSet*: seq[int]
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#publishDiagnosticsClientCapabilities
-    DiagnosticsCapabilities* = object
+    PublishDiagnosticsClientCapabilities* = object
       relatedInformation*: Option[bool]
       tagSupport*: Option[ClientDiagnosticsTagOptions]
+      versionSupport*: Option[bool]
       codeDescriptionSupport*: Option[bool]
       dataSupport*: Option[bool]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#publishDiagnosticsClientCapabilities
-    PublishDiagnosticsClientCapabilities* {.extends: [DiagnosticsCapabilities].} = object
-      versionSupport*: Option[bool]
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#declarationClientCapabilities
     DeclarationClientCapabilities* = object
@@ -758,9 +748,13 @@ extendTypes:
       resolveSupport*: Option[ClientInlayHintResolveOptions]
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#diagnosticClientCapabilities
-    DiagnosticClientCapabilities* {.extends: [DiagnosticsCapabilities].} = object
+    DiagnosticClientCapabilities* = object
       dynamicRegistration*: Option[bool]
       relatedDocumentSupport*: Option[bool]
+      relatedInformation*: Option[bool]
+      tagSupport*: Option[ClientDiagnosticsTagOptions]
+      codeDescriptionSupport*: Option[bool]
+      dataSupport*: Option[bool]
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#textDocumentClientCapabilities
     TextDocumentClientCapabilities* = object
@@ -1006,7 +1000,7 @@ extendTypes:
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#documentColorRegistrationOptions
     DocumentColorRegistrationOptions* {.
       extends: [
-        TextDocumentRegistrationOptions, DocumentColorOptions, StaticRegistrationOptions
+        TextDocumentRegistrationOptions, StaticRegistrationOptions, DocumentColorOptions
       ]
     .} = object
 
@@ -1497,9 +1491,8 @@ extendTypes:
       text*: Option[string]
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#textDocumentSaveRegistrationOptions
-    TextDocumentSaveRegistrationOptions* {.
-      extends: [TextDocumentRegistrationOptions, SaveOptions]
-    .} = object
+    TextDocumentSaveRegistrationOptions* {.extends: [TextDocumentRegistrationOptions].} = object
+      includeText*: Option[bool]
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#didCloseTextDocumentParams
     DidCloseTextDocumentParams* = object
@@ -1658,16 +1651,13 @@ extendTypes:
       textDocument*: TextDocumentIdentifier
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#symbolInformation
-    BaseSymbolInformation* = object
+    SymbolInformation* = object
       name*: string
       kind*: int
       tags*: OptionalSeq[int]
-      containerName*: Option[string]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#symbolInformation
-    SymbolInformation* {.extends: [BaseSymbolInformation].} = object
       deprecated*: Option[bool]
       location*: Location
+      containerName*: Option[string]
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#codeActionParams
     CodeActionParams* {.extends: [WorkDoneProgressParams, PartialResultParams].} = object
@@ -1799,7 +1789,7 @@ extendTypes:
       content*: string
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#inlayHintParams
-    InlayHintParams* {.extends: [WorkDoneProgressParams, PartialResultParams].} = object
+    InlayHintParams* {.extends: [WorkDoneProgressParams].} = object
       textDocument*: TextDocumentIdentifier
       range*: Range
 
