@@ -123,13 +123,11 @@ proc writeOneOf*[T](w: var JsonWriter, x: T) {.raises: [IOError].} =
   writeOneOfImpl(w, x, T)
 
 template useOneOfReaderFor*(Flavor: type, T: type) =
-  proc readValue*(
-      r: var JsonReader[Flavor], x: var T
-  ) {.raises: [IOError, SerializationError].} =
+  template readValue*(r: var JsonReader[Flavor], x: var T) =
     readOneOf(r, x)
 
 template useOneOfWriterFor*(Flavor: type, T: type) =
-  proc writeValue*(w: var JsonWriter[Flavor], x: T) {.raises: [IOError].} =
+  template writeValue*(w: var JsonWriter[Flavor], x: T) =
     writeOneOf(w, x)
 
 template useOneOfSerializationFor*(Flavor: type, T: type) =

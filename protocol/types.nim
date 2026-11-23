@@ -902,7 +902,6 @@ extendTypes:
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#initializeResult
     InitializeResult* = object
       capabilities*: ServerCapabilities
-      #!!!serverInfo*: Option[InitializeResult_serverInfo]
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#initializeError
     InitializeError* = object
