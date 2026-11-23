@@ -262,7 +262,6 @@ extendTypes:
     SetTraceParams* = object
       value*: string
 
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#workDoneProgressBegin
     ProgressTokenKind* = enum
       ptNum
       ptStr
@@ -318,7 +317,7 @@ extendTypes:
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#configurationItem
     ConfigurationItem* = object
-      scopeUri*: Option[string]
+      scopeUri*: Option[LspUri]
       section*: Option[string]
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#configurationParams
@@ -1308,7 +1307,7 @@ extendTypes:
       of rpbuFolder:
         folder*: WorkspaceFolder
       of rpbuUri:
-        uri*: string
+        uri*: LspUri
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#relativePattern
     RelativePattern* = object

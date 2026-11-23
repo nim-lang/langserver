@@ -96,6 +96,11 @@ suite "mcp tool call params":
     let params = LspJson.decode("""{"name": "nimCheckProject"}""", McpCallToolRequestParams)
     check params.arguments.isNone
 
+suite "configuration item":
+  test "a scope uri is written as a string":
+    let item = ConfigurationItem(scopeUri: some LspUri("file:///a"), section: some "nim")
+    check LspJson.encode(item) == """{"scopeUri":"file:///a","section":"nim"}"""
+
 suite "initialize params":
   test "the initialization options are kept as json":
     let params = LspJson.decode(
@@ -535,7 +540,8 @@ suite "unions":
     check LspJson.encode(relative) ==
       """{"globPattern":{"baseUri":{"uri":"file:///w","name":"w"},"pattern":"*.nim"}}"""
     let uri = RelativePattern(
-      baseUri: RelativePatternBaseUri(kind: rpbuUri, uri: "file:///w"), pattern: "*.nim"
+      baseUri: RelativePatternBaseUri(kind: rpbuUri, uri: LspUri("file:///w")),
+      pattern: "*.nim",
     )
     check LspJson.encode(uri) == """{"baseUri":"file:///w","pattern":"*.nim"}"""
 
@@ -719,7 +725,7 @@ suite "document filter":
       pattern: some GlobPattern(
         kind: gpRelative,
         relative: RelativePattern(
-          baseUri: RelativePatternBaseUri(kind: rpbuUri, uri: "file:///w"),
+          baseUri: RelativePatternBaseUri(kind: rpbuUri, uri: LspUri("file:///w")),
           pattern: "*.nim",
         ),
       )
