@@ -266,8 +266,6 @@ func inlayHintsEnabled*(cnf: NlsConfig): bool =
   typeHintsEnabled(cnf) or exceptionHintsEnabled(cnf) or parameterHintsEnabled(cnf)
 
 proc supportSignatureHelp*(cc: LspClientCapabilities): bool =
-  if cc.isNil:
-    return false
   let caps = cc.textDocument
   caps.isSome and caps.get.signatureHelp.isSome
 

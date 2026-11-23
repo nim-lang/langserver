@@ -255,9 +255,43 @@ suite "document formatting params":
         DocumentFormattingParams,
       )
 
+suite "extended params":
+  test "the fields of every parent are read":
+    let params = LspJson.decode(
+      """{"textDocument": {"uri": "file:///a.nim"}, "position": {"line": 1, "character": 2}, "workDoneToken": 5, "partialResultToken": "p", "context": {"includeDeclaration": true}}""",
+      ReferenceParams,
+    )
+    check params.textDocument.uri == LspUri("file:///a.nim")
+    check params.position.line.int == 1
+    check params.position.character.int == 2
+    check params.workDoneToken.get.kind == ptNum
+    check params.workDoneToken.get.num == 5
+    check params.partialResultToken.get.kind == ptStr
+    check params.partialResultToken.get.str == "p"
+    check params.context.includeDeclaration
+
+  test "a required field of a parent is required":
+    expect SerializationError:
+      discard LspJson.decode(
+        """{"position": {"line": 1, "character": 2}}""", HoverParams
+      )
+
+  test "the version of a versioned text document is read":
+    let identifier = LspJson.decode(
+      """{"uri": "file:///a.nim", "version": 3}""", VersionedTextDocumentIdentifier
+    )
+    check identifier.uri == LspUri("file:///a.nim")
+    check identifier.version == some 3
+
+  test "a progress token is a number or a string":
+    check LspJson.encode(ProgressToken(kind: ptNum, num: 1)) == "1"
+    check LspJson.encode(ProgressToken(kind: ptStr, str: "t")) == "\"t\""
+    expect SerializationError:
+      discard LspJson.decode("true", ProgressToken)
+
 suite "initialized params":
   test "an empty object is accepted":
-    check not LspJson.decode("{}", InitializedParams).isNil
+    discard LspJson.decode("{}", InitializedParams)
 
   test "something that is not an object is rejected":
     expect SerializationError:
@@ -405,7 +439,7 @@ suite "server capabilities":
       colorProvider: some ServerCapabilitiesColorProvider(kind: scpBool, boolean: false),
     )
     check LspJson.encode(capabilities) ==
-      """{"implementationProvider":{"id":"impl","documentSelector":[{"language":"nim"}]},"colorProvider":false}"""
+      """{"implementationProvider":{"documentSelector":[{"language":"nim"}],"id":"impl"},"colorProvider":false}"""
 
   test "the experimental capabilities are written as they are":
     let capabilities =
@@ -415,7 +449,7 @@ suite "server capabilities":
 suite "document selector":
   test "a registration without a document selector writes null":
     let options = ImplementationRegistrationOptions(id: some "impl")
-    check LspJson.encode(options) == """{"id":"impl","documentSelector":null}"""
+    check LspJson.encode(options) == """{"documentSelector":null,"id":"impl"}"""
 
   test "a document selector is written as its filters":
     let holder = SelectorHolder(

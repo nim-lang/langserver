@@ -4,7 +4,7 @@ import
   json_rpc/router,
   json_serialization,
   json_serialization/std/[options as jsoptions, tables as jstables],
-  ./oneof
+  ./[oneof, extends]
 
 export
   json_serialization, jsoptions, jstables, paths, uri, RequestId, RequestIdKind, Null
@@ -29,1350 +29,1397 @@ type uinteger* = distinct int
 
 const uintegerHigh* = uinteger(int32.high)
 
-type
-  OptionalSeq*[T] = Option[seq[T]]
-  LspAny* = JsonString
-
-  CancelParams* = ref object of RootObj
-    id*: RequestId
-
-  Position* = ref object of RootObj
-    line*: uinteger
-    character*: uinteger
-
-  Range* = ref object of RootObj
-    start*: Position
-    `end`*: Position
-
-  Location* = ref object of RootObj
-    uri*: DocumentUri
-    `range`*: Range
-
-  DiagnosticCodeKind* = enum
-    dgcNum
-    dgcStr
-
-  DiagnosticCode* = object
-    case kind*: DiagnosticCodeKind
-    of dgcNum:
-      num*: int
-    of dgcStr:
-      str*: string
-
-  # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#diagnostic
-  Diagnostic* = ref object of RootObj
-    `range`*: Range
-    severity*: Option[int]
-    code*: Option[DiagnosticCode]
-    source*: Option[string]
-    message*: string
-    relatedInformation*: OptionalSeq[DiagnosticRelatedInformation]
-
-  DiagnosticRelatedInformation* = ref object of RootObj
-    location*: Location
-    message*: string
-
-  Command* = ref object of RootObj
-    title*: string
-    command*: string
-    arguments*: OptionalSeq[LspAny]
-
-  CodeAction* = ref object of RootObj
-    command*: Command
-    title*: string
-    kind*: string
-
-  TextEdit* = ref object of RootObj
-    `range`*: Range
-    newText*: string
-
-  TextDocumentEdit* = ref object of RootObj
-    textDocument*: VersionedTextDocumentIdentifier
-    edits*: OptionalSeq[TextEdit]
-
-  WorkspaceEdit* = ref object of RootObj
-    changes*: Option[Table[DocumentUri, seq[TextEdit]]]
-    documentChanges*: OptionalSeq[TextDocumentEdit]
-
-  TextDocumentIdentifier* = ref object of RootObj
-    uri*: DocumentUri
-
-  TextDocumentItem* = ref object of RootObj
-    uri*: DocumentUri
-    languageId*: string
-    version*: int
-    text*: string
-
-  VersionedTextDocumentIdentifier* = ref object of TextDocumentIdentifier
-    version*: Option[int]
-    languageId*: Option[string]
-
-  TextDocumentPositionParams* = ref object of RootObj
-    textDocument*: TextDocumentIdentifier
-    position*: Position
-
-  ExpandTextDocumentPositionParams* = ref object of TextDocumentPositionParams
-    level*: Option[int]
-
-  DocumentFilter* = ref object of RootObj
-    language*: Option[string]
-    scheme*: Option[string]
-    pattern*: Option[string]
-
-  MarkupContent* = ref object of RootObj
-    kind*: string
-    value*: string
-
-  # https://modelcontextprotocol.io/specification/2025-11-25/schema#notificationparams
-  McpNotificationParams* = ref object of RootObj
-    meta* {.serializedFieldName: "_meta".}: Option[OrderedTable[string, JsonString]]
-
-  McpListToolsParams* = ref object of RootObj
-
-  McpCallToolParams* = ref object of RootObj
-    name*: string
-    arguments*: Option[JsonString]
-
-  McpInitializeParams_clientInfo_Icon_theme* = enum
-    light = "light"
-    dark = "dark"
-
-  McpInitializeParams_clientInfo_Icon* = ref object of RootObj
-    src*: string
-    mimeType*: Option[string]
-    sizes*: OptionalSeq[string]
-    theme*: Option[McpInitializeParams_clientInfo_Icon_theme]
-
-  McpInitializeParams_clientInfo* = ref object of RootObj
-    icons*: OptionalSeq[McpInitializeParams_clientInfo_Icon]
-    name*: string
-    title*: Option[string]
-    version*: string
-    description*: Option[string]
-    websiteUrl*: Option[string]
-
-  LspInitializeParams_clientInfo* = ref object of RootObj
-    name*: string
-    version*: Option[string]
-
-  # 'off' | 'messages' | 'verbose'
-  TraceValue_str = string
-
-  McpInitializeParams* = ref object of RootObj
-    protocolVersion*: string
-    capabilities*: McpClientCapabilities
-    clientInfo*: McpInitializeParams_clientInfo
-
-  LspInitializeParams* = ref object of RootObj
-    processId*: Option[int]
-    clientInfo*: Option[LspInitializeParams_clientInfo]
-    locale*: Option[string]
-    rootPath*: Option[string]
-    rootUri*: Option[DocumentUri]
-    initializationOptions*: Option[LspAny]
-    capabilities*: LspClientCapabilities
-    trace*: Option[TraceValue_str]
-    workspaceFolders*: OptionalSeq[WorkspaceFolder]
-
-  SetTraceParams* = ref object of RootObj
-    value*: TraceValue_str
-
-  # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#workDoneProgressBegin
-  WorkDoneProgressBegin* = ref object of RootObj
-    kind*: string
-    title*: string
-    cancellable*: Option[bool]
-    message*: Option[string]
-    percentage*: Option[uinteger]
-
-  # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#workDoneProgressReport
-  WorkDoneProgressReport* = ref object of RootObj
-    kind*: string
-    cancellable*: Option[bool]
-    message*: Option[string]
-    percentage*: Option[uinteger]
-
-  # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#workDoneProgressEnd
-  WorkDoneProgressEnd* = ref object of RootObj
-    kind*: string
-    message*: Option[string]
-
-  # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#progress
-  ProgressParams*[T] = ref object of RootObj
-    token*: string # can be also int but the server will send strings
-    value*: T
-
-  # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#window_workDoneProgress_create
-  WorkDoneProgressCreateParams* = ref object of RootObj
-    token*: string # can be also int but the server will send strings
-
-  ConfigurationItem* = ref object of RootObj
-    scopeUri*: Option[string]
-    section*: Option[string]
-
-  ConfigurationParams* = ref object of RootObj
-    items*: seq[ConfigurationItem]
-
-  ChangeAnnotationSupportWorkspaceEditClientCapabilities* = ref object of RootObj
-    groupsOnLabel*: Option[bool]
-
-  # 'create' | 'rename' | 'delete'
-  ResourceOperationKind = string
-
-  # 'abort' | 'transactional' | 'undo' | 'textOnlyTransactional'
-  FailureHandlingKind = string
-
-  WorkspaceEditClientCapabilities* = ref object of RootObj
-    documentChanges*: Option[bool]
-    resourceOperations*: OptionalSeq[ResourceOperationKind]
-    failureHandling*: Option[FailureHandlingKind]
-    normalizesLineEndings*: Option[bool]
-    changeAnnotationSupport*:
-      Option[ChangeAnnotationSupportWorkspaceEditClientCapabilities]
-
-  DidChangeConfigurationClientCapabilities* = ref object of RootObj
-    dynamicRegistration*: Option[bool]
-
-  DidChangeWatchedFilesClientCapabilities* = ref object of RootObj
-    dynamicRegistration*: Option[bool]
-    relativePatternSupport*: Option[bool]
-
-  WorkspaceSymbolClientCapabilities_symbolKind* = ref object of RootObj
-    valueSet*: OptionalSeq[int]
-
-  WorkspaceSymbolClientCapabilities_tagSupport* = ref object of RootObj
-    valueSet*: seq[int]
-
-  WorkspaceSymbolClientCapabilities_resolveSupport* = ref object of RootObj
-    properties*: seq[string]
-
-  WorkspaceSymbolClientCapabilities* = ref object of RootObj
-    dynamicRegistration*: Option[bool]
-    symbolKind*: Option[WorkspaceSymbolClientCapabilities_symbolKind]
-    tagSupport*: Option[WorkspaceSymbolClientCapabilities_tagSupport]
-    resolveSupport*: Option[WorkspaceSymbolClientCapabilities_resolveSupport]
-
-  ExecuteCommandClientCapabilities* = ref object of RootObj
-    dynamicRegistration*: Option[bool]
-
-  ClientCapabilities_workspace_fileOperations* = ref object of RootObj
-    dynamicRegistration*: Option[bool]
-    didCreate*: Option[bool]
-    willCreate*: Option[bool]
-    didRename*: Option[bool]
-    willRename*: Option[bool]
-    didDelete*: Option[bool]
-    willDelete*: Option[bool]
-
-  SemanticTokensWorkspaceClientCapabilities* = ref object of RootObj
-    refreshSupport*: Option[bool]
-
-  CodeLensWorkspaceClientCapabilities* = ref object of RootObj
-    refreshSupport*: Option[bool]
-
-  InlineValueWorkspaceClientCapabilities* = ref object of RootObj
-    refreshSupport*: Option[bool]
-
-  InlayHintWorkspaceClientCapabilities* = ref object of RootObj
-    refreshSupport*: Option[bool]
-
-  DiagnosticWorkspaceClientCapabilities* = ref object of RootObj
-    refreshSupport*: Option[bool]
-
-  ClientCapabilities_workspace* = ref object of RootObj
-    applyEdit*: Option[bool]
-    workspaceEdit*: Option[WorkspaceEditClientCapabilities]
-    didChangeConfiguration*: Option[DidChangeConfigurationClientCapabilities]
-    didChangeWatchedFiles*: Option[DidChangeWatchedFilesClientCapabilities]
-    symbol*: Option[WorkspaceSymbolClientCapabilities]
-    executeCommand*: Option[ExecuteCommandClientCapabilities]
-    workspaceFolders*: Option[bool]
-    configuration*: Option[bool]
-    semanticTokens*: Option[SemanticTokensWorkspaceClientCapabilities]
-    codeLens*: Option[CodeLensWorkspaceClientCapabilities]
-    fileOperations*: Option[ClientCapabilities_workspace_fileOperations]
-    inlineValue*: Option[InlineValueWorkspaceClientCapabilities]
-    inlayHint*: Option[InlayHintWorkspaceClientCapabilities]
-    diagnostics*: Option[DiagnosticWorkspaceClientCapabilities]
-
-  TextDocumentSyncClientCapabilities* = ref object of RootObj
-    dynamicRegistration*: Option[bool]
-    willSave*: Option[bool]
-    willSaveWaitUntil*: Option[bool]
-    didSave*: Option[bool]
-
-  # 'plaintext' | 'markdown'
-  MarkupKind_str = string
-
-  CompletionItemTag_int = int
-
-  CompletionClientCapabilities_completionItem_tagSupport* = ref object of RootObj
-    valueSet*: seq[CompletionItemTag_int]
-
-  CompletionClientCapabilities_completionItem_resolveSupport* = ref object of RootObj
-    properties*: seq[string]
-
-  InsertTextMode_int = int
-
-  CompletionClientCapabilities_completionItem_insertTextModeSupport* = ref object of RootObj
-    valueSet*: seq[InsertTextMode_int]
-
-  CompletionClientCapabilities_completionItem* = ref object of RootObj
-    snippetSupport*: Option[bool]
-    commitCharactersSupport*: Option[bool]
-    documentFormat*: OptionalSeq[MarkupKind_str]
-    deprecatedSupport*: Option[bool]
-    preselectSupport*: Option[bool]
-    tagSupport*: Option[CompletionClientCapabilities_completionItem_tagSupport]
-    insertReplaceSupport*: Option[bool]
-    resolveSupport*: Option[CompletionClientCapabilities_completionItem_resolveSupport]
-    insertTextModeSupport*:
-      Option[CompletionClientCapabilities_completionItem_insertTextModeSupport]
-    labelDetailsSupport*: Option[bool]
-
-  CompletionItemKind_int = int
-
-  CompletionClientCapabilities_completionItemKind* = ref object of RootObj
-    valueSet*: OptionalSeq[CompletionItemKind_int]
-
-  CompletionClientCapabilities_completionList* = ref object of RootObj
-    itemDefaults*: OptionalSeq[string]
-
-  CompletionClientCapabilities* = ref object of RootObj
-    dynamicRegistration*: Option[bool]
-    completionItem*: Option[CompletionClientCapabilities_completionItem]
-    completionItemKind*: Option[CompletionClientCapabilities_completionItemKind]
-    contextSupport*: Option[bool]
-    insertTextMode*: Option[InsertTextMode_int]
-    completionList*: Option[CompletionClientCapabilities_completionList]
-
-  HoverClientCapabilities* = ref object of RootObj
-    dynamicRegistration*: Option[bool]
-    contentFormat*: OptionalSeq[MarkupKind_str]
-
-  SignatureHelpClientCapabilities_signatureInformation_parameterInformation* = ref object of RootObj
-    labelOffsetSupport*: Option[bool]
-
-  SignatureHelpClientCapabilities_signatureInformation* = ref object of RootObj
-    documentationFormat*: OptionalSeq[MarkupKind_str]
-    parameterInformation*:
-      Option[SignatureHelpClientCapabilities_signatureInformation_parameterInformation]
-    activeParameterSupport*: Option[bool]
-
-  SignatureHelpClientCapabilities* = ref object of RootObj
-    dynamicRegistration*: Option[bool]
-    signatureInformation*: Option[SignatureHelpClientCapabilities_signatureInformation]
-    contextSupport*: Option[bool]
-
-  ReferenceClientCapabilities* = ref object of RootObj
-    dynamicRegistration*: Option[bool]
-
-  DocumentHighlightClientCapabilities* = ref object of RootObj
-    dynamicRegistration*: Option[bool]
-
-  SymbolKind_int = int
-
-  DocumentSymbolClientCapabilities_symbolKind* = ref object of RootObj
-    valueSet*: OptionalSeq[SymbolKind_int]
-
-  SymbolTag_int = int
-
-  DocumentSymbolClientCapabilities_tagSupport* = ref object of RootObj
-    valueSet*: seq[SymbolTag_int]
-
-  DocumentSymbolClientCapabilities* = ref object of RootObj
-    dynamicRegistration*: Option[bool]
-    symbolKind*: Option[DocumentSymbolClientCapabilities_symbolKind]
-    hierarchicalDocumentSymbolSupport*: Option[bool]
-    tagSupport*: Option[DocumentSymbolClientCapabilities_tagSupport]
-    labelSupport*: Option[bool]
-
-  DocumentFormattingClientCapabilities* = ref object of RootObj
-    dynamicRegistration*: Option[bool]
-
-  DocumentRangeFormattingClientCapabilities* = ref object of RootObj
-    dynamicRegistration*: Option[bool]
-
-  DocumentOnTypeFormattingClientCapabilities* = ref object of RootObj
-    dynamicRegistration*: Option[bool]
-
-  DefinitionClientCapabilities* = ref object of RootObj
-    dynamicRegistration*: Option[bool]
-    linkSupport*: Option[bool]
-
-  TypeDefinitionClientCapabilities* = ref object of RootObj
-    dynamicRegistration*: Option[bool]
-    linkSupport*: Option[bool]
-
-  ImplementationClientCapabilities* = ref object of RootObj
-    dynamicRegistration*: Option[bool]
-    linkSupport*: Option[bool]
-
-  CodeActionKind_str = string
-
-  CodeActionClientCapabilities_codeActionLiteralSupport_codeActionKind* = ref object of RootObj
-    valueSet*: seq[CodeActionKind_str]
-
-  CodeActionClientCapabilities_codeActionLiteralSupport* = ref object of RootObj
-    codeActionKind*:
-      CodeActionClientCapabilities_codeActionLiteralSupport_codeActionKind
-
-  CodeActionClientCapabilities_resolveSupport* = ref object of RootObj
-    properties*: seq[string]
-
-  CodeActionClientCapabilities* = ref object of RootObj
-    dynamicRegistration*: Option[bool]
-    codeActionLiteralSupport*:
-      Option[CodeActionClientCapabilities_codeActionLiteralSupport]
-    isPreferredSupport*: Option[bool]
-    disabledSupport*: Option[bool]
-    dataSupport*: Option[bool]
-    resolveSupport*: Option[CodeActionClientCapabilities_resolveSupport]
-    honorsChangeAnnotations*: Option[bool]
-
-  CodeLensClientCapabilities* = ref object of RootObj
-    dynamicRegistration*: Option[bool]
-
-  DocumentLinkClientCapabilities* = ref object of RootObj
-    dynamicRegistration*: Option[bool]
-    tooltipSupport*: Option[bool]
-
-  DocumentColorClientCapabilities* = ref object of RootObj
-    dynamicRegistration*: Option[bool]
-
-  PrepareSupportDefaultBehavior_int = int
-
-  RenameClientCapabilities* = ref object of RootObj
-    dynamicRegistration*: Option[bool]
-    prepareSupport*: Option[bool]
-    prepareSupportDefaultBehavior*: Option[PrepareSupportDefaultBehavior_int]
-    honorsChangeAnnotations*: Option[bool]
-
-  DiagnosticTag_int = int
-
-  PublishDiagnosticsClientCapabilities_tagSupport* = ref object of RootObj
-    valueSet*: seq[DiagnosticTag_int]
-
-  PublishDiagnosticsClientCapabilities* = ref object of RootObj
-    relatedInformation*: Option[bool]
-    tagSupport*: Option[PublishDiagnosticsClientCapabilities_tagSupport]
-    versionSupport*: Option[bool]
-    codeDescriptionSupport*: Option[bool]
-    dataSupport*: Option[bool]
-
-  DeclarationClientCapabilities* = ref object of RootObj
-    dynamicRegistration*: Option[bool]
-    linkSupport*: Option[bool]
-
-  # 'comment' | 'imports' | 'region' | ...
-  FoldingRangeKind_str = string
-
-  FoldingRangeClientCapabilities_foldingRangeKind* = ref object of RootObj
-    valueSet*: OptionalSeq[FoldingRangeKind_str]
-
-  FoldingRangeClientCapabilities_foldingRange* = ref object of RootObj
-    collapsedText*: Option[bool]
-
-  FoldingRangeClientCapabilities* = ref object of RootObj
-    dynamicRegistration*: Option[bool]
-    rangeLimit*: Option[uinteger]
-    lineFoldingOnly*: Option[bool]
-    foldingRangeKind*: Option[FoldingRangeClientCapabilities_foldingRangeKind]
-    foldingRange*: Option[FoldingRangeClientCapabilities_foldingRange]
-
-  SelectionRangeClientCapabilities* = ref object of RootObj
-    dynamicRegistration*: Option[bool]
-
-  LinkedEditingRangeClientCapabilities* = ref object of RootObj
-    dynamicRegistration*: Option[bool]
-
-  CallHierarchyClientCapabilities* = ref object of RootObj
-    dynamicRegistration*: Option[bool]
-
-  EmptyObject* = ref object of RootObj
-
-  ClientSemanticTokensRequestRangeKind* = enum
-    cstrBool
-    cstrEmpty
-
-  ClientSemanticTokensRequestRange* = object
-    case kind*: ClientSemanticTokensRequestRangeKind
-    of cstrBool:
-      boolean*: bool
-    of cstrEmpty:
-      empty*: EmptyObject
-
-  ClientSemanticTokensRequestFullKind* = enum
-    cstfBool
-    cstfDelta
-
-  ClientSemanticTokensRequestFull* = object
-    case kind*: ClientSemanticTokensRequestFullKind
-    of cstfBool:
-      boolean*: bool
-    of cstfDelta:
-      delta*: ClientSemanticTokensRequestFullDelta
-
-  # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#clientSemanticTokensRequestOptions
-  ClientSemanticTokensRequestOptions* = ref object of RootObj
-    range*: Option[ClientSemanticTokensRequestRange]
-    full*: Option[ClientSemanticTokensRequestFull]
-
-  # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#clientSemanticTokensRequestFullDelta
-  ClientSemanticTokensRequestFullDelta* = ref object of RootObj
-    delta*: Option[bool]
-
-  # 'relative'
-  TokenFormat_str = string
-
-  SemanticTokensClientCapabilities* = ref object of RootObj
-    dynamicRegistration*: Option[bool]
-    requests*: ClientSemanticTokensRequestOptions
-    tokenTypes*: seq[string]
-    tokenModifiers*: seq[string]
-    formats*: seq[TokenFormat_str]
-    overlappingTokenSupport*: Option[bool]
-    multilineTokenSupport*: Option[bool]
-    serverCancelSupport*: Option[bool]
-    augmentsSyntaxTokens*: Option[bool]
-
-  MonikerClientCapabilities* = ref object of RootObj
-    dynamicRegistration*: Option[bool]
-
-  TypeHierarchyClientCapabilities* = ref object of RootObj
-    dynamicRegistration*: Option[bool]
-
-  InlineValueClientCapabilities* = ref object of RootObj
-    dynamicRegistration*: Option[bool]
-
-  InlayHintClientCapabilities_resolveSupport* = ref object of RootObj
-    properties*: seq[string]
-
-  InlayHintClientCapabilities* = ref object of RootObj
-    dynamicRegistration*: Option[bool]
-    resolveSupport*: Option[InlayHintClientCapabilities_resolveSupport]
-
-  DiagnosticClientCapabilities* = ref object of RootObj
-    dynamicRegistration*: Option[bool]
-    relatedDocumentSupport*: Option[bool]
-
-  TextDocumentClientCapabilities* = ref object of RootObj
-    synchronization*: Option[TextDocumentSyncClientCapabilities]
-    completion*: Option[CompletionClientCapabilities]
-    hover*: Option[HoverClientCapabilities]
-    signatureHelp*: Option[SignatureHelpClientCapabilities]
-    declaration*: Option[DeclarationClientCapabilities]
-    definition*: Option[DefinitionClientCapabilities]
-    typeDefinition*: Option[TypeDefinitionClientCapabilities]
-    implementation*: Option[ImplementationClientCapabilities]
-    references*: Option[ReferenceClientCapabilities]
-    documentHighlight*: Option[DocumentHighlightClientCapabilities]
-    documentSymbol*: Option[DocumentSymbolClientCapabilities]
-    codeAction*: Option[CodeActionClientCapabilities]
-    codeLens*: Option[CodeLensClientCapabilities]
-    documentLink*: Option[DocumentLinkClientCapabilities]
-    colorProvider*: Option[DocumentColorClientCapabilities]
-    formatting*: Option[DocumentFormattingClientCapabilities]
-    rangeFormatting*: Option[DocumentRangeFormattingClientCapabilities]
-    onTypeFormatting*: Option[DocumentOnTypeFormattingClientCapabilities]
-    rename*: Option[RenameClientCapabilities]
-    publishDiagnostics*: Option[PublishDiagnosticsClientCapabilities]
-    foldingRange*: Option[FoldingRangeClientCapabilities]
-    selectionRange*: Option[SelectionRangeClientCapabilities]
-    linkedEditingRange*: Option[LinkedEditingRangeClientCapabilities]
-    callHierarchy*: Option[CallHierarchyClientCapabilities]
-    semanticTokens*: Option[SemanticTokensClientCapabilities]
-    moniker*: Option[MonikerClientCapabilities]
-    typeHierarchy*: Option[TypeHierarchyClientCapabilities]
-    inlineValue*: Option[InlineValueClientCapabilities]
-    inlayHint*: Option[InlayHintClientCapabilities]
-    diagnostic*: Option[DiagnosticClientCapabilities]
-
-  ShowMessageRequestClientCapabilities_messageActionItem* = ref object of RootObj
-    additionalPropertiesSupport*: Option[bool]
-
-  ShowMessageRequestClientCapabilities* = ref object of RootObj
-    messageActionItem*: Option[ShowMessageRequestClientCapabilities_messageActionItem]
-
-  ShowDocumentClientCapabilities* = ref object of RootObj
-    support*: bool
-
-  ClientCapabilities_window* = ref object of RootObj
-    workDoneProgress*: Option[bool]
-    showMessage*: Option[ShowMessageRequestClientCapabilities]
-    showDocument*: Option[ShowDocumentClientCapabilities]
-
-  NotebookDocumentSyncClientCapabilities* = ref object of RootObj
-    dynamicRegistration*: Option[bool]
-    executionSummarySupport*: Option[bool]
-
-  NotebookDocumentClientCapabilities* = ref object of RootObj
-    synchronization*: NotebookDocumentSyncClientCapabilities
-
-  ClientCapabilities_general_staleRequestSupport* = ref object of RootObj
-    cancel*: bool
-    retryOnContentModified*: seq[string]
-
-  RegularExpressionsClientCapabilities* = ref object of RootObj
-    engine*: string
-    version*: Option[string]
-
-  MarkdownClientCapabilities* = ref object of RootObj
-    parser*: string
-    version*: Option[string]
-    allowedTags*: OptionalSeq[string]
-
-  # 'utf-8' | 'utf-16' | 'utf-32' | ...
-  PositionEncodingKind_str = string
-
-  ClientCapabilities_general* = ref object of RootObj
-    staleRequestSupport*: Option[ClientCapabilities_general_staleRequestSupport]
-    regularExpressions*: Option[RegularExpressionsClientCapabilities]
-    markdown*: Option[MarkdownClientCapabilities]
-    positionEncodings*: OptionalSeq[PositionEncodingKind_str]
-
-  McpClientCapabilities* = ref object of RootObj
-
-  # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#clientCapabilities
-  LspClientCapabilities* = ref object of RootObj
-    workspace*: Option[ClientCapabilities_workspace]
-    textDocument*: Option[TextDocumentClientCapabilities]
-    notebookDocument*: Option[NotebookDocumentClientCapabilities]
-    window*: Option[ClientCapabilities_window]
-    general*: Option[ClientCapabilities_general]
-    experimental*: Option[LspAny]
-
-  WorkspaceFolder* = ref object of RootObj
-    uri*: LspUri
-    name*: string
-
-  McpInitializeParams_serverInfo* = ref object of RootObj
-    name*: string
-    version*: string
-
-  McpInitializeResult* = ref object of RootObj
-    protocolVersion*: string
-    capabilities*: McpServerCapabilities
-    serverInfo*: McpInitializeParams_serverInfo
-
-  LspInitializeResult* = ref object of RootObj
-    capabilities*: LspServerCapabilities
-    #!!!serverInfo*: Option[InitializeResult_serverInfo]
-
-  InitializeError* = ref object of RootObj
-    retry*: bool
-
-  CompletionOptions* = ref object of RootObj
-    resolveProvider*: Option[bool]
-    triggerCharacters*: OptionalSeq[string]
-
-  SignatureHelpOptions* = ref object of RootObj
-    triggerCharacters*: OptionalSeq[string]
-
-  CodeLensOptions* = ref object of RootObj
-    resolveProvider*: Option[bool]
-
-  DocumentOnTypeFormattingOptions* = ref object of RootObj
-    firstTriggerCharacter*: string
-    moreTriggerCharacter*: OptionalSeq[string]
-
-  DocumentLinkOptions* = ref object of RootObj
-    resolveProvider*: Option[bool]
-
-  ExecuteCommandOptions* = ref object of RootObj
-    commands*: OptionalSeq[string]
-
-  SaveOptions* = ref object of RootObj
-    includeText*: Option[bool]
-
-  TextDocumentSyncKind_int = int
-
-  TextDocumentSyncOptions* = ref object of RootObj
-    openClose*: Option[bool]
-    change*: Option[TextDocumentSyncKind_int]
-    willSave*: Option[bool]
-    willSaveWaitUntil*: Option[bool]
-    save*: Option[SaveOptions]
-
-  StaticRegistrationOptions* = ref object of RootObj
-    id*: Option[string]
-
-  WorkspaceFoldersChangeNotificationsKind* = enum
-    wfcnStr
-    wfcnBool
-
-  WorkspaceFoldersChangeNotifications* = object
-    case kind*: WorkspaceFoldersChangeNotificationsKind
-    of wfcnStr:
-      str*: string
-    of wfcnBool:
-      boolean*: bool
-
-  WorkspaceFoldersServerCapabilities* = ref object of RootObj
-    supported*: Option[bool]
-    changeNotifications*: Option[WorkspaceFoldersChangeNotifications]
-
-  # 'file' | 'folder'
-  FileOperationPatternKind_str = string
-
-  FileOperationPatternOptions* = ref object of RootObj
-    ignoreCase*: Option[bool]
-
-  FileOperationPattern* = ref object of RootObj
-    glob*: string
-    matches*: Option[FileOperationPatternKind_str]
-    options*: Option[FileOperationPatternOptions]
-
-  FileOperationFilter* = ref object of RootObj
-    scheme*: Option[string]
-    pattern: FileOperationPattern
-
-  FileOperationRegistrationOptions* = ref object of RootObj
-    filters*: seq[FileOperationFilter]
-
-  ServerCapabilities_workspace_fileOperations* = ref object of RootObj
-    didCreate*: Option[FileOperationRegistrationOptions]
-    willCreate*: Option[FileOperationRegistrationOptions]
-    didRename*: Option[FileOperationRegistrationOptions]
-    willRename*: Option[FileOperationRegistrationOptions]
-    didDelete*: Option[FileOperationRegistrationOptions]
-    willDelete*: Option[FileOperationRegistrationOptions]
-
-  ServerCapabilities_workspace* = ref object of RootObj
-    workspaceFolders*: Option[WorkspaceFoldersServerCapabilities]
-    #!!!!!!!fileOperations*: Option[ServerCapabilities_workspace_fileOperations]
-
-  DocumentSelector* = seq[DocumentFilter]
-
-  TextDocumentRegistrationOptionsDocumentSelectorKind* = enum
-    tdrdsNull
-    tdrdsSelector
-
-  TextDocumentRegistrationOptionsDocumentSelector* = object
-    case kind*: TextDocumentRegistrationOptionsDocumentSelectorKind
-    of tdrdsNull:
-      null*: Null
-    of tdrdsSelector:
-      selector*: DocumentSelector
-
-  TextDocumentRegistrationOptions* = ref object of RootObj
-    documentSelector*: TextDocumentRegistrationOptionsDocumentSelector
-
-  # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#renameOptions
-  RenameOptions* = ref object of RootObj
-    workDoneProgress*: Option[bool]
-    prepareProvider*: Option[bool]
-
-  # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#implementationOptions
-  ImplementationOptions* = ref object of RootObj
-    workDoneProgress*: Option[bool]
-
-  ImplementationRegistrationOptions* = ref object of TextDocumentRegistrationOptions
-    workDoneProgress*: Option[bool]
-    id*: Option[string]
-
-  # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#documentColorOptions
-  DocumentColorOptions* = ref object of RootObj
-    workDoneProgress*: Option[bool]
-
-  DocumentColorRegistrationOptions* = ref object of TextDocumentRegistrationOptions
-    id*: Option[string]
-    workDoneProgress*: Option[bool]
-
-  ServerCapabilitiesTextDocumentSyncKind* = enum
-    stdsOptions
-    stdsKind
-
-  ServerCapabilitiesTextDocumentSync* = object
-    case kind*: ServerCapabilitiesTextDocumentSyncKind
-    of stdsOptions:
-      options*: TextDocumentSyncOptions
-    of stdsKind:
-      syncKind*: TextDocumentSyncKind_int
-
-  ServerCapabilitiesImplementationProviderKind* = enum
-    sipBool
-    sipOptions
-    sipRegistration
-
-  ServerCapabilitiesImplementationProvider* = object
-    case kind*: ServerCapabilitiesImplementationProviderKind
-    of sipBool:
-      boolean*: bool
-    of sipOptions:
-      options*: ImplementationOptions
-    of sipRegistration:
-      registration*: ImplementationRegistrationOptions
-
-  ServerCapabilitiesColorProviderKind* = enum
-    scpBool
-    scpOptions
-    scpRegistration
-
-  ServerCapabilitiesColorProvider* = object
-    case kind*: ServerCapabilitiesColorProviderKind
-    of scpBool:
-      boolean*: bool
-    of scpOptions:
-      options*: DocumentColorOptions
-    of scpRegistration:
-      registration*: DocumentColorRegistrationOptions
-
-  ServerCapabilitiesRenameProviderKind* = enum
-    srpBool
-    srpOptions
-
-  ServerCapabilitiesRenameProvider* = object
-    case kind*: ServerCapabilitiesRenameProviderKind
-    of srpBool:
-      boolean*: bool
-    of srpOptions:
-      options*: RenameOptions
-
-  InlayHintOptions* = object
-    resolveProvider*: Option[bool]
-
-  McpToolSchema* = object
-    schema* {.serializedFieldName: "$schema".}: Option[string]
-    `type`*: string
-    properties*: Option[OrderedTable[string, JsonString]]
-    required*: Option[seq[string]]
-
-  # https://modelcontextprotocol.io/specification/2026-07-28/schema#tool
-  McpTool* = object
-    name*: string
-    title*: string
-    description*: string
-    inputSchema*: McpToolSchema
-    outputSchema*: Option[McpToolSchema]
-
-  McpListToolsResult* = ref object of RootObj
-    tools*: seq[McpTool]
-
-  McpContentBlockType* = enum
-    TextContent = "text"
-
-  McpContentBlock* = object
-    case `type`*: McpContentBlockType
-    of TextContent:
+extendTypes:
+  type
+    OptionalSeq*[T] = Option[seq[T]]
+    LspAny* = JsonString
+
+    CancelParams* = object
+      id*: RequestId
+
+    Position* = object
+      line*: uinteger
+      character*: uinteger
+
+    Range* = object
+      start*: Position
+      `end`*: Position
+
+    Location* = object
+      uri*: DocumentUri
+      `range`*: Range
+
+    DiagnosticCodeKind* = enum
+      dgcNum
+      dgcStr
+
+    DiagnosticCode* = object
+      case kind*: DiagnosticCodeKind
+      of dgcNum:
+        num*: int
+      of dgcStr:
+        str*: string
+
+    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#diagnostic
+    Diagnostic* = object
+      `range`*: Range
+      severity*: Option[int]
+      code*: Option[DiagnosticCode]
+      source*: Option[string]
+      message*: string
+      relatedInformation*: OptionalSeq[DiagnosticRelatedInformation]
+
+    DiagnosticRelatedInformation* = object
+      location*: Location
+      message*: string
+
+    Command* = object
+      title*: string
+      command*: string
+      arguments*: OptionalSeq[LspAny]
+
+    CodeAction* = object
+      command*: Option[Command]
+      title*: string
+      kind*: string
+
+    TextEdit* = object
+      `range`*: Range
+      newText*: string
+
+    TextDocumentEdit* = object
+      textDocument*: VersionedTextDocumentIdentifier
+      edits*: OptionalSeq[TextEdit]
+
+    WorkspaceEdit* = object
+      changes*: Option[Table[DocumentUri, seq[TextEdit]]]
+      documentChanges*: OptionalSeq[TextDocumentEdit]
+
+    TextDocumentIdentifier* = object
+      uri*: DocumentUri
+
+    TextDocumentItem* = object
+      uri*: DocumentUri
+      languageId*: string
+      version*: int
       text*: string
 
-  # https://modelcontextprotocol.io/specification/2026-07-28/schema#calltoolresult
-  McpCallToolResult* = ref object of RootObj
-    content*: seq[McpContentBlock]
-    structuredContent*: Option[JsonString]
-    isError*: bool
-
-  McpToolsOptions* = object
-
-  McpServerCapabilities* = ref object of RootObj
-    tools*: McpToolsOptions
-
-  LspServerCapabilities* = ref object of RootObj
-    #!!!positionEncoding*: Option[PositionEncodingKind_str]
-    textDocumentSync*: Option[ServerCapabilitiesTextDocumentSync]
-    #notebookDocumentSync?: NotebookDocumentSyncOptions | NotebookDocumentSyncRegistrationOptions;
-    completionProvider*: CompletionOptions
-    hoverProvider*: Option[bool]
-    signatureHelpProvider*: SignatureHelpOptions
-    declarationProvider*: Option[bool]
-    definitionProvider*: Option[bool]
-    typeDefinitionProvider*: Option[bool]
-    implementationProvider*: Option[ServerCapabilitiesImplementationProvider]
-    referencesProvider*: Option[bool]
-    documentHighlightProvider*: Option[bool]
-    documentSymbolProvider*: Option[bool]
-    workspaceSymbolProvider*: Option[bool]
-    codeActionProvider*: Option[bool]
-    codeLensProvider*: CodeLensOptions
-    documentLinkProvider*: Option[DocumentLinkOptions]
-    colorProvider*: Option[ServerCapabilitiesColorProvider]
-    documentFormattingProvider*: Option[bool]
-    documentRangeFormattingProvider*: Option[bool]
-    documentOnTypeFormattingProvider*: DocumentOnTypeFormattingOptions
-    renameProvider*: Option[ServerCapabilitiesRenameProvider]
-    # foldingRangeProvider?: boolean | FoldingRangeOptions | FoldingRangeRegistrationOptions;
-    executeCommandProvider*: Option[ExecuteCommandOptions]
-    # selectionRangeProvider?: boolean | SelectionRangeOptions | SelectionRangeRegistrationOptions;
-    # linkedEditingRangeProvider?: boolean | LinkedEditingRangeOptions | LinkedEditingRangeRegistrationOptions;
-    # callHierarchyProvider?: boolean | CallHierarchyOptions | CallHierarchyRegistrationOptions;
-    # semanticTokensProvider?: SemanticTokensOptions | SemanticTokensRegistrationOptions;
-    # monikerProvider?: boolean | MonikerOptions | MonikerRegistrationOptions;
-    # typeHierarchyProvider?: boolean | TypeHierarchyOptions | TypeHierarchyRegistrationOptions;
-    # inlineValueProvider?: boolean | InlineValueOptions | InlineValueRegistrationOptions;
-    inlayHintProvider*: Option[InlayHintOptions]
-      # boolean | InlayHintOptions | InlayHintRegistrationOptions;
-    # diagnosticProvider?: DiagnosticOptions | DiagnosticRegistrationOptions;
-    # workspaceSymbolProvider?: boolean | WorkspaceSymbolOptions;
-    workspace*: Option[ServerCapabilities_workspace]
-    experimental*: Option[LspAny]
-
-  InitializedParams* = ref object of RootObj
-
-  ShowMessageParams* = ref object of RootObj
-    `type`*: int
-    message*: string
-
-  MessageActionItem* = ref object of RootObj
-    title*: string
-
-  ShowMessageRequestParams* = ref object of RootObj
-    `type`*: int
-    message*: string
-    actions*: OptionalSeq[MessageActionItem]
-
-  LogMessageParams* = ref object of RootObj
-    `type`*: int
-    message*: string
-
-  Registration* = ref object of RootObj
-    id*: string
-    `method`*: string
-    registerOptions*: Option[LspAny]
-
-  RegistrationParams* = ref object of RootObj
-    registrations*: OptionalSeq[Registration]
-
-  Unregistration* = ref object of RootObj
-    id*: string
-    `method`*: string
-
-  UnregistrationParams* = ref object of RootObj
-    unregistrations*: OptionalSeq[Unregistration]
-
-  WorkspaceFoldersChangeEvent* = ref object of RootObj
-    added*: OptionalSeq[WorkspaceFolder]
-    removed*: OptionalSeq[WorkspaceFolder]
-
-  DidChangeWorkspaceFoldersParams* = ref object of RootObj
-    event*: WorkspaceFoldersChangeEvent
-
-  # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#workspace_didChangeConfiguration
-  # XXX remove Option when skipNullFields = false
-  DidChangeConfigurationParams* = ref object of RootObj
-    settings*: Option[LspAny]
-
-  FileEvent* = ref object of RootObj
-    uri*: DocumentUri
-    `type`*: int
-
-  DidChangeWatchedFilesParams* = ref object of RootObj
-    changes*: OptionalSeq[FileEvent]
-
-  DidChangeWatchedFilesRegistrationOptions* = ref object of RootObj
-    watchers*: OptionalSeq[FileSystemWatcher]
-
-  FileSystemWatcher* = ref object of RootObj
-    globPattern*: string
-    kind*: Option[int]
-
-  WorkspaceSymbolParams* = ref object of RootObj
-    query*: string
-
-  ExecuteCommandParams* = ref object of RootObj
-    command*: string
-    arguments*: OptionalSeq[LspAny]
-
-  ExecuteCommandRegistrationOptions* = ref object of RootObj
-    commands*: OptionalSeq[string]
-
-  ApplyWorkspaceEditParams* = ref object of RootObj
-    label*: Option[string]
-    edit*: WorkspaceEdit
-
-  ApplyWorkspaceEditResponse* = ref object of RootObj
-    applied*: bool
-
-  DidOpenTextDocumentParams* = ref object of RootObj
-    textDocument*: TextDocumentItem
-
-  DidChangeTextDocumentParams* = ref object of RootObj
-    textDocument*: VersionedTextDocumentIdentifier
-    contentChanges*: seq[TextDocumentContentChangeEvent]
-
-  TextDocumentContentChangeEvent* = ref object of RootObj
-    range*: Option[Range]
-    rangeLength*: Option[int]
-    text*: string
-
-  TextDocumentChangeRegistrationOptions* = ref object of TextDocumentRegistrationOptions
-    syncKind*: int
-
-  WillSaveTextDocumentParams* = ref object of RootObj
-    textDocument*: TextDocumentIdentifier
-    reason*: int
-
-  DidSaveTextDocumentParams* = ref object of RootObj
-    textDocument*: TextDocumentIdentifier
-    text*: Option[string]
-
-  TextDocumentSaveRegistrationOptions* = ref object of TextDocumentRegistrationOptions
-    includeText*: Option[bool]
-
-  DidCloseTextDocumentParams* = ref object of RootObj
-    textDocument*: TextDocumentIdentifier
-
-  PublishDiagnosticsParams* = ref object of RootObj
-    uri*: DocumentUri
-    diagnostics*: OptionalSeq[Diagnostic]
-
-  CompletionParams* = ref object of TextDocumentPositionParams
-    context*: Option[CompletionContext]
-
-  CompletionContext* = ref object of RootObj
-    triggerKind*: int
-    triggerCharacter*: Option[string]
-
-  CompletionList* = ref object of RootObj
-    isIncomplete*: bool
-    `items`*: OptionalSeq[CompletionItem]
-
-  CompletionItemLabelDetails* = ref object of RootObj
-    detail*: Option[string]
-    description*: Option[string]
-
-  CompletionItemDocumentationKind* = enum
-    cidStr
-    cidMarkup
-
-  CompletionItemDocumentation* = object
-    case kind*: CompletionItemDocumentationKind
-    of cidStr:
-      str*: string
-    of cidMarkup:
-      markup*: MarkupContent
-
-  CompletionItem* = ref object of RootObj
-    label*: string
-    kind*: Option[int]
-    detail*: Option[string]
-    documentation*: Option[CompletionItemDocumentation]
-    deprecated*: Option[bool]
-    preselect*: Option[bool]
-    sortText*: Option[string]
-    filterText*: Option[string]
-    insertText*: Option[string]
-    insertTextFormat*: Option[int]
-    # textEdit*: Option[TextEdit]
-    # additionalTextEdits*: Option[TextEdit]
-    commitCharacters*: OptionalSeq[string]
-    command*: Option[Command]
-    data*: Option[LspAny]
-    labelDetails*: Option[CompletionItemLabelDetails]
-
-  CompletionRegistrationOptions* = ref object of TextDocumentRegistrationOptions
-    triggerCharacters*: OptionalSeq[string]
-    resolveProvider*: Option[bool]
-
-  MarkedStringOption* = ref object of RootObj
-    language*: string
-    value*: string
-
-  MarkedStringKind* = enum
-    msStr
-    msOption
-
-  MarkedString* = object
-    case kind*: MarkedStringKind
-    of msStr:
-      str*: string
-    of msOption:
-      option*: MarkedStringOption
-
-  HoverContentsKind* = enum
-    hcMarkedString
-    hcMarkedStrings
-    hcMarkup
-
-  HoverContents* = object
-    case kind*: HoverContentsKind
-    of hcMarkedString:
-      markedString*: MarkedString
-    of hcMarkedStrings:
-      markedStrings*: seq[MarkedString]
-    of hcMarkup:
-      markup*: MarkupContent
-
-  # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#hover
-  Hover* = ref object of RootObj
-    contents*: HoverContents
-    range*: Option[Range]
-
-  HoverParams* = ref object of TextDocumentPositionParams
-
-  SignatureHelp* = ref object of RootObj
-    signatures*: OptionalSeq[SignatureInformation]
-    activeSignature*: Option[int]
-    activeParameter*: Option[int]
-
-  SignatureInformation* = ref object of RootObj
-    label*: string
-    # documentation*: Option[string]
-    parameters*: seq[ParameterInformation]
-
-  ParameterInformation* = ref object of RootObj
-    label*: string # documentation*: Option[string]
-
-  SignatureHelpRegistrationOptions* = ref object of TextDocumentRegistrationOptions
-    triggerCharacters*: OptionalSeq[string]
-
-  ReferenceParams* = ref object of TextDocumentPositionParams
-    context*: ReferenceContext
-
-  ReferenceContext* = ref object of RootObj
-    includeDeclaration*: bool
-
-  DocumentHighlight* = ref object of RootObj
-    `range`*: Range
-    kind*: Option[int]
-
-  DocumentSymbolParams* = ref object of RootObj
-    textDocument*: TextDocumentIdentifier
-
-  SymbolInformation* = ref object of RootObj
-    name*: string
-    kind*: int
-    deprecated*: Option[bool]
-    location*: Location
-    containerName*: Option[string]
-
-  CodeActionParams* = ref object of RootObj
-    textDocument*: TextDocumentIdentifier
-    `range`*: Range
-    context*: CodeActionContext
-
-  CodeActionContext* = ref object of RootObj
-    diagnostics*: OptionalSeq[Diagnostic]
-
-  CodeLensParams* = ref object of RootObj
-    textDocument*: TextDocumentIdentifier
-
-  # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#codeLens
-  CodeLens* = ref object of RootObj
-    `range`*: Range
-    command*: Option[Command]
-    data*: Option[LspAny]
-
-  CodeLensRegistrationOptions* = ref object of TextDocumentRegistrationOptions
-    resolveProvider*: Option[bool]
-
-  DocumentLinkParams* = ref object of RootObj
-    textDocument*: TextDocumentIdentifier
-
-  # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#documentLink
-  DocumentLink* = ref object of RootObj
-    `range`*: Range
-    target*: Option[string]
-    data*: Option[LspAny]
-
-  DocumentLinkRegistrationOptions* = ref object of TextDocumentRegistrationOptions
-    resolveProvider*: Option[bool]
-
-  DocumentColorParams* = ref object of RootObj
-    textDocument*: TextDocumentIdentifier
-
-  ColorInformation* = ref object of RootObj
-    `range`*: Range
-    color*: Color
-
-  Color* = ref object of RootObj
-    red*: int
-    green*: int
-    blue*: int
-    alpha*: int
-
-  ColorPresentationParams* = ref object of RootObj
-    textDocument*: TextDocumentIdentifier
-    color*: Color
-    `range`*: Range
-
-  ColorPresentation* = ref object of RootObj
-    label*: string
-    textEdit*: Option[TextEdit]
-    additionalTextEdits*: OptionalSeq[TextEdit]
-
-  FormattingOptions* = ref object of RootObj
-    tabSize*: uinteger
-    insertSpaces*: bool
-    trimTrailingWhitespace*: Option[bool]
-    insertFinalNewline*: Option[bool]
-    trimFinalNewlines*: Option[bool]
-
-  DocumentFormattingParams* = ref object of RootObj
-    textDocument*: TextDocumentIdentifier
-    options*: FormattingOptions
-
-  DocumentRangeFormattingParams* = ref object of RootObj
-    textDocument*: TextDocumentIdentifier
-    `range`*: Range
-    options*: FormattingOptions
-
-  DocumentOnTypeFormattingParams* = ref object of RootObj
-    textDocument*: TextDocumentIdentifier
-    position*: Position
-    ch*: string
-    options*: FormattingOptions
-
-  DocumentOnTypeFormattingRegistrationOptions* = ref object of TextDocumentRegistrationOptions
-    firstTriggerCharacter*: string
-    moreTriggerCharacter*: OptionalSeq[string]
-
-  RenameParams* = ref object of RootObj
-    textDocument*: TextDocumentIdentifier
-    position*: Position
-    newName*: string
-
-  PrepareRenameParams* = ref object of RootObj
-    textDocument*: TextDocumentIdentifier
-    position*: Position
-
-  PrepareRenameResponse* = ref object of RootObj
-    defaultBehaviour*: bool
-
-  SignatureHelpContext* = ref object of RootObj
-    triggerKind*: int
-    triggerCharacter*: Option[string]
-    isRetrigger*: bool
-    activeSignatureHelp*: Option[SignatureHelp]
-
-  SignatureHelpParams* = ref object of TextDocumentPositionParams
-    context*: Option[SignatureHelpContext]
-
-  ExpandResult* = ref object of RootObj
-    range*: Range
-    content*: string
-
-  InlayHintParams* = ref object of RootObj # TODO: extends WorkDoneProgressParams
-    textDocument*: TextDocumentIdentifier
-    range*: Range
-
-  InlayHintKind_int* = int
-
-  InlayHint* = ref object of RootObj
-    position*: Position
-    label*: string # string | InlayHintLabelPart[]
-    kind*: Option[InlayHintKind_int]
-    textEdits*: OptionalSeq[TextEdit]
-    tooltip*: Option[string] # string | MarkupContent
-    paddingLeft*: Option[bool]
-    paddingRight*: Option[bool] #data*: OptionalNode
-
-  NimsuggestCapability* = enum
-    nsCon = "con"
-    nsExceptionInlayHints = "exceptionInlayHints"
-    nsUnknownFile = "unknownFile"
-    nsMaxMemory = "maxMemory"
-    nsOutline2 = "outline2"
-
-  PendingRequestStatus* = object
-    name*: string
-    projectFile*: string
-    time*: string
-    state*: string
-
-  NimsuggestStatus* = object
-    projectFile*: string
-    capabilities*: seq[NimsuggestCapability]
-    version*: string
-    path*: string
-    port*: int
-    openFiles*: seq[string]
-    unknownFiles*: seq[string]
-
-  LspExtensionCapability* = enum
-    #List of extensions this server support. Useful for clients
-    excRestartSuggest = "RestartSuggest"
-    excNimbleTask = "NimbleTask"
-    excRunTests = "RunTests"
-
-  ProjectError* = object
-    projectFile*: string
-    errorMessage*: string
-    lastKnownCmd*: string
-
-  NimLangServerStatus* = object
-    lspPath*: string
-    version*: string
-    nimsuggestInstances*: seq[NimsuggestStatus]
-    openFiles*: seq[string]
-    extensionCapabilities*: seq[LspExtensionCapability]
-    pendingRequests*: seq[PendingRequestStatus]
-    projectErrors*: seq[ProjectError]
-
-  NimLangServerStatusParams* = object
-
-  NimLangServerCapabilitiesParams* = object
-
-  SuggestAction* = enum
-    saNone = "none"
-    saRestart = "restart"
-    saRestartAll = "restartAll"
-
-  SuggestParams* = object
-    action*: SuggestAction
-    projectFile*: string #Absolute path to file
-
-  SuggestResult* = object
-    actionPerformed*: SuggestAction
-
-  NimbleTask* = object
-    name*: string
-    description*: string
-
-  RunTaskParams* = object
-    command*: seq[string] #command and args
-
-  RunTaskResult* = object
-    command*: seq[string] #command and args
-    output*: seq[string] #output lines
-
-  TestInfo* = object
-    name*: string
-    line*: int
-    file*: string
-
-  TestSuiteInfo* = object
-    name*: string #The suite name, empty if it's a global test
-    tests*: seq[TestInfo]
-
-  TestProjectInfo* = object
-    entryPoint*: string
-    suites*: Table[string, TestSuiteInfo]
-    error*: Option[string]
-
-  ListTestsParams* = object
-    entryPoint*: string
-      #can be patterns? if empty we could do the same as nimble does or just run `nimble test args`
-
-  ListTestsResult* = object
-    projectInfo*: TestProjectInfo
-
-  RunTestResult* = object
-    name*: string
-    time*: float
-    failure*: Option[string]
-
-  RunTestSuiteResult* = object
-    name*: string
-    tests*: int
-    failures*: int
-    errors*: int
-    skipped*: int
-    time*: float
-    testResults*: seq[RunTestResult]
-
-  RunTestParams* = object
-    entryPoint*: string
-    suiteName*: Option[string]
-      #Optional, if provided, only run tests in the suite. Takes precedence over testName
-    testNames*: Option[seq[string]] #Optional, if provided, only run the specific tests
-
-  RunTestProjectResult* = object
-    suites*: seq[RunTestSuiteResult]
-    fullOutput*: string
-
-  CancelTestResult* = object
-    cancelled*: bool
+    VersionedTextDocumentIdentifier* {.extends: [TextDocumentIdentifier].} = object
+      version*: Option[int]
+      languageId*: Option[string]
+
+    TextDocumentPositionParams* = object
+      textDocument*: TextDocumentIdentifier
+      position*: Position
+
+    ExpandTextDocumentPositionParams* {.extends: [TextDocumentPositionParams].} = object
+      level*: Option[int]
+
+    DocumentFilter* = object
+      language*: Option[string]
+      scheme*: Option[string]
+      pattern*: Option[string]
+
+    MarkupContent* = object
+      kind*: string
+      value*: string
+
+    # https://modelcontextprotocol.io/specification/2025-11-25/schema#notificationparams
+    McpNotificationParams* = object
+      meta* {.serializedFieldName: "_meta".}: Option[OrderedTable[string, JsonString]]
+
+    McpListToolsParams* = object
+
+    McpCallToolParams* = object
+      name*: string
+      arguments*: Option[JsonString]
+
+    McpInitializeParams_clientInfo_Icon_theme* = enum
+      light = "light"
+      dark = "dark"
+
+    McpInitializeParams_clientInfo_Icon* = object
+      src*: string
+      mimeType*: Option[string]
+      sizes*: OptionalSeq[string]
+      theme*: Option[McpInitializeParams_clientInfo_Icon_theme]
+
+    McpInitializeParams_clientInfo* = object
+      icons*: OptionalSeq[McpInitializeParams_clientInfo_Icon]
+      name*: string
+      title*: Option[string]
+      version*: string
+      description*: Option[string]
+      websiteUrl*: Option[string]
+
+    LspInitializeParams_clientInfo* = object
+      name*: string
+      version*: Option[string]
+
+    # 'off' | 'messages' | 'verbose'
+    TraceValue_str = string
+
+    McpInitializeParams* = object
+      protocolVersion*: string
+      capabilities*: McpClientCapabilities
+      clientInfo*: McpInitializeParams_clientInfo
+
+    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#initializeParams
+    BaseInitializeParams* {.extends: [WorkDoneProgressParams].} = object
+      processId*: Option[int]
+      clientInfo*: Option[LspInitializeParams_clientInfo]
+      locale*: Option[string]
+      rootPath*: Option[string]
+      rootUri*: Option[DocumentUri]
+      capabilities*: LspClientCapabilities
+      initializationOptions*: Option[LspAny]
+      trace*: Option[TraceValue_str]
+
+    WorkspaceFoldersInitializeParams* = object
+      workspaceFolders*: OptionalSeq[WorkspaceFolder]
+
+    LspInitializeParams* {.
+      extends: [BaseInitializeParams, WorkspaceFoldersInitializeParams]
+    .} = object
+
+    SetTraceParams* = object
+      value*: TraceValue_str
+
+    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#workDoneProgressBegin
+    ProgressTokenKind* = enum
+      ptNum
+      ptStr
+
+    ProgressToken* = object
+      case kind*: ProgressTokenKind
+      of ptNum:
+        num*: int
+      of ptStr:
+        str*: string
+
+    WorkDoneProgressParams* = object
+      workDoneToken*: Option[ProgressToken]
+
+    PartialResultParams* = object
+      partialResultToken*: Option[ProgressToken]
+
+    WorkDoneProgressOptions* = object
+      workDoneProgress*: Option[bool]
+
+    WorkDoneProgressBegin* = object
+      kind*: string
+      title*: string
+      cancellable*: Option[bool]
+      message*: Option[string]
+      percentage*: Option[uinteger]
+
+    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#workDoneProgressReport
+    WorkDoneProgressReport* = object
+      kind*: string
+      cancellable*: Option[bool]
+      message*: Option[string]
+      percentage*: Option[uinteger]
+
+    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#workDoneProgressEnd
+    WorkDoneProgressEnd* = object
+      kind*: string
+      message*: Option[string]
+
+    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#progress
+    ProgressParams*[T] = object
+      token*: string # can be also int but the server will send strings
+      value*: T
+
+    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#window_workDoneProgress_create
+    WorkDoneProgressCreateParams* = object
+      token*: string # can be also int but the server will send strings
+
+    ConfigurationItem* = object
+      scopeUri*: Option[string]
+      section*: Option[string]
+
+    ConfigurationParams* = object
+      items*: seq[ConfigurationItem]
+
+    ChangeAnnotationSupportWorkspaceEditClientCapabilities* = object
+      groupsOnLabel*: Option[bool]
+
+    # 'create' | 'rename' | 'delete'
+    ResourceOperationKind = string
+
+    # 'abort' | 'transactional' | 'undo' | 'textOnlyTransactional'
+    FailureHandlingKind = string
+
+    WorkspaceEditClientCapabilities* = object
+      documentChanges*: Option[bool]
+      resourceOperations*: OptionalSeq[ResourceOperationKind]
+      failureHandling*: Option[FailureHandlingKind]
+      normalizesLineEndings*: Option[bool]
+      changeAnnotationSupport*:
+        Option[ChangeAnnotationSupportWorkspaceEditClientCapabilities]
+
+    DidChangeConfigurationClientCapabilities* = object
+      dynamicRegistration*: Option[bool]
+
+    DidChangeWatchedFilesClientCapabilities* = object
+      dynamicRegistration*: Option[bool]
+      relativePatternSupport*: Option[bool]
+
+    WorkspaceSymbolClientCapabilities_symbolKind* = object
+      valueSet*: OptionalSeq[int]
+
+    WorkspaceSymbolClientCapabilities_tagSupport* = object
+      valueSet*: seq[int]
+
+    WorkspaceSymbolClientCapabilities_resolveSupport* = object
+      properties*: seq[string]
+
+    WorkspaceSymbolClientCapabilities* = object
+      dynamicRegistration*: Option[bool]
+      symbolKind*: Option[WorkspaceSymbolClientCapabilities_symbolKind]
+      tagSupport*: Option[WorkspaceSymbolClientCapabilities_tagSupport]
+      resolveSupport*: Option[WorkspaceSymbolClientCapabilities_resolveSupport]
+
+    ExecuteCommandClientCapabilities* = object
+      dynamicRegistration*: Option[bool]
+
+    ClientCapabilities_workspace_fileOperations* = object
+      dynamicRegistration*: Option[bool]
+      didCreate*: Option[bool]
+      willCreate*: Option[bool]
+      didRename*: Option[bool]
+      willRename*: Option[bool]
+      didDelete*: Option[bool]
+      willDelete*: Option[bool]
+
+    SemanticTokensWorkspaceClientCapabilities* = object
+      refreshSupport*: Option[bool]
+
+    CodeLensWorkspaceClientCapabilities* = object
+      refreshSupport*: Option[bool]
+
+    InlineValueWorkspaceClientCapabilities* = object
+      refreshSupport*: Option[bool]
+
+    InlayHintWorkspaceClientCapabilities* = object
+      refreshSupport*: Option[bool]
+
+    DiagnosticWorkspaceClientCapabilities* = object
+      refreshSupport*: Option[bool]
+
+    ClientCapabilities_workspace* = object
+      applyEdit*: Option[bool]
+      workspaceEdit*: Option[WorkspaceEditClientCapabilities]
+      didChangeConfiguration*: Option[DidChangeConfigurationClientCapabilities]
+      didChangeWatchedFiles*: Option[DidChangeWatchedFilesClientCapabilities]
+      symbol*: Option[WorkspaceSymbolClientCapabilities]
+      executeCommand*: Option[ExecuteCommandClientCapabilities]
+      workspaceFolders*: Option[bool]
+      configuration*: Option[bool]
+      semanticTokens*: Option[SemanticTokensWorkspaceClientCapabilities]
+      codeLens*: Option[CodeLensWorkspaceClientCapabilities]
+      fileOperations*: Option[ClientCapabilities_workspace_fileOperations]
+      inlineValue*: Option[InlineValueWorkspaceClientCapabilities]
+      inlayHint*: Option[InlayHintWorkspaceClientCapabilities]
+      diagnostics*: Option[DiagnosticWorkspaceClientCapabilities]
+
+    TextDocumentSyncClientCapabilities* = object
+      dynamicRegistration*: Option[bool]
+      willSave*: Option[bool]
+      willSaveWaitUntil*: Option[bool]
+      didSave*: Option[bool]
+
+    # 'plaintext' | 'markdown'
+    MarkupKind_str = string
+
+    CompletionItemTag_int = int
+
+    CompletionClientCapabilities_completionItem_tagSupport* = object
+      valueSet*: seq[CompletionItemTag_int]
+
+    CompletionClientCapabilities_completionItem_resolveSupport* = object
+      properties*: seq[string]
+
+    InsertTextMode_int = int
+
+    CompletionClientCapabilities_completionItem_insertTextModeSupport* = object
+      valueSet*: seq[InsertTextMode_int]
+
+    CompletionClientCapabilities_completionItem* = object
+      snippetSupport*: Option[bool]
+      commitCharactersSupport*: Option[bool]
+      documentFormat*: OptionalSeq[MarkupKind_str]
+      deprecatedSupport*: Option[bool]
+      preselectSupport*: Option[bool]
+      tagSupport*: Option[CompletionClientCapabilities_completionItem_tagSupport]
+      insertReplaceSupport*: Option[bool]
+      resolveSupport*:
+        Option[CompletionClientCapabilities_completionItem_resolveSupport]
+      insertTextModeSupport*:
+        Option[CompletionClientCapabilities_completionItem_insertTextModeSupport]
+      labelDetailsSupport*: Option[bool]
+
+    CompletionItemKind_int = int
+
+    CompletionClientCapabilities_completionItemKind* = object
+      valueSet*: OptionalSeq[CompletionItemKind_int]
+
+    CompletionClientCapabilities_completionList* = object
+      itemDefaults*: OptionalSeq[string]
+
+    CompletionClientCapabilities* = object
+      dynamicRegistration*: Option[bool]
+      completionItem*: Option[CompletionClientCapabilities_completionItem]
+      completionItemKind*: Option[CompletionClientCapabilities_completionItemKind]
+      contextSupport*: Option[bool]
+      insertTextMode*: Option[InsertTextMode_int]
+      completionList*: Option[CompletionClientCapabilities_completionList]
+
+    HoverClientCapabilities* = object
+      dynamicRegistration*: Option[bool]
+      contentFormat*: OptionalSeq[MarkupKind_str]
+
+    SignatureHelpClientCapabilities_signatureInformation_parameterInformation* = object
+      labelOffsetSupport*: Option[bool]
+
+    SignatureHelpClientCapabilities_signatureInformation* = object
+      documentationFormat*: OptionalSeq[MarkupKind_str]
+      parameterInformation*: Option[
+        SignatureHelpClientCapabilities_signatureInformation_parameterInformation
+      ]
+      activeParameterSupport*: Option[bool]
+
+    SignatureHelpClientCapabilities* = object
+      dynamicRegistration*: Option[bool]
+      signatureInformation*:
+        Option[SignatureHelpClientCapabilities_signatureInformation]
+      contextSupport*: Option[bool]
+
+    ReferenceClientCapabilities* = object
+      dynamicRegistration*: Option[bool]
+
+    DocumentHighlightClientCapabilities* = object
+      dynamicRegistration*: Option[bool]
+
+    SymbolKind_int = int
+
+    DocumentSymbolClientCapabilities_symbolKind* = object
+      valueSet*: OptionalSeq[SymbolKind_int]
+
+    SymbolTag_int = int
+
+    DocumentSymbolClientCapabilities_tagSupport* = object
+      valueSet*: seq[SymbolTag_int]
+
+    DocumentSymbolClientCapabilities* = object
+      dynamicRegistration*: Option[bool]
+      symbolKind*: Option[DocumentSymbolClientCapabilities_symbolKind]
+      hierarchicalDocumentSymbolSupport*: Option[bool]
+      tagSupport*: Option[DocumentSymbolClientCapabilities_tagSupport]
+      labelSupport*: Option[bool]
+
+    DocumentFormattingClientCapabilities* = object
+      dynamicRegistration*: Option[bool]
+
+    DocumentRangeFormattingClientCapabilities* = object
+      dynamicRegistration*: Option[bool]
+
+    DocumentOnTypeFormattingClientCapabilities* = object
+      dynamicRegistration*: Option[bool]
+
+    DefinitionClientCapabilities* = object
+      dynamicRegistration*: Option[bool]
+      linkSupport*: Option[bool]
+
+    TypeDefinitionClientCapabilities* = object
+      dynamicRegistration*: Option[bool]
+      linkSupport*: Option[bool]
+
+    ImplementationClientCapabilities* = object
+      dynamicRegistration*: Option[bool]
+      linkSupport*: Option[bool]
+
+    CodeActionKind_str = string
+
+    CodeActionClientCapabilities_codeActionLiteralSupport_codeActionKind* = object
+      valueSet*: seq[CodeActionKind_str]
+
+    CodeActionClientCapabilities_codeActionLiteralSupport* = object
+      codeActionKind*:
+        CodeActionClientCapabilities_codeActionLiteralSupport_codeActionKind
+
+    CodeActionClientCapabilities_resolveSupport* = object
+      properties*: seq[string]
+
+    CodeActionClientCapabilities* = object
+      dynamicRegistration*: Option[bool]
+      codeActionLiteralSupport*:
+        Option[CodeActionClientCapabilities_codeActionLiteralSupport]
+      isPreferredSupport*: Option[bool]
+      disabledSupport*: Option[bool]
+      dataSupport*: Option[bool]
+      resolveSupport*: Option[CodeActionClientCapabilities_resolveSupport]
+      honorsChangeAnnotations*: Option[bool]
+
+    CodeLensClientCapabilities* = object
+      dynamicRegistration*: Option[bool]
+
+    DocumentLinkClientCapabilities* = object
+      dynamicRegistration*: Option[bool]
+      tooltipSupport*: Option[bool]
+
+    DocumentColorClientCapabilities* = object
+      dynamicRegistration*: Option[bool]
+
+    PrepareSupportDefaultBehavior_int = int
+
+    RenameClientCapabilities* = object
+      dynamicRegistration*: Option[bool]
+      prepareSupport*: Option[bool]
+      prepareSupportDefaultBehavior*: Option[PrepareSupportDefaultBehavior_int]
+      honorsChangeAnnotations*: Option[bool]
+
+    DiagnosticTag_int = int
+
+    PublishDiagnosticsClientCapabilities_tagSupport* = object
+      valueSet*: seq[DiagnosticTag_int]
+
+    DiagnosticsCapabilities* = object
+      relatedInformation*: Option[bool]
+      tagSupport*: Option[PublishDiagnosticsClientCapabilities_tagSupport]
+      codeDescriptionSupport*: Option[bool]
+      dataSupport*: Option[bool]
+
+    PublishDiagnosticsClientCapabilities* {.extends: [DiagnosticsCapabilities].} = object
+      versionSupport*: Option[bool]
+
+    DeclarationClientCapabilities* = object
+      dynamicRegistration*: Option[bool]
+      linkSupport*: Option[bool]
+
+    # 'comment' | 'imports' | 'region' | ...
+    FoldingRangeKind_str = string
+
+    FoldingRangeClientCapabilities_foldingRangeKind* = object
+      valueSet*: OptionalSeq[FoldingRangeKind_str]
+
+    FoldingRangeClientCapabilities_foldingRange* = object
+      collapsedText*: Option[bool]
+
+    FoldingRangeClientCapabilities* = object
+      dynamicRegistration*: Option[bool]
+      rangeLimit*: Option[uinteger]
+      lineFoldingOnly*: Option[bool]
+      foldingRangeKind*: Option[FoldingRangeClientCapabilities_foldingRangeKind]
+      foldingRange*: Option[FoldingRangeClientCapabilities_foldingRange]
+
+    SelectionRangeClientCapabilities* = object
+      dynamicRegistration*: Option[bool]
+
+    LinkedEditingRangeClientCapabilities* = object
+      dynamicRegistration*: Option[bool]
+
+    CallHierarchyClientCapabilities* = object
+      dynamicRegistration*: Option[bool]
+
+    EmptyObject* = object
+
+    ClientSemanticTokensRequestRangeKind* = enum
+      cstrBool
+      cstrEmpty
+
+    ClientSemanticTokensRequestRange* = object
+      case kind*: ClientSemanticTokensRequestRangeKind
+      of cstrBool:
+        boolean*: bool
+      of cstrEmpty:
+        empty*: EmptyObject
+
+    ClientSemanticTokensRequestFullKind* = enum
+      cstfBool
+      cstfDelta
+
+    ClientSemanticTokensRequestFull* = object
+      case kind*: ClientSemanticTokensRequestFullKind
+      of cstfBool:
+        boolean*: bool
+      of cstfDelta:
+        delta*: ClientSemanticTokensRequestFullDelta
+
+    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#clientSemanticTokensRequestOptions
+    ClientSemanticTokensRequestOptions* = object
+      range*: Option[ClientSemanticTokensRequestRange]
+      full*: Option[ClientSemanticTokensRequestFull]
+
+    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#clientSemanticTokensRequestFullDelta
+    ClientSemanticTokensRequestFullDelta* = object
+      delta*: Option[bool]
+
+    # 'relative'
+    TokenFormat_str = string
+
+    SemanticTokensClientCapabilities* = object
+      dynamicRegistration*: Option[bool]
+      requests*: ClientSemanticTokensRequestOptions
+      tokenTypes*: seq[string]
+      tokenModifiers*: seq[string]
+      formats*: seq[TokenFormat_str]
+      overlappingTokenSupport*: Option[bool]
+      multilineTokenSupport*: Option[bool]
+      serverCancelSupport*: Option[bool]
+      augmentsSyntaxTokens*: Option[bool]
+
+    MonikerClientCapabilities* = object
+      dynamicRegistration*: Option[bool]
+
+    TypeHierarchyClientCapabilities* = object
+      dynamicRegistration*: Option[bool]
+
+    InlineValueClientCapabilities* = object
+      dynamicRegistration*: Option[bool]
+
+    InlayHintClientCapabilities_resolveSupport* = object
+      properties*: seq[string]
+
+    InlayHintClientCapabilities* = object
+      dynamicRegistration*: Option[bool]
+      resolveSupport*: Option[InlayHintClientCapabilities_resolveSupport]
+
+    DiagnosticClientCapabilities* {.extends: [DiagnosticsCapabilities].} = object
+      dynamicRegistration*: Option[bool]
+      relatedDocumentSupport*: Option[bool]
+
+    TextDocumentClientCapabilities* = object
+      synchronization*: Option[TextDocumentSyncClientCapabilities]
+      completion*: Option[CompletionClientCapabilities]
+      hover*: Option[HoverClientCapabilities]
+      signatureHelp*: Option[SignatureHelpClientCapabilities]
+      declaration*: Option[DeclarationClientCapabilities]
+      definition*: Option[DefinitionClientCapabilities]
+      typeDefinition*: Option[TypeDefinitionClientCapabilities]
+      implementation*: Option[ImplementationClientCapabilities]
+      references*: Option[ReferenceClientCapabilities]
+      documentHighlight*: Option[DocumentHighlightClientCapabilities]
+      documentSymbol*: Option[DocumentSymbolClientCapabilities]
+      codeAction*: Option[CodeActionClientCapabilities]
+      codeLens*: Option[CodeLensClientCapabilities]
+      documentLink*: Option[DocumentLinkClientCapabilities]
+      colorProvider*: Option[DocumentColorClientCapabilities]
+      formatting*: Option[DocumentFormattingClientCapabilities]
+      rangeFormatting*: Option[DocumentRangeFormattingClientCapabilities]
+      onTypeFormatting*: Option[DocumentOnTypeFormattingClientCapabilities]
+      rename*: Option[RenameClientCapabilities]
+      publishDiagnostics*: Option[PublishDiagnosticsClientCapabilities]
+      foldingRange*: Option[FoldingRangeClientCapabilities]
+      selectionRange*: Option[SelectionRangeClientCapabilities]
+      linkedEditingRange*: Option[LinkedEditingRangeClientCapabilities]
+      callHierarchy*: Option[CallHierarchyClientCapabilities]
+      semanticTokens*: Option[SemanticTokensClientCapabilities]
+      moniker*: Option[MonikerClientCapabilities]
+      typeHierarchy*: Option[TypeHierarchyClientCapabilities]
+      inlineValue*: Option[InlineValueClientCapabilities]
+      inlayHint*: Option[InlayHintClientCapabilities]
+      diagnostic*: Option[DiagnosticClientCapabilities]
+
+    ShowMessageRequestClientCapabilities_messageActionItem* = object
+      additionalPropertiesSupport*: Option[bool]
+
+    ShowMessageRequestClientCapabilities* = object
+      messageActionItem*: Option[ShowMessageRequestClientCapabilities_messageActionItem]
+
+    ShowDocumentClientCapabilities* = object
+      support*: bool
+
+    ClientCapabilities_window* = object
+      workDoneProgress*: Option[bool]
+      showMessage*: Option[ShowMessageRequestClientCapabilities]
+      showDocument*: Option[ShowDocumentClientCapabilities]
+
+    NotebookDocumentSyncClientCapabilities* = object
+      dynamicRegistration*: Option[bool]
+      executionSummarySupport*: Option[bool]
+
+    NotebookDocumentClientCapabilities* = object
+      synchronization*: NotebookDocumentSyncClientCapabilities
+
+    ClientCapabilities_general_staleRequestSupport* = object
+      cancel*: bool
+      retryOnContentModified*: seq[string]
+
+    RegularExpressionsClientCapabilities* = object
+      engine*: string
+      version*: Option[string]
+
+    MarkdownClientCapabilities* = object
+      parser*: string
+      version*: Option[string]
+      allowedTags*: OptionalSeq[string]
+
+    # 'utf-8' | 'utf-16' | 'utf-32' | ...
+    PositionEncodingKind_str = string
+
+    ClientCapabilities_general* = object
+      staleRequestSupport*: Option[ClientCapabilities_general_staleRequestSupport]
+      regularExpressions*: Option[RegularExpressionsClientCapabilities]
+      markdown*: Option[MarkdownClientCapabilities]
+      positionEncodings*: OptionalSeq[PositionEncodingKind_str]
+
+    McpClientCapabilities* = object
+
+    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#clientCapabilities
+    LspClientCapabilities* = object
+      workspace*: Option[ClientCapabilities_workspace]
+      textDocument*: Option[TextDocumentClientCapabilities]
+      notebookDocument*: Option[NotebookDocumentClientCapabilities]
+      window*: Option[ClientCapabilities_window]
+      general*: Option[ClientCapabilities_general]
+      experimental*: Option[LspAny]
+
+    WorkspaceFolder* = object
+      uri*: LspUri
+      name*: string
+
+    McpInitializeParams_serverInfo* = object
+      name*: string
+      version*: string
+
+    McpInitializeResult* = object
+      protocolVersion*: string
+      capabilities*: McpServerCapabilities
+      serverInfo*: McpInitializeParams_serverInfo
+
+    LspInitializeResult* = object
+      capabilities*: LspServerCapabilities
+      #!!!serverInfo*: Option[InitializeResult_serverInfo]
+
+    InitializeError* = object
+      retry*: bool
+
+    CompletionOptions* {.extends: [WorkDoneProgressOptions].} = object
+      resolveProvider*: Option[bool]
+      triggerCharacters*: OptionalSeq[string]
+
+    SignatureHelpOptions* {.extends: [WorkDoneProgressOptions].} = object
+      triggerCharacters*: OptionalSeq[string]
+
+    CodeLensOptions* {.extends: [WorkDoneProgressOptions].} = object
+      resolveProvider*: Option[bool]
+
+    DocumentOnTypeFormattingOptions* = object
+      firstTriggerCharacter*: string
+      moreTriggerCharacter*: OptionalSeq[string]
+
+    DocumentLinkOptions* {.extends: [WorkDoneProgressOptions].} = object
+      resolveProvider*: Option[bool]
+
+    ExecuteCommandOptions* {.extends: [WorkDoneProgressOptions].} = object
+      commands*: OptionalSeq[string]
+
+    SaveOptions* = object
+      includeText*: Option[bool]
+
+    TextDocumentSyncKind_int = int
+
+    TextDocumentSyncOptions* = object
+      openClose*: Option[bool]
+      change*: Option[TextDocumentSyncKind_int]
+      willSave*: Option[bool]
+      willSaveWaitUntil*: Option[bool]
+      save*: Option[SaveOptions]
+
+    StaticRegistrationOptions* = object
+      id*: Option[string]
+
+    WorkspaceFoldersChangeNotificationsKind* = enum
+      wfcnStr
+      wfcnBool
+
+    WorkspaceFoldersChangeNotifications* = object
+      case kind*: WorkspaceFoldersChangeNotificationsKind
+      of wfcnStr:
+        str*: string
+      of wfcnBool:
+        boolean*: bool
+
+    WorkspaceFoldersServerCapabilities* = object
+      supported*: Option[bool]
+      changeNotifications*: Option[WorkspaceFoldersChangeNotifications]
+
+    # 'file' | 'folder'
+    FileOperationPatternKind_str = string
+
+    FileOperationPatternOptions* = object
+      ignoreCase*: Option[bool]
+
+    FileOperationPattern* = object
+      glob*: string
+      matches*: Option[FileOperationPatternKind_str]
+      options*: Option[FileOperationPatternOptions]
+
+    FileOperationFilter* = object
+      scheme*: Option[string]
+      pattern: FileOperationPattern
+
+    FileOperationRegistrationOptions* = object
+      filters*: seq[FileOperationFilter]
+
+    ServerCapabilities_workspace_fileOperations* = object
+      didCreate*: Option[FileOperationRegistrationOptions]
+      willCreate*: Option[FileOperationRegistrationOptions]
+      didRename*: Option[FileOperationRegistrationOptions]
+      willRename*: Option[FileOperationRegistrationOptions]
+      didDelete*: Option[FileOperationRegistrationOptions]
+      willDelete*: Option[FileOperationRegistrationOptions]
+
+    ServerCapabilities_workspace* = object
+      workspaceFolders*: Option[WorkspaceFoldersServerCapabilities]
+      #!!!!!!!fileOperations*: Option[ServerCapabilities_workspace_fileOperations]
+
+    DocumentSelector* = seq[DocumentFilter]
+
+    TextDocumentRegistrationOptionsDocumentSelectorKind* = enum
+      tdrdsNull
+      tdrdsSelector
+
+    TextDocumentRegistrationOptionsDocumentSelector* = object
+      case kind*: TextDocumentRegistrationOptionsDocumentSelectorKind
+      of tdrdsNull:
+        null*: Null
+      of tdrdsSelector:
+        selector*: DocumentSelector
+
+    TextDocumentRegistrationOptions* = object
+      documentSelector*: TextDocumentRegistrationOptionsDocumentSelector
+
+    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#renameOptions
+    RenameOptions* {.extends: [WorkDoneProgressOptions].} = object
+      prepareProvider*: Option[bool]
+
+    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#implementationOptions
+    ImplementationOptions* {.extends: [WorkDoneProgressOptions].} = object
+
+    ImplementationRegistrationOptions* {.
+      extends: [
+        TextDocumentRegistrationOptions, ImplementationOptions,
+        StaticRegistrationOptions,
+      ]
+    .} = object
+
+    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#documentColorOptions
+    DocumentColorOptions* {.extends: [WorkDoneProgressOptions].} = object
+
+    DocumentColorRegistrationOptions* {.
+      extends: [
+        TextDocumentRegistrationOptions, DocumentColorOptions, StaticRegistrationOptions
+      ]
+    .} = object
+
+    ServerCapabilitiesTextDocumentSyncKind* = enum
+      stdsOptions
+      stdsKind
+
+    ServerCapabilitiesTextDocumentSync* = object
+      case kind*: ServerCapabilitiesTextDocumentSyncKind
+      of stdsOptions:
+        options*: TextDocumentSyncOptions
+      of stdsKind:
+        syncKind*: TextDocumentSyncKind_int
+
+    ServerCapabilitiesImplementationProviderKind* = enum
+      sipBool
+      sipOptions
+      sipRegistration
+
+    ServerCapabilitiesImplementationProvider* = object
+      case kind*: ServerCapabilitiesImplementationProviderKind
+      of sipBool:
+        boolean*: bool
+      of sipOptions:
+        options*: ImplementationOptions
+      of sipRegistration:
+        registration*: ImplementationRegistrationOptions
+
+    ServerCapabilitiesColorProviderKind* = enum
+      scpBool
+      scpOptions
+      scpRegistration
+
+    ServerCapabilitiesColorProvider* = object
+      case kind*: ServerCapabilitiesColorProviderKind
+      of scpBool:
+        boolean*: bool
+      of scpOptions:
+        options*: DocumentColorOptions
+      of scpRegistration:
+        registration*: DocumentColorRegistrationOptions
+
+    ServerCapabilitiesRenameProviderKind* = enum
+      srpBool
+      srpOptions
+
+    ServerCapabilitiesRenameProvider* = object
+      case kind*: ServerCapabilitiesRenameProviderKind
+      of srpBool:
+        boolean*: bool
+      of srpOptions:
+        options*: RenameOptions
+
+    InlayHintOptions* {.extends: [WorkDoneProgressOptions].} = object
+      resolveProvider*: Option[bool]
+
+    McpToolSchema* = object
+      schema* {.serializedFieldName: "$schema".}: Option[string]
+      `type`*: string
+      properties*: Option[OrderedTable[string, JsonString]]
+      required*: Option[seq[string]]
+
+    # https://modelcontextprotocol.io/specification/2026-07-28/schema#tool
+    McpTool* = object
+      name*: string
+      title*: string
+      description*: string
+      inputSchema*: McpToolSchema
+      outputSchema*: Option[McpToolSchema]
+
+    McpListToolsResult* = object
+      tools*: seq[McpTool]
+
+    McpContentBlockType* = enum
+      TextContent = "text"
+
+    McpContentBlock* = object
+      case `type`*: McpContentBlockType
+      of TextContent:
+        text*: string
+
+    # https://modelcontextprotocol.io/specification/2026-07-28/schema#calltoolresult
+    McpCallToolResult* = object
+      content*: seq[McpContentBlock]
+      structuredContent*: Option[JsonString]
+      isError*: bool
+
+    McpToolsOptions* = object
+
+    McpServerCapabilities* = object
+      tools*: McpToolsOptions
+
+    LspServerCapabilities* = object
+      #!!!positionEncoding*: Option[PositionEncodingKind_str]
+      textDocumentSync*: Option[ServerCapabilitiesTextDocumentSync]
+      #notebookDocumentSync?: NotebookDocumentSyncOptions | NotebookDocumentSyncRegistrationOptions;
+      completionProvider*: Option[CompletionOptions]
+      hoverProvider*: Option[bool]
+      signatureHelpProvider*: Option[SignatureHelpOptions]
+      declarationProvider*: Option[bool]
+      definitionProvider*: Option[bool]
+      typeDefinitionProvider*: Option[bool]
+      implementationProvider*: Option[ServerCapabilitiesImplementationProvider]
+      referencesProvider*: Option[bool]
+      documentHighlightProvider*: Option[bool]
+      documentSymbolProvider*: Option[bool]
+      workspaceSymbolProvider*: Option[bool]
+      codeActionProvider*: Option[bool]
+      codeLensProvider*: Option[CodeLensOptions]
+      documentLinkProvider*: Option[DocumentLinkOptions]
+      colorProvider*: Option[ServerCapabilitiesColorProvider]
+      documentFormattingProvider*: Option[bool]
+      documentRangeFormattingProvider*: Option[bool]
+      documentOnTypeFormattingProvider*: Option[DocumentOnTypeFormattingOptions]
+      renameProvider*: Option[ServerCapabilitiesRenameProvider]
+      # foldingRangeProvider?: boolean | FoldingRangeOptions | FoldingRangeRegistrationOptions;
+      executeCommandProvider*: Option[ExecuteCommandOptions]
+      # selectionRangeProvider?: boolean | SelectionRangeOptions | SelectionRangeRegistrationOptions;
+      # linkedEditingRangeProvider?: boolean | LinkedEditingRangeOptions | LinkedEditingRangeRegistrationOptions;
+      # callHierarchyProvider?: boolean | CallHierarchyOptions | CallHierarchyRegistrationOptions;
+      # semanticTokensProvider?: SemanticTokensOptions | SemanticTokensRegistrationOptions;
+      # monikerProvider?: boolean | MonikerOptions | MonikerRegistrationOptions;
+      # typeHierarchyProvider?: boolean | TypeHierarchyOptions | TypeHierarchyRegistrationOptions;
+      # inlineValueProvider?: boolean | InlineValueOptions | InlineValueRegistrationOptions;
+      inlayHintProvider*: Option[InlayHintOptions]
+        # boolean | InlayHintOptions | InlayHintRegistrationOptions;
+      # diagnosticProvider?: DiagnosticOptions | DiagnosticRegistrationOptions;
+      # workspaceSymbolProvider?: boolean | WorkspaceSymbolOptions;
+      workspace*: Option[ServerCapabilities_workspace]
+      experimental*: Option[LspAny]
+
+    InitializedParams* = object
+
+    ShowMessageParams* = object
+      `type`*: int
+      message*: string
+
+    MessageActionItem* = object
+      title*: string
+
+    ShowMessageRequestParams* = object
+      `type`*: int
+      message*: string
+      actions*: OptionalSeq[MessageActionItem]
+
+    LogMessageParams* = object
+      `type`*: int
+      message*: string
+
+    Registration* = object
+      id*: string
+      `method`*: string
+      registerOptions*: Option[LspAny]
+
+    RegistrationParams* = object
+      registrations*: OptionalSeq[Registration]
+
+    Unregistration* = object
+      id*: string
+      `method`*: string
+
+    UnregistrationParams* = object
+      unregistrations*: OptionalSeq[Unregistration]
+
+    WorkspaceFoldersChangeEvent* = object
+      added*: OptionalSeq[WorkspaceFolder]
+      removed*: OptionalSeq[WorkspaceFolder]
+
+    DidChangeWorkspaceFoldersParams* = object
+      event*: WorkspaceFoldersChangeEvent
+
+    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#workspace_didChangeConfiguration
+    # XXX remove Option when skipNullFields = false
+    DidChangeConfigurationParams* = object
+      settings*: Option[LspAny]
+
+    FileEvent* = object
+      uri*: DocumentUri
+      `type`*: int
+
+    DidChangeWatchedFilesParams* = object
+      changes*: OptionalSeq[FileEvent]
+
+    DidChangeWatchedFilesRegistrationOptions* = object
+      watchers*: OptionalSeq[FileSystemWatcher]
+
+    FileSystemWatcher* = object
+      globPattern*: string
+      kind*: Option[int]
+
+    WorkspaceSymbolParams* {.extends: [WorkDoneProgressParams, PartialResultParams].} = object
+      query*: string
+
+    ExecuteCommandParams* {.extends: [WorkDoneProgressParams].} = object
+      command*: string
+      arguments*: OptionalSeq[LspAny]
+
+    ExecuteCommandRegistrationOptions* {.extends: [ExecuteCommandOptions].} = object
+
+    ApplyWorkspaceEditParams* = object
+      label*: Option[string]
+      edit*: WorkspaceEdit
+
+    ApplyWorkspaceEditResponse* = object
+      applied*: bool
+
+    DidOpenTextDocumentParams* = object
+      textDocument*: TextDocumentItem
+
+    DidChangeTextDocumentParams* = object
+      textDocument*: VersionedTextDocumentIdentifier
+      contentChanges*: seq[TextDocumentContentChangeEvent]
+
+    TextDocumentContentChangeEvent* = object
+      range*: Option[Range]
+      rangeLength*: Option[int]
+      text*: string
+
+    TextDocumentChangeRegistrationOptions* {.
+      extends: [TextDocumentRegistrationOptions]
+    .} = object
+      syncKind*: int
+
+    WillSaveTextDocumentParams* = object
+      textDocument*: TextDocumentIdentifier
+      reason*: int
+
+    DidSaveTextDocumentParams* = object
+      textDocument*: TextDocumentIdentifier
+      text*: Option[string]
+
+    TextDocumentSaveRegistrationOptions* {.
+      extends: [TextDocumentRegistrationOptions, SaveOptions]
+    .} = object
+
+    DidCloseTextDocumentParams* = object
+      textDocument*: TextDocumentIdentifier
+
+    PublishDiagnosticsParams* = object
+      uri*: DocumentUri
+      diagnostics*: OptionalSeq[Diagnostic]
+
+    CompletionParams* {.
+      extends: [TextDocumentPositionParams, WorkDoneProgressParams, PartialResultParams]
+    .} = object
+      context*: Option[CompletionContext]
+
+    CompletionContext* = object
+      triggerKind*: int
+      triggerCharacter*: Option[string]
+
+    CompletionList* = object
+      isIncomplete*: bool
+      `items`*: OptionalSeq[CompletionItem]
+
+    CompletionItemLabelDetails* = object
+      detail*: Option[string]
+      description*: Option[string]
+
+    CompletionItemDocumentationKind* = enum
+      cidStr
+      cidMarkup
+
+    CompletionItemDocumentation* = object
+      case kind*: CompletionItemDocumentationKind
+      of cidStr:
+        str*: string
+      of cidMarkup:
+        markup*: MarkupContent
+
+    CompletionItem* = object
+      label*: string
+      kind*: Option[int]
+      detail*: Option[string]
+      documentation*: Option[CompletionItemDocumentation]
+      deprecated*: Option[bool]
+      preselect*: Option[bool]
+      sortText*: Option[string]
+      filterText*: Option[string]
+      insertText*: Option[string]
+      insertTextFormat*: Option[int]
+      # textEdit*: Option[TextEdit]
+      # additionalTextEdits*: Option[TextEdit]
+      commitCharacters*: OptionalSeq[string]
+      command*: Option[Command]
+      data*: Option[LspAny]
+      labelDetails*: Option[CompletionItemLabelDetails]
+
+    CompletionRegistrationOptions* {.
+      extends: [TextDocumentRegistrationOptions, CompletionOptions]
+    .} = object
+
+    MarkedStringOption* = object
+      language*: string
+      value*: string
+
+    MarkedStringKind* = enum
+      msStr
+      msOption
+
+    MarkedString* = object
+      case kind*: MarkedStringKind
+      of msStr:
+        str*: string
+      of msOption:
+        option*: MarkedStringOption
+
+    HoverContentsKind* = enum
+      hcMarkedString
+      hcMarkedStrings
+      hcMarkup
+
+    HoverContents* = object
+      case kind*: HoverContentsKind
+      of hcMarkedString:
+        markedString*: MarkedString
+      of hcMarkedStrings:
+        markedStrings*: seq[MarkedString]
+      of hcMarkup:
+        markup*: MarkupContent
+
+    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#hover
+    Hover* = object
+      contents*: HoverContents
+      range*: Option[Range]
+
+    HoverParams* {.extends: [TextDocumentPositionParams, WorkDoneProgressParams].} = object
+
+    SignatureHelp* = object
+      signatures*: OptionalSeq[SignatureInformation]
+      activeSignature*: Option[int]
+      activeParameter*: Option[int]
+
+    SignatureInformation* = object
+      label*: string
+      # documentation*: Option[string]
+      parameters*: seq[ParameterInformation]
+
+    ParameterInformation* = object
+      label*: string # documentation*: Option[string]
+
+    SignatureHelpRegistrationOptions* {.
+      extends: [TextDocumentRegistrationOptions, SignatureHelpOptions]
+    .} = object
+
+    ReferenceParams* {.
+      extends: [TextDocumentPositionParams, WorkDoneProgressParams, PartialResultParams]
+    .} = object
+      context*: ReferenceContext
+
+    ReferenceContext* = object
+      includeDeclaration*: bool
+
+    DocumentHighlight* = object
+      `range`*: Range
+      kind*: Option[int]
+
+    DocumentSymbolParams* {.extends: [WorkDoneProgressParams, PartialResultParams].} = object
+      textDocument*: TextDocumentIdentifier
+
+    BaseSymbolInformation* = object
+      name*: string
+      kind*: int
+      tags*: OptionalSeq[SymbolTag_int]
+      containerName*: Option[string]
+
+    SymbolInformation* {.extends: [BaseSymbolInformation].} = object
+      deprecated*: Option[bool]
+      location*: Location
+
+    CodeActionParams* {.extends: [WorkDoneProgressParams, PartialResultParams].} = object
+      textDocument*: TextDocumentIdentifier
+      `range`*: Range
+      context*: CodeActionContext
+
+    CodeActionContext* = object
+      diagnostics*: OptionalSeq[Diagnostic]
+
+    CodeLensParams* {.extends: [WorkDoneProgressParams, PartialResultParams].} = object
+      textDocument*: TextDocumentIdentifier
+
+    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#codeLens
+    CodeLens* = object
+      `range`*: Range
+      command*: Option[Command]
+      data*: Option[LspAny]
+
+    CodeLensRegistrationOptions* {.
+      extends: [TextDocumentRegistrationOptions, CodeLensOptions]
+    .} = object
+
+    DocumentLinkParams* {.extends: [WorkDoneProgressParams, PartialResultParams].} = object
+      textDocument*: TextDocumentIdentifier
+
+    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#documentLink
+    DocumentLink* = object
+      `range`*: Range
+      target*: Option[string]
+      data*: Option[LspAny]
+
+    DocumentLinkRegistrationOptions* {.
+      extends: [TextDocumentRegistrationOptions, DocumentLinkOptions]
+    .} = object
+
+    DocumentColorParams* {.extends: [WorkDoneProgressParams, PartialResultParams].} = object
+      textDocument*: TextDocumentIdentifier
+
+    ColorInformation* = object
+      `range`*: Range
+      color*: Color
+
+    Color* = object
+      red*: int
+      green*: int
+      blue*: int
+      alpha*: int
+
+    ColorPresentationParams* {.extends: [WorkDoneProgressParams, PartialResultParams].} = object
+      textDocument*: TextDocumentIdentifier
+      color*: Color
+      `range`*: Range
+
+    ColorPresentation* = object
+      label*: string
+      textEdit*: Option[TextEdit]
+      additionalTextEdits*: OptionalSeq[TextEdit]
+
+    FormattingOptions* = object
+      tabSize*: uinteger
+      insertSpaces*: bool
+      trimTrailingWhitespace*: Option[bool]
+      insertFinalNewline*: Option[bool]
+      trimFinalNewlines*: Option[bool]
+
+    DocumentFormattingParams* {.extends: [WorkDoneProgressParams].} = object
+      textDocument*: TextDocumentIdentifier
+      options*: FormattingOptions
+
+    DocumentRangeFormattingParams* {.extends: [WorkDoneProgressParams].} = object
+      textDocument*: TextDocumentIdentifier
+      `range`*: Range
+      options*: FormattingOptions
+
+    DocumentOnTypeFormattingParams* = object
+      textDocument*: TextDocumentIdentifier
+      position*: Position
+      ch*: string
+      options*: FormattingOptions
+
+    DocumentOnTypeFormattingRegistrationOptions* {.
+      extends: [TextDocumentRegistrationOptions, DocumentOnTypeFormattingOptions]
+    .} = object
+
+    RenameParams* {.extends: [TextDocumentPositionParams, WorkDoneProgressParams].} = object
+      newName*: string
+
+    PrepareRenameParams* {.
+      extends: [TextDocumentPositionParams, WorkDoneProgressParams]
+    .} = object
+
+    PrepareRenameResponse* = object
+      defaultBehaviour*: bool
+
+    SignatureHelpContext* = object
+      triggerKind*: int
+      triggerCharacter*: Option[string]
+      isRetrigger*: bool
+      activeSignatureHelp*: Option[SignatureHelp]
+
+    SignatureHelpParams* {.
+      extends: [TextDocumentPositionParams, WorkDoneProgressParams]
+    .} = object
+      context*: Option[SignatureHelpContext]
+
+    ExpandResult* = object
+      range*: Range
+      content*: string
+
+    InlayHintParams* {.extends: [WorkDoneProgressParams, PartialResultParams].} = object
+      textDocument*: TextDocumentIdentifier
+      range*: Range
+
+    InlayHintKind_int* = int
+
+    InlayHint* = object
+      position*: Position
+      label*: string # string | InlayHintLabelPart[]
+      kind*: Option[InlayHintKind_int]
+      textEdits*: OptionalSeq[TextEdit]
+      tooltip*: Option[string] # string | MarkupContent
+      paddingLeft*: Option[bool]
+      paddingRight*: Option[bool] #data*: OptionalNode
+
+    NimsuggestCapability* = enum
+      nsCon = "con"
+      nsExceptionInlayHints = "exceptionInlayHints"
+      nsUnknownFile = "unknownFile"
+      nsMaxMemory = "maxMemory"
+      nsOutline2 = "outline2"
+
+    PendingRequestStatus* = object
+      name*: string
+      projectFile*: string
+      time*: string
+      state*: string
+
+    NimsuggestStatus* = object
+      projectFile*: string
+      capabilities*: seq[NimsuggestCapability]
+      version*: string
+      path*: string
+      port*: int
+      openFiles*: seq[string]
+      unknownFiles*: seq[string]
+
+    LspExtensionCapability* = enum
+      #List of extensions this server support. Useful for clients
+      excRestartSuggest = "RestartSuggest"
+      excNimbleTask = "NimbleTask"
+      excRunTests = "RunTests"
+
+    ProjectError* = object
+      projectFile*: string
+      errorMessage*: string
+      lastKnownCmd*: string
+
+    NimLangServerStatus* = object
+      lspPath*: string
+      version*: string
+      nimsuggestInstances*: seq[NimsuggestStatus]
+      openFiles*: seq[string]
+      extensionCapabilities*: seq[LspExtensionCapability]
+      pendingRequests*: seq[PendingRequestStatus]
+      projectErrors*: seq[ProjectError]
+
+    NimLangServerStatusParams* = object
+
+    NimLangServerCapabilitiesParams* = object
+
+    SuggestAction* = enum
+      saNone = "none"
+      saRestart = "restart"
+      saRestartAll = "restartAll"
+
+    SuggestParams* = object
+      action*: SuggestAction
+      projectFile*: string #Absolute path to file
+
+    SuggestResult* = object
+      actionPerformed*: SuggestAction
+
+    NimbleTask* = object
+      name*: string
+      description*: string
+
+    RunTaskParams* = object
+      command*: seq[string] #command and args
+
+    RunTaskResult* = object
+      command*: seq[string] #command and args
+      output*: seq[string] #output lines
+
+    TestInfo* = object
+      name*: string
+      line*: int
+      file*: string
+
+    TestSuiteInfo* = object
+      name*: string #The suite name, empty if it's a global test
+      tests*: seq[TestInfo]
+
+    TestProjectInfo* = object
+      entryPoint*: string
+      suites*: Table[string, TestSuiteInfo]
+      error*: Option[string]
+
+    ListTestsParams* = object
+      entryPoint*: string
+        #can be patterns? if empty we could do the same as nimble does or just run `nimble test args`
+
+    ListTestsResult* = object
+      projectInfo*: TestProjectInfo
+
+    RunTestResult* = object
+      name*: string
+      time*: float
+      failure*: Option[string]
+
+    RunTestSuiteResult* = object
+      name*: string
+      tests*: int
+      failures*: int
+      errors*: int
+      skipped*: int
+      time*: float
+      testResults*: seq[RunTestResult]
+
+    RunTestParams* = object
+      entryPoint*: string
+      suiteName*: Option[string]
+        #Optional, if provided, only run tests in the suite. Takes precedence over testName
+      testNames*: Option[seq[string]] #Optional, if provided, only run the specific tests
+
+    RunTestProjectResult* = object
+      suites*: seq[RunTestSuiteResult]
+      fullOutput*: string
+
+    CancelTestResult* = object
+      cancelled*: bool
 
 createJsonFlavor LspJson,
   automaticObjectSerialization = false,
@@ -1380,9 +1427,6 @@ createJsonFlavor LspJson,
   omitOptionalFields = true,
   allowUnknownFields = true,
   skipNullFields = true
-
-template shouldWriteObjectField*[T](field: ref T): bool =
-  field != nil
 
 proc parseFileUri*(uri: LspUri): Uri {.raises: [UriParseError].} =
   result = parseUri(uri.string)
@@ -1439,6 +1483,7 @@ func isFieldExpected*(
   false
 
 LspJson.useOneOfSerializationFor(DiagnosticCode)
+LspJson.useOneOfSerializationFor(ProgressToken)
 LspJson.useOneOfSerializationFor(WorkspaceFoldersChangeNotifications)
 
 LspJson.useDefaultSerializationFor(Position)
@@ -1452,8 +1497,10 @@ LspJson.useDefaultSerializationFor(ParameterInformation)
 
 LspJson.useDefaultReaderFor(CancelParams)
 LspJson.useDefaultReaderFor(TextDocumentIdentifier)
+LspJson.useDefaultReaderFor(VersionedTextDocumentIdentifier)
 LspJson.useDefaultReaderFor(TextDocumentItem)
 LspJson.useDefaultReaderFor(TextDocumentPositionParams)
+LspJson.useDefaultReaderFor(ExpandTextDocumentPositionParams)
 LspJson.useDefaultReaderFor(McpNotificationParams)
 LspJson.useDefaultReaderFor(McpListToolsParams)
 LspJson.useDefaultReaderFor(McpCallToolParams)
@@ -1567,7 +1614,9 @@ LspJson.useDefaultReaderFor(WorkspaceFoldersChangeEvent)
 LspJson.useDefaultReaderFor(FileEvent)
 LspJson.useDefaultReaderFor(CompletionParams)
 LspJson.useDefaultReaderFor(CompletionContext)
+LspJson.useDefaultReaderFor(HoverParams)
 LspJson.useDefaultReaderFor(ReferenceContext)
+LspJson.useDefaultReaderFor(ReferenceParams)
 LspJson.useDefaultReaderFor(DocumentSymbolParams)
 LspJson.useDefaultReaderFor(CodeActionParams)
 LspJson.useDefaultReaderFor(CodeActionContext)
@@ -1576,6 +1625,7 @@ LspJson.useDefaultReaderFor(DocumentFormattingParams)
 LspJson.useDefaultReaderFor(RenameParams)
 LspJson.useDefaultReaderFor(PrepareRenameParams)
 LspJson.useDefaultReaderFor(SignatureHelpContext)
+LspJson.useDefaultReaderFor(SignatureHelpParams)
 LspJson.useDefaultReaderFor(InlayHintParams)
 LspJson.useDefaultReaderFor(NimLangServerStatusParams)
 LspJson.useDefaultReaderFor(NimLangServerCapabilitiesParams)
