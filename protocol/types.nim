@@ -219,12 +219,6 @@ extendTypes:
     ConfigurationParams* = object
       items*: seq[ConfigurationItem]
 
-    # 'create' | 'rename' | 'delete'
-    ResourceOperationKind = string
-
-    # 'abort' | 'transactional' | 'undo' | 'textOnlyTransactional'
-    FailureHandlingKind = string
-
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#didChangeConfigurationClientCapabilities
     DidChangeConfigurationClientCapabilities* = object
       dynamicRegistration*: Option[bool]
@@ -321,13 +315,9 @@ extendTypes:
       rename*: Option[RenameClientCapabilities]
       inlayHint*: Option[InlayHintClientCapabilities]
 
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#window_showMessageRequest
-    ShowMessageRequestClientCapabilities* = object
-
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#windowClientCapabilities
     WindowClientCapabilities* = object
       workDoneProgress*: Option[bool]
-      showMessage*: Option[ShowMessageRequestClientCapabilities]
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#clientCapabilities
     ClientCapabilities* = object
@@ -594,7 +584,6 @@ extendTypes:
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#textDocumentContentChangeEvent
     TextDocumentContentChangeEvent* = object
-      range*: Option[Range]
       text*: string
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#willSaveTextDocumentParams
@@ -697,7 +686,6 @@ extendTypes:
       # documentation*: Option[string]
       parameters*: OptionalSeq[ParameterInformation]
 
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#parameterInformation
     ParameterInformationLabelKind* = enum
       pilStr
       pilOffsets
@@ -826,7 +814,7 @@ extendTypes:
       textEdits*: OptionalSeq[TextEdit]
       tooltip*: Option[InlayHintTooltip]
       paddingLeft*: Option[bool]
-      paddingRight*: Option[bool] #data*: OptionalNode
+      paddingRight*: Option[bool]
 
     NimsuggestCapability* = enum
       nsCon = "con"
@@ -1153,7 +1141,6 @@ LspJson.useDefaultReaderFor(RenameClientCapabilities)
 LspJson.useDefaultReaderFor(DeclarationClientCapabilities)
 LspJson.useDefaultReaderFor(InlayHintClientCapabilities)
 LspJson.useDefaultReaderFor(TextDocumentClientCapabilities)
-LspJson.useDefaultReaderFor(ShowMessageRequestClientCapabilities)
 LspJson.useDefaultReaderFor(WindowClientCapabilities)
 LspJson.useDefaultReaderFor(McpClientCapabilities)
 LspJson.useDefaultReaderFor(ClientCapabilities)
