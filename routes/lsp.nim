@@ -27,9 +27,7 @@ proc getNphPath(): Option[string] {.raises: [OSError].} =
   else:
     some path
 
-proc getWorkspaceFolders(
-    ip: LspInitializeParams
-): seq[Path] {.raises: [UriParseError].} =
+proc getWorkspaceFolders(ip: InitializeParams): seq[Path] {.raises: [UriParseError].} =
   if ip.workspaceFolders.isSome:
     for folder in ip.workspaceFolders.get:
       result.add folder.uri.uriToPath
@@ -42,14 +40,14 @@ proc getWorkspaceFolders(
 
 # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#initialize
 proc initialize*(
-    p: tuple[ls: LanguageServer, onExit: OnExitCallback], params: LspInitializeParams
-): Future[LspInitializeResult] {.async: (raises: [OSError, UriParseError]).} =
+    p: tuple[ls: LanguageServer, onExit: OnExitCallback], params: InitializeParams
+): Future[InitializeResult] {.async: (raises: [OSError, UriParseError]).} =
   debug "Initialize received..."
   p.ls.lspInitializeParams = params
   p.ls.workspaceFolders = params.getWorkspaceFolders()
   p.ls.lspClientCapabilities = params.capabilities
-  result = LspInitializeResult(
-    capabilities: LspServerCapabilities(
+  result = InitializeResult(
+    capabilities: ServerCapabilities(
       textDocumentSync: some ServerCapabilitiesTextDocumentSync(
         kind: stdsOptions,
         options: TextDocumentSyncOptions(
@@ -57,12 +55,14 @@ proc initialize*(
           change: some(TextDocumentSyncKind.Full.int),
           willSave: some(false),
           willSaveWaitUntil: some(true),
-          save: some(SaveOptions(includeText: some(true))),
+          save: some TextDocumentSyncOptionsSave(
+            kind: tdsosOptions, options: SaveOptions(includeText: some(true))
+          ),
         ),
       ),
       hoverProvider: some(true),
       workspace: some(
-        ServerCapabilities_workspace(
+        WorkspaceOptions(
           workspaceFolders: some(
             WorkspaceFoldersServerCapabilities(
               supported: some(true),
@@ -85,10 +85,12 @@ proc initialize*(
       workspaceSymbolProvider: some(true),
       executeCommandProvider: some(
         ExecuteCommandOptions(
-          commands: some(@[RESTART_COMMAND, RECOMPILE_COMMAND, CHECK_PROJECT_COMMAND])
+          commands: @[RESTART_COMMAND, RECOMPILE_COMMAND, CHECK_PROJECT_COMMAND]
         )
       ),
-      inlayHintProvider: some(InlayHintOptions(resolveProvider: some(false))),
+      inlayHintProvider: some ServerCapabilitiesInlayHintProvider(
+        kind: sihpOptions, options: InlayHintOptions(resolveProvider: some(false))
+      ),
       documentSymbolProvider: some(true),
       codeActionProvider: some(true),
       documentFormattingProvider: some(getNphPath().isSome),
@@ -638,7 +640,7 @@ proc rename*(
       )
   result = WorkspaceEdit(changes: some edits)
 
-proc convertInlayHintKind(kind: SuggestInlayHintKind): InlayHintKind_int =
+proc convertInlayHintKind(kind: SuggestInlayHintKind): int =
   case kind
   of sihkType:
     result = 1
@@ -657,7 +659,7 @@ proc toInlayHint(suggest: SuggestInlayHint, configuration: NlsConfig): InlayHint
     suggest.label = ""
   result = InlayHint(
     position: Position(line: uinteger(hint_line), character: uinteger(hint_col)),
-    label: suggest.label,
+    label: InlayHintLabel(kind: ihlStr, str: suggest.label),
     kind: some(convertInlayHintKind(suggest.kind)),
     paddingLeft: some(suggest.paddingLeft),
     paddingRight: some(suggest.paddingRight),
@@ -666,16 +668,19 @@ proc toInlayHint(suggest: SuggestInlayHint, configuration: NlsConfig): InlayHint
       configuration.inlayHints.isSome and
       configuration.inlayHints.get.exceptionHints.isSome and
       configuration.inlayHints.get.exceptionHints.get.hintStringLeft.isSome:
-    result.label = configuration.inlayHints.get.exceptionHints.get.hintStringLeft.get
+    result.label = InlayHintLabel(
+      kind: ihlStr,
+      str: configuration.inlayHints.get.exceptionHints.get.hintStringLeft.get,
+    )
   if suggest.kind == sihkException and suggest.label == "!" and
       configuration.inlayHints.isSome and
       configuration.inlayHints.get.exceptionHints.isSome and
       configuration.inlayHints.get.exceptionHints.get.hintStringRight.isSome:
-    result.label = configuration.inlayHints.get.exceptionHints.get.hintStringRight.get
-  if suggest.tooltip != "":
-    result.tooltip = some(suggest.tooltip)
-  else:
-    result.tooltip = some("")
+    result.label = InlayHintLabel(
+      kind: ihlStr,
+      str: configuration.inlayHints.get.exceptionHints.get.hintStringRight.get,
+    )
+  result.tooltip = some InlayHintTooltip(kind: ihtStr, str: suggest.tooltip)
   if suggest.allowInsert:
     result.textEdits = some(
       @[
@@ -734,7 +739,7 @@ proc inlayHint*(
           )
       )
       .map(x => x.inlayHintInfo.toUtf16Pos(ls, path).toInlayHint(configuration))
-      .filter(x => x.label != "")
+      .filter(x => x.label.kind == ihlParts or x.label.str != "")
 
 proc codeAction*(
     ls: LanguageServer, params: CodeActionParams
@@ -747,7 +752,7 @@ proc codeAction*(
   return @[
     CodeAction(
       title: "Clean build",
-      kind: "source",
+      kind: some "source",
       command: some Command(
         title: "Clean build",
         command: RECOMPILE_COMMAND,
@@ -756,7 +761,7 @@ proc codeAction*(
     ),
     CodeAction(
       title: "Refresh project errors",
-      kind: "source",
+      kind: some "source",
       command: some Command(
         title: "Refresh project errors",
         command: CHECK_PROJECT_COMMAND,
@@ -765,7 +770,7 @@ proc codeAction*(
     ),
     CodeAction(
       title: "Restart nimsuggest",
-      kind: "source",
+      kind: some "source",
       command: some Command(
         title: "Restart nimsuggest",
         command: RESTART_COMMAND,
@@ -828,16 +833,17 @@ proc toSignatureInformation(suggest: Suggest): SignatureInformation =
   #notice we will need to also handle the  ',' and the back and forths between the client and the server
   if scanf(suggest.forth, "$*($*)", fnKind, strParams):
     for param in strParams.split(","):
-      params.add(ParameterInformation(label: param))
+      params.add(
+        ParameterInformation(label: ParameterInformationLabel(kind: pilStr, str: param))
+      )
 
   let name = suggest.qualifiedPath[^1].strip(chars = {'`'})
   let detail = suggest.forth.split(" ")
   var label = name
   if detail.len > 1:
     label = &"{fnKind} {name}({strParams})"
-  SignatureInformation(
-    label: label, parameters: newSeq[ParameterInformation]() #notice params is not used
-  )
+  #notice params is not used
+  SignatureInformation(label: label, parameters: some newSeq[ParameterInformation]())
 
 proc signatureHelp*(
     ls: LanguageServer, params: SignatureHelpParams
@@ -880,7 +886,9 @@ proc signatureHelp*(
     let signatures = completions.map(toSignatureInformation)
     if signatures.len() > 0:
       return some SignatureHelp(
-        signatures: some(signatures), activeSignature: some(0), activeParameter: some(0)
+        signatures: signatures,
+        activeSignature: some uinteger(0),
+        activeParameter: some uinteger(0),
       )
     else:
       return none[SignatureHelp]()
@@ -1293,7 +1301,7 @@ proc didChangeWatchedFiles*(
     ls: LanguageServer, params: DidChangeWatchedFilesParams
 ): Future[void] {.async: (raises: [ApplicationError, CancelledError]).} =
   ls.checkInitialized()
-  debug "Watched files changed", changes = params.changes.get(@[]).len
+  debug "Watched files changed", changes = params.changes.len
   let conf = await ls.workspaceConfigurationWait()
   if conf.autoCheckProject.get(true) and conf.checkOnSave.get(true) and
       not conf.useNimCheck.get(USE_NIM_CHECK_BY_DEFAULT):
@@ -1303,10 +1311,10 @@ proc didChangeWorkspaceFolders*(
     ls: LanguageServer, params: DidChangeWorkspaceFoldersParams
 ): Future[void] {.async: (raises: [ApplicationError, CancelledError, UriParseError]).} =
   ls.checkInitialized()
-  for folder in params.event.removed.get(@[]):
+  for folder in params.event.removed:
     let path = folder.uri.uriToPath
     ls.workspaceFolders.keepItIf(it != path)
-  for folder in params.event.added.get(@[]):
+  for folder in params.event.added:
     let path = folder.uri.uriToPath
     if path notin ls.workspaceFolders:
       ls.workspaceFolders.add path
@@ -1323,7 +1331,7 @@ proc didChangeConfiguration*(
     ls: LanguageServer, params: DidChangeConfigurationParams
 ): Future[void] {.async: (raises: [ApplicationError, CancelledError]).} =
   ls.checkInitialized()
-  debug "Changed configuration: ", settings = $params.settings
+  debug "Changed configuration: ", settings = params.settings.string
   if ls.usePullConfigurationModel:
     await ls.maybeRequestConfigurationFromClient()
   else:

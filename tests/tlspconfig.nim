@@ -60,21 +60,21 @@ suite "Workspace configuration parsing":
 
   test "pushed settings we cannot use never parse to nil":
     for settings in [
-      none(LspAny),
-      some JsonString("""{"nim":null}"""),
-      some JsonString("{}"),
-      some JsonString("[]"),
+      JsonString("null"),
+      JsonString("""{"nim":null}"""),
+      JsonString("{}"),
+      JsonString("[]"),
     ]:
-      checkpoint $settings
+      checkpoint settings.string
       check not parseSettings(settings).isNil
 
   test "pushed settings are read from the nim section":
-    let settings = some JsonString("""{"nim":{"nimsuggestIdleTimeout":5},"other":{}}""")
+    let settings = JsonString("""{"nim":{"nimsuggestIdleTimeout":5},"other":{}}""")
     check parseSettings(settings).nimsuggestIdleTimeout == some 5
 
   test "pushed settings with a mistyped required field fall back to the default":
     # projectFile is required, so the whole configuration is dropped.
-    let settings = some JsonString(
+    let settings = JsonString(
       """{"nim":{"projectMapping":[{"projectFil":"a.nim","fileRegex":".*"}],"timeout":5}}"""
     )
     let conf = parseSettings(settings)
@@ -85,7 +85,7 @@ suite "Workspace configuration parsing":
     # The default is applied at the usage site via .get, so an absent key
     # must parse to none rather than to a value.
     check parseWorkspaceConfiguration(JsonString("[{}]")).nimsuggestTimeout.isNone
-    check parseSettings(some JsonString("""{"nim":{}}""")).nimsuggestTimeout.isNone
+    check parseSettings(JsonString("""{"nim":{}}""")).nimsuggestTimeout.isNone
 
 suite "Waiting for the workspace configuration":
   proc newLs(): LanguageServer =

@@ -10,7 +10,7 @@ createJsonFlavor TestJson,
   requireAllFields = true,
   omitOptionalFields = true,
   allowUnknownFields = true,
-  skipNullFields = true
+  skipNullFields = false
 
 type
   Options = ref object of RootObj
@@ -81,10 +81,6 @@ TestJson.useDefaultSerializationFor(ObjectA)
 TestJson.useDefaultSerializationFor(ObjectB)
 TestJson.useOneOfSerializationFor(NumStrBool)
 TestJson.useOneOfSerializationFor(NumOrNull)
-
-func isFieldExpected(_: type NumOrNull): bool {.compileTime.} =
-  false
-
 TestJson.useDefaultSerializationFor(NullHolder)
 
 proc readValue[T](
@@ -153,6 +149,10 @@ suite "oneOf":
     check TestJson.encode(NullHolder()) == """{"value":null}"""
     check TestJson.decode("""{"value": null}""", NullHolder).value.kind == nonNull
     check TestJson.decode("""{"value": 4}""", NullHolder).value.num == 4
+
+  test "a missing null member is rejected":
+    expect SerializationError:
+      discard TestJson.decode("{}", NullHolder)
 
   test "two Null members do not compile":
     check not compiles(

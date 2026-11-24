@@ -20,10 +20,10 @@ proc initMcpServer(
 ): Future[(LanguageServer, McpInitializeResult)] {.async: (raises: [CatchableError]).} =
   let
     cmdParams = CommandLineParams(mode: some ServerMode.mcp)
-    initParams = McpInitializeParams(
+    initParams = McpInitializeRequestParams(
       protocolVersion: McpProtocolVersion,
       capabilities: McpClientCapabilities(),
-      clientInfo: McpInitializeParams_clientInfo(name: "nimble test", version: "1"),
+      clientInfo: McpImplementation(name: "nimble test", version: "1"),
     )
     ls = initLs(cmdParams, ensureStorageDir())
 
@@ -41,7 +41,7 @@ proc initMcpServer(
   (ls, initRes)
 
 proc checkToolResult(res: McpCallToolResult) =
-  check not res.isError
+  check not res.isError.get(false)
   check res.structuredContent.isSome
   if res.structuredContent.isSome:
     check parseJson(res.content[0].text) == res.structuredContent.get.string.parseJson
@@ -327,7 +327,7 @@ suite "MCP tools":
     check freshLs.projectFiles.len == 0
     let symbols = waitFor mcp.callTool(
       freshLs,
-      McpCallToolParams(
+      McpCallToolRequestParams(
         name: "nimFindSymbols",
         arguments: toolArguments(%*{"uri": errFile.Path.pathToUri, "query": "add"}),
       ),
@@ -339,7 +339,7 @@ suite "MCP tools":
 
     let diags = waitFor mcp.callTool(
       freshLs,
-      McpCallToolParams(
+      McpCallToolRequestParams(
         name: "nimCheckProject", arguments: toolArguments(%*{"uri": entryPoint.Path.pathToUri})
       ),
     )
@@ -351,7 +351,7 @@ suite "MCP tools":
   test "callTool nimFindReferences returns structured references":
     let res = waitFor mcp.callTool(
       ls,
-      McpCallToolParams(
+      McpCallToolRequestParams(
         name: "nimFindReferences",
         arguments: toolArguments(%*{"path": entryPoint, "line": 3, "column": 10}),
       ),
@@ -366,7 +366,7 @@ suite "MCP tools":
   test "callTool nimFindSymbols returns matching workspace symbols":
     let res = waitFor mcp.callTool(
       ls,
-      McpCallToolParams(
+      McpCallToolRequestParams(
         name: "nimFindSymbols",
         arguments: toolArguments(%*{"uri": entryPoint.Path.pathToUri, "query": "add"}),
       ),
@@ -384,7 +384,7 @@ suite "MCP tools":
   test "callTool nimListSymbols returns file outline":
     let res = waitFor mcp.callTool(
       ls,
-      McpCallToolParams(name: "nimListSymbols", arguments: toolArguments(%*{"path": entryPoint})),
+      McpCallToolRequestParams(name: "nimListSymbols", arguments: toolArguments(%*{"path": entryPoint})),
     )
 
     checkToolResult(res)
@@ -399,7 +399,7 @@ suite "MCP tools":
   test "callTool nimCheckProject returns workspace diagnostics":
     let res = waitFor mcp.callTool(
       ls,
-      McpCallToolParams(
+      McpCallToolRequestParams(
         name: "nimCheckProject", arguments: toolArguments(%*{"uri": errFile.Path.pathToUri})
       ),
     )
@@ -416,7 +416,7 @@ suite "MCP tools":
 
   test "callTool nimCheckFile returns file diagnostics":
     let res = waitFor mcp.callTool(
-      ls, McpCallToolParams(name: "nimCheckFile", arguments: toolArguments(%*{"path": errFile}))
+      ls, McpCallToolRequestParams(name: "nimCheckFile", arguments: toolArguments(%*{"path": errFile}))
     )
 
     checkToolResult(res)
@@ -430,7 +430,7 @@ suite "MCP tools":
 
   test "callTool nimCheckFile outside srcDir returns file diagnostics":
     let res = waitFor mcp.callTool(
-      ls, McpCallToolParams(name: "nimCheckFile", arguments: toolArguments(%*{"path": testFile}))
+      ls, McpCallToolRequestParams(name: "nimCheckFile", arguments: toolArguments(%*{"path": testFile}))
     )
 
     checkToolResult(res)
@@ -445,7 +445,7 @@ suite "MCP tools":
   test "callTool nimFindTypeDefinition returns type definition":
     let res = waitFor mcp.callTool(
       ls,
-      McpCallToolParams(
+      McpCallToolRequestParams(
         name: "nimFindTypeDefinition",
         arguments: toolArguments(%*{"path": entryPoint, "line": 3, "column": 10}),
       ),

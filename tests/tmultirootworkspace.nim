@@ -199,6 +199,7 @@ suite "Workspaces without a nimble file":
   discard waitFor client.initialize(
     %*{
       "processId": %getCurrentProcessId(),
+      "rootUri": nil,
       "workspaceFolders": [
         {"uri": pathToUri(mono / "app"), "name": "app"},
         {"uri": pathToUri(mono / "app2"), "name": "app2"},

@@ -104,10 +104,9 @@ suite "LSP endpoints":
         "range":
           {"start": {"line": 0, "character": 0}, "end": {"line": 10, "character": 0}},
       }
-    let hints =
-      to(client.callTimeout("textDocument/inlayHint", %params), seq[InlayHint])
-    for hint in hints:
-      check hint.label.len > 0
+    let hints = client.callTimeout("textDocument/inlayHint", %params)
+    for hint in hints.getElems:
+      check hint{"label"}.getStr.len > 0
 
   test "textDocument/codeAction answers for a range":
     let params =
