@@ -468,7 +468,6 @@ extendTypes:
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#serverCapabilities
     ServerCapabilities* = object #!!!positionEncoding*: Option[string]
       textDocumentSync*: Option[ServerCapabilitiesTextDocumentSync]
-      #notebookDocumentSync?: NotebookDocumentSyncOptions | NotebookDocumentSyncRegistrationOptions;
       completionProvider*: Option[CompletionOptions]
       hoverProvider*: Option[bool]
       signatureHelpProvider*: Option[SignatureHelpOptions]
@@ -482,17 +481,8 @@ extendTypes:
       codeActionProvider*: Option[bool]
       documentFormattingProvider*: Option[bool]
       renameProvider*: Option[ServerCapabilitiesRenameProvider]
-      # foldingRangeProvider?: boolean | FoldingRangeOptions | FoldingRangeRegistrationOptions;
       executeCommandProvider*: Option[ExecuteCommandOptions]
-      # selectionRangeProvider?: boolean | SelectionRangeOptions | SelectionRangeRegistrationOptions;
-      # linkedEditingRangeProvider?: boolean | LinkedEditingRangeOptions | LinkedEditingRangeRegistrationOptions;
-      # callHierarchyProvider?: boolean | CallHierarchyOptions | CallHierarchyRegistrationOptions;
-      # semanticTokensProvider?: SemanticTokensOptions | SemanticTokensRegistrationOptions;
-      # monikerProvider?: boolean | MonikerOptions | MonikerRegistrationOptions;
-      # typeHierarchyProvider?: boolean | TypeHierarchyOptions | TypeHierarchyRegistrationOptions;
-      # inlineValueProvider?: boolean | InlineValueOptions | InlineValueRegistrationOptions;
       inlayHintProvider*: Option[ServerCapabilitiesInlayHintProvider]
-      # diagnosticProvider?: DiagnosticOptions | DiagnosticRegistrationOptions;
       workspace*: Option[WorkspaceOptions]
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#initialized
@@ -653,8 +643,6 @@ extendTypes:
       kind*: Option[int]
       detail*: Option[string]
       documentation*: Option[CompletionItemDocumentation]
-      # textEdit*: Option[TextEdit]
-      # additionalTextEdits*: Option[TextEdit]
       command*: Option[Command]
       data*: Option[LspAny]
 
