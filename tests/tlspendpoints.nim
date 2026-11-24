@@ -46,8 +46,8 @@ suite "LSP endpoints":
     waitFor ls.shutdownNimsuggest()
 
   test "textDocument/typeDefinition answers for a typed symbol":
-    let locations = to(
-      client.callTimeout(
+    let locations = LspJson.decode(
+      $client.callTimeout(
         "textDocument/typeDefinition", %positionParams(helloWorldUri, 8, 2)
       ),
       seq[Location],
@@ -56,8 +56,8 @@ suite "LSP endpoints":
       check location.uri.string.len > 0
 
   test "textDocument/declaration answers with the declaring location":
-    let locations = to(
-      client.callTimeout(
+    let locations = LspJson.decode(
+      $client.callTimeout(
         "textDocument/declaration", %positionParams(helloWorldUri, 1, 6)
       ),
       seq[Location],
@@ -431,8 +431,8 @@ suite "LSP endpoints":
     check status.version == LSPVersion
 
   test "a definition request on a non ascii identifier resolves to its declaration":
-    let locations = to(
-      client.callTimeout(
+    let locations = LspJson.decode(
+      $client.callTimeout(
         "textDocument/definition", %positionParams(helloWorldUri, 1, 6)
       ),
       seq[Location],

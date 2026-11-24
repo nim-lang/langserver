@@ -383,7 +383,7 @@ suite "Nimlangserver didOpen ordering":
     check not request.finished
 
     ls.setWorkspaceConfiguration(NlsConfig())
-    let locations = to(waitFor request.wait(30.seconds), seq[Location])
+    let locations = LspJson.decode($(waitFor request.wait(30.seconds)), seq[Location])
 
     check locations.len == 1
     check locations[0].uri == uri
@@ -431,10 +431,12 @@ suite "Nimlangserver request cancelled during startup":
       check not ls.openFiles[file.fixturePath].projectFile.cancelled
 
     ls.setWorkspaceConfiguration(NlsConfig())
-    let locations = to(
-      waitFor client
-      .call("textDocument/definition", %positionParams(uri, 1, 6))
-      .wait(30.seconds),
+    let locations = LspJson.decode(
+      $(
+        waitFor client
+        .call("textDocument/definition", %positionParams(uri, 1, 6))
+        .wait(30.seconds)
+      ),
       seq[Location],
     )
     check locations.len == 1
