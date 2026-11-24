@@ -31,8 +31,8 @@ proc getWorkspaceFolders(ip: InitializeParams): seq[Path] {.raises: [UriParseErr
   if ip.workspaceFolders.isSome:
     for folder in ip.workspaceFolders.get:
       result.add folder.uri.uriToPath
-  elif ip.rootUri.kind == nkValue:
-    result.add ip.rootUri.value.uriToPath
+  elif ip.rootUri.isSome:
+    result.add ip.rootUri.get.uriToPath
   elif ip.rootPath.get("") != "":
     result.add ip.rootPath.get.Path
 

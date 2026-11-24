@@ -83,33 +83,35 @@ suite "mcp tool call params":
     check params.arguments.isNone
 
 suite "initialize params":
-  test "the process id is read":
-    let params = LspJson.decode(
-      """{"processId": 1, "rootUri": null, "capabilities": {}}""", InitializeParams
-    )
-    check params.processId.kind == nkValue
-    check params.processId.value == 1
+  test "the process id is ignored, whether a number, null or missing":
+    for json in [
+      """{"processId": 1, "capabilities": {}}""",
+      """{"processId": null, "capabilities": {}}""", """{"capabilities": {}}""",
+    ]:
+      checkpoint json
+      discard LspJson.decode(json, InitializeParams)
 
-  test "a null process id and root uri are read as null":
+  test "a null root uri is read as none":
     let params = LspJson.decode(
       """{"processId": null, "rootUri": null, "capabilities": {}}""", InitializeParams
     )
-    check params.processId.kind == nkNull
-    check params.rootUri.kind == nkNull
+    check params.rootUri.isNone
 
   test "the root uri is read":
     let params = LspJson.decode(
       """{"processId": null, "rootUri": "file:///a", "capabilities": {}}""",
       InitializeParams,
     )
-    check params.rootUri.kind == nkValue
-    check params.rootUri.value == LspUri("file:///a")
+    check params.rootUri == some LspUri("file:///a")
 
-  test "the process id and the root uri are required, even though they can be null":
+  test "the deprecated root uri can be left out":
+    let params =
+      LspJson.decode("""{"processId": null, "capabilities": {}}""", InitializeParams)
+    check params.rootUri.isNone
+
+  test "the capabilities are required":
     expect SerializationError:
-      discard LspJson.decode("""{"rootUri": null, "capabilities": {}}""", InitializeParams)
-    expect SerializationError:
-      discard LspJson.decode("""{"processId": null, "capabilities": {}}""", InitializeParams)
+      discard LspJson.decode("""{"processId": null, "rootUri": null}""", InitializeParams)
 
   test "null for an optional field decodes as none":
     let params = LspJson.decode(

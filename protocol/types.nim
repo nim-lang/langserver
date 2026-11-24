@@ -156,10 +156,12 @@ extendTypes:
       value*: string
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#initializeParams
+    # note processId is required but we don't use it;
+    # rootUri is required but deprecated, so made optional
     InitializeParams* {.extends: [WorkDoneProgressParams].} = object
-      processId*: Nullable[int]
+      # processId*: Nullable[int]
       rootPath*: Option[string]
-      rootUri*: Nullable[DocumentUri]
+      rootUri*: Option[DocumentUri]
       capabilities*: ClientCapabilities
       workspaceFolders*: OptionalSeq[WorkspaceFolder]
 
