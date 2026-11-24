@@ -425,17 +425,14 @@ suite "unions":
 
   test "a provider is a boolean or its options":
     let capabilities = ServerCapabilities(
-      hoverProvider: some ServerCapabilitiesHoverProvider(kind: shpBool, boolean: true),
-      documentSymbolProvider: some ServerCapabilitiesDocumentSymbolProvider(
-        kind: sdspOptions, options: DocumentSymbolOptions(label: some "nim")
-      ),
+      hoverProvider: some true,
       inlayHintProvider: some ServerCapabilitiesInlayHintProvider(
         kind: sihpRegistration,
         registration: InlayHintRegistrationOptions(id: some "hints"),
       ),
     )
     check LspJson.encode(capabilities) ==
-      """{"hoverProvider":true,"documentSymbolProvider":{"label":"nim"},"inlayHintProvider":{"documentSelector":null,"id":"hints"}}"""
+      """{"hoverProvider":true,"inlayHintProvider":{"documentSelector":null,"id":"hints"}}"""
 
 suite "spec field names":
   test "the active signature is a uinteger":
@@ -527,9 +524,9 @@ suite "server capabilities":
 
   test "a registration option writes the document selector it inherits":
     let capabilities = ServerCapabilities(
-      declarationProvider: some ServerCapabilitiesDeclarationProvider(
-        kind: sdeclpRegistration,
-        registration: DeclarationRegistrationOptions(
+      inlayHintProvider: some ServerCapabilitiesInlayHintProvider(
+        kind: sihpRegistration,
+        registration: InlayHintRegistrationOptions(
           documentSelector: Nullable[DocumentSelector](
             kind: nkValue,
             value: @[
@@ -538,12 +535,12 @@ suite "server capabilities":
               )
             ],
           ),
-          id: some "decl",
+          id: some "hints",
         ),
       )
     )
     check LspJson.encode(capabilities) ==
-      """{"declarationProvider":{"documentSelector":[{"pattern":"**/*.nim"}],"id":"decl"}}"""
+      """{"inlayHintProvider":{"documentSelector":[{"pattern":"**/*.nim"}],"id":"hints"}}"""
 
 suite "nullable":
   test "a Nullable is the value or null":
@@ -586,8 +583,8 @@ suite "document filter":
 
 suite "document selector":
   test "a registration without a document selector writes null":
-    let options = DeclarationRegistrationOptions(id: some "decl")
-    check LspJson.encode(options) == """{"documentSelector":null,"id":"decl"}"""
+    let options = InlayHintRegistrationOptions(id: some "hints")
+    check LspJson.encode(options) == """{"documentSelector":null,"id":"hints"}"""
 
   test "a document selector is written as its filters":
     let holder = SelectorHolder(

@@ -430,122 +430,6 @@ extendTypes:
       of stdsKind:
         syncKind*: int
 
-    ServerCapabilitiesHoverProviderKind* = enum
-      shpBool
-      shpOptions
-
-    ServerCapabilitiesHoverProvider* = object
-      case kind*: ServerCapabilitiesHoverProviderKind
-      of shpBool:
-        boolean*: bool
-      of shpOptions:
-        options*: HoverOptions
-
-    ServerCapabilitiesDeclarationProviderKind* = enum
-      sdeclpBool
-      sdeclpOptions
-      sdeclpRegistration
-
-    ServerCapabilitiesDeclarationProvider* = object
-      case kind*: ServerCapabilitiesDeclarationProviderKind
-      of sdeclpBool:
-        boolean*: bool
-      of sdeclpOptions:
-        options*: DeclarationOptions
-      of sdeclpRegistration:
-        registration*: DeclarationRegistrationOptions
-
-    ServerCapabilitiesDefinitionProviderKind* = enum
-      sdefpBool
-      sdefpOptions
-
-    ServerCapabilitiesDefinitionProvider* = object
-      case kind*: ServerCapabilitiesDefinitionProviderKind
-      of sdefpBool:
-        boolean*: bool
-      of sdefpOptions:
-        options*: DefinitionOptions
-
-    ServerCapabilitiesTypeDefinitionProviderKind* = enum
-      stdpBool
-      stdpOptions
-      stdpRegistration
-
-    ServerCapabilitiesTypeDefinitionProvider* = object
-      case kind*: ServerCapabilitiesTypeDefinitionProviderKind
-      of stdpBool:
-        boolean*: bool
-      of stdpOptions:
-        options*: TypeDefinitionOptions
-      of stdpRegistration:
-        registration*: TypeDefinitionRegistrationOptions
-
-    ServerCapabilitiesReferencesProviderKind* = enum
-      srefpBool
-      srefpOptions
-
-    ServerCapabilitiesReferencesProvider* = object
-      case kind*: ServerCapabilitiesReferencesProviderKind
-      of srefpBool:
-        boolean*: bool
-      of srefpOptions:
-        options*: ReferenceOptions
-
-    ServerCapabilitiesDocumentHighlightProviderKind* = enum
-      sdhpBool
-      sdhpOptions
-
-    ServerCapabilitiesDocumentHighlightProvider* = object
-      case kind*: ServerCapabilitiesDocumentHighlightProviderKind
-      of sdhpBool:
-        boolean*: bool
-      of sdhpOptions:
-        options*: DocumentHighlightOptions
-
-    ServerCapabilitiesDocumentSymbolProviderKind* = enum
-      sdspBool
-      sdspOptions
-
-    ServerCapabilitiesDocumentSymbolProvider* = object
-      case kind*: ServerCapabilitiesDocumentSymbolProviderKind
-      of sdspBool:
-        boolean*: bool
-      of sdspOptions:
-        options*: DocumentSymbolOptions
-
-    ServerCapabilitiesWorkspaceSymbolProviderKind* = enum
-      swspBool
-      swspOptions
-
-    ServerCapabilitiesWorkspaceSymbolProvider* = object
-      case kind*: ServerCapabilitiesWorkspaceSymbolProviderKind
-      of swspBool:
-        boolean*: bool
-      of swspOptions:
-        options*: WorkspaceSymbolOptions
-
-    ServerCapabilitiesCodeActionProviderKind* = enum
-      scapBool
-      scapOptions
-
-    ServerCapabilitiesCodeActionProvider* = object
-      case kind*: ServerCapabilitiesCodeActionProviderKind
-      of scapBool:
-        boolean*: bool
-      of scapOptions:
-        options*: CodeActionOptions
-
-    ServerCapabilitiesDocumentFormattingProviderKind* = enum
-      sdfpBool
-      sdfpOptions
-
-    ServerCapabilitiesDocumentFormattingProvider* = object
-      case kind*: ServerCapabilitiesDocumentFormattingProviderKind
-      of sdfpBool:
-        boolean*: bool
-      of sdfpOptions:
-        options*: DocumentFormattingOptions
-
     ServerCapabilitiesInlayHintProviderKind* = enum
       sihpBool
       sihpOptions
@@ -559,53 +443,6 @@ extendTypes:
         options*: InlayHintOptions
       of sihpRegistration:
         registration*: InlayHintRegistrationOptions
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#hoverOptions
-    HoverOptions* {.extends: [WorkDoneProgressOptions].} = object
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#declarationOptions
-    DeclarationOptions* {.extends: [WorkDoneProgressOptions].} = object
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#declarationRegistrationOptions
-    DeclarationRegistrationOptions* {.
-      extends:
-        [DeclarationOptions, TextDocumentRegistrationOptions, StaticRegistrationOptions]
-    .} = object
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#definitionOptions
-    DefinitionOptions* {.extends: [WorkDoneProgressOptions].} = object
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#typeDefinitionOptions
-    TypeDefinitionOptions* {.extends: [WorkDoneProgressOptions].} = object
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#typeDefinitionRegistrationOptions
-    TypeDefinitionRegistrationOptions* {.
-      extends: [
-        TextDocumentRegistrationOptions, TypeDefinitionOptions,
-        StaticRegistrationOptions,
-      ]
-    .} = object
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#referenceOptions
-    ReferenceOptions* {.extends: [WorkDoneProgressOptions].} = object
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#documentHighlightOptions
-    DocumentHighlightOptions* {.extends: [WorkDoneProgressOptions].} = object
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#documentSymbolOptions
-    DocumentSymbolOptions* {.extends: [WorkDoneProgressOptions].} = object
-      label*: Option[string]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#workspaceSymbolOptions
-    WorkspaceSymbolOptions* {.extends: [WorkDoneProgressOptions].} = object
-      resolveProvider*: Option[bool]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#codeActionOptions
-    CodeActionOptions* {.extends: [WorkDoneProgressOptions].} = object
-      resolveProvider*: Option[bool]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#documentFormattingOptions
-    DocumentFormattingOptions* {.extends: [WorkDoneProgressOptions].} = object
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#inlayHintRegistrationOptions
     InlayHintRegistrationOptions* {.
@@ -633,17 +470,17 @@ extendTypes:
       textDocumentSync*: Option[ServerCapabilitiesTextDocumentSync]
       #notebookDocumentSync?: NotebookDocumentSyncOptions | NotebookDocumentSyncRegistrationOptions;
       completionProvider*: Option[CompletionOptions]
-      hoverProvider*: Option[ServerCapabilitiesHoverProvider]
+      hoverProvider*: Option[bool]
       signatureHelpProvider*: Option[SignatureHelpOptions]
-      declarationProvider*: Option[ServerCapabilitiesDeclarationProvider]
-      definitionProvider*: Option[ServerCapabilitiesDefinitionProvider]
-      typeDefinitionProvider*: Option[ServerCapabilitiesTypeDefinitionProvider]
-      referencesProvider*: Option[ServerCapabilitiesReferencesProvider]
-      documentHighlightProvider*: Option[ServerCapabilitiesDocumentHighlightProvider]
-      documentSymbolProvider*: Option[ServerCapabilitiesDocumentSymbolProvider]
-      workspaceSymbolProvider*: Option[ServerCapabilitiesWorkspaceSymbolProvider]
-      codeActionProvider*: Option[ServerCapabilitiesCodeActionProvider]
-      documentFormattingProvider*: Option[ServerCapabilitiesDocumentFormattingProvider]
+      declarationProvider*: Option[bool]
+      definitionProvider*: Option[bool]
+      typeDefinitionProvider*: Option[bool]
+      referencesProvider*: Option[bool]
+      documentHighlightProvider*: Option[bool]
+      documentSymbolProvider*: Option[bool]
+      workspaceSymbolProvider*: Option[bool]
+      codeActionProvider*: Option[bool]
+      documentFormattingProvider*: Option[bool]
       renameProvider*: Option[ServerCapabilitiesRenameProvider]
       # foldingRangeProvider?: boolean | FoldingRangeOptions | FoldingRangeRegistrationOptions;
       executeCommandProvider*: Option[ExecuteCommandOptions]
@@ -1409,29 +1246,7 @@ LspJson.useOneOfSerializationFor(GlobPattern)
 LspJson.useOneOfWriterFor(InlayHintTooltip)
 LspJson.useDefaultWriterFor(InlayHintLabelPart)
 LspJson.useOneOfWriterFor(InlayHintLabel)
-LspJson.useDefaultWriterFor(HoverOptions)
-LspJson.useDefaultWriterFor(DeclarationOptions)
-LspJson.useDefaultWriterFor(DeclarationRegistrationOptions)
-LspJson.useDefaultWriterFor(DefinitionOptions)
-LspJson.useDefaultWriterFor(TypeDefinitionOptions)
-LspJson.useDefaultWriterFor(TypeDefinitionRegistrationOptions)
-LspJson.useDefaultWriterFor(ReferenceOptions)
-LspJson.useDefaultWriterFor(DocumentHighlightOptions)
-LspJson.useDefaultWriterFor(DocumentSymbolOptions)
-LspJson.useDefaultWriterFor(WorkspaceSymbolOptions)
-LspJson.useDefaultWriterFor(CodeActionOptions)
-LspJson.useDefaultWriterFor(DocumentFormattingOptions)
 LspJson.useDefaultWriterFor(InlayHintRegistrationOptions)
-LspJson.useOneOfWriterFor(ServerCapabilitiesHoverProvider)
-LspJson.useOneOfWriterFor(ServerCapabilitiesDeclarationProvider)
-LspJson.useOneOfWriterFor(ServerCapabilitiesDefinitionProvider)
-LspJson.useOneOfWriterFor(ServerCapabilitiesTypeDefinitionProvider)
-LspJson.useOneOfWriterFor(ServerCapabilitiesReferencesProvider)
-LspJson.useOneOfWriterFor(ServerCapabilitiesDocumentHighlightProvider)
-LspJson.useOneOfWriterFor(ServerCapabilitiesDocumentSymbolProvider)
-LspJson.useOneOfWriterFor(ServerCapabilitiesWorkspaceSymbolProvider)
-LspJson.useOneOfWriterFor(ServerCapabilitiesCodeActionProvider)
-LspJson.useOneOfWriterFor(ServerCapabilitiesDocumentFormattingProvider)
 LspJson.useOneOfWriterFor(ServerCapabilitiesInlayHintProvider)
 LspJson.useDefaultWriterFor(ServerCapabilities)
 LspJson.useDefaultWriterFor(ShowMessageParams)

@@ -60,7 +60,7 @@ proc initialize*(
           ),
         ),
       ),
-      hoverProvider: some ServerCapabilitiesHoverProvider(kind: shpBool, boolean: true),
+      hoverProvider: some(true),
       workspace: some(
         WorkspaceOptions(
           workspaceFolders: some(
@@ -77,18 +77,12 @@ proc initialize*(
       ),
       signatureHelpProvider:
         some SignatureHelpOptions(triggerCharacters: some(@["(", ","])),
-      definitionProvider:
-        some ServerCapabilitiesDefinitionProvider(kind: sdefpBool, boolean: true),
-      declarationProvider:
-        some ServerCapabilitiesDeclarationProvider(kind: sdeclpBool, boolean: true),
-      typeDefinitionProvider:
-        some ServerCapabilitiesTypeDefinitionProvider(kind: stdpBool, boolean: true),
-      referencesProvider:
-        some ServerCapabilitiesReferencesProvider(kind: srefpBool, boolean: true),
-      documentHighlightProvider:
-        some ServerCapabilitiesDocumentHighlightProvider(kind: sdhpBool, boolean: true),
-      workspaceSymbolProvider:
-        some ServerCapabilitiesWorkspaceSymbolProvider(kind: swspBool, boolean: true),
+      definitionProvider: some(true),
+      declarationProvider: some(true),
+      typeDefinitionProvider: some(true),
+      referencesProvider: some(true),
+      documentHighlightProvider: some(true),
+      workspaceSymbolProvider: some(true),
       executeCommandProvider: some(
         ExecuteCommandOptions(
           commands: @[RESTART_COMMAND, RECOMPILE_COMMAND, CHECK_PROJECT_COMMAND]
@@ -97,13 +91,9 @@ proc initialize*(
       inlayHintProvider: some ServerCapabilitiesInlayHintProvider(
         kind: sihpOptions, options: InlayHintOptions(resolveProvider: some(false))
       ),
-      documentSymbolProvider:
-        some ServerCapabilitiesDocumentSymbolProvider(kind: sdspBool, boolean: true),
-      codeActionProvider:
-        some ServerCapabilitiesCodeActionProvider(kind: scapBool, boolean: true),
-      documentFormattingProvider: some ServerCapabilitiesDocumentFormattingProvider(
-        kind: sdfpBool, boolean: getNphPath().isSome
-      ),
+      documentSymbolProvider: some(true),
+      codeActionProvider: some(true),
+      documentFormattingProvider: some(getNphPath().isSome),
     )
   )
   # Support rename by default, but check if we can also support prepare
@@ -1251,10 +1241,8 @@ proc willSaveWaitUntil*(
     config = await ls.workspaceConfigurationWait()
     nphPath = getNphPath()
 
-  let formattingProvider = ls.lspServerCapabilities.documentFormattingProvider
   let shouldFormat =
-    nphPath.isSome and formattingProvider.isSome and
-    formattingProvider.get.kind == sdfpBool and formattingProvider.get.boolean and
+    nphPath.isSome and ls.lspServerCapabilities.documentFormattingProvider.get(false) and
     config.formatOnSave.get(false)
 
   if shouldFormat:
