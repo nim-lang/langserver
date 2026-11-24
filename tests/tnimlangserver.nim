@@ -139,8 +139,8 @@ suite "LSP features":
   test "Definitions.":
     let
       positionParams = positionParams(helloWorldUri, 1, 6)
-      locations = to(
-        waitFor client.call("textDocument/definition", %positionParams), seq[Location]
+      locations = LspJson.decode(
+        $(waitFor client.call("textDocument/definition", %positionParams)), seq[Location]
       )
       expected = @[Location(uri: helloWorldUri, `range`: range(0, 5, 0, 8))]
     check %locations == %expected
@@ -152,8 +152,8 @@ suite "LSP features":
         "position": {"line": 1, "character": 6},
         "textDocument": {"uri": helloWorldUri},
       }
-    let locations = to(
-      waitFor client.call("textDocument/references", %referenceParams), seq[Location]
+    let locations = LspJson.decode(
+      $(waitFor client.call("textDocument/references", %referenceParams)), seq[Location]
     )
     let expected = @[
       Location(uri: helloWorldUri, `range`: range(0, 5, 0, 8)),
@@ -168,8 +168,8 @@ suite "LSP features":
         "position": {"line": 1, "character": 7},
         "textDocument": {"uri": helloWorldUri},
       }
-    let locations = to(
-      waitFor client.call("textDocument/references", %referenceParams), seq[Location]
+    let locations = LspJson.decode(
+      $(waitFor client.call("textDocument/references", %referenceParams)), seq[Location]
     )
     let expected = @[Location(uri: helloWorldUri, `range`: range(1, 6, 1, 9))]
     check %locations == %expected

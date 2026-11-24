@@ -58,8 +58,8 @@ suite "Nim track with nim >= 2.4":
     )
     let
       positionParams = positionParams(trackUri, 4, 6)
-      locations = to(
-        waitFor client.call("textDocument/definition", %positionParams), seq[Location]
+      locations = LspJson.decode(
+        $(waitFor client.call("textDocument/definition", %positionParams)), seq[Location]
       )
     check locations.len == 1
     check locations.len >= 1 and
@@ -76,8 +76,8 @@ suite "Nim track with nim >= 2.4":
         "position": {"line": 4, "character": 6},
         "textDocument": {"uri": trackUri},
       }
-    let locations = to(
-      waitFor client.call("textDocument/references", %referenceParams), seq[Location]
+    let locations = LspJson.decode(
+      $(waitFor client.call("textDocument/references", %referenceParams)), seq[Location]
     )
     check locations.len >= 1
 
@@ -119,8 +119,8 @@ suite "Nim track unavailable with nim < 2.4":
   test "Definition returns empty":
     let
       positionParams = positionParams(hwUri, 1, 6)
-      locations = to(
-        waitFor client.call("textDocument/definition", %positionParams), seq[Location]
+      locations = LspJson.decode(
+        $(waitFor client.call("textDocument/definition", %positionParams)), seq[Location]
       )
     check locations.len == 0
 
@@ -131,7 +131,7 @@ suite "Nim track unavailable with nim < 2.4":
         "position": {"line": 1, "character": 6},
         "textDocument": {"uri": hwUri},
       }
-    let locations = to(
-      waitFor client.call("textDocument/references", %referenceParams), seq[Location]
+    let locations = LspJson.decode(
+      $(waitFor client.call("textDocument/references", %referenceParams)), seq[Location]
     )
     check locations.len == 0
