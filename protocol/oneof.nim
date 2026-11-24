@@ -1,7 +1,7 @@
 # XXX generalize and move it to nim-serialization
 
-# Note decoding a case object of object fields is not supported.
-# It would require parsing into
+# Note decoding a case object with more than one object type field
+# is not supported. It would require parsing into
 # a general object of all object fields made optional and then
 # "guess" which object was received to construct it. Note also
 # JSON fields may be in any order so a "kind" field assumed first
