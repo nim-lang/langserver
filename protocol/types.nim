@@ -101,12 +101,6 @@ extendTypes:
       code*: Option[DiagnosticCode]
       source*: Option[string]
       message*: DiagnosticMessage
-      relatedInformation*: OptionalSeq[DiagnosticRelatedInformation]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#diagnosticRelatedInformation
-    DiagnosticRelatedInformation* = object
-      location*: Location
-      message*: string
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#command
     Command* = object
@@ -125,83 +119,9 @@ extendTypes:
       `range`*: Range
       newText*: string
 
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#changeAnnotationIdentifier
-    ChangeAnnotationIdentifier* = string
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#annotatedTextEdit
-    AnnotatedTextEdit* {.extends: [TextEdit].} = object
-      annotationId*: ChangeAnnotationIdentifier
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#stringValue
-    StringValue* = object
-      kind*: string
-      value*: string
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#snippetTextEdit
-    SnippetTextEdit* = object
-      `range`*: Range
-      snippet*: StringValue
-      annotationId*: Option[ChangeAnnotationIdentifier]
-
-    TextDocumentEditEditKind* = enum
-      tdeeText
-      tdeeAnnotated
-      tdeeSnippet
-
-    TextDocumentEditEdit* = object
-      case kind*: TextDocumentEditEditKind
-      of tdeeText:
-        text*: TextEdit
-      of tdeeAnnotated:
-        annotated*: AnnotatedTextEdit
-      of tdeeSnippet:
-        snippet*: SnippetTextEdit
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#textDocumentEdit
-    TextDocumentEdit* = object
-      textDocument*: OptionalVersionedTextDocumentIdentifier
-      edits*: seq[TextDocumentEditEdit]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#createFile
-    CreateFile* = object
-      kind*: string
-      uri*: DocumentUri
-      annotationId*: Option[ChangeAnnotationIdentifier]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#renameFile
-    RenameFile* = object
-      kind*: string
-      oldUri*: DocumentUri
-      newUri*: DocumentUri
-      annotationId*: Option[ChangeAnnotationIdentifier]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#deleteFile
-    DeleteFile* = object
-      kind*: string
-      uri*: DocumentUri
-      annotationId*: Option[ChangeAnnotationIdentifier]
-
-    WorkspaceEditDocumentChangeKind* = enum
-      wedcEdit
-      wedcCreate
-      wedcRename
-      wedcDelete
-
-    WorkspaceEditDocumentChange* = object
-      case kind*: WorkspaceEditDocumentChangeKind
-      of wedcEdit:
-        edit*: TextDocumentEdit
-      of wedcCreate:
-        create*: CreateFile
-      of wedcRename:
-        rename*: RenameFile
-      of wedcDelete:
-        delete*: DeleteFile
-
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#workspaceEdit
     WorkspaceEdit* = object
       changes*: Option[Table[DocumentUri, seq[TextEdit]]]
-      documentChanges*: OptionalSeq[WorkspaceEditDocumentChange]
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#textDocumentIdentifier
     TextDocumentIdentifier* = object
@@ -218,10 +138,6 @@ extendTypes:
     VersionedTextDocumentIdentifier* {.extends: [TextDocumentIdentifier].} = object
       version*: int
 
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#optionalVersionedTextDocumentIdentifier
-    OptionalVersionedTextDocumentIdentifier* {.extends: [TextDocumentIdentifier].} = object
-      version*: Nullable[int]
-
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#textDocumentPositionParams
     TextDocumentPositionParams* = object
       textDocument*: TextDocumentIdentifier
@@ -232,8 +148,6 @@ extendTypes:
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#documentFilter
     DocumentFilter* = object
-      language*: Option[string]
-      scheme*: Option[string]
       pattern*: Option[GlobPattern]
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#markupContent
@@ -241,21 +155,12 @@ extendTypes:
       kind*: string
       value*: string
 
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#clientInfo
-    ClientInfo* = object
-      name*: string
-      version*: Option[string]
-
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#initializeParams
     InitializeParams* {.extends: [WorkDoneProgressParams].} = object
       processId*: Nullable[int]
-      clientInfo*: Option[ClientInfo]
-      locale*: Option[string]
       rootPath*: Option[string]
       rootUri*: Nullable[DocumentUri]
-      initializationOptions*: Option[LspAny]
       capabilities*: ClientCapabilities
-      trace*: Option[string]
       workspaceFolders*: OptionalSeq[WorkspaceFolder]
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#setTrace
@@ -276,11 +181,9 @@ extendTypes:
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#workDoneProgressParams
     WorkDoneProgressParams* = object
-      workDoneToken*: Option[ProgressToken]
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#partialResultParams
     PartialResultParams* = object
-      partialResultToken*: Option[ProgressToken]
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#workDoneProgressOptions
     WorkDoneProgressOptions* = object
@@ -290,16 +193,7 @@ extendTypes:
     WorkDoneProgressBegin* = object
       kind*: string
       title*: string
-      cancellable*: Option[bool]
       message*: Option[string]
-      percentage*: Option[uinteger]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#workDoneProgressReport
-    WorkDoneProgressReport* = object
-      kind*: string
-      cancellable*: Option[bool]
-      message*: Option[string]
-      percentage*: Option[uinteger]
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#workDoneProgressEnd
     WorkDoneProgressEnd* = object
@@ -317,30 +211,17 @@ extendTypes:
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#configurationItem
     ConfigurationItem* = object
-      scopeUri*: Option[LspUri]
       section*: Option[string]
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#configurationParams
     ConfigurationParams* = object
       items*: seq[ConfigurationItem]
 
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#changeAnnotationsSupportOptions
-    ChangeAnnotationsSupportOptions* = object
-      groupsOnLabel*: Option[bool]
-
     # 'create' | 'rename' | 'delete'
     ResourceOperationKind = string
 
     # 'abort' | 'transactional' | 'undo' | 'textOnlyTransactional'
     FailureHandlingKind = string
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#workspaceEditClientCapabilities
-    WorkspaceEditClientCapabilities* = object
-      documentChanges*: Option[bool]
-      resourceOperations*: OptionalSeq[ResourceOperationKind]
-      failureHandling*: Option[FailureHandlingKind]
-      normalizesLineEndings*: Option[bool]
-      changeAnnotationSupport*: Option[ChangeAnnotationsSupportOptions]
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#didChangeConfigurationClientCapabilities
     DidChangeConfigurationClientCapabilities* = object
@@ -349,44 +230,10 @@ extendTypes:
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#didChangeWatchedFilesClientCapabilities
     DidChangeWatchedFilesClientCapabilities* = object
       dynamicRegistration*: Option[bool]
-      relativePatternSupport*: Option[bool]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#clientSymbolResolveOptions
-    ClientSymbolResolveOptions* = object
-      properties*: seq[string]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#workspace_symbol
-    WorkspaceSymbolClientCapabilities* = object
-      dynamicRegistration*: Option[bool]
-      symbolKind*: Option[ClientSymbolKindOptions]
-      tagSupport*: Option[ClientSymbolTagOptions]
-      resolveSupport*: Option[ClientSymbolResolveOptions]
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#executeCommandClientCapabilities
     ExecuteCommandClientCapabilities* = object
       dynamicRegistration*: Option[bool]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#fileOperationClientCapabilities
-    FileOperationClientCapabilities* = object
-      dynamicRegistration*: Option[bool]
-      didCreate*: Option[bool]
-      willCreate*: Option[bool]
-      didRename*: Option[bool]
-      willRename*: Option[bool]
-      didDelete*: Option[bool]
-      willDelete*: Option[bool]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#semanticTokensWorkspaceClientCapabilities
-    SemanticTokensWorkspaceClientCapabilities* = object
-      refreshSupport*: Option[bool]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#codeLensWorkspaceClientCapabilities
-    CodeLensWorkspaceClientCapabilities* = object
-      refreshSupport*: Option[bool]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#inlineValueWorkspaceClientCapabilities
-    InlineValueWorkspaceClientCapabilities* = object
-      refreshSupport*: Option[bool]
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#inlayHintWorkspaceClientCapabilities
     InlayHintWorkspaceClientCapabilities* = object
@@ -398,89 +245,26 @@ extendTypes:
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#workspaceClientCapabilities
     WorkspaceClientCapabilities* = object
-      applyEdit*: Option[bool]
-      workspaceEdit*: Option[WorkspaceEditClientCapabilities]
       didChangeConfiguration*: Option[DidChangeConfigurationClientCapabilities]
       didChangeWatchedFiles*: Option[DidChangeWatchedFilesClientCapabilities]
-      symbol*: Option[WorkspaceSymbolClientCapabilities]
       executeCommand*: Option[ExecuteCommandClientCapabilities]
       workspaceFolders*: Option[bool]
       configuration*: Option[bool]
-      semanticTokens*: Option[SemanticTokensWorkspaceClientCapabilities]
-      codeLens*: Option[CodeLensWorkspaceClientCapabilities]
-      fileOperations*: Option[FileOperationClientCapabilities]
-      inlineValue*: Option[InlineValueWorkspaceClientCapabilities]
       inlayHint*: Option[InlayHintWorkspaceClientCapabilities]
       diagnostics*: Option[DiagnosticWorkspaceClientCapabilities]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#textDocumentSyncClientCapabilities
-    TextDocumentSyncClientCapabilities* = object
-      dynamicRegistration*: Option[bool]
-      willSave*: Option[bool]
-      willSaveWaitUntil*: Option[bool]
-      didSave*: Option[bool]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#completionItemTagOptions
-    CompletionItemTagOptions* = object
-      valueSet*: seq[int]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#clientCompletionItemResolveOptions
-    ClientCompletionItemResolveOptions* = object
-      properties*: seq[string]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#clientCompletionItemInsertTextModeOptions
-    ClientCompletionItemInsertTextModeOptions* = object
-      valueSet*: seq[int]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#clientCompletionItemOptions
-    ClientCompletionItemOptions* = object
-      snippetSupport*: Option[bool]
-      commitCharactersSupport*: Option[bool]
-      documentationFormat*: OptionalSeq[string]
-      deprecatedSupport*: Option[bool]
-      preselectSupport*: Option[bool]
-      tagSupport*: Option[CompletionItemTagOptions]
-      insertReplaceSupport*: Option[bool]
-      resolveSupport*: Option[ClientCompletionItemResolveOptions]
-      insertTextModeSupport*: Option[ClientCompletionItemInsertTextModeOptions]
-      labelDetailsSupport*: Option[bool]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#clientCompletionItemOptionsKind
-    ClientCompletionItemOptionsKind* = object
-      valueSet*: OptionalSeq[int]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#completionListCapabilities
-    CompletionListCapabilities* = object
-      itemDefaults*: OptionalSeq[string]
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#completionClientCapabilities
     CompletionClientCapabilities* = object
       dynamicRegistration*: Option[bool]
-      completionItem*: Option[ClientCompletionItemOptions]
-      completionItemKind*: Option[ClientCompletionItemOptionsKind]
       contextSupport*: Option[bool]
-      insertTextMode*: Option[int]
-      completionList*: Option[CompletionListCapabilities]
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#hoverClientCapabilities
     HoverClientCapabilities* = object
       dynamicRegistration*: Option[bool]
-      contentFormat*: OptionalSeq[string]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#clientSignatureParameterInformationOptions
-    ClientSignatureParameterInformationOptions* = object
-      labelOffsetSupport*: Option[bool]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#clientSignatureInformationOptions
-    ClientSignatureInformationOptions* = object
-      documentationFormat*: OptionalSeq[string]
-      parameterInformation*: Option[ClientSignatureParameterInformationOptions]
-      activeParameterSupport*: Option[bool]
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#signatureHelpClientCapabilities
     SignatureHelpClientCapabilities* = object
       dynamicRegistration*: Option[bool]
-      signatureInformation*: Option[ClientSignatureInformationOptions]
       contextSupport*: Option[bool]
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#referenceClientCapabilities
@@ -491,303 +275,63 @@ extendTypes:
     DocumentHighlightClientCapabilities* = object
       dynamicRegistration*: Option[bool]
 
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#clientSymbolKindOptions
-    ClientSymbolKindOptions* = object
-      valueSet*: OptionalSeq[int]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#clientSymbolTagOptions
-    ClientSymbolTagOptions* = object
-      valueSet*: seq[int]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#documentSymbolClientCapabilities
-    DocumentSymbolClientCapabilities* = object
-      dynamicRegistration*: Option[bool]
-      symbolKind*: Option[ClientSymbolKindOptions]
-      hierarchicalDocumentSymbolSupport*: Option[bool]
-      tagSupport*: Option[ClientSymbolTagOptions]
-      labelSupport*: Option[bool]
-
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#documentFormattingClientCapabilities
     DocumentFormattingClientCapabilities* = object
-      dynamicRegistration*: Option[bool]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#documentRangeFormattingClientCapabilities
-    DocumentRangeFormattingClientCapabilities* = object
-      dynamicRegistration*: Option[bool]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#documentOnTypeFormattingClientCapabilities
-    DocumentOnTypeFormattingClientCapabilities* = object
       dynamicRegistration*: Option[bool]
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#definitionClientCapabilities
     DefinitionClientCapabilities* = object
       dynamicRegistration*: Option[bool]
-      linkSupport*: Option[bool]
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#typeDefinitionClientCapabilities
     TypeDefinitionClientCapabilities* = object
       dynamicRegistration*: Option[bool]
-      linkSupport*: Option[bool]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#implementationClientCapabilities
-    ImplementationClientCapabilities* = object
-      dynamicRegistration*: Option[bool]
-      linkSupport*: Option[bool]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#clientCodeActionKindOptions
-    ClientCodeActionKindOptions* = object
-      valueSet*: seq[string]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#clientCodeActionLiteralOptions
-    ClientCodeActionLiteralOptions* = object
-      codeActionKind*: ClientCodeActionKindOptions
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#clientCodeActionResolveOptions
-    ClientCodeActionResolveOptions* = object
-      properties*: seq[string]
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#codeActionClientCapabilities
     CodeActionClientCapabilities* = object
-      dynamicRegistration*: Option[bool]
-      codeActionLiteralSupport*: Option[ClientCodeActionLiteralOptions]
-      isPreferredSupport*: Option[bool]
-      disabledSupport*: Option[bool]
-      dataSupport*: Option[bool]
-      resolveSupport*: Option[ClientCodeActionResolveOptions]
-      honorsChangeAnnotations*: Option[bool]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#codeLensClientCapabilities
-    CodeLensClientCapabilities* = object
-      dynamicRegistration*: Option[bool]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#documentLinkClientCapabilities
-    DocumentLinkClientCapabilities* = object
-      dynamicRegistration*: Option[bool]
-      tooltipSupport*: Option[bool]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#documentColorClientCapabilities
-    DocumentColorClientCapabilities* = object
       dynamicRegistration*: Option[bool]
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#renameClientCapabilities
     RenameClientCapabilities* = object
       dynamicRegistration*: Option[bool]
       prepareSupport*: Option[bool]
-      prepareSupportDefaultBehavior*: Option[int]
-      honorsChangeAnnotations*: Option[bool]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#clientDiagnosticsTagOptions
-    ClientDiagnosticsTagOptions* = object
-      valueSet*: seq[int]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#publishDiagnosticsClientCapabilities
-    PublishDiagnosticsClientCapabilities* = object
-      relatedInformation*: Option[bool]
-      tagSupport*: Option[ClientDiagnosticsTagOptions]
-      versionSupport*: Option[bool]
-      codeDescriptionSupport*: Option[bool]
-      dataSupport*: Option[bool]
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#declarationClientCapabilities
     DeclarationClientCapabilities* = object
       dynamicRegistration*: Option[bool]
-      linkSupport*: Option[bool]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#clientFoldingRangeKindOptions
-    ClientFoldingRangeKindOptions* = object
-      valueSet*: OptionalSeq[string]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#clientFoldingRangeOptions
-    ClientFoldingRangeOptions* = object
-      collapsedText*: Option[bool]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#foldingRangeClientCapabilities
-    FoldingRangeClientCapabilities* = object
-      dynamicRegistration*: Option[bool]
-      rangeLimit*: Option[uinteger]
-      lineFoldingOnly*: Option[bool]
-      foldingRangeKind*: Option[ClientFoldingRangeKindOptions]
-      foldingRange*: Option[ClientFoldingRangeOptions]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#selectionRangeClientCapabilities
-    SelectionRangeClientCapabilities* = object
-      dynamicRegistration*: Option[bool]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#linkedEditingRangeClientCapabilities
-    LinkedEditingRangeClientCapabilities* = object
-      dynamicRegistration*: Option[bool]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#callHierarchyClientCapabilities
-    CallHierarchyClientCapabilities* = object
-      dynamicRegistration*: Option[bool]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#clientSemanticTokensRequestOptions
-    EmptyObject* = object
-
-    ClientSemanticTokensRequestRangeKind* = enum
-      cstrBool
-      cstrEmpty
-
-    ClientSemanticTokensRequestRange* = object
-      case kind*: ClientSemanticTokensRequestRangeKind
-      of cstrBool:
-        boolean*: bool
-      of cstrEmpty:
-        empty*: EmptyObject
-
-    ClientSemanticTokensRequestFullKind* = enum
-      cstfBool
-      cstfDelta
-
-    ClientSemanticTokensRequestFull* = object
-      case kind*: ClientSemanticTokensRequestFullKind
-      of cstfBool:
-        boolean*: bool
-      of cstfDelta:
-        delta*: ClientSemanticTokensRequestFullDelta
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#clientSemanticTokensRequestOptions
-    ClientSemanticTokensRequestOptions* = object
-      range*: Option[ClientSemanticTokensRequestRange]
-      full*: Option[ClientSemanticTokensRequestFull]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#clientSemanticTokensRequestFullDelta
-    ClientSemanticTokensRequestFullDelta* = object
-      delta*: Option[bool]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#semanticTokensClientCapabilities
-    SemanticTokensClientCapabilities* = object
-      dynamicRegistration*: Option[bool]
-      requests*: ClientSemanticTokensRequestOptions
-      tokenTypes*: seq[string]
-      tokenModifiers*: seq[string]
-      formats*: seq[string]
-      overlappingTokenSupport*: Option[bool]
-      multilineTokenSupport*: Option[bool]
-      serverCancelSupport*: Option[bool]
-      augmentsSyntaxTokens*: Option[bool]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#monikerClientCapabilities
-    MonikerClientCapabilities* = object
-      dynamicRegistration*: Option[bool]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#typeHierarchyClientCapabilities
-    TypeHierarchyClientCapabilities* = object
-      dynamicRegistration*: Option[bool]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#inlineValueClientCapabilities
-    InlineValueClientCapabilities* = object
-      dynamicRegistration*: Option[bool]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#clientInlayHintResolveOptions
-    ClientInlayHintResolveOptions* = object
-      properties*: seq[string]
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#inlayHintClientCapabilities
     InlayHintClientCapabilities* = object
       dynamicRegistration*: Option[bool]
-      resolveSupport*: Option[ClientInlayHintResolveOptions]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#diagnosticClientCapabilities
-    DiagnosticClientCapabilities* = object
-      dynamicRegistration*: Option[bool]
-      relatedDocumentSupport*: Option[bool]
-      relatedInformation*: Option[bool]
-      tagSupport*: Option[ClientDiagnosticsTagOptions]
-      codeDescriptionSupport*: Option[bool]
-      dataSupport*: Option[bool]
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#textDocumentClientCapabilities
     TextDocumentClientCapabilities* = object
-      synchronization*: Option[TextDocumentSyncClientCapabilities]
       completion*: Option[CompletionClientCapabilities]
       hover*: Option[HoverClientCapabilities]
       signatureHelp*: Option[SignatureHelpClientCapabilities]
       declaration*: Option[DeclarationClientCapabilities]
       definition*: Option[DefinitionClientCapabilities]
       typeDefinition*: Option[TypeDefinitionClientCapabilities]
-      implementation*: Option[ImplementationClientCapabilities]
       references*: Option[ReferenceClientCapabilities]
       documentHighlight*: Option[DocumentHighlightClientCapabilities]
-      documentSymbol*: Option[DocumentSymbolClientCapabilities]
       codeAction*: Option[CodeActionClientCapabilities]
-      codeLens*: Option[CodeLensClientCapabilities]
-      documentLink*: Option[DocumentLinkClientCapabilities]
-      colorProvider*: Option[DocumentColorClientCapabilities]
       formatting*: Option[DocumentFormattingClientCapabilities]
-      rangeFormatting*: Option[DocumentRangeFormattingClientCapabilities]
-      onTypeFormatting*: Option[DocumentOnTypeFormattingClientCapabilities]
       rename*: Option[RenameClientCapabilities]
-      publishDiagnostics*: Option[PublishDiagnosticsClientCapabilities]
-      foldingRange*: Option[FoldingRangeClientCapabilities]
-      selectionRange*: Option[SelectionRangeClientCapabilities]
-      linkedEditingRange*: Option[LinkedEditingRangeClientCapabilities]
-      callHierarchy*: Option[CallHierarchyClientCapabilities]
-      semanticTokens*: Option[SemanticTokensClientCapabilities]
-      moniker*: Option[MonikerClientCapabilities]
-      typeHierarchy*: Option[TypeHierarchyClientCapabilities]
-      inlineValue*: Option[InlineValueClientCapabilities]
       inlayHint*: Option[InlayHintClientCapabilities]
-      diagnostic*: Option[DiagnosticClientCapabilities]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#clientShowMessageActionItemOptions
-    ClientShowMessageActionItemOptions* = object
-      additionalPropertiesSupport*: Option[bool]
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#window_showMessageRequest
     ShowMessageRequestClientCapabilities* = object
-      messageActionItem*: Option[ClientShowMessageActionItemOptions]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#window_showDocument
-    ShowDocumentClientCapabilities* = object
-      support*: bool
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#windowClientCapabilities
     WindowClientCapabilities* = object
       workDoneProgress*: Option[bool]
       showMessage*: Option[ShowMessageRequestClientCapabilities]
-      showDocument*: Option[ShowDocumentClientCapabilities]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#notebookDocumentSyncClientCapabilities
-    NotebookDocumentSyncClientCapabilities* = object
-      dynamicRegistration*: Option[bool]
-      executionSummarySupport*: Option[bool]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#notebookDocumentClientCapabilities
-    NotebookDocumentClientCapabilities* = object
-      synchronization*: NotebookDocumentSyncClientCapabilities
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#staleRequestSupportOptions
-    StaleRequestSupportOptions* = object
-      cancel*: bool
-      retryOnContentModified*: seq[string]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#regExp
-    RegularExpressionsClientCapabilities* = object
-      engine*: string
-      version*: Option[string]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#markdownClientCapabilities
-    MarkdownClientCapabilities* = object
-      parser*: string
-      version*: Option[string]
-      allowedTags*: OptionalSeq[string]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#generalClientCapabilities
-    GeneralClientCapabilities* = object
-      staleRequestSupport*: Option[StaleRequestSupportOptions]
-      regularExpressions*: Option[RegularExpressionsClientCapabilities]
-      markdown*: Option[MarkdownClientCapabilities]
-      positionEncodings*: OptionalSeq[string]
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#clientCapabilities
     ClientCapabilities* = object
       workspace*: Option[WorkspaceClientCapabilities]
       textDocument*: Option[TextDocumentClientCapabilities]
-      notebookDocument*: Option[NotebookDocumentClientCapabilities]
       window*: Option[WindowClientCapabilities]
-      general*: Option[GeneralClientCapabilities]
-      experimental*: Option[LspAny]
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#workspaceFolder
     WorkspaceFolder* = object
@@ -798,10 +342,6 @@ extendTypes:
     InitializeResult* = object
       capabilities*: ServerCapabilities
 
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#initializeError
-    InitializeError* = object
-      retry*: bool
-
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#completionOptions
     CompletionOptions* {.extends: [WorkDoneProgressOptions].} = object
       resolveProvider*: Option[bool]
@@ -810,19 +350,6 @@ extendTypes:
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#signatureHelpOptions
     SignatureHelpOptions* {.extends: [WorkDoneProgressOptions].} = object
       triggerCharacters*: OptionalSeq[string]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#codeLensOptions
-    CodeLensOptions* {.extends: [WorkDoneProgressOptions].} = object
-      resolveProvider*: Option[bool]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#documentOnTypeFormattingOptions
-    DocumentOnTypeFormattingOptions* = object
-      firstTriggerCharacter*: string
-      moreTriggerCharacter*: OptionalSeq[string]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#documentLinkOptions
-    DocumentLinkOptions* {.extends: [WorkDoneProgressOptions].} = object
-      resolveProvider*: Option[bool]
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#executeCommandOptions
     ExecuteCommandOptions* {.extends: [WorkDoneProgressOptions].} = object
@@ -871,33 +398,8 @@ extendTypes:
       supported*: Option[bool]
       changeNotifications*: Option[WorkspaceFoldersChangeNotifications]
 
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#fileOperationPatternOptions
-    FileOperationPatternOptions* = object
-      ignoreCase*: Option[bool]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#fileOperationPattern
-    FileOperationPattern* = object
-      glob*: string
-      matches*: Option[string]
-      options*: Option[FileOperationPatternOptions]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#fileOperationFilter
-    FileOperationFilter* = object
-      scheme*: Option[string]
-      pattern*: FileOperationPattern
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#fileOperationRegistrationOptions
-    FileOperationRegistrationOptions* = object
-      filters*: seq[FileOperationFilter]
-
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#fileOperationOptions
     FileOperationOptions* = object
-      didCreate*: Option[FileOperationRegistrationOptions]
-      willCreate*: Option[FileOperationRegistrationOptions]
-      didRename*: Option[FileOperationRegistrationOptions]
-      willRename*: Option[FileOperationRegistrationOptions]
-      didDelete*: Option[FileOperationRegistrationOptions]
-      willDelete*: Option[FileOperationRegistrationOptions]
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#workspaceOptions
     WorkspaceOptions* = object
@@ -915,27 +417,6 @@ extendTypes:
     RenameOptions* {.extends: [WorkDoneProgressOptions].} = object
       prepareProvider*: Option[bool]
 
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#implementationOptions
-    ImplementationOptions* {.extends: [WorkDoneProgressOptions].} = object
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#implementationRegistrationOptions
-    ImplementationRegistrationOptions* {.
-      extends: [
-        TextDocumentRegistrationOptions, ImplementationOptions,
-        StaticRegistrationOptions,
-      ]
-    .} = object
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#documentColorOptions
-    DocumentColorOptions* {.extends: [WorkDoneProgressOptions].} = object
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#documentColorRegistrationOptions
-    DocumentColorRegistrationOptions* {.
-      extends: [
-        TextDocumentRegistrationOptions, StaticRegistrationOptions, DocumentColorOptions
-      ]
-    .} = object
-
     ServerCapabilitiesTextDocumentSyncKind* = enum
       stdsOptions
       stdsKind
@@ -946,34 +427,6 @@ extendTypes:
         options*: TextDocumentSyncOptions
       of stdsKind:
         syncKind*: int
-
-    ServerCapabilitiesImplementationProviderKind* = enum
-      sipBool
-      sipOptions
-      sipRegistration
-
-    ServerCapabilitiesImplementationProvider* = object
-      case kind*: ServerCapabilitiesImplementationProviderKind
-      of sipBool:
-        boolean*: bool
-      of sipOptions:
-        options*: ImplementationOptions
-      of sipRegistration:
-        registration*: ImplementationRegistrationOptions
-
-    ServerCapabilitiesColorProviderKind* = enum
-      scpBool
-      scpOptions
-      scpRegistration
-
-    ServerCapabilitiesColorProvider* = object
-      case kind*: ServerCapabilitiesColorProviderKind
-      of scpBool:
-        boolean*: bool
-      of scpOptions:
-        options*: DocumentColorOptions
-      of scpRegistration:
-        registration*: DocumentColorRegistrationOptions
 
     ServerCapabilitiesHoverProviderKind* = enum
       shpBool
@@ -1091,17 +544,6 @@ extendTypes:
       of sdfpOptions:
         options*: DocumentFormattingOptions
 
-    ServerCapabilitiesDocumentRangeFormattingProviderKind* = enum
-      sdrfpBool
-      sdrfpOptions
-
-    ServerCapabilitiesDocumentRangeFormattingProvider* = object
-      case kind*: ServerCapabilitiesDocumentRangeFormattingProviderKind
-      of sdrfpBool:
-        boolean*: bool
-      of sdrfpOptions:
-        options*: DocumentRangeFormattingOptions
-
     ServerCapabilitiesInlayHintProviderKind* = enum
       sihpBool
       sihpOptions
@@ -1158,15 +600,10 @@ extendTypes:
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#codeActionOptions
     CodeActionOptions* {.extends: [WorkDoneProgressOptions].} = object
-      codeActionKinds*: OptionalSeq[string]
       resolveProvider*: Option[bool]
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#documentFormattingOptions
     DocumentFormattingOptions* {.extends: [WorkDoneProgressOptions].} = object
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#documentRangeFormattingOptions
-    DocumentRangeFormattingOptions* {.extends: [WorkDoneProgressOptions].} = object
-      rangesSupport*: Option[bool]
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#inlayHintRegistrationOptions
     InlayHintRegistrationOptions* {.
@@ -1199,19 +636,12 @@ extendTypes:
       declarationProvider*: Option[ServerCapabilitiesDeclarationProvider]
       definitionProvider*: Option[ServerCapabilitiesDefinitionProvider]
       typeDefinitionProvider*: Option[ServerCapabilitiesTypeDefinitionProvider]
-      implementationProvider*: Option[ServerCapabilitiesImplementationProvider]
       referencesProvider*: Option[ServerCapabilitiesReferencesProvider]
       documentHighlightProvider*: Option[ServerCapabilitiesDocumentHighlightProvider]
       documentSymbolProvider*: Option[ServerCapabilitiesDocumentSymbolProvider]
       workspaceSymbolProvider*: Option[ServerCapabilitiesWorkspaceSymbolProvider]
       codeActionProvider*: Option[ServerCapabilitiesCodeActionProvider]
-      codeLensProvider*: Option[CodeLensOptions]
-      documentLinkProvider*: Option[DocumentLinkOptions]
-      colorProvider*: Option[ServerCapabilitiesColorProvider]
       documentFormattingProvider*: Option[ServerCapabilitiesDocumentFormattingProvider]
-      documentRangeFormattingProvider*:
-        Option[ServerCapabilitiesDocumentRangeFormattingProvider]
-      documentOnTypeFormattingProvider*: Option[DocumentOnTypeFormattingOptions]
       renameProvider*: Option[ServerCapabilitiesRenameProvider]
       # foldingRangeProvider?: boolean | FoldingRangeOptions | FoldingRangeRegistrationOptions;
       executeCommandProvider*: Option[ExecuteCommandOptions]
@@ -1225,28 +655,12 @@ extendTypes:
       inlayHintProvider*: Option[ServerCapabilitiesInlayHintProvider]
       # diagnosticProvider?: DiagnosticOptions | DiagnosticRegistrationOptions;
       workspace*: Option[WorkspaceOptions]
-      experimental*: Option[LspAny]
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#initialized
     InitializedParams* = object
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#window_showMessage
     ShowMessageParams* = object
-      `type`*: int
-      message*: string
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#messageActionItem
-    MessageActionItem* = object
-      title*: string
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#showMessageRequestParams
-    ShowMessageRequestParams* = object
-      `type`*: int
-      message*: string
-      actions*: OptionalSeq[MessageActionItem]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#logMessageParams
-    LogMessageParams* = object
       `type`*: int
       message*: string
 
@@ -1259,15 +673,6 @@ extendTypes:
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#registrationParams
     RegistrationParams* = object
       registrations*: seq[Registration]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#unregistration
-    Unregistration* = object
-      id*: string
-      `method`*: string
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#unregistrationParams
-    UnregistrationParams* = object
-      unregisterations*: seq[Unregistration]
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#workspaceFoldersChangeEvent
     WorkspaceFoldersChangeEvent* = object
@@ -1340,9 +745,6 @@ extendTypes:
       command*: string
       arguments*: OptionalSeq[LspAny]
 
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#executeCommandRegistrationOptions
-    ExecuteCommandRegistrationOptions* {.extends: [ExecuteCommandOptions].} = object
-
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#applyWorkspaceEditParams
     ApplyWorkspaceEditParams* = object
       label*: Option[string]
@@ -1364,14 +766,7 @@ extendTypes:
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#textDocumentContentChangeEvent
     TextDocumentContentChangeEvent* = object
       range*: Option[Range]
-      rangeLength*: Option[int]
       text*: string
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#textDocumentChangeRegistrationOptions
-    TextDocumentChangeRegistrationOptions* {.
-      extends: [TextDocumentRegistrationOptions]
-    .} = object
-      syncKind*: int
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#willSaveTextDocumentParams
     WillSaveTextDocumentParams* = object
@@ -1382,10 +777,6 @@ extendTypes:
     DidSaveTextDocumentParams* = object
       textDocument*: TextDocumentIdentifier
       text*: Option[string]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#textDocumentSaveRegistrationOptions
-    TextDocumentSaveRegistrationOptions* {.extends: [TextDocumentRegistrationOptions].} = object
-      includeText*: Option[bool]
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#didCloseTextDocumentParams
     DidCloseTextDocumentParams* = object
@@ -1405,17 +796,6 @@ extendTypes:
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#completionContext
     CompletionContext* = object
       triggerKind*: int
-      triggerCharacter*: Option[string]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#completionList
-    CompletionList* = object
-      isIncomplete*: bool
-      `items`*: seq[CompletionItem]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#completionItemLabelDetails
-    CompletionItemLabelDetails* = object
-      detail*: Option[string]
-      description*: Option[string]
 
     CompletionItemDocumentationKind* = enum
       cidStr
@@ -1434,23 +814,10 @@ extendTypes:
       kind*: Option[int]
       detail*: Option[string]
       documentation*: Option[CompletionItemDocumentation]
-      deprecated*: Option[bool]
-      preselect*: Option[bool]
-      sortText*: Option[string]
-      filterText*: Option[string]
-      insertText*: Option[string]
-      insertTextFormat*: Option[int]
       # textEdit*: Option[TextEdit]
       # additionalTextEdits*: Option[TextEdit]
-      commitCharacters*: OptionalSeq[string]
       command*: Option[Command]
       data*: Option[LspAny]
-      labelDetails*: Option[CompletionItemLabelDetails]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#completionRegistrationOptions
-    CompletionRegistrationOptions* {.
-      extends: [TextDocumentRegistrationOptions, CompletionOptions]
-    .} = object
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#markedString
     MarkedStringOption* = object
@@ -1519,11 +886,6 @@ extendTypes:
     ParameterInformation* = object
       label*: ParameterInformationLabel
 
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#signatureHelpRegistrationOptions
-    SignatureHelpRegistrationOptions* {.
-      extends: [TextDocumentRegistrationOptions, SignatureHelpOptions]
-    .} = object
-
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#referenceParams
     ReferenceParams* {.
       extends: [TextDocumentPositionParams, WorkDoneProgressParams, PartialResultParams]
@@ -1547,10 +909,7 @@ extendTypes:
     SymbolInformation* = object
       name*: string
       kind*: int
-      tags*: OptionalSeq[int]
-      deprecated*: Option[bool]
       location*: Location
-      containerName*: Option[string]
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#codeActionParams
     CodeActionParams* {.extends: [WorkDoneProgressParams, PartialResultParams].} = object
@@ -1562,94 +921,15 @@ extendTypes:
     CodeActionContext* = object
       diagnostics*: seq[Diagnostic]
 
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#codeLensParams
-    CodeLensParams* {.extends: [WorkDoneProgressParams, PartialResultParams].} = object
-      textDocument*: TextDocumentIdentifier
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#codeLens
-    CodeLens* = object
-      `range`*: Range
-      command*: Option[Command]
-      data*: Option[LspAny]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#codeLensRegistrationOptions
-    CodeLensRegistrationOptions* {.
-      extends: [TextDocumentRegistrationOptions, CodeLensOptions]
-    .} = object
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#documentLinkParams
-    DocumentLinkParams* {.extends: [WorkDoneProgressParams, PartialResultParams].} = object
-      textDocument*: TextDocumentIdentifier
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#documentLink
-    DocumentLink* = object
-      `range`*: Range
-      target*: Option[string]
-      data*: Option[LspAny]
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#documentLinkRegistrationOptions
-    DocumentLinkRegistrationOptions* {.
-      extends: [TextDocumentRegistrationOptions, DocumentLinkOptions]
-    .} = object
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#documentColorParams
-    DocumentColorParams* {.extends: [WorkDoneProgressParams, PartialResultParams].} = object
-      textDocument*: TextDocumentIdentifier
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#colorInformation
-    ColorInformation* = object
-      `range`*: Range
-      color*: Color
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#color
-    Color* = object
-      red*: float
-      green*: float
-      blue*: float
-      alpha*: float
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#colorPresentationParams
-    ColorPresentationParams* {.extends: [WorkDoneProgressParams, PartialResultParams].} = object
-      textDocument*: TextDocumentIdentifier
-      color*: Color
-      `range`*: Range
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#colorPresentation
-    ColorPresentation* = object
-      label*: string
-      textEdit*: Option[TextEdit]
-      additionalTextEdits*: OptionalSeq[TextEdit]
-
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#formattingOptions
     FormattingOptions* = object
       tabSize*: uinteger
       insertSpaces*: bool
-      trimTrailingWhitespace*: Option[bool]
-      insertFinalNewline*: Option[bool]
-      trimFinalNewlines*: Option[bool]
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#documentFormattingParams
     DocumentFormattingParams* {.extends: [WorkDoneProgressParams].} = object
       textDocument*: TextDocumentIdentifier
       options*: FormattingOptions
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#documentRangeFormattingParams
-    DocumentRangeFormattingParams* {.extends: [WorkDoneProgressParams].} = object
-      textDocument*: TextDocumentIdentifier
-      `range`*: Range
-      options*: FormattingOptions
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#documentOnTypeFormattingParams
-    DocumentOnTypeFormattingParams* = object
-      textDocument*: TextDocumentIdentifier
-      position*: Position
-      ch*: string
-      options*: FormattingOptions
-
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#documentOnTypeFormattingRegistrationOptions
-    DocumentOnTypeFormattingRegistrationOptions* {.
-      extends: [TextDocumentRegistrationOptions, DocumentOnTypeFormattingOptions]
-    .} = object
 
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#renameParams
     RenameParams* {.extends: [TextDocumentPositionParams, WorkDoneProgressParams].} = object
@@ -1660,14 +940,9 @@ extendTypes:
       extends: [TextDocumentPositionParams, WorkDoneProgressParams]
     .} = object
 
-    # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#prepareRenameDefaultBehavior
-    PrepareRenameDefaultBehavior* = object
-      defaultBehavior*: bool
-
     # https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#signatureHelpContext
     SignatureHelpContext* = object
       triggerKind*: int
-      triggerCharacter*: Option[string]
       isRetrigger*: bool
       activeSignatureHelp*: Option[SignatureHelp]
 
@@ -1845,11 +1120,9 @@ extendTypes:
 
     # https://github.com/modelcontextprotocol/modelcontextprotocol/blob/c4c367f9f58296a7053f5c78a52fd02bfbb56a49/schema/2025-11-25/schema.ts#L73
     McpNotificationParams* = object
-      meta* {.serializedFieldName: "_meta".}: Option[OrderedTable[string, JsonString]]
 
     # https://github.com/modelcontextprotocol/modelcontextprotocol/blob/c4c367f9f58296a7053f5c78a52fd02bfbb56a49/schema/2025-11-25/schema.ts#L51
     McpRequestParams* = object
-      meta* {.serializedFieldName: "_meta".}: Option[OrderedTable[string, JsonString]]
 
     # https://github.com/modelcontextprotocol/modelcontextprotocol/blob/c4c367f9f58296a7053f5c78a52fd02bfbb56a49/schema/2025-11-25/schema.ts#L35
     McpTaskAugmentedRequestParams* {.extends: [McpRequestParams].} = object
@@ -1864,21 +1137,12 @@ extendTypes:
 
     # https://modelcontextprotocol.io/specification/2025-11-25/schema#result
     McpResult* = object
-      meta* {.serializedFieldName: "_meta".}: Option[OrderedTable[string, JsonString]]
 
     # https://github.com/modelcontextprotocol/modelcontextprotocol/blob/c4c367f9f58296a7053f5c78a52fd02bfbb56a49/schema/2025-11-25/schema.ts#L641
     McpPaginatedResult* {.extends: [McpResult].} = object
 
-    # https://modelcontextprotocol.io/specification/2025-11-25/schema#icon
-    McpIcon* = object
-      src*: string
-      mimeType*: Option[string]
-      sizes*: OptionalSeq[string]
-      theme*: Option[string]
-
     # https://github.com/modelcontextprotocol/modelcontextprotocol/blob/c4c367f9f58296a7053f5c78a52fd02bfbb56a49/schema/2025-11-25/schema.ts#L508
     McpIcons* = object
-      icons*: OptionalSeq[McpIcon]
 
     # https://github.com/modelcontextprotocol/modelcontextprotocol/blob/c4c367f9f58296a7053f5c78a52fd02bfbb56a49/schema/2025-11-25/schema.ts#L528
     McpBaseMetadata* = object
@@ -1889,7 +1153,6 @@ extendTypes:
     McpImplementation* {.extends: [McpBaseMetadata, McpIcons].} = object
       version*: string
       description*: Option[string]
-      websiteUrl*: Option[string]
 
     # https://modelcontextprotocol.io/specification/2025-11-25/schema#initializerequestparams
     McpInitializeRequestParams* {.extends: [McpRequestParams].} = object
@@ -1908,7 +1171,6 @@ extendTypes:
 
     # https://modelcontextprotocol.io/specification/2025-11-25/schema#tool
     McpToolSchema* = object
-      schema* {.serializedFieldName: "$schema".}: Option[string]
       `type`*: string
       properties*: Option[OrderedTable[string, JsonString]]
       required*: Option[seq[string]]
@@ -2027,7 +1289,6 @@ LspJson.useDefaultSerializationFor(Position)
 LspJson.useDefaultSerializationFor(Range)
 LspJson.useDefaultSerializationFor(Location)
 LspJson.useDefaultSerializationFor(Diagnostic)
-LspJson.useDefaultSerializationFor(DiagnosticRelatedInformation)
 LspJson.useDefaultSerializationFor(SignatureHelp)
 LspJson.useDefaultSerializationFor(SignatureInformation)
 LspJson.useDefaultSerializationFor(ParameterInformation)
@@ -2041,90 +1302,32 @@ LspJson.useDefaultReaderFor(ExpandTextDocumentPositionParams)
 LspJson.useDefaultReaderFor(McpNotificationParams)
 LspJson.useDefaultReaderFor(McpPaginatedRequestParams)
 LspJson.useDefaultReaderFor(McpCallToolRequestParams)
-LspJson.useDefaultReaderFor(McpIcon)
 LspJson.useDefaultReaderFor(McpImplementation)
-LspJson.useDefaultReaderFor(ClientInfo)
 LspJson.useDefaultReaderFor(McpInitializeRequestParams)
 LspJson.useDefaultReaderFor(InitializeParams)
 LspJson.useDefaultReaderFor(InitializedParams)
 LspJson.useDefaultReaderFor(SetTraceParams)
-LspJson.useDefaultReaderFor(ChangeAnnotationsSupportOptions)
-LspJson.useDefaultReaderFor(WorkspaceEditClientCapabilities)
 LspJson.useDefaultReaderFor(DidChangeConfigurationClientCapabilities)
 LspJson.useDefaultReaderFor(DidChangeWatchedFilesClientCapabilities)
-LspJson.useDefaultReaderFor(ClientSymbolKindOptions)
-LspJson.useDefaultReaderFor(ClientSymbolTagOptions)
-LspJson.useDefaultReaderFor(ClientSymbolResolveOptions)
-LspJson.useDefaultReaderFor(WorkspaceSymbolClientCapabilities)
 LspJson.useDefaultReaderFor(ExecuteCommandClientCapabilities)
-LspJson.useDefaultReaderFor(FileOperationClientCapabilities)
-LspJson.useDefaultReaderFor(SemanticTokensWorkspaceClientCapabilities)
-LspJson.useDefaultReaderFor(CodeLensWorkspaceClientCapabilities)
-LspJson.useDefaultReaderFor(InlineValueWorkspaceClientCapabilities)
 LspJson.useDefaultReaderFor(InlayHintWorkspaceClientCapabilities)
 LspJson.useDefaultReaderFor(DiagnosticWorkspaceClientCapabilities)
 LspJson.useDefaultReaderFor(WorkspaceClientCapabilities)
-LspJson.useDefaultReaderFor(TextDocumentSyncClientCapabilities)
-LspJson.useDefaultReaderFor(CompletionItemTagOptions)
-LspJson.useDefaultReaderFor(ClientCompletionItemResolveOptions)
-LspJson.useDefaultReaderFor(ClientCompletionItemInsertTextModeOptions)
-LspJson.useDefaultReaderFor(ClientCompletionItemOptions)
-LspJson.useDefaultReaderFor(ClientCompletionItemOptionsKind)
-LspJson.useDefaultReaderFor(CompletionListCapabilities)
 LspJson.useDefaultReaderFor(CompletionClientCapabilities)
 LspJson.useDefaultReaderFor(HoverClientCapabilities)
-LspJson.useDefaultReaderFor(ClientSignatureParameterInformationOptions)
-LspJson.useDefaultReaderFor(ClientSignatureInformationOptions)
 LspJson.useDefaultReaderFor(SignatureHelpClientCapabilities)
 LspJson.useDefaultReaderFor(ReferenceClientCapabilities)
 LspJson.useDefaultReaderFor(DocumentHighlightClientCapabilities)
-LspJson.useDefaultReaderFor(DocumentSymbolClientCapabilities)
 LspJson.useDefaultReaderFor(DocumentFormattingClientCapabilities)
-LspJson.useDefaultReaderFor(DocumentRangeFormattingClientCapabilities)
-LspJson.useDefaultReaderFor(DocumentOnTypeFormattingClientCapabilities)
 LspJson.useDefaultReaderFor(DefinitionClientCapabilities)
 LspJson.useDefaultReaderFor(TypeDefinitionClientCapabilities)
-LspJson.useDefaultReaderFor(ImplementationClientCapabilities)
-LspJson.useDefaultReaderFor(ClientCodeActionKindOptions)
-LspJson.useDefaultReaderFor(ClientCodeActionLiteralOptions)
-LspJson.useDefaultReaderFor(ClientCodeActionResolveOptions)
 LspJson.useDefaultReaderFor(CodeActionClientCapabilities)
-LspJson.useDefaultReaderFor(CodeLensClientCapabilities)
-LspJson.useDefaultReaderFor(DocumentLinkClientCapabilities)
-LspJson.useDefaultReaderFor(DocumentColorClientCapabilities)
 LspJson.useDefaultReaderFor(RenameClientCapabilities)
-LspJson.useDefaultReaderFor(ClientDiagnosticsTagOptions)
-LspJson.useDefaultReaderFor(PublishDiagnosticsClientCapabilities)
 LspJson.useDefaultReaderFor(DeclarationClientCapabilities)
-LspJson.useDefaultReaderFor(ClientFoldingRangeKindOptions)
-LspJson.useDefaultReaderFor(ClientFoldingRangeOptions)
-LspJson.useDefaultReaderFor(FoldingRangeClientCapabilities)
-LspJson.useDefaultReaderFor(SelectionRangeClientCapabilities)
-LspJson.useDefaultReaderFor(LinkedEditingRangeClientCapabilities)
-LspJson.useDefaultReaderFor(CallHierarchyClientCapabilities)
-LspJson.useDefaultSerializationFor(EmptyObject)
-LspJson.useDefaultSerializationFor(ClientSemanticTokensRequestFullDelta)
-LspJson.useOneOfSerializationFor(ClientSemanticTokensRequestRange)
-LspJson.useOneOfSerializationFor(ClientSemanticTokensRequestFull)
-LspJson.useDefaultReaderFor(ClientSemanticTokensRequestOptions)
-LspJson.useDefaultReaderFor(SemanticTokensClientCapabilities)
-LspJson.useDefaultReaderFor(MonikerClientCapabilities)
-LspJson.useDefaultReaderFor(TypeHierarchyClientCapabilities)
-LspJson.useDefaultReaderFor(InlineValueClientCapabilities)
-LspJson.useDefaultReaderFor(ClientInlayHintResolveOptions)
 LspJson.useDefaultReaderFor(InlayHintClientCapabilities)
-LspJson.useDefaultReaderFor(DiagnosticClientCapabilities)
 LspJson.useDefaultReaderFor(TextDocumentClientCapabilities)
-LspJson.useDefaultReaderFor(ClientShowMessageActionItemOptions)
 LspJson.useDefaultReaderFor(ShowMessageRequestClientCapabilities)
-LspJson.useDefaultReaderFor(ShowDocumentClientCapabilities)
 LspJson.useDefaultReaderFor(WindowClientCapabilities)
-LspJson.useDefaultReaderFor(NotebookDocumentSyncClientCapabilities)
-LspJson.useDefaultReaderFor(NotebookDocumentClientCapabilities)
-LspJson.useDefaultReaderFor(StaleRequestSupportOptions)
-LspJson.useDefaultReaderFor(RegularExpressionsClientCapabilities)
-LspJson.useDefaultReaderFor(MarkdownClientCapabilities)
-LspJson.useDefaultReaderFor(GeneralClientCapabilities)
 LspJson.useDefaultReaderFor(McpClientCapabilities)
 LspJson.useDefaultReaderFor(ClientCapabilities)
 LspJson.useDefaultReaderFor(WorkspaceFolder)
@@ -2166,35 +1369,19 @@ LspJson.useDefaultReaderFor(RunTestParams)
 LspJson.useDefaultWriterFor(Command)
 LspJson.useDefaultWriterFor(CodeAction)
 LspJson.useDefaultWriterFor(TextEdit)
-LspJson.useDefaultWriterFor(AnnotatedTextEdit)
-LspJson.useDefaultWriterFor(StringValue)
-LspJson.useDefaultWriterFor(SnippetTextEdit)
-LspJson.useOneOfWriterFor(TextDocumentEditEdit)
-LspJson.useDefaultWriterFor(OptionalVersionedTextDocumentIdentifier)
-LspJson.useDefaultWriterFor(TextDocumentEdit)
-LspJson.useDefaultWriterFor(CreateFile)
-LspJson.useDefaultWriterFor(RenameFile)
-LspJson.useDefaultWriterFor(DeleteFile)
-LspJson.useOneOfWriterFor(WorkspaceEditDocumentChange)
 LspJson.useDefaultWriterFor(WorkspaceEdit)
 LspJson.useDefaultWriterFor(WorkDoneProgressBegin)
-LspJson.useDefaultWriterFor(WorkDoneProgressReport)
 LspJson.useDefaultWriterFor(WorkDoneProgressEnd)
 LspJson.useDefaultWriterFor(ProgressParams[WorkDoneProgressBegin])
-LspJson.useDefaultWriterFor(ProgressParams[WorkDoneProgressReport])
 LspJson.useDefaultWriterFor(ProgressParams[WorkDoneProgressEnd])
 LspJson.useDefaultWriterFor(WorkDoneProgressCreateParams)
 LspJson.useDefaultWriterFor(ConfigurationItem)
 LspJson.useDefaultWriterFor(ConfigurationParams)
 LspJson.useDefaultWriterFor(McpImplementation)
-LspJson.useDefaultWriterFor(McpIcon)
 LspJson.useDefaultWriterFor(McpInitializeResult)
 LspJson.useDefaultWriterFor(InitializeResult)
 LspJson.useDefaultWriterFor(CompletionOptions)
 LspJson.useDefaultWriterFor(SignatureHelpOptions)
-LspJson.useDefaultWriterFor(CodeLensOptions)
-LspJson.useDefaultWriterFor(DocumentOnTypeFormattingOptions)
-LspJson.useDefaultWriterFor(DocumentLinkOptions)
 LspJson.useDefaultWriterFor(ExecuteCommandOptions)
 LspJson.useDefaultWriterFor(WorkspaceFoldersServerCapabilities)
 LspJson.useDefaultWriterFor(WorkspaceOptions)
@@ -2211,13 +1398,7 @@ LspJson.useDefaultWriterFor(SaveOptions)
 LspJson.useOneOfWriterFor(TextDocumentSyncOptionsSave)
 LspJson.useDefaultWriterFor(TextDocumentSyncOptions)
 LspJson.useDefaultWriterFor(RenameOptions)
-LspJson.useDefaultWriterFor(ImplementationOptions)
-LspJson.useDefaultWriterFor(ImplementationRegistrationOptions)
-LspJson.useDefaultWriterFor(DocumentColorOptions)
-LspJson.useDefaultWriterFor(DocumentColorRegistrationOptions)
 LspJson.useOneOfWriterFor(ServerCapabilitiesTextDocumentSync)
-LspJson.useOneOfWriterFor(ServerCapabilitiesImplementationProvider)
-LspJson.useOneOfWriterFor(ServerCapabilitiesColorProvider)
 LspJson.useOneOfWriterFor(ServerCapabilitiesRenameProvider)
 LspJson.useDefaultWriterFor(WorkspaceFolder)
 LspJson.useOneOfSerializationFor(RelativePatternBaseUri)
@@ -2238,7 +1419,6 @@ LspJson.useDefaultWriterFor(DocumentSymbolOptions)
 LspJson.useDefaultWriterFor(WorkspaceSymbolOptions)
 LspJson.useDefaultWriterFor(CodeActionOptions)
 LspJson.useDefaultWriterFor(DocumentFormattingOptions)
-LspJson.useDefaultWriterFor(DocumentRangeFormattingOptions)
 LspJson.useDefaultWriterFor(InlayHintRegistrationOptions)
 LspJson.useOneOfWriterFor(ServerCapabilitiesHoverProvider)
 LspJson.useOneOfWriterFor(ServerCapabilitiesDeclarationProvider)
@@ -2250,7 +1430,6 @@ LspJson.useOneOfWriterFor(ServerCapabilitiesDocumentSymbolProvider)
 LspJson.useOneOfWriterFor(ServerCapabilitiesWorkspaceSymbolProvider)
 LspJson.useOneOfWriterFor(ServerCapabilitiesCodeActionProvider)
 LspJson.useOneOfWriterFor(ServerCapabilitiesDocumentFormattingProvider)
-LspJson.useOneOfWriterFor(ServerCapabilitiesDocumentRangeFormattingProvider)
 LspJson.useOneOfWriterFor(ServerCapabilitiesInlayHintProvider)
 LspJson.useDefaultWriterFor(ServerCapabilities)
 LspJson.useDefaultWriterFor(ShowMessageParams)
@@ -2262,7 +1441,6 @@ LspJson.useDefaultWriterFor(ApplyWorkspaceEditParams)
 LspJson.useDefaultReaderFor(ApplyWorkspaceEditResult)
 LspJson.useDefaultWriterFor(PublishDiagnosticsParams)
 LspJson.useOneOfWriterFor(CompletionItemDocumentation)
-LspJson.useDefaultWriterFor(CompletionItemLabelDetails)
 LspJson.useDefaultWriterFor(CompletionItem)
 LspJson.useDefaultWriterFor(MarkedStringOption)
 LspJson.useOneOfWriterFor(MarkedString)
