@@ -261,16 +261,6 @@ proc name*(sug: Suggest): string =
 func isStopping*(self: Project): bool =
   self.stopping != nil
 
-proc markFailed(
-    self: Project, errMessage: string
-): Future[void] {.async: (raises: []).} =
-  if self.failed or self.isStopping():
-    return
-  self.failed = true
-  self.errorMessage = errMessage
-  if self.errorCallback.isSome:
-    await self.errorCallback.get()(self)
-
 proc shutdownImpl(self: Project) {.async: (raises: []).} =
   # do not call concurrently; concurrent `waitForExit` crash
   debug "Stopping nimsuggest for ", root = self.file
@@ -285,6 +275,17 @@ proc stopWait*(self: Project): Future[void].Raising([]) =
 
 proc stop*(self: Project) =
   asyncSpawn self.stopWait()
+
+proc markFailed(
+    self: Project, errMessage: string
+): Future[void] {.async: (raises: []).} =
+  if self.failed or self.isStopping():
+    return
+  self.failed = true
+  self.errorMessage = errMessage
+  if self.errorCallback.isSome:
+    await self.errorCallback.get()(self)
+  await self.stopWait()
 
 proc detectNimsuggestVersion(
     root: Path, nimsuggestPath: string, workingDir: Path
@@ -330,7 +331,7 @@ proc watchExit(project: Project) {.async: (raises: []).} =
     return
   except AsyncStreamError as exc:
     message = exc.msg
-  error "Nimsuggest exited", root = project.file, message = message
+  debug "Nimsuggest exited", root = project.file, message = message
   await project.markFailed(message)
 
 proc newProject(root: Path, nimsuggestPath, version: string): Project =
@@ -441,7 +442,6 @@ proc createNimsuggest*(
   finally:
     if not started:
       await result.markFailed failure
-      await result.stopWait()
 
 proc createNimsuggest*(root: Path): Future[Project] {.gcsafe, raises: [OSError].} =
   result = createNimsuggest(

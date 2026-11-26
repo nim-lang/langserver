@@ -119,6 +119,42 @@ suite "Nimsuggest error handling":
     check waitUntil(errorCount >= 1)
     check not waitUntil(errorCount > 1, timeout = 300.milliseconds)
 
+  test "a failed nimsuggest is stopped":
+    # A failed project is never served again, and it doesn't count toward
+    # maxNimsuggestProcesses, so its process has to go: a live one leaks, and
+    # a dead one stays a zombie until it is waited for.
+    let helloWorldFile = paths.getCurrentDir() / "tests/projects/hw/hw.nim"
+    let project = createNimsuggest(helloWorldFile).waitFor
+    var errorCount = 0
+    project.errorCallback = some(
+      proc(pr: Project) {.async: (raises: []).} =
+        inc errorCount
+    )
+
+    discard project.process.kill()
+
+    check waitUntil(errorCount == 1)
+    check project.failed
+    check waitUntil(project.isStopping)
+
+  test "a missing nimsuggest binary fails the project":
+    # getNimsuggestPathAndVersion passes "" when nimsuggest is not on the PATH
+    let helloWorldFile = paths.getCurrentDir() / "tests/projects/hw/hw.nim"
+    var errorCount = 0
+    let project = createNimsuggest(
+      helloWorldFile,
+      "",
+      "",
+      proc(pr: Project) {.async: (raises: []).} =
+        inc(errorCount),
+    ).waitFor
+
+    check errorCount == 1
+    check project.failed
+    check project.errorMessage.contains("Unable to find binary")
+    check project.isStopping
+    check project.process == nil
+
   test "a nimsuggest cancelled during startup is not reported":
     let helloWorldFile = paths.getCurrentDir() / "tests/projects/hw/hw.nim"
     var errorCount = 0
