@@ -1088,8 +1088,6 @@ proc didOpenFile*(
   let projectFile = await openFile.projectFileWait()
   debug "Document associated with the following projectFile",
     path = path, projectFile = projectFile
-  # start ns on open file for chk diagnostics
-  discard await ls.tryGetNimsuggest(path)
   await ls.showMessage(fmt "Opening {path}", MessageType.Info)
 
 proc checkProject*(
