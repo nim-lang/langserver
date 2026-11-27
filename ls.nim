@@ -3,7 +3,7 @@
 import
   std/[
     strformat, os, sugar, hashes, tables, strutils, sets, sequtils, setutils, times,
-    files,
+    files, algorithm,
   ],
   with,
   chronos,
@@ -182,11 +182,6 @@ type
     lastStatusSent: JsonString
     checkInProgress*: bool
     token: uint
-
-  Certainty* = enum
-    None
-    Folder
-    Cfg
 
   NimblePackage* = object
     dir*: Path
@@ -432,18 +427,23 @@ proc workspaceFolderOf*(ls: LanguageServer, path: Path): Path =
     if path.isRelTo(folder) and folder.len > result.len:
       result = folder
 
+proc folderNimbleFile(dir: Path): Path {.raises: [OSError].} =
+  let nimbleFiles = walkFiles((dir / "*.nimble".Path).string).toSeq
+  if nimbleFiles.len == 1:
+    result = nimbleFiles[0].Path
+  elif nimbleFiles.len > 1:
+    debug "Ignoring a folder with several nimble files", dir = dir
+
 proc packageNimbleFile(ls: LanguageServer, file: Path): Path {.raises: [OSError].} =
   let rootPath = ls.workspaceFolderOf(file)
   let inRoot = rootPath.len > 0
   var dir = file.parentDir
   while true:
-    let nimbleFiles = walkFiles((dir / "*.nimble".Path).string).toSeq
-    if nimbleFiles.len == 1:
-      result = nimbleFiles[0].Path
+    let nimbleFile = folderNimbleFile(dir)
+    if nimbleFile.len > 0:
+      result = nimbleFile
       if fileExists(dir / "nimble.paths".Path):
         return
-    elif nimbleFiles.len > 1:
-      debug "Ignoring a folder with several nimble files", dir = dir
     let parent = dir.parentDir
     if parent.len == 0 or parent == dir or
         (inRoot and result.len > 0 and not parent.isRelTo(rootPath)):
@@ -575,38 +575,59 @@ proc getNimPath*(
       warn "Failed to find nim path"
       none(string)
 
+proc folderProjectFile(dir, prevDir, nimbleFile: Path): Path {.raises: [OSError].} =
+  ## Nim's `findProjectNimFile` rule for a single folder
+  var candidates: seq[string]
+  for kind, file in walkDir(dir.string, relative = true):
+    if kind != pcFile or file == "config.nims":
+      continue
+    let (_, name, ext) = splitFile(file)
+    if ext in [".nims", ".cfg", ".nimcfg"]:
+      let nimFile =
+        if name.endsWith(".nim"):
+          name
+        else:
+          name & ".nim"
+      let candidate = dir.string / nimFile
+      if fileExists(candidate):
+        candidates.add candidate
+  var packageName = $dir.lastPathPart
+  if nimbleFile.len > 0:
+    packageName = $nimbleFile.splitFile.name
+    for candidate in [
+      nimbleFile.changeFileExt(".nim"), prevDir / Path(packageName & ".nim")
+    ]:
+      if fileExists(candidate) and candidate.string notin candidates:
+        candidates.add candidate.string
+  candidates.sort()
+  for candidate in candidates:
+    if packageName in candidate.extractFilename:
+      return candidate.Path
+  if candidates.len > 0:
+    return candidates[0].Path
+
 proc getProjectFileAutoGuess*(
     ls: LanguageServer, file: Path
-): Future[Path] {.async: (raises: [CancelledError, OSError]).} =
+): Path {.raises: [OSError].} =
   debug "Auto-guessing project file for", file = file
   result = file
+  let rootPath = ls.workspaceFolderOf(file)
   var
-    path = file.splitFile.dir
-    certainty = Certainty.None
-    up = 0
-
-  let conf = await ls.workspaceConfigurationWait()
-  let maxNimsuggestProcesses = conf.maxNimsuggestProcesses.get(NIM_MAX_NS_PROCESSES)
-  # When using only one nimsuggest process, we should not search for parent projects
-  # as this will cause all files to be opened in the same nimsuggest process.
-  let maxUp = if maxNimsuggestProcesses == 1: 0 else: 2
-  while path.len > 0 and path != Path("/") and up < maxUp:
-    let
-      (dir, fname, ext) = path.splitFile()
-      current = Path($fname & ext)
-    if fileExists(path / current.addFileExt(".nim")) and certainty <= Folder:
-      result = path / current.addFileExt(".nim")
-      certainty = Folder
-    if fileExists(path / current.addFileExt(".nim")) and (
-      fileExists(path / current.addFileExt(".nim.cfg")) or
-      fileExists(path / current.addFileExt(".nims"))
-    ) and certainty <= Cfg:
-      result = path / current.addFileExt(".nim")
-      certainty = Cfg
-    if path == dir:
-      break
-    path = dir
-    inc up
+    dir = file.parentDir
+    prevDir = dir
+  while true:
+    let nimbleFile = folderNimbleFile(dir)
+    let projectFile = folderProjectFile(dir, prevDir, nimbleFile)
+    if projectFile.len > 0:
+      result = projectFile
+    if nimbleFile.len > 0 and fileExists(dir / "nimble.paths".Path):
+      return
+    let parent = dir.parentDir
+    if parent.len == 0 or parent == dir or
+        (rootPath.len > 0 and not parent.isRelTo(rootPath)):
+      return
+    prevDir = dir
+    dir = parent
 
 proc getProjectFile*(
     ls: LanguageServer, file: Path
@@ -642,7 +663,7 @@ proc getProjectFile*(
     debug "Found nimble project", projectFile = package.projectFile
     result = package.projectFile
   else:
-    result = await ls.getProjectFileAutoGuess(file)
+    result = ls.getProjectFileAutoGuess(file)
 
   if result.len == 0:
     result = file
