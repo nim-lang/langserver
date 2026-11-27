@@ -1,0 +1,5 @@
+version = "0.1.0"
+author = "nimlangserver tests"
+description = "Fixture: a vendored package with its source in src"
+license = "MIT"
+srcDir = "src"

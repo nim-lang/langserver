@@ -241,6 +241,73 @@ suite "Nimble packages":
     discard waitFor ls.getProjectFile(projectsDir / "multimodules" / "rootmodule.nim")
     check nimbleFile notin ls.nimblePackageLoads
 
+suite "Auto guess":
+  let cmdParams =
+    CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
+  let ls = main(cmdParams)
+  let client = newLspSocketClient()
+  waitFor client.connect("localhost", cmdParams.port)
+  client.registerNotification(
+    "window/showMessage", "window/workDoneProgress/create", "workspace/configuration",
+    "extension/statusUpdate", "textDocument/publishDiagnostics", "$/progress",
+  )
+  let projectsDir = absolutePath("tests" / "projects").Path
+  discard waitFor client.initialize(
+    %*{
+      "processId": %getCurrentProcessId(),
+      "rootUri": fixtureUri("projects"),
+      "capabilities": {"workspace": {"configuration": true}},
+    }
+  )
+  ls.setWorkspaceConfiguration(NlsConfig())
+
+  suiteTeardown:
+    waitFor ls.shutdownNimsuggest()
+
+  test "a file deep in a project resolves to the outermost project file":
+    # deep.nimble has no deep.nim, so the file is auto guessed. A project file
+    # is a .nim file with a .nims/.nim.cfg/.nimcfg/.nimble next to it, so the
+    # plain deepfolder/a/b/b.nim is not one
+    let deep = projectsDir / "deepfolder"
+    check (waitFor ls.getProjectFile(deep / "a" / "b" / "c" / "leaf.nim")) ==
+      deep / "deepfolder.nim"
+
+  test "an inner project file does not take over the outer project":
+    let deep = projectsDir / "deepfolder"
+    check (
+      waitFor ls.getProjectFile(deep / "tools" / "tool" / "sub" / "helper.nim")
+    ) == deep / "deepfolder.nim"
+
+  test "a vendored package of a package without a project file is its own project":
+    # ie: nimbus-eth2's vendor/nim-chronos/chronos.nimble; the folder is not
+    # named after the package, so only the nimble file points to lib.nim
+    let lib = projectsDir / "nimbuslike" / "vendor" / "nim-lib"
+    check (waitFor ls.getProjectFile(lib / "lib" / "inner.nim")) == lib / "lib.nim"
+    check projectsDir / "nimbuslike" / "beacon.nimble" in ls.nimblePackages
+    check ls.nimblePackages[projectsDir / "nimbuslike" / "beacon.nimble"].projectFile.len ==
+      0
+
+  test "a project file named after the package is preferred":
+    # a_tool.nim sorts first, but lib.nim is named after lib.nimble
+    let lib = projectsDir / "nimbuslike" / "vendor" / "nim-lib"
+    check (waitFor ls.getProjectFile(lib / "a_tool.nim")) == lib / "lib.nim"
+
+  test "a vendored package with its source in a subfolder":
+    let src = projectsDir / "nimbuslike" / "vendor" / "nim-src" / "src"
+    check (waitFor ls.getProjectFile(src / "srclib" / "inner.nim")) ==
+      src / "srclib.nim"
+
+  test "several project files in a folder resolve to the first by name":
+    # ie: nimbus-eth2's beacon_chain/nimbus_beacon_node.nim and siblings
+    let beacon = projectsDir / "nimbuslike" / "beacon"
+    check (waitFor ls.getProjectFile(beacon / "spec" / "datatypes.nim")) ==
+      beacon / "node.nim"
+
+  test "a file without a project file around it is its own project":
+    # ie: nimbus-eth2's tests; each test is its own program
+    let file = projectsDir / "nimbuslike" / "tests" / "tblock.nim"
+    check (waitFor ls.getProjectFile(file)) == file
+
 suite "A project subfolder as the workspace":
   let cmdParams =
     CommandLineParams(mode: some lsp, transport: some socket, port: getNextFreePort())
