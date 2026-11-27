@@ -391,6 +391,9 @@ suite "Nimble package changes":
         }
       },
     )
+    discard client.call(
+      "textDocument/documentSymbol", %*{"textDocument": {"uri": pathToUri(path)}}
+    )
 
   proc hover(client: LspSocketClient, path: Path) =
     discard client.call(

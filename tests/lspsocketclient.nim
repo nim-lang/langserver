@@ -212,12 +212,17 @@ proc createDidOpenParams*(file: string): DidOpenTextDocumentParams =
     )
   )
 
-proc didOpenFixture*(ls: LanguageServer, file: string): auto =
-  ls.didOpenFile(fixturePath(file), readFile("tests" / file))
+proc didOpenFixture*(ls: LanguageServer, file: string) {.async.} =
+  ## Opens the file and, like an editor does, sends a request for it.
+  await ls.didOpenFile(fixturePath(file), readFile("tests" / file))
+  discard await ls.tryGetNimsuggest(fixturePath(file))
 
 proc openFile*(client: LspSocketClient, file: string) =
   ## Opens the file and, like an editor does, sends a request for it.
   client.notify("textDocument/didOpen", %createDidOpenParams(file))
+  discard client.call(
+    "textDocument/documentSymbol", %*{"textDocument": {"uri": fixtureUri(file)}}
+  )
 
 proc positionParams*(uri: DocumentUri, line, character: int): TextDocumentPositionParams =
   TextDocumentPositionParams(
