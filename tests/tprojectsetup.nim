@@ -43,9 +43,6 @@ suite "nimble setup":
         "textDocument": {"uri": pathToUri(entryPoint)},
       }
     client.openFile("projects/testproject/src/testproject.nim")
-    check waitFor client.waitForNotificationMessage(
-      fmt"Nimsuggest initialized for {entryPoint}"
-    )
     check waitFor client.waitForNotification(
       "window/showMessage",
       (json: JsonNode) =>
@@ -392,6 +389,11 @@ suite "Nimble package changes":
       },
     )
 
+  proc ensureNimsuggestStarted(client: LspSocketClient, path: Path) =
+    discard client.call(
+      "textDocument/documentSymbol", %*{"textDocument": {"uri": pathToUri(path)}}
+    ).waitFor
+
   proc hover(client: LspSocketClient, path: Path) =
     discard client.call(
       "textDocument/hover",
@@ -448,6 +450,7 @@ suite "Nimble package changes":
 
   test "a request with no nimble.paths change keeps the nimsuggest":
     client.open(libFile)
+    client.ensureNimsuggestStarted(libFile)
     check ls.started(packageProject)
     check ls.projectOf(libFile) == packageProject
     let project = ls.projectFiles[packageProject]
@@ -457,6 +460,7 @@ suite "Nimble package changes":
 
   test "a new nimble.paths restarts the nimsuggest of the package":
     client.open(libFile)
+    client.ensureNimsuggestStarted(libFile)
     check ls.started(packageProject)
     let project = ls.projectFiles[packageProject]
 
@@ -468,6 +472,7 @@ suite "Nimble package changes":
   test "an edited nimble.paths restarts the nimsuggest of the package":
     writeFile(nimblePaths.string, "--noNimblePath\n")
     client.open(libFile)
+    client.ensureNimsuggestStarted(libFile)
     check ls.started(packageProject)
     let project = ls.projectFiles[packageProject]
 
@@ -479,6 +484,7 @@ suite "Nimble package changes":
     # nimble test and nimble tasks rewrite it on every run
     writeFile(nimblePaths.string, "--noNimblePath\n")
     client.open(libFile)
+    client.ensureNimsuggestStarted(libFile)
     check ls.started(packageProject)
     let project = ls.projectFiles[packageProject]
 
@@ -494,6 +500,7 @@ suite "Nimble package changes":
   test "a deleted nimble.paths restarts the nimsuggest of the package":
     writeFile(nimblePaths.string, "--noNimblePath\n")
     client.open(libFile)
+    client.ensureNimsuggestStarted(libFile)
     check ls.started(packageProject)
     let project = ls.projectFiles[packageProject]
 
@@ -503,6 +510,7 @@ suite "Nimble package changes":
 
   test "concurrent requests share the restart of a changed nimble.paths":
     client.open(libFile)
+    client.ensureNimsuggestStarted(libFile)
     check ls.started(packageProject)
     let project = ls.projectFiles[packageProject]
 
@@ -526,6 +534,7 @@ suite "Nimble package changes":
     ls.setWorkspaceConfiguration(NlsConfig(autoCheckProject: some false))
     writeFile(nimblePaths.string, "--noNimblePath\n")
     client.open(libFile)
+    client.ensureNimsuggestStarted(libFile)
     check ls.started(packageProject)
     let old = ls.projectFiles[packageProject]
     ls.projectFiles.del(packageProject)
@@ -553,6 +562,7 @@ suite "Nimble package changes":
 
   test "a nimble.paths change retries a failed nimsuggest":
     client.open(libFile)
+    client.ensureNimsuggestStarted(libFile)
     check ls.started(packageProject)
     let project = ls.projectFiles[packageProject]
     discard project.process.kill()
@@ -568,6 +578,7 @@ suite "Nimble package changes":
 
   test "an edited nimble file alone keeps the nimsuggest":
     client.open(libFile)
+    client.ensureNimsuggestStarted(libFile)
     check ls.started(packageProject)
     let project = ls.projectFiles[packageProject]
 
@@ -578,6 +589,7 @@ suite "Nimble package changes":
 
   test "a changed nimble.paths also picks up the edits of the nimble file":
     client.open(libFile)
+    client.ensureNimsuggestStarted(libFile)
     check ls.started(packageProject)
 
     rewrite(nimbleFile, nimbleText & "srcDir = \"src\"\n")
@@ -590,7 +602,9 @@ suite "Nimble package changes":
 
   test "a project outside the package is not restarted":
     client.open(libFile)
+    client.ensureNimsuggestStarted(libFile)
     client.open(otherFile)
+    client.ensureNimsuggestStarted(otherFile)
     check ls.started(packageProject)
     check ls.started(otherFile)
     let project = ls.projectFiles[otherFile]

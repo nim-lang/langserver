@@ -38,9 +38,6 @@ suite "LSP endpoints":
     helloWorldFile = "projects/hw/hw.nim"
     helloWorldUri = fixtureUri(helloWorldFile)
   client.openFile(helloWorldFile)
-  check waitFor client.waitForNotificationMessage(
-    fmt"Nimsuggest initialized for {uriToPath(helloWorldUri)}"
-  )
 
   suiteTeardown:
     waitFor ls.shutdownNimsuggest()
@@ -630,9 +627,6 @@ suite "LSP messages leave unset members out":
     helloWorldFile = "projects/hw/hw.nim"
     helloWorldUri = fixtureUri(helloWorldFile)
   client.openFile(helloWorldFile)
-  check waitFor client.waitForNotificationMessage(
-    fmt"Nimsuggest initialized for {uriToPath(helloWorldUri)}"
-  )
   client.notify(
     "textDocument/didSave",
     %*{

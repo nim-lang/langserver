@@ -42,7 +42,7 @@ suite "Async safety":
   test "didOpenFile writes the stash file before it suspends":
     removeFile(ls.pathStorageLocation(helloWorldPath).string)
 
-    let opened = ls.didOpenFixture(helloWorldFile)
+    let opened = ls.openFile(helloWorldFile)
     check fileExists(ls.pathStorageLocation(helloWorldPath).string)
     check ls.openFiles[helloWorldPath].fingerTable.len > 0
 
@@ -111,7 +111,7 @@ suite "Replacing a running nimsuggest":
     waitFor ls.shutdownNimsuggest()
 
   test "stopping the replaced instance is not handled as a crash":
-    check waitFor ls.didOpenFixture(helloWorldFile).withTimeout(30.seconds)
+    check waitFor ls.openFile(helloWorldFile).withTimeout(30.seconds)
     check (waitFor ls.tryGetNimsuggest(helloWorldPath).wait(30.seconds)).isSome
     let old = ls.projectFiles[helloWorldPath]
     let errors = ls.projectErrors.len
@@ -178,7 +178,7 @@ suite "Documents closed while a handler is suspended":
     count
 
   test "didSave checks the project even if the file closes while it waits":
-    check waitFor ls.didOpenFixture(helloWorldFile).withTimeout(30.seconds)
+    check waitFor ls.openFile(helloWorldFile).withTimeout(30.seconds)
     check (waitFor ls.tryGetNimsuggest(helloWorldPath).wait(30.seconds)).isSome
     let ns = ls.projectFiles[helloWorldPath].ns
 
@@ -256,7 +256,7 @@ suite "Shutting down twice":
   test "a second shutdown waits for the first one to stop nimsuggest":
     # exit can arrive while shutdown is still stopping nimsuggest. If the
     # second call returned early the server would quit with it still running.
-    check waitFor ls.didOpenFixture(helloWorldFile).withTimeout(30.seconds)
+    check waitFor ls.openFile(helloWorldFile).withTimeout(30.seconds)
     check (waitFor ls.tryGetNimsuggest(helloWorldPath).wait(30.seconds)).isSome
 
     let first = ls.shutdownNimsuggest()

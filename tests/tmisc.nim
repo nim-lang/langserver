@@ -46,10 +46,7 @@ suite "Nimlangserver misc":
     let helloWorldFile = "projects/hw/hw.nim"
     let hwAbsFile = uriToPath(helloWorldFile.fixtureUri())
     client.openFile(helloWorldFile)
-
-    check waitFor client.waitForNotificationMessage(
-      fmt"Nimsuggest initialized for {hwAbsFile}"
-    )
+    waitFor client.ensureNimsuggestStarted(helloWorldFile)
 
     # A nimsuggest serving an open file is never stopped.
     client.notify("textDocument/didClose", %*{"textDocument": {"uri": helloWorldUri}})
@@ -81,9 +78,7 @@ suite "A nimsuggest that fails":
   )
   ls.setWorkspaceConfiguration(NlsConfig())
   client.openFile(helloWorldFile)
-  check waitFor client.waitForNotificationMessage(
-    fmt"Nimsuggest initialized for {hwAbsFile}"
-  )
+  waitFor client.ensureNimsuggestStarted(helloWorldFile)
 
   suiteTeardown:
     waitFor ls.shutdownNimsuggest()
@@ -136,6 +131,7 @@ suite "A nimsuggest that fails to start":
   )
   ls.setWorkspaceConfiguration(notNimsuggest)
   client.openFile(helloWorldFile)
+  waitFor client.ensureNimsuggestStarted(helloWorldFile)
 
   suiteTeardown:
     waitFor ls.shutdownNimsuggest()
@@ -475,9 +471,7 @@ suite "Nimlangserver idle nimsuggest cleanup":
     let helloWorldFile = "projects/hw/hw.nim"
     let hwAbsFile = uriToPath(helloWorldFile.fixtureUri())
     client.openFile(helloWorldFile)
-    check waitFor client.waitForNotificationMessage(
-      fmt"Nimsuggest initialized for {hwAbsFile}"
-    )
+    waitFor client.ensureNimsuggestStarted(helloWorldFile)
     ls.openFiles.del(helloWorldFile.fixturePath)
 
     proc sweptAway(ls: LanguageServer, projectFile: Path): bool =

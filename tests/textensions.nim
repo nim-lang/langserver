@@ -38,10 +38,7 @@ suite "Nimlangserver extensions":
     let helloWorldFile = "projects/hw/hw.nim"
     let hwAbsFile = uriToPath(helloWorldFile.fixtureUri())
     client.openFile(helloWorldFile)
-
-    check waitFor client.waitForNotificationMessage(
-      fmt"Nimsuggest initialized for {hwAbsFile}"
-    )
+    waitFor client.ensureNimsuggestStarted(helloWorldFile)
 
     client.notify(
       "textDocument/didOpen", %createDidOpenParams("projects/hw/useRoot.nim")

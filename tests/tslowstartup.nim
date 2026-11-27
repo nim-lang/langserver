@@ -76,6 +76,8 @@ suite "Nimsuggest startup for a slow mapped root":
   test "files opened during startup share a single nimsuggest for their root":
     client.openFile(otherFile)
     client.openFile(rootFile)
+    let starting = [otherFile, rootFile].mapIt(client.ensureNimsuggestStarted(it))
+    check waitFor allFutures(starting).withTimeout(CallTimeout)
 
     check waitUntil(initializedMessages() >= 1, CallTimeout)
     check not waitUntil(initializedMessages() > 1, 3.seconds)
@@ -104,6 +106,7 @@ suite "Project resolution with a single nimsuggest":
 
   test "a file of a nimble package uses the package's nimsuggest":
     client.openFile(otherFile)
+    waitFor client.ensureNimsuggestStarted(otherFile)
 
     check waitUntil(entryPath in ls.projectFiles, CallTimeout)
     check not waitUntil(ls.projectFiles.len > 1, 8.seconds)
@@ -115,12 +118,14 @@ suite "Shutdown during nimsuggest startup":
 
   test "stopping cancels the nimsuggest that is still starting":
     client.openFile("projects/slowroot/slowroot.nim")
+    let starting = client.ensureNimsuggestStarted("projects/slowroot/slowroot.nim")
     check waitUntil(entryPath in ls.nimsuggestCreations, CallTimeout)
     let creation = ls.nimsuggestCreations.getOrDefault(entryPath)
     waitFor ls.shutdownNimsuggest()
     check creation.cancelled
     check ls.nimsuggestCreations.len == 0
     check entryPath notin ls.projectFiles
+    check waitFor starting.withTimeout(CallTimeout)
 
   test "no nimsuggest is started once stopped":
     waitFor ls.createOrRestartNimsuggest(entryPath).wait(30.seconds)

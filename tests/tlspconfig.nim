@@ -209,9 +209,7 @@ suite "LSP configuration pulled from the client":
     helloWorldFile = "projects/hw/hw.nim"
     helloWorldUri = fixtureUri(helloWorldFile)
   client.openFile(helloWorldFile)
-  check waitFor client.waitForNotificationMessage(
-    fmt"Nimsuggest initialized for {uriToPath(helloWorldUri)}"
-  )
+  waitFor client.ensureNimsuggestStarted(helloWorldFile)
 
   suiteTeardown:
     waitFor ls.shutdownNimsuggest()
