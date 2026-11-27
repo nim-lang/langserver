@@ -128,7 +128,7 @@ suite "Idle nimsuggest of a nimble package":
     waitFor ls.shutdownNimsuggest()
 
   test "it is stopped like any other":
-    waitFor ls.didOpenFixture("projects/vendored/vendored.nim")
+    waitFor ls.openFile("projects/vendored/vendored.nim")
     check (waitFor ls.tryGetNimsuggest("projects/vendored/vendored.nim".fixturePath)).isSome
     # The package's own module is one of its entry points, which used to be
     # kept running however long they were idle.
@@ -156,7 +156,7 @@ suite "Idle nimsuggest of a mapped project":
         ],
       )
     )
-    waitFor ls.didOpenFixture(OtherFile)
+    waitFor ls.openFile(OtherFile)
     check (waitFor ls.tryGetNimsuggest(OtherFile.fixturePath)).isSome
     # Mapped projects used to be kept running however long they were idle.
     check ls.openFiles[OtherFile.fixturePath].nimsuggestProject == rootPath

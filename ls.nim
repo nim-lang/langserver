@@ -907,18 +907,6 @@ proc isFailedNimsuggest(ls: LanguageServer, projectFile: Path): bool =
   let project = ls.projectFiles.getOrDefault(projectFile)
   project != nil and project.failed
 
-proc nimsuggestProjectFor(
-    ls: LanguageServer, path: Path
-): Future[Path] {.async: (raises: [CancelledError, OSError, RegexError]).} =
-  let projectFile = await ls.projectFileWait(path)
-  let conf = await ls.workspaceConfigurationWait()
-  let nsProject =
-    if ls.isLiveNimsuggestProject(projectFile) or ls.canSpawnNimsuggest(conf):
-      projectFile
-    else:
-      await ls.reuseLastNimsuggestProject(path)
-  nsProject
-
 proc hasServingNimsuggest(ls: LanguageServer, file: NlsFileInfo): bool =
   file.nimsuggestProject.len > 0 and ls.isLiveNimsuggestProject(file.nimsuggestProject) and
     not ls.isFailedNimsuggest(file.nimsuggestProject)
@@ -961,13 +949,10 @@ proc servingNimsuggestProject(
     ls: LanguageServer, path: Path
 ): Future[Path] {.async: (raises: [CancelledError, OSError, RegexError]).} =
   let file = ls.openFiles.getOrDefault(path)
-  if file == nil:
-    await ls.nimsuggestProjectFor(path)
-  elif ls.hasServingNimsuggest(file):
+  if file != nil and ls.hasServingNimsuggest(file):
     file.nimsuggestProject
   else:
-    file.nimsuggestProject = await ls.nimsuggestProjectFor(path)
-    file.nimsuggestProject
+    await ls.projectFileWait(path)
 
 proc getNimsuggestInner(
     ls: LanguageServer, path: Path
@@ -975,6 +960,12 @@ proc getNimsuggestInner(
   var nsProject = await ls.servingNimsuggestProject(path)
   if await ls.stopIfPackageChanged(nsProject):
     nsProject = await ls.servingNimsuggestProject(path)
+  let conf = await ls.workspaceConfigurationWait()
+  if not ls.isLiveNimsuggestProject(nsProject) and not ls.canSpawnNimsuggest(conf):
+    nsProject = await ls.reuseLastNimsuggestProject(path)
+  let file = ls.openFiles.getOrDefault(path)
+  if file != nil:
+    file.nimsuggestProject = nsProject
   if nsProject.len == 0:
     return nil
   let running = ls.projectFiles.getOrDefault(nsProject)

@@ -75,7 +75,7 @@ suite "Several workspaces":
     check (waitFor ls.getProjectFile(otherModule)) == rootModule
 
   test "open files resolve again when the client adds and removes workspaces":
-    waitFor ls.didOpenFixture("projects/multimodules/othermodule.nim")
+    waitFor ls.openFile("projects/multimodules/othermodule.nim")
     check (waitFor ls.openFiles[otherModule].projectFileWait()) == rootModule
 
     # Without its workspace the mapping no longer applies to the file.
@@ -103,7 +103,7 @@ suite "Several workspaces":
   test "a workspace change stops the nimsuggests when they are capped":
     let hwFile = hwDir / "hw.nim"
     ls.setWorkspaceConfiguration(NlsConfig(maxNimsuggestProcesses: some 2))
-    waitFor ls.didOpenFixture("projects/hw/hw.nim")
+    waitFor ls.openFile("projects/hw/hw.nim")
     check (waitFor ls.tryGetNimsuggest(hwFile)).isSome
     client.notify(
       "workspace/didChangeWorkspaceFolders",

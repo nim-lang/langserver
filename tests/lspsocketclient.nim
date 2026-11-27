@@ -212,15 +212,22 @@ proc createDidOpenParams*(file: string): DidOpenTextDocumentParams =
     )
   )
 
-proc didOpenFixture*(ls: LanguageServer, file: string) {.async.} =
-  ## Opens the file and, like an editor does, sends a request for it.
+# `check` prints a table of open files only if it compiles; without this,
+# whether it compiles depends on which module instantiated the table's `$` first
+proc `$`*(file: NlsFileInfo): string =
+  $file.path
+
+proc openFile*(ls: LanguageServer, file: string) {.async.} =
   await ls.didOpenFile(fixturePath(file), readFile("tests" / file))
-  discard await ls.tryGetNimsuggest(fixturePath(file))
 
 proc openFile*(client: LspSocketClient, file: string) =
-  ## Opens the file and, like an editor does, sends a request for it.
   client.notify("textDocument/didOpen", %createDidOpenParams(file))
-  discard client.call(
+
+proc ensureNimsuggestStarted*(ls: LanguageServer, file: string) {.async.} =
+  discard await ls.tryGetNimsuggest(fixturePath(file))
+
+proc ensureNimsuggestStarted*(client: LspSocketClient, file: string) {.async.} =
+  discard await client.call(
     "textDocument/documentSymbol", %*{"textDocument": {"uri": fixtureUri(file)}}
   )
 

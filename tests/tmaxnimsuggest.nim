@@ -54,7 +54,7 @@ suite "Single nimsuggest instance under concurrent opens":
     # running. Each file would get its own nimsuggest, but the limit is 1. The
     # modules don't import each other, so only the file that got the slot is
     # served.
-    let opening = files.mapIt(ls.didOpenFixture(it))
+    let opening = files.mapIt(ls.openFile(it))
     let starting = files.mapIt(ls.tryGetNimsuggest(it.fixturePath))
     for fut in opening:
       waitFor fut
@@ -98,7 +98,7 @@ suite "Idle nimsuggest instance under the cap":
 
     # No running nimsuggest knows the other file, so it gets none rather than
     # restarting its own over the limit.
-    waitFor ls.didOpenFixture(OtherFile)
+    waitFor ls.openFile(OtherFile)
     check (waitFor ls.tryGetNimsuggest(otherPath)).isNone
     check ls.projectFiles.len == 2
     check otherProject notin ls.projectFiles
@@ -124,7 +124,8 @@ suite "Reusing a nimsuggest instance over the cap":
     ls.setWorkspaceConfiguration(NlsConfig(maxNimsuggestProcesses: some 2))
     let files = ["projects/hw/hw.nim", "projects/vendored/vendored.nim"]
     for file in files:
-      waitFor ls.didOpenFixture(file)
+      waitFor ls.openFile(file)
+      waitFor ls.ensureNimsuggestStarted(file)
     check ls.projectFiles.len == 2
 
     # The cap is reached, so both files go through the reuse. Only one of them
@@ -176,18 +177,20 @@ suite "Last used nimsuggest over the cap":
       vendored = projectsDir / "vendored" / "vendored.nim"
       depPath = "projects/vendored/vendor/dep/dep.nim".fixturePath
       hwPath = "projects/hw/hw.nim".fixturePath
-    waitFor ls.didOpenFixture("projects/vendored/vendored.nim")
+    waitFor ls.openFile("projects/vendored/vendored.nim")
+    waitFor ls.ensureNimsuggestStarted("projects/vendored/vendored.nim")
     check vendored in ls.projectFiles
 
     # vendored.nim imports dep.nim, so its nimsuggest serves it.
-    waitFor ls.didOpenFixture("projects/vendored/vendor/dep/dep.nim")
+    waitFor ls.openFile("projects/vendored/vendor/dep/dep.nim")
+    waitFor ls.ensureNimsuggestStarted("projects/vendored/vendor/dep/dep.nim")
     check (waitFor ls.openFiles[depPath].projectFileWait()) ==
       projectsDir / "vendored" / "vendor" / "dep" / "dep.nim"
     check ls.openFiles[depPath].nimsuggestProject == vendored
     check ls.projectFiles.len == 1
 
     # hw.nim is not known by it, so it gets no nimsuggest.
-    waitFor ls.didOpenFixture("projects/hw/hw.nim")
+    waitFor ls.openFile("projects/hw/hw.nim")
     check (waitFor ls.tryGetNimsuggest(hwPath)).isNone
     check ls.openFiles[hwPath].nimsuggestProject.len == 0
     check ls.projectFiles.len == 1

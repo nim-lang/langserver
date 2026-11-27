@@ -33,9 +33,6 @@ suite "LSP diagnostics":
     helloWorldFile = "projects/hw/hw.nim"
     helloWorldUri = fixtureUri(helloWorldFile)
   client.openFile(helloWorldFile)
-  check waitFor client.waitForNotificationMessage(
-    fmt"Nimsuggest initialized for {uriToPath(helloWorldUri)}"
-  )
   client.notify(
     "textDocument/didSave",
     %*{
@@ -150,9 +147,7 @@ suite "LSP project check command":
     # Only a test file is open. It belongs to the package, so the nimsuggest
     # runs for the package's project file, which the editor never opened.
     client.openFile("projects/mcpproject/tests/test1.nim")
-    check waitFor client.waitForNotificationMessage(
-      fmt"Nimsuggest initialized for {projectFile}"
-    )
+    waitFor client.ensureNimsuggestStarted("projects/mcpproject/tests/test1.nim")
     check projectFile notin ls.openFiles
     let project = ls.projectFiles[projectFile]
     check waitUntil(
